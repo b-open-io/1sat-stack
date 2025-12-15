@@ -1,0 +1,99 @@
+# 1sat-stack configuration
+
+# Network settings
+network:
+  type: main                                    # main or test
+  junglebus: https://junglebus.gorillapool.io   # JungleBus service URL
+
+# HTTP Server settings
+server:
+  port: 8080
+  host: 0.0.0.0
+  base_path: /api
+
+# TXO storage - BadgerDB (default)
+store:
+  mode: embedded
+  url: badger://~/.1sat/store
+
+# PubSub for events
+pubsub:
+  mode: embedded
+  url: channels://  # in-memory, or redis://localhost:6379 for distributed
+  routes:
+    enabled: true
+
+# BEEF storage chain: LRU cache -> local file -> JungleBus fallback
+beef:
+  mode: embedded
+  chain:
+    - lru://?size=100mb
+    - ~/.1sat/beef
+    - junglebus://
+  routes:
+    enabled: true
+
+# TXO indexed output storage
+txo:
+  mode: embedded
+  routes:
+    enabled: true
+
+# Indexer service
+indexer:
+  mode: embedded
+  tag: IngestTag
+  network: mainnet
+  concurrency: 1
+  verbose: false
+  indexers:
+    - p2pkh
+    - lock
+    - inscription
+    - ordlock
+  routes:
+    enabled: true
+
+# P2P client configuration
+p2p:
+  mode: embedded
+  storage_path: ~/.1sat
+
+# Chaintracks configuration
+chaintracks:
+  mode: embedded
+  storage_path: ~/.1sat/chaintracks
+  bootstrap_url: https://mainnet.gorillanode.io/api/v1
+
+# Arcade configuration (transaction broadcasting)
+arcade:
+  mode: embedded
+  network: main
+  storage_path: ~/.1sat/arcade
+  database:
+    type: sqlite
+    sqlite_path: ~/.1sat/arcade/arcade.db
+  events:
+    type: memory
+    buffer_size: 1000
+
+# Merkle service (proof management)
+merkle:
+  mode: embedded
+  routes:
+    enabled: true
+
+# BSV21 token support (optional)
+bsv21:
+  mode: embedded
+  network: mainnet
+  whitelist_tokens: []
+  blacklist_tokens: []
+  routes:
+    enabled: true
+
+# ORDFS content serving (optional)
+ordfs:
+  mode: embedded
+  routes:
+    enabled: true
