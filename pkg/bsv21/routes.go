@@ -118,7 +118,7 @@ func (r *Routes) isTopicActive(topic string) bool {
 // @Produce json
 // @Param tokenId path string true "Token ID (outpoint format: txid_vout)"
 // @Success 200 {object} TokenResponse
-// @Router /bsv21/{tokenId} [get]
+// @Router /api/bsv21/{tokenId} [get]
 func (r *Routes) GetToken(c *fiber.Ctx) error {
 	tokenIdStr := c.Params("tokenId")
 
@@ -158,7 +158,7 @@ func (r *Routes) GetToken(c *fiber.Ctx) error {
 // @Param tokenId path string true "Token ID"
 // @Param height path int true "Block height"
 // @Success 200 {object} BlockResponse
-// @Router /bsv21/{tokenId}/block/{height} [get]
+// @Router /api/bsv21/{tokenId}/block/{height} [get]
 func (r *Routes) GetBlockData(c *fiber.Ctx) error {
 	tokenId := c.Params("tokenId")
 	heightStr := c.Params("height")
@@ -244,7 +244,7 @@ func (r *Routes) GetBlockData(c *fiber.Ctx) error {
 // @Param txid path string true "Transaction ID"
 // @Param beef query bool false "Include BEEF data"
 // @Success 200 {object} map[string]interface{}
-// @Router /bsv21/{tokenId}/tx/{txid} [get]
+// @Router /api/bsv21/{tokenId}/tx/{txid} [get]
 func (r *Routes) GetTransaction(c *fiber.Ctx) error {
 	tokenId := c.Params("tokenId")
 	txidStr := c.Params("txid")
@@ -289,7 +289,14 @@ func (r *Routes) GetTransaction(c *fiber.Ctx) error {
 	}
 
 	if includeBeef && r.storage.BeefStore != nil {
-		tx.Beef, _ = r.storage.BeefStore.LoadBeef(c.Context(), txid)
+		beef, err := r.storage.BeefStore.LoadBeef(c.Context(), txid)
+		if err != nil {
+			r.logger.Error("Failed to load BEEF", "txid", txid.String(), "error", err)
+			return c.Status(fiber.StatusInternalServerError).JSON(ErrorResponse{
+				Message: "Failed to load BEEF data",
+			})
+		}
+		tx.Beef = beef
 	}
 
 	return c.JSON(tx)
@@ -303,7 +310,7 @@ func (r *Routes) GetTransaction(c *fiber.Ctx) error {
 // @Param lockType path string true "Lock type (p2pkh, cos, list, etc.)"
 // @Param address path string true "Address"
 // @Success 200 {object} BalanceResponse
-// @Router /bsv21/{tokenId}/{lockType}/{address}/balance [get]
+// @Router /api/bsv21/{tokenId}/{lockType}/{address}/balance [get]
 func (r *Routes) GetAddressBalance(c *fiber.Ctx) error {
 	tokenId := c.Params("tokenId")
 	lockType := c.Params("lockType")
@@ -340,7 +347,7 @@ func (r *Routes) GetAddressBalance(c *fiber.Ctx) error {
 // @Param lockType path string true "Lock type"
 // @Param address path string true "Address"
 // @Success 200 {array} txo.IndexedOutput
-// @Router /bsv21/{tokenId}/{lockType}/{address}/history [get]
+// @Router /api/bsv21/{tokenId}/{lockType}/{address}/history [get]
 func (r *Routes) GetAddressHistory(c *fiber.Ctx) error {
 	tokenId := c.Params("tokenId")
 	lockType := c.Params("lockType")
@@ -376,7 +383,7 @@ func (r *Routes) GetAddressHistory(c *fiber.Ctx) error {
 // @Param lockType path string true "Lock type"
 // @Param address path string true "Address"
 // @Success 200 {array} txo.IndexedOutput
-// @Router /bsv21/{tokenId}/{lockType}/{address}/unspent [get]
+// @Router /api/bsv21/{tokenId}/{lockType}/{address}/unspent [get]
 func (r *Routes) GetAddressUnspent(c *fiber.Ctx) error {
 	tokenId := c.Params("tokenId")
 	lockType := c.Params("lockType")
@@ -414,7 +421,7 @@ func (r *Routes) GetAddressUnspent(c *fiber.Ctx) error {
 // @Param lockType path string true "Lock type"
 // @Param addresses body []string true "Array of addresses (max 100)"
 // @Success 200 {object} BalanceResponse
-// @Router /bsv21/{tokenId}/{lockType}/balance [post]
+// @Router /api/bsv21/{tokenId}/{lockType}/balance [post]
 func (r *Routes) GetMultiAddressBalance(c *fiber.Ctx) error {
 	tokenId := c.Params("tokenId")
 	lockType := c.Params("lockType")
@@ -473,7 +480,7 @@ func (r *Routes) GetMultiAddressBalance(c *fiber.Ctx) error {
 // @Param lockType path string true "Lock type"
 // @Param addresses body []string true "Array of addresses (max 100)"
 // @Success 200 {array} txo.IndexedOutput
-// @Router /bsv21/{tokenId}/{lockType}/history [post]
+// @Router /api/bsv21/{tokenId}/{lockType}/history [post]
 func (r *Routes) GetMultiAddressHistory(c *fiber.Ctx) error {
 	tokenId := c.Params("tokenId")
 	lockType := c.Params("lockType")
@@ -535,7 +542,7 @@ func (r *Routes) GetMultiAddressHistory(c *fiber.Ctx) error {
 // @Param lockType path string true "Lock type"
 // @Param addresses body []string true "Array of addresses (max 100)"
 // @Success 200 {array} txo.IndexedOutput
-// @Router /bsv21/{tokenId}/{lockType}/unspent [post]
+// @Router /api/bsv21/{tokenId}/{lockType}/unspent [post]
 func (r *Routes) GetMultiAddressUnspent(c *fiber.Ctx) error {
 	tokenId := c.Params("tokenId")
 	lockType := c.Params("lockType")

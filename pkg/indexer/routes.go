@@ -44,7 +44,7 @@ func (r *Routes) Register(app fiber.Router, prefix string) {
 // @Failure 400 {object} map[string]string
 // @Failure 404 {object} map[string]string
 // @Failure 500 {object} map[string]string
-// @Router /indexer/{txid}/parse [get]
+// @Router /api/indexer/{txid}/parse [get]
 func (r *Routes) ParseTxidHandler(c *fiber.Ctx) error {
 	txid := c.Params("txid")
 	if txid == "" {
@@ -78,7 +78,7 @@ func (r *Routes) ParseTxidHandler(c *fiber.Ctx) error {
 // @Success 200 {object} IndexContext
 // @Failure 400 {object} map[string]string
 // @Failure 500 {object} map[string]string
-// @Router /indexer/parse [post]
+// @Router /api/indexer/parse [post]
 func (r *Routes) ParseTxHandler(c *fiber.Ctx) error {
 	body := c.Body()
 	if len(body) == 0 {
@@ -125,7 +125,7 @@ func (r *Routes) ParseTxHandler(c *fiber.Ctx) error {
 // @Failure 400 {object} map[string]string
 // @Failure 404 {object} map[string]string
 // @Failure 500 {object} map[string]string
-// @Router /indexer/{txid}/ingest [post]
+// @Router /api/indexer/{txid}/ingest [post]
 func (r *Routes) IngestTxidHandler(c *fiber.Ctx) error {
 	txid := c.Params("txid")
 	if txid == "" {
@@ -165,7 +165,7 @@ func (r *Routes) IngestTxidHandler(c *fiber.Ctx) error {
 // @Tags indexer
 // @Produce json
 // @Success 200 {array} string
-// @Router /indexer/tags [get]
+// @Router /api/indexer/tags [get]
 func (r *Routes) TagsHandler(c *fiber.Ctx) error {
 	return c.JSON(r.ingestCtx.IndexedTags())
 }

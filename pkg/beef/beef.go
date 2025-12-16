@@ -300,12 +300,16 @@ func (s *Storage) UpdateMerklePath(ctx context.Context, txid *chainhash.Hash, ct
 				if parseErr == nil && tx != nil && tx.MerklePath != nil {
 					valid, verifyErr := tx.MerklePath.Verify(ctx, txid, ct)
 					if verifyErr == nil && valid {
-						s.saveBeefInternal(ctx, txid, updatedBeef)
+						if err := s.saveBeefInternal(ctx, txid, updatedBeef); err != nil {
+							return nil, fmt.Errorf("failed to save updated BEEF: %w", err)
+						}
 						return updatedBeef, nil
 					}
 				}
 			} else {
-				s.saveBeefInternal(ctx, txid, updatedBeef)
+				if err := s.saveBeefInternal(ctx, txid, updatedBeef); err != nil {
+					return nil, fmt.Errorf("failed to save updated BEEF: %w", err)
+				}
 				return updatedBeef, nil
 			}
 		}

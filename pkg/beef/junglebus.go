@@ -41,17 +41,21 @@ func (t *JunglebusBeefStorage) Get(ctx context.Context, txid *chainhash.Hash) ([
 		return nil, ctx.Err()
 	}
 
-	return t.fetchBeef(txid)
+	return t.fetchBeef(ctx, txid)
 }
 
-func (t *JunglebusBeefStorage) fetchBeef(txid *chainhash.Hash) ([]byte, error) {
+func (t *JunglebusBeefStorage) fetchBeef(ctx context.Context, txid *chainhash.Hash) ([]byte, error) {
 	if t.junglebusURL == "" {
 		return nil, ErrNotFound
 	}
 
 	txidStr := txid.String()
 	url := fmt.Sprintf("%s/v1/transaction/beef/%s", t.junglebusURL, txidStr)
-	resp, err := http.Get(url)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		return nil, err
+	}
+	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		return nil, err
 	}
@@ -97,7 +101,11 @@ func (t *JunglebusBeefStorage) GetRawTx(ctx context.Context, txid *chainhash.Has
 	}
 
 	url := fmt.Sprintf("%s/v1/transaction/get/%s/bin", t.junglebusURL, txid.String())
-	resp, err := http.Get(url)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		return nil, err
+	}
+	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		return nil, err
 	}
@@ -125,7 +133,11 @@ func (t *JunglebusBeefStorage) GetProof(ctx context.Context, txid *chainhash.Has
 	}
 
 	url := fmt.Sprintf("%s/v1/transaction/proof/%s/bin", t.junglebusURL, txid.String())
-	resp, err := http.Get(url)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		return nil, err
+	}
+	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		return nil, err
 	}

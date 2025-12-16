@@ -89,7 +89,11 @@ func (s *OutputStore) FindOutput(ctx context.Context, outpoint *transaction.Outp
 
 	// Load BEEF if requested
 	if includeBEEF && s.BeefStore != nil && len(output.Beef) == 0 {
-		output.Beef, _ = s.BeefStore.LoadBeef(ctx, &outpoint.Txid)
+		beef, err := s.BeefStore.LoadBeef(ctx, &outpoint.Txid)
+		if err != nil {
+			return nil, fmt.Errorf("failed to load BEEF for %s: %w", outpoint.Txid.String(), err)
+		}
+		output.Beef = beef
 	}
 
 	return output, nil
@@ -132,7 +136,11 @@ func (s *OutputStore) FindOutputs(ctx context.Context, outpoints []*transaction.
 			output.Topic = topic
 			output.Spent = isSpent[toLoadIdx[i]]
 			if includeBEEF && s.BeefStore != nil && len(output.Beef) == 0 {
-				output.Beef, _ = s.BeefStore.LoadBeef(ctx, &outpoints[toLoadIdx[i]].Txid)
+				beef, err := s.BeefStore.LoadBeef(ctx, &outpoints[toLoadIdx[i]].Txid)
+				if err != nil {
+					return nil, fmt.Errorf("failed to load BEEF for %s: %w", outpoints[toLoadIdx[i]].Txid.String(), err)
+				}
+				output.Beef = beef
 			}
 			outputs[i] = output
 		}
@@ -168,7 +176,11 @@ func (s *OutputStore) FindOutputsForTransaction(ctx context.Context, txid *chain
 		output := &idx.Output
 		output.Spent = spends[i] != nil
 		if includeBEEF && s.BeefStore != nil && len(output.Beef) == 0 {
-			output.Beef, _ = s.BeefStore.LoadBeef(ctx, txid)
+			beef, err := s.BeefStore.LoadBeef(ctx, txid)
+			if err != nil {
+				return nil, fmt.Errorf("failed to load BEEF for %s: %w", txid.String(), err)
+			}
+			output.Beef = beef
 		}
 		outputs[i] = output
 	}
@@ -201,7 +213,7 @@ func (s *OutputStore) FindUTXOsForTopic(ctx context.Context, topic string, since
 
 	ops := make([]*transaction.Outpoint, len(results))
 	for i, r := range results {
-		ops[i] = outpointFromBytes(r.Member)
+		ops[i] = transaction.NewOutpointFromBytes(r.Member)
 	}
 
 	indexed, err := s.loadOutputs(ctx, ops, nil)
@@ -216,7 +228,11 @@ func (s *OutputStore) FindUTXOsForTopic(ctx context.Context, topic string, since
 			output.Topic = topic
 			output.Spent = false
 			if includeBEEF && s.BeefStore != nil && len(output.Beef) == 0 {
-				output.Beef, _ = s.BeefStore.LoadBeef(ctx, &idx.Outpoint.Txid)
+				beef, err := s.BeefStore.LoadBeef(ctx, &idx.Outpoint.Txid)
+				if err != nil {
+					return nil, fmt.Errorf("failed to load BEEF for %s: %w", idx.Outpoint.Txid.String(), err)
+				}
+				output.Beef = beef
 			}
 			outputs = append(outputs, output)
 		}
@@ -326,7 +342,7 @@ func (s *OutputStore) FindOutpointsByMerkleState(ctx context.Context, topic stri
 
 	outpoints := make([]*transaction.Outpoint, 0, len(results))
 	for _, r := range results {
-		op := outpointFromBytes(r.Member)
+		op := transaction.NewOutpointFromBytes(r.Member)
 		if op != nil {
 			outpoints = append(outpoints, op)
 		}

@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"log/slog"
 
-	"github.com/b-open-io/1sat-stack/pkg/indexer"
 	"github.com/b-open-io/1sat-stack/pkg/txo"
+	"github.com/b-open-io/1sat-stack/pkg/types"
 	"github.com/bsv-blockchain/go-chaintracks/chaintracks"
 	"github.com/spf13/viper"
 )
@@ -78,9 +78,9 @@ func (c *Config) Initialize(
 	switch c.Mode {
 	case ModeEmbedded:
 		// Determine network
-		network := indexer.Mainnet
+		network := types.Mainnet
 		if c.Network == "testnet" {
-			network = indexer.Testnet
+			network = types.Testnet
 		}
 
 		// Create indexer

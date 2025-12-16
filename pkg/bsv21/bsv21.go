@@ -7,6 +7,7 @@ import (
 
 	"github.com/b-open-io/1sat-stack/pkg/indexer"
 	"github.com/b-open-io/1sat-stack/pkg/txo"
+	"github.com/b-open-io/1sat-stack/pkg/types"
 	"github.com/bsv-blockchain/go-sdk/transaction"
 )
 
@@ -55,12 +56,12 @@ type Indexer struct {
 	indexer.BaseIndexer
 	WhitelistFn func(tokenId string) bool
 	BlacklistFn func(tokenId string) bool
-	Network     indexer.Network
+	Network     types.Network
 	Logger      *slog.Logger
 }
 
 // NewIndexer creates a new BSV21 indexer
-func NewIndexer(network indexer.Network) *Indexer {
+func NewIndexer(network types.Network) *Indexer {
 	return &Indexer{
 		Network: network,
 		Logger:  slog.Default(),

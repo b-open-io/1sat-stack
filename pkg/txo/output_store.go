@@ -36,23 +36,9 @@ const (
 
 // === Key Builders (binary) ===
 
-// outpointBytes converts an outpoint to 36 bytes (32 byte txid + 4 byte vout BE)
+// outpointBytes converts an outpoint to 36 bytes
 func outpointBytes(op *transaction.Outpoint) []byte {
-	b := make([]byte, 36)
-	copy(b, op.Txid[:])
-	binary.BigEndian.PutUint32(b[32:], op.Index)
-	return b
-}
-
-// outpointFromBytes parses 36 bytes back to an outpoint
-func outpointFromBytes(b []byte) *transaction.Outpoint {
-	if len(b) != 36 {
-		return nil
-	}
-	op := &transaction.Outpoint{}
-	copy(op.Txid[:], b[:32])
-	op.Index = binary.BigEndian.Uint32(b[32:])
-	return op
+	return op.Bytes()
 }
 
 // keyOutHash builds the hash key for an outpoint: h:{outpoint:36}
@@ -130,7 +116,7 @@ func (s *OutputStore) SaveOutput(ctx context.Context, output *IndexedOutput, sat
 	events = append(events, output.Events...)
 	for _, owner := range output.Owners {
 		if !owner.IsZero() {
-			events = append(events, "own:"+owner.String())
+			events = append(events, "own:"+owner.Address())
 		}
 	}
 
@@ -335,6 +321,9 @@ func (s *OutputStore) GetSpends(ctx context.Context, ops []*transaction.Outpoint
 
 	fields := make([][]byte, len(ops))
 	for i, op := range ops {
+		if op == nil {
+			continue
+		}
 		fields[i] = outpointBytes(op)
 	}
 
@@ -432,7 +421,7 @@ func (s *OutputStore) SearchOutputs(ctx context.Context, cfg *OutputSearchCfg) (
 
 	ops := make([]*transaction.Outpoint, len(results))
 	for i, r := range results {
-		ops[i] = outpointFromBytes(r.Member)
+		ops[i] = transaction.NewOutpointFromBytes(r.Member)
 	}
 	return s.loadOutputs(ctx, ops, cfg)
 }
@@ -447,7 +436,7 @@ func (s *OutputStore) SearchBalance(ctx context.Context, cfg *OutputSearchCfg) (
 
 	ops := make([]*transaction.Outpoint, len(results))
 	for i, r := range results {
-		ops[i] = outpointFromBytes(r.Member)
+		ops[i] = transaction.NewOutpointFromBytes(r.Member)
 	}
 
 	sats, err := s.GetSatsBulk(ctx, ops)
@@ -466,7 +455,7 @@ func (s *OutputStore) SearchBalance(ctx context.Context, cfg *OutputSearchCfg) (
 func (s *OutputStore) filterSpent(ctx context.Context, results []store.ScoredMember) ([]store.ScoredMember, error) {
 	ops := make([]*transaction.Outpoint, len(results))
 	for i, r := range results {
-		ops[i] = outpointFromBytes(r.Member)
+		ops[i] = transaction.NewOutpointFromBytes(r.Member)
 	}
 
 	spends, err := s.GetSpends(ctx, ops)
@@ -655,7 +644,7 @@ func (s *OutputStore) GetInputsConsumed(ctx context.Context, op *transaction.Out
 
 	inputs := make([]*transaction.Outpoint, len(data)/36)
 	for i := range inputs {
-		inputs[i] = outpointFromBytes(data[i*36 : (i+1)*36])
+		inputs[i] = transaction.NewOutpointFromBytes(data[i*36 : (i+1)*36])
 	}
 	return inputs, nil
 }

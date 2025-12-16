@@ -26,6 +26,14 @@ type Config struct {
 	Store  store.Config  `mapstructure:"store"`
 	PubSub pubsub.Config `mapstructure:"pubsub"`
 	Beef   beef.Config   `mapstructure:"beef"`
+
+	Routes RoutesConfig `mapstructure:"routes"`
+}
+
+// RoutesConfig holds route configuration
+type RoutesConfig struct {
+	Enabled bool   `mapstructure:"enabled"`
+	Prefix  string `mapstructure:"prefix"`
 }
 
 // SetDefaults sets viper defaults for txo configuration.
@@ -35,7 +43,9 @@ func (c *Config) SetDefaults(v *viper.Viper, prefix string) {
 		p = prefix + "."
 	}
 
-	v.SetDefault(p+"mode", ModeDisabled)
+	v.SetDefault(p+"mode", ModeEmbedded)
+	v.SetDefault(p+"routes.enabled", true)
+	v.SetDefault(p+"routes.prefix", "")
 
 	// Cascade to embedded configs
 	c.Store.SetDefaults(v, p+"store")
@@ -46,6 +56,7 @@ func (c *Config) SetDefaults(v *viper.Viper, prefix string) {
 // Services holds initialized txo services.
 type Services struct {
 	OutputStore *OutputStore // Unified output storage
+	Routes      *Routes      // HTTP routes (nil if not enabled)
 	Store       *store.Services
 	PubSub      *pubsub.Services
 	BeefStore   *beef.Services
@@ -92,12 +103,18 @@ func (c *Config) Initialize(ctx context.Context, logger *slog.Logger) (*Services
 
 		outputStore := NewOutputStore(storeSvc.Store, pubsubImpl, beefStorage)
 
-		return &Services{
+		svc := &Services{
 			OutputStore: outputStore,
 			Store:       storeSvc,
 			PubSub:      pubsubSvc,
 			BeefStore:   beefSvc,
-		}, nil
+		}
+
+		if c.Routes.Enabled {
+			svc.Routes = NewRoutes(outputStore)
+		}
+
+		return svc, nil
 
 	case ModeRemote:
 		// TODO: Implement remote txo client
@@ -133,12 +150,18 @@ func (c *Config) InitializeWithDeps(
 
 	outputStore := NewOutputStore(storeSvc.Store, pubsubImpl, beefStorage)
 
-	return &Services{
+	svc := &Services{
 		OutputStore: outputStore,
 		Store:       storeSvc,
 		PubSub:      pubsubSvc,
 		BeefStore:   beefSvc,
-	}, nil
+	}
+
+	if c.Routes.Enabled {
+		svc.Routes = NewRoutes(outputStore)
+	}
+
+	return svc, nil
 }
 
 // Close closes all txo services.

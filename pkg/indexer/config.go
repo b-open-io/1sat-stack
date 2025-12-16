@@ -8,6 +8,7 @@ import (
 	"github.com/b-open-io/1sat-stack/pkg/beef"
 	"github.com/b-open-io/1sat-stack/pkg/pubsub"
 	"github.com/b-open-io/1sat-stack/pkg/txo"
+	"github.com/b-open-io/1sat-stack/pkg/types"
 	"github.com/spf13/viper"
 )
 
@@ -81,9 +82,9 @@ func (c *Config) Initialize(
 
 	switch c.Mode {
 	case ModeEmbedded:
-		network := Mainnet
+		network := types.Mainnet
 		if c.Network == "testnet" {
-			network = Testnet
+			network = types.Testnet
 		}
 
 		ingestCtx := &IngestCtx{

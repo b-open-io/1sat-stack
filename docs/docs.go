@@ -23,62 +23,7 @@ const docTemplate = `{
     "host": "{{.Host}}",
     "basePath": "{{.BasePath}}",
     "paths": {
-        "/arc/callback": {
-            "post": {
-                "description": "Receives transaction status updates from Arc broadcaster",
-                "consumes": [
-                    "application/json"
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "merkle"
-                ],
-                "summary": "Handle Arc callback",
-                "parameters": [
-                    {
-                        "description": "Arc callback payload",
-                        "name": "callback",
-                        "in": "body",
-                        "required": true,
-                        "schema": {
-                            "$ref": "#/definitions/merkle.ArcCallback"
-                        }
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "type": "object",
-                            "additionalProperties": {
-                                "type": "string"
-                            }
-                        }
-                    },
-                    "400": {
-                        "description": "Bad request",
-                        "schema": {
-                            "type": "object",
-                            "additionalProperties": {
-                                "type": "string"
-                            }
-                        }
-                    },
-                    "500": {
-                        "description": "Internal server error",
-                        "schema": {
-                            "type": "object",
-                            "additionalProperties": {
-                                "type": "string"
-                            }
-                        }
-                    }
-                }
-            }
-        },
-        "/beef/{txid}": {
+        "/api/beef/{txid}": {
             "get": {
                 "description": "Retrieves the BEEF (BSV Envelope Format) for a specific transaction",
                 "produces": [
@@ -116,7 +61,7 @@ const docTemplate = `{
                 }
             }
         },
-        "/beef/{txid}/proof": {
+        "/api/beef/{txid}/proof": {
             "get": {
                 "description": "Retrieves just the merkle proof bytes for a transaction",
                 "produces": [
@@ -154,7 +99,7 @@ const docTemplate = `{
                 }
             }
         },
-        "/beef/{txid}/raw": {
+        "/api/beef/{txid}/raw": {
             "get": {
                 "description": "Retrieves just the raw transaction bytes (without proof)",
                 "produces": [
@@ -192,7 +137,7 @@ const docTemplate = `{
                 }
             }
         },
-        "/bsv21/{tokenId}": {
+        "/api/bsv21/{tokenId}": {
             "get": {
                 "produces": [
                     "application/json"
@@ -214,13 +159,13 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/pkg_bsv21.TokenResponse"
+                            "$ref": "#/definitions/github_com_b-open-io_1sat-stack_pkg_bsv21.TokenResponse"
                         }
                     }
                 }
             }
         },
-        "/bsv21/{tokenId}/block/{height}": {
+        "/api/bsv21/{tokenId}/block/{height}": {
             "get": {
                 "produces": [
                     "application/json"
@@ -249,13 +194,13 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/pkg_bsv21.BlockResponse"
+                            "$ref": "#/definitions/github_com_b-open-io_1sat-stack_pkg_bsv21.BlockResponse"
                         }
                     }
                 }
             }
         },
-        "/bsv21/{tokenId}/tx/{txid}": {
+        "/api/bsv21/{tokenId}/tx/{txid}": {
             "get": {
                 "produces": [
                     "application/json"
@@ -297,7 +242,7 @@ const docTemplate = `{
                 }
             }
         },
-        "/bsv21/{tokenId}/{lockType}/balance": {
+        "/api/bsv21/{tokenId}/{lockType}/balance": {
             "post": {
                 "consumes": [
                     "application/json"
@@ -341,13 +286,13 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/pkg_bsv21.BalanceResponse"
+                            "$ref": "#/definitions/github_com_b-open-io_1sat-stack_pkg_bsv21.BalanceResponse"
                         }
                     }
                 }
             }
         },
-        "/bsv21/{tokenId}/{lockType}/history": {
+        "/api/bsv21/{tokenId}/{lockType}/history": {
             "post": {
                 "consumes": [
                     "application/json"
@@ -400,7 +345,7 @@ const docTemplate = `{
                 }
             }
         },
-        "/bsv21/{tokenId}/{lockType}/unspent": {
+        "/api/bsv21/{tokenId}/{lockType}/unspent": {
             "post": {
                 "consumes": [
                     "application/json"
@@ -453,7 +398,7 @@ const docTemplate = `{
                 }
             }
         },
-        "/bsv21/{tokenId}/{lockType}/{address}/balance": {
+        "/api/bsv21/{tokenId}/{lockType}/{address}/balance": {
             "get": {
                 "produces": [
                     "application/json"
@@ -489,13 +434,13 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/pkg_bsv21.BalanceResponse"
+                            "$ref": "#/definitions/github_com_b-open-io_1sat-stack_pkg_bsv21.BalanceResponse"
                         }
                     }
                 }
             }
         },
-        "/bsv21/{tokenId}/{lockType}/{address}/history": {
+        "/api/bsv21/{tokenId}/{lockType}/{address}/history": {
             "get": {
                 "produces": [
                     "application/json"
@@ -540,7 +485,7 @@ const docTemplate = `{
                 }
             }
         },
-        "/bsv21/{tokenId}/{lockType}/{address}/unspent": {
+        "/api/bsv21/{tokenId}/{lockType}/{address}/unspent": {
             "get": {
                 "produces": [
                     "application/json"
@@ -585,7 +530,7 @@ const docTemplate = `{
                 }
             }
         },
-        "/indexer/parse": {
+        "/api/indexer/parse": {
             "post": {
                 "description": "Parses a transaction from raw bytes and returns the indexed context without saving",
                 "consumes": [
@@ -640,7 +585,7 @@ const docTemplate = `{
                 }
             }
         },
-        "/indexer/tags": {
+        "/api/indexer/tags": {
             "get": {
                 "description": "Returns the list of tags from all registered indexers",
                 "produces": [
@@ -663,7 +608,7 @@ const docTemplate = `{
                 }
             }
         },
-        "/indexer/{txid}/ingest": {
+        "/api/indexer/{txid}/ingest": {
             "post": {
                 "description": "Ingests a transaction by txid, parsing and saving to the store",
                 "consumes": [
@@ -722,7 +667,7 @@ const docTemplate = `{
                 }
             }
         },
-        "/indexer/{txid}/parse": {
+        "/api/indexer/{txid}/parse": {
             "get": {
                 "description": "Parses a transaction and returns the indexed context without saving",
                 "consumes": [
@@ -781,54 +726,7 @@ const docTemplate = `{
                 }
             }
         },
-        "/ordfs/content/{path}": {
-            "get": {
-                "description": "Serve the content of an inscription by outpoint or txid",
-                "produces": [
-                    "application/octet-stream"
-                ],
-                "tags": [
-                    "ordfs"
-                ],
-                "summary": "Get inscription content",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "description": "Outpoint (txid_vout) or txid",
-                        "name": "path",
-                        "in": "path",
-                        "required": true
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "Content",
-                        "schema": {
-                            "type": "file"
-                        }
-                    },
-                    "400": {
-                        "description": "Bad request",
-                        "schema": {
-                            "type": "object",
-                            "additionalProperties": {
-                                "type": "string"
-                            }
-                        }
-                    },
-                    "404": {
-                        "description": "Not found",
-                        "schema": {
-                            "type": "object",
-                            "additionalProperties": {
-                                "type": "string"
-                            }
-                        }
-                    }
-                }
-            }
-        },
-        "/ordfs/metadata/{path}": {
+        "/api/ordfs/metadata/{path}": {
             "get": {
                 "description": "Get metadata about inscription content without downloading the content",
                 "produces": [
@@ -851,7 +749,7 @@ const docTemplate = `{
                     "200": {
                         "description": "Metadata",
                         "schema": {
-                            "$ref": "#/definitions/pkg_ordfs.Response"
+                            "$ref": "#/definitions/github_com_b-open-io_1sat-stack_pkg_ordfs.Response"
                         }
                     },
                     "400": {
@@ -875,7 +773,7 @@ const docTemplate = `{
                 }
             }
         },
-        "/ordfs/output/{path}": {
+        "/api/ordfs/output/{path}": {
             "get": {
                 "description": "Get the raw transaction output bytes",
                 "produces": [
@@ -922,7 +820,280 @@ const docTemplate = `{
                 }
             }
         },
-        "/sse/{topics}": {
+        "/api/ordfs/preview": {
+            "post": {
+                "description": "Echo back the request body for preview rendering",
+                "consumes": [
+                    "*/*"
+                ],
+                "produces": [
+                    "*/*"
+                ],
+                "tags": [
+                    "ordfs"
+                ],
+                "summary": "Preview posted content",
+                "responses": {
+                    "200": {
+                        "description": "Content",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/ordfs/preview/{b64HtmlData}": {
+            "get": {
+                "description": "Decode and render base64-encoded HTML",
+                "produces": [
+                    "text/html"
+                ],
+                "tags": [
+                    "ordfs"
+                ],
+                "summary": "Preview HTML content",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Base64-encoded HTML content",
+                        "name": "b64HtmlData",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "HTML content",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/own/{owner}/balance": {
+            "get": {
+                "description": "Get the satoshi balance for a specific owner",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "owners"
+                ],
+                "summary": "Get owner balance",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Owner identifier (address, pubkey, or script hash)",
+                        "name": "owner",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/pkg_own.BalanceResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/own/{owner}/sync": {
+            "get": {
+                "description": "Stream paginated outputs for wallet synchronization via Server-Sent Events. Streams all outputs until exhausted, then triggers background sync and sends retry directive.",
+                "produces": [
+                    "text/event-stream"
+                ],
+                "tags": [
+                    "owners"
+                ],
+                "summary": "Stream owner sync via SSE",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Owner identifier (address, pubkey, or script hash)",
+                        "name": "owner",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "number",
+                        "description": "Starting score for pagination",
+                        "name": "from",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "SSE stream of SyncOutput events",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/own/{owner}/txos": {
+            "get": {
+                "description": "Get transaction outputs owned by a specific owner (address/pubkey/script hash)",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "owners"
+                ],
+                "summary": "Get owner TXOs",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Owner identifier (address, pubkey, or script hash)",
+                        "name": "owner",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "boolean",
+                        "default": true,
+                        "description": "Refresh owner data from blockchain before returning",
+                        "name": "refresh",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Comma-separated list of tags to include",
+                        "name": "tags",
+                        "in": "query"
+                    },
+                    {
+                        "type": "number",
+                        "description": "Starting score for pagination",
+                        "name": "from",
+                        "in": "query"
+                    },
+                    {
+                        "type": "boolean",
+                        "description": "Reverse order",
+                        "name": "rev",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "default": 100,
+                        "description": "Maximum number of results",
+                        "name": "limit",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/github_com_b-open-io_1sat-stack_pkg_txo.IndexedOutput"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/own/{owner}/utxos": {
+            "get": {
+                "description": "Get unspent transaction outputs owned by a specific owner",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "owners"
+                ],
+                "summary": "Get owner UTXOs",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Owner identifier (address, pubkey, or script hash)",
+                        "name": "owner",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Comma-separated list of tags to include",
+                        "name": "tags",
+                        "in": "query"
+                    },
+                    {
+                        "type": "number",
+                        "description": "Starting score for pagination",
+                        "name": "from",
+                        "in": "query"
+                    },
+                    {
+                        "type": "boolean",
+                        "description": "Reverse order",
+                        "name": "rev",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "default": 100,
+                        "description": "Maximum number of results",
+                        "name": "limit",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/github_com_b-open-io_1sat-stack_pkg_txo.IndexedOutput"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/sse/{topics}": {
             "get": {
                 "description": "Establishes an SSE connection for real-time event streaming",
                 "produces": [
@@ -950,9 +1121,1016 @@ const docTemplate = `{
                     }
                 }
             }
+        },
+        "/api/txo/outpoint/{outpoint}": {
+            "get": {
+                "description": "Get a transaction output by its outpoint",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "txos"
+                ],
+                "summary": "Get TXO by outpoint",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Outpoint in format txid_vout or txid:vout",
+                        "name": "outpoint",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Comma-separated list of tags to include",
+                        "name": "tags",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/pkg_txo.IndexedOutput"
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid outpoint format",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "404": {
+                        "description": "TXO not found",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/txo/outpoint/{outpoint}/spend": {
+            "get": {
+                "description": "Get the spending transaction for an outpoint",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "txos"
+                ],
+                "summary": "Get spend info for outpoint",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Outpoint in format txid_vout or txid:vout",
+                        "name": "outpoint",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/pkg_txo.SpendResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid outpoint format",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/txo/outpoints": {
+            "post": {
+                "description": "Get multiple transaction outputs by their outpoints",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "txos"
+                ],
+                "summary": "Get multiple TXOs",
+                "parameters": [
+                    {
+                        "description": "Array of outpoints",
+                        "name": "outpoints",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    {
+                        "type": "string",
+                        "description": "Comma-separated list of tags to include",
+                        "name": "tags",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/pkg_txo.IndexedOutput"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/txo/outpoints/spends": {
+            "post": {
+                "description": "Get spending transactions for multiple outpoints",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "txos"
+                ],
+                "summary": "Get spends for multiple outpoints",
+                "parameters": [
+                    {
+                        "description": "Array of outpoints",
+                        "name": "outpoints",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/pkg_txo.SpendResponse"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/txo/search": {
+            "post": {
+                "description": "Search transaction outputs by multiple indexed keys",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "search"
+                ],
+                "summary": "Search outputs by multiple keys",
+                "parameters": [
+                    {
+                        "description": "Search parameters",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/pkg_txo.SearchRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/pkg_txo.IndexedOutput"
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid request",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/txo/search/{key}": {
+            "get": {
+                "description": "Search transaction outputs by an indexed key",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "search"
+                ],
+                "summary": "Search outputs by key",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Search key (e.g., own:address, txid:hash)",
+                        "name": "key",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "number",
+                        "description": "Starting score for pagination",
+                        "name": "from",
+                        "in": "query"
+                    },
+                    {
+                        "type": "boolean",
+                        "description": "Reverse order",
+                        "name": "rev",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "default": 100,
+                        "description": "Maximum number of results",
+                        "name": "limit",
+                        "in": "query"
+                    },
+                    {
+                        "type": "boolean",
+                        "description": "Filter for unspent outputs only",
+                        "name": "unspent",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Comma-separated list of tags to include",
+                        "name": "tags",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/pkg_txo.IndexedOutput"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/txo/tx/{txid}": {
+            "get": {
+                "description": "Get all transaction outputs for a specific transaction",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "txos"
+                ],
+                "summary": "Get TXOs by transaction ID",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Transaction ID",
+                        "name": "txid",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Comma-separated list of tags to include",
+                        "name": "tags",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/pkg_txo.IndexedOutput"
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid txid",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
+        "/arc/callback": {
+            "post": {
+                "description": "Receives transaction status updates from Arc broadcaster",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "merkle"
+                ],
+                "summary": "Handle Arc callback",
+                "parameters": [
+                    {
+                        "description": "Arc callback payload",
+                        "name": "callback",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/merkle.ArcCallback"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Bad request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/arc/events": {
+            "get": {
+                "description": "Server-Sent Events stream of transaction status updates. If callbackToken is provided, only events for that token are streamed.",
+                "produces": [
+                    "text/event-stream"
+                ],
+                "tags": [
+                    "arcade"
+                ],
+                "summary": "Stream transaction events",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Callback token from transaction submission",
+                        "name": "callbackToken",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "SSE stream of transaction status updates",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
+        "/arc/policy": {
+            "get": {
+                "description": "Returns the transaction policy configuration including fee rates and limits",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "arcade"
+                ],
+                "summary": "Get policy",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/models.Policy"
+                        }
+                    }
+                }
+            }
+        },
+        "/arc/tx": {
+            "post": {
+                "description": "Submit a single transaction for broadcast. Accepts raw transaction bytes, hex string, or JSON with rawTx field.",
+                "consumes": [
+                    "application/json",
+                    "application/octet-stream",
+                    "text/plain"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "arcade"
+                ],
+                "summary": "Submit transaction",
+                "parameters": [
+                    {
+                        "description": "Transaction data",
+                        "name": "transaction",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/fiber.TransactionRequest"
+                        }
+                    },
+                    {
+                        "type": "string",
+                        "description": "URL for status callbacks",
+                        "name": "X-CallbackUrl",
+                        "in": "header"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Token for SSE event filtering",
+                        "name": "X-CallbackToken",
+                        "in": "header"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Send all status updates (true/false)",
+                        "name": "X-FullStatusUpdates",
+                        "in": "header"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Skip fee validation (true/false)",
+                        "name": "X-SkipFeeValidation",
+                        "in": "header"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Skip script validation (true/false)",
+                        "name": "X-SkipScriptValidation",
+                        "in": "header"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/models.TransactionStatus"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/arc/tx/{txid}": {
+            "get": {
+                "description": "Get the current status of a submitted transaction",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "arcade"
+                ],
+                "summary": "Get transaction status",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Transaction ID",
+                        "name": "txid",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/models.TransactionStatus"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/arc/txs": {
+            "post": {
+                "description": "Submit multiple transactions for broadcast",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "arcade"
+                ],
+                "summary": "Submit multiple transactions",
+                "parameters": [
+                    {
+                        "description": "Array of transactions",
+                        "name": "transactions",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/fiber.TransactionRequest"
+                            }
+                        }
+                    },
+                    {
+                        "type": "string",
+                        "description": "URL for status callbacks",
+                        "name": "X-CallbackUrl",
+                        "in": "header"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Token for SSE event filtering",
+                        "name": "X-CallbackToken",
+                        "in": "header"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Send all status updates (true/false)",
+                        "name": "X-FullStatusUpdates",
+                        "in": "header"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Skip fee validation (true/false)",
+                        "name": "X-SkipFeeValidation",
+                        "in": "header"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Skip script validation (true/false)",
+                        "name": "X-SkipScriptValidation",
+                        "in": "header"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/models.TransactionStatus"
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/block/header/hash/{hash}": {
+            "get": {
+                "description": "Returns a block header with the specified hash",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "chaintracks"
+                ],
+                "summary": "Get header by hash",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Block hash (hex)",
+                        "name": "hash",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/chaintracks.BlockHeader"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/fiber.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/fiber.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/block/header/height/{height}": {
+            "get": {
+                "description": "Returns a block header at the specified height",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "chaintracks"
+                ],
+                "summary": "Get header by height",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "Block height",
+                        "name": "height",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/chaintracks.BlockHeader"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/fiber.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/fiber.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/block/headers": {
+            "get": {
+                "description": "Returns block headers starting from height as binary data (80 bytes per header)",
+                "produces": [
+                    "application/octet-stream"
+                ],
+                "tags": [
+                    "chaintracks"
+                ],
+                "summary": "Get multiple headers",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "Starting block height",
+                        "name": "height",
+                        "in": "query",
+                        "required": true
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Number of headers to return",
+                        "name": "count",
+                        "in": "query",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Concatenated 80-byte headers",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/fiber.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/block/height": {
+            "get": {
+                "description": "Returns the current blockchain height",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "chaintracks"
+                ],
+                "summary": "Get chain height",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/fiber.HeightResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/block/network": {
+            "get": {
+                "description": "Returns the Bitcoin network this service is connected to",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "chaintracks"
+                ],
+                "summary": "Get network name",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/fiber.NetworkResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/fiber.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/block/tip": {
+            "get": {
+                "description": "Returns the current chain tip block header",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "chaintracks"
+                ],
+                "summary": "Get chain tip",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/chaintracks.BlockHeader"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/fiber.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/block/tip/stream": {
+            "get": {
+                "description": "Server-Sent Events stream of chain tip updates. Sends the current tip immediately, then broadcasts new tips as they arrive.",
+                "produces": [
+                    "text/event-stream"
+                ],
+                "tags": [
+                    "chaintracks"
+                ],
+                "summary": "Stream chain tip updates",
+                "responses": {
+                    "200": {
+                        "description": "SSE stream of BlockHeader JSON objects",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
+        "/content/{path}": {
+            "get": {
+                "description": "Serve the content of an inscription by outpoint or txid",
+                "produces": [
+                    "application/octet-stream"
+                ],
+                "tags": [
+                    "ordfs"
+                ],
+                "summary": "Get inscription content",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Outpoint (txid_vout) or txid",
+                        "name": "path",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Content",
+                        "schema": {
+                            "type": "file"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Not found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/health": {
+            "get": {
+                "description": "Returns the health status of the service",
+                "produces": [
+                    "text/plain"
+                ],
+                "tags": [
+                    "arcade"
+                ],
+                "summary": "Health check",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "503": {
+                        "description": "Service Unavailable",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
         }
     },
     "definitions": {
+        "chaintracks.BlockHeader": {
+            "type": "object",
+            "properties": {
+                "bits": {
+                    "description": "4 bytes - Difficulty target",
+                    "type": "integer"
+                },
+                "hash": {
+                    "type": "array",
+                    "items": {
+                        "type": "integer"
+                    }
+                },
+                "height": {
+                    "description": "Block height in the chain",
+                    "type": "integer"
+                },
+                "merkleRoot": {
+                    "description": "32 bytes - Merkle root hash",
+                    "type": "array",
+                    "items": {
+                        "type": "integer"
+                    }
+                },
+                "nonce": {
+                    "description": "4 bytes - Nonce",
+                    "type": "integer"
+                },
+                "previousHash": {
+                    "description": "32 bytes - Previous block hash",
+                    "type": "array",
+                    "items": {
+                        "type": "integer"
+                    }
+                },
+                "time": {
+                    "description": "4 bytes - Block timestamp (Unix time)",
+                    "type": "integer"
+                },
+                "version": {
+                    "description": "4 bytes - Block version",
+                    "type": "integer"
+                }
+            }
+        },
         "engine.MerkleState": {
             "type": "integer",
             "format": "int32",
@@ -968,6 +2146,42 @@ const docTemplate = `{
                 "MerkleStateInvalidated",
                 "MerkleStateImmutable"
             ]
+        },
+        "fiber.ErrorResponse": {
+            "type": "object",
+            "properties": {
+                "error": {
+                    "type": "string",
+                    "example": "Header not found"
+                }
+            }
+        },
+        "fiber.HeightResponse": {
+            "type": "object",
+            "properties": {
+                "height": {
+                    "type": "integer",
+                    "example": 874123
+                }
+            }
+        },
+        "fiber.NetworkResponse": {
+            "type": "object",
+            "properties": {
+                "network": {
+                    "type": "string",
+                    "example": "mainnet"
+                }
+            }
+        },
+        "fiber.TransactionRequest": {
+            "type": "object",
+            "properties": {
+                "rawTx": {
+                    "type": "string",
+                    "example": "0100000001..."
+                }
+            }
         },
         "github_com_b-open-io_1sat-stack_pkg_bsv21.BalanceResponse": {
             "type": "object",
@@ -1006,7 +2220,7 @@ const docTemplate = `{
                 "transactions": {
                     "type": "array",
                     "items": {
-                        "$ref": "#/definitions/github_com_b-open-io_1sat-stack_pkg_txo.TransactionData"
+                        "$ref": "#/definitions/github_com_b-open-io_1sat-stack_pkg_bsv21.TransactionData"
                     }
                 }
             }
@@ -1037,6 +2251,29 @@ const docTemplate = `{
                 },
                 "vout": {
                     "type": "integer"
+                }
+            }
+        },
+        "github_com_b-open-io_1sat-stack_pkg_bsv21.TransactionData": {
+            "type": "object",
+            "properties": {
+                "beef": {
+                    "type": "array",
+                    "items": {
+                        "type": "integer"
+                    }
+                },
+                "block_height": {
+                    "type": "integer"
+                },
+                "outputs": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/github_com_b-open-io_1sat-stack_pkg_txo.IndexedOutput"
+                    }
+                },
+                "txid": {
+                    "type": "string"
                 }
             }
         },
@@ -1104,6 +2341,17 @@ const docTemplate = `{
                     "$ref": "#/definitions/transaction.Outpoint"
                 },
                 "sequence": {
+                    "type": "integer"
+                }
+            }
+        },
+        "github_com_b-open-io_1sat-stack_pkg_own.BalanceResponse": {
+            "type": "object",
+            "properties": {
+                "balance": {
+                    "type": "integer"
+                },
+                "count": {
                     "type": "integer"
                 }
             }
@@ -1208,38 +2456,40 @@ const docTemplate = `{
                 }
             }
         },
-        "github_com_b-open-io_1sat-stack_pkg_txo.TransactionData": {
+        "github_com_b-open-io_1sat-stack_pkg_txo.SearchRequest": {
             "type": "object",
             "properties": {
-                "beef": {
+                "from": {
+                    "type": "number"
+                },
+                "keys": {
                     "type": "array",
                     "items": {
-                        "type": "integer"
+                        "type": "string"
                     }
                 },
-                "block_height": {
+                "limit": {
                     "type": "integer"
                 },
-                "block_index": {
-                    "type": "integer"
+                "reverse": {
+                    "type": "boolean"
                 },
-                "inputs": {
+                "tags": {
                     "type": "array",
                     "items": {
-                        "$ref": "#/definitions/github_com_b-open-io_1sat-stack_pkg_txo.IndexedOutput"
+                        "type": "string"
                     }
                 },
-                "outputs": {
-                    "type": "array",
-                    "items": {
-                        "$ref": "#/definitions/github_com_b-open-io_1sat-stack_pkg_txo.IndexedOutput"
-                    }
-                },
-                "txid": {
-                    "type": "array",
-                    "items": {
-                        "type": "integer"
-                    }
+                "unspent": {
+                    "type": "boolean"
+                }
+            }
+        },
+        "github_com_b-open-io_1sat-stack_pkg_txo.SpendResponse": {
+            "type": "object",
+            "properties": {
+                "spendTxid": {
+                    "type": "string"
                 }
             }
         },
@@ -1256,6 +2506,86 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "txStatus": {
+                    "type": "string"
+                }
+            }
+        },
+        "models.Policy": {
+            "type": "object",
+            "properties": {
+                "maxscriptsizepolicy": {
+                    "type": "integer"
+                },
+                "maxtxsigopscountspolicy": {
+                    "type": "integer"
+                },
+                "maxtxsizepolicy": {
+                    "type": "integer"
+                },
+                "miningFeeBytes": {
+                    "type": "integer"
+                },
+                "miningFeeSatoshis": {
+                    "type": "integer"
+                }
+            }
+        },
+        "models.Status": {
+            "type": "string",
+            "enum": [
+                "UNKNOWN",
+                "RECEIVED",
+                "SENT_TO_NETWORK",
+                "ACCEPTED_BY_NETWORK",
+                "SEEN_ON_NETWORK",
+                "DOUBLE_SPEND_ATTEMPTED",
+                "REJECTED",
+                "MINED",
+                "IMMUTABLE"
+            ],
+            "x-enum-varnames": [
+                "StatusUnknown",
+                "StatusReceived",
+                "StatusSentToNetwork",
+                "StatusAcceptedByNetwork",
+                "StatusSeenOnNetwork",
+                "StatusDoubleSpendAttempted",
+                "StatusRejected",
+                "StatusMined",
+                "StatusImmutable"
+            ]
+        },
+        "models.TransactionStatus": {
+            "type": "object",
+            "properties": {
+                "blockHash": {
+                    "type": "string"
+                },
+                "blockHeight": {
+                    "type": "integer"
+                },
+                "competingTxs": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "extraInfo": {
+                    "type": "string"
+                },
+                "merklePath": {
+                    "type": "array",
+                    "items": {
+                        "type": "integer"
+                    }
+                },
+                "timestamp": {
+                    "type": "string"
+                },
+                "txStatus": {
+                    "$ref": "#/definitions/models.Status"
+                },
+                "txid": {
                     "type": "string"
                 }
             }
@@ -1297,7 +2627,7 @@ const docTemplate = `{
                 "transactions": {
                     "type": "array",
                     "items": {
-                        "$ref": "#/definitions/github_com_b-open-io_1sat-stack_pkg_txo.TransactionData"
+                        "$ref": "#/definitions/pkg_bsv21.TransactionData"
                     }
                 }
             }
@@ -1328,6 +2658,29 @@ const docTemplate = `{
                 },
                 "vout": {
                     "type": "integer"
+                }
+            }
+        },
+        "pkg_bsv21.TransactionData": {
+            "type": "object",
+            "properties": {
+                "beef": {
+                    "type": "array",
+                    "items": {
+                        "type": "integer"
+                    }
+                },
+                "block_height": {
+                    "type": "integer"
+                },
+                "outputs": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/github_com_b-open-io_1sat-stack_pkg_txo.IndexedOutput"
+                    }
+                },
+                "txid": {
+                    "type": "string"
                 }
             }
         },
@@ -1396,6 +2749,154 @@ const docTemplate = `{
                 },
                 "sequence": {
                     "type": "integer"
+                }
+            }
+        },
+        "pkg_own.BalanceResponse": {
+            "type": "object",
+            "properties": {
+                "balance": {
+                    "type": "integer"
+                },
+                "count": {
+                    "type": "integer"
+                }
+            }
+        },
+        "pkg_txo.IndexedOutput": {
+            "type": "object",
+            "properties": {
+                "ancillaryTxids": {
+                    "type": "array",
+                    "items": {
+                        "type": "array",
+                        "items": {
+                            "type": "integer"
+                        }
+                    }
+                },
+                "beef": {
+                    "type": "array",
+                    "items": {
+                        "type": "integer",
+                        "format": "int32"
+                    }
+                },
+                "blockHeight": {
+                    "type": "integer",
+                    "format": "int32"
+                },
+                "blockIdx": {
+                    "type": "integer",
+                    "format": "int64"
+                },
+                "consumedBy": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/transaction.Outpoint"
+                    }
+                },
+                "data": {
+                    "type": "object",
+                    "additionalProperties": {}
+                },
+                "events": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "merkleRoot": {
+                    "description": "Merkle root extracted from the merkle path",
+                    "type": "array",
+                    "items": {
+                        "type": "integer"
+                    }
+                },
+                "merkleState": {
+                    "description": "Validation state of the merkle proof",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/engine.MerkleState"
+                        }
+                    ]
+                },
+                "outpoint": {
+                    "$ref": "#/definitions/transaction.Outpoint"
+                },
+                "outputsConsumed": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/transaction.Outpoint"
+                    }
+                },
+                "owners": {
+                    "type": "array",
+                    "items": {
+                        "type": "array",
+                        "items": {
+                            "type": "integer",
+                            "format": "int32"
+                        }
+                    }
+                },
+                "satoshis": {
+                    "description": "Extended fields for indexing",
+                    "type": "integer"
+                },
+                "score": {
+                    "description": "sort score for outputs. Usage is up to Storage implementation.",
+                    "type": "number",
+                    "format": "float64"
+                },
+                "spend": {
+                    "type": "array",
+                    "items": {
+                        "type": "integer"
+                    }
+                },
+                "spent": {
+                    "type": "boolean"
+                },
+                "topic": {
+                    "type": "string"
+                }
+            }
+        },
+        "pkg_txo.SearchRequest": {
+            "type": "object",
+            "properties": {
+                "from": {
+                    "type": "number"
+                },
+                "keys": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "limit": {
+                    "type": "integer"
+                },
+                "reverse": {
+                    "type": "boolean"
+                },
+                "tags": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "unspent": {
+                    "type": "boolean"
+                }
+            }
+        },
+        "pkg_txo.SpendResponse": {
+            "type": "object",
+            "properties": {
+                "spendTxid": {
+                    "type": "string"
                 }
             }
         },
