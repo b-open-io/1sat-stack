@@ -7,18 +7,11 @@ import (
 	"time"
 
 	"github.com/b-open-io/1sat-stack/pkg/txo"
+	"github.com/b-open-io/1sat-stack/pkg/types"
 	"github.com/bsv-blockchain/go-overlay-services/pkg/core/engine"
 	"github.com/bsv-blockchain/go-sdk/chainhash"
 	"github.com/bsv-blockchain/go-sdk/script"
 	"github.com/bsv-blockchain/go-sdk/transaction"
-)
-
-// Network represents a BSV network
-type Network int
-
-const (
-	Mainnet Network = iota
-	Testnet
 )
 
 // HeightScore calculates the score for a block height and index
@@ -46,7 +39,7 @@ type IndexContext struct {
 	Spends   []*txo.IndexedOutput     `json:"spends"`
 	Indexers []Indexer                `json:"-"`
 	Ctx      context.Context          `json:"-"`
-	Network  Network                  `json:"-"`
+	Network  types.Network            `json:"-"`
 	Store    *txo.OutputStore         `json:"-"`
 	tags     []string                 `json:"-"`
 
@@ -56,7 +49,7 @@ type IndexContext struct {
 }
 
 // NewIndexContext creates a new IndexContext for the given transaction
-func NewIndexContext(ctx context.Context, store *txo.OutputStore, tx *transaction.Transaction, indexers []Indexer, network ...Network) *IndexContext {
+func NewIndexContext(ctx context.Context, store *txo.OutputStore, tx *transaction.Transaction, indexers []Indexer, network ...types.Network) *IndexContext {
 	if tx == nil {
 		return nil
 	}
@@ -70,7 +63,7 @@ func NewIndexContext(ctx context.Context, store *txo.OutputStore, tx *transactio
 	if len(network) > 0 {
 		idxCtx.Network = network[0]
 	} else {
-		idxCtx.Network = Mainnet
+		idxCtx.Network = types.Mainnet
 	}
 	idxCtx.TxidHex = idxCtx.Txid.String()
 

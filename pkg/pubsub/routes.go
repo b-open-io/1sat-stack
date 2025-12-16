@@ -29,7 +29,7 @@ func (r *Routes) Register(router fiber.Router) {
 // @Produce text/event-stream
 // @Param topics path string true "Comma-separated list of topics to subscribe to"
 // @Success 200 {string} string "SSE stream"
-// @Router /sse/{topics} [get]
+// @Router /api/sse/{topics} [get]
 func (r *Routes) handleSSE(c *fiber.Ctx) error {
 	topicsParam := c.Params("topics")
 	topics := strings.Split(topicsParam, ",")

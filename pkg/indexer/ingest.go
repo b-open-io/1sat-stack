@@ -8,6 +8,7 @@ import (
 
 	"github.com/b-open-io/1sat-stack/pkg/beef"
 	"github.com/b-open-io/1sat-stack/pkg/txo"
+	"github.com/b-open-io/1sat-stack/pkg/types"
 	"github.com/bsv-blockchain/go-sdk/chainhash"
 	"github.com/bsv-blockchain/go-sdk/transaction"
 )
@@ -29,7 +30,7 @@ type IngestCtx struct {
 	Verbose     bool
 	PageSize    uint32
 	Limit       uint32
-	Network     Network
+	Network     types.Network
 	OnIngest    func(ctx context.Context, idxCtx *IndexContext) error
 	Once        bool
 	Store       *txo.OutputStore

@@ -1,6 +1,7 @@
 package txo
 
 import (
+	"github.com/b-open-io/1sat-stack/pkg/types"
 	"github.com/bsv-blockchain/go-overlay-services/pkg/core/engine"
 	"github.com/bsv-blockchain/go-sdk/chainhash"
 )
@@ -11,15 +12,15 @@ type IndexedOutput struct {
 	engine.Output // Embed canonical type
 
 	// Extended fields for indexing
-	Satoshis  uint64          `json:"satoshis,omitempty"`
-	Owners    []Owner         `json:"owners,omitempty"`
-	Events    []string        `json:"events,omitempty"`
-	Data      map[string]any  `json:"data,omitempty"`
-	SpendTxid *chainhash.Hash `json:"spend,omitempty"`
+	Satoshis  uint64            `json:"satoshis,omitempty"`
+	Owners    []types.PKHash    `json:"owners,omitempty"`
+	Events    []string          `json:"events,omitempty"`
+	Data      map[string]any    `json:"data,omitempty"`
+	SpendTxid *chainhash.Hash   `json:"spend,omitempty"`
 }
 
 // AddOwner adds an owner to the output if not already present
-func (o *IndexedOutput) AddOwner(owner Owner) {
+func (o *IndexedOutput) AddOwner(owner types.PKHash) {
 	for _, existing := range o.Owners {
 		if existing == owner {
 			return
@@ -30,21 +31,21 @@ func (o *IndexedOutput) AddOwner(owner Owner) {
 
 // AddOwnerFromAddress adds an owner from address string if not already present
 func (o *IndexedOutput) AddOwnerFromAddress(addr string) error {
-	owner, err := OwnerFromAddress(addr)
+	owner, err := types.PKHashFromAddress(addr)
 	if err != nil {
 		return err
 	}
-	o.AddOwner(owner)
+	o.AddOwner(*owner)
 	return nil
 }
 
 // AddOwnerFromBytes adds an owner from raw bytes if not already present
 func (o *IndexedOutput) AddOwnerFromBytes(b []byte) error {
-	owner, err := OwnerFromBytes(b)
-	if err != nil {
-		return err
+	owner := types.PKHashFromBytes(b)
+	if owner == nil {
+		return types.ErrInvalidPKHash
 	}
-	o.AddOwner(owner)
+	o.AddOwner(*owner)
 	return nil
 }
 
