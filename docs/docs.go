@@ -165,7 +165,7 @@ const docTemplate = `{
                 }
             }
         },
-        "/api/bsv21/{tokenId}/block/{height}": {
+        "/api/bsv21/{tokenId}/blk/{height}": {
             "get": {
                 "produces": [
                     "application/json"
@@ -530,7 +530,66 @@ const docTemplate = `{
                 }
             }
         },
-        "/api/indexer/parse": {
+        "/api/idx/ingest/{txid}": {
+            "post": {
+                "description": "Ingests a transaction by txid, parsing and saving to the store",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "indexer"
+                ],
+                "summary": "Ingest a transaction by txid",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Transaction ID",
+                        "name": "txid",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/pkg_indexer.IndexContext"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/idx/parse": {
             "post": {
                 "description": "Parses a transaction from raw bytes and returns the indexed context without saving",
                 "consumes": [
@@ -561,7 +620,7 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/github_com_b-open-io_1sat-stack_pkg_indexer.IndexContext"
+                            "$ref": "#/definitions/pkg_indexer.IndexContext"
                         }
                     },
                     "400": {
@@ -585,89 +644,7 @@ const docTemplate = `{
                 }
             }
         },
-        "/api/indexer/tags": {
-            "get": {
-                "description": "Returns the list of tags from all registered indexers",
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "indexer"
-                ],
-                "summary": "Get available indexer tags",
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "type": "array",
-                            "items": {
-                                "type": "string"
-                            }
-                        }
-                    }
-                }
-            }
-        },
-        "/api/indexer/{txid}/ingest": {
-            "post": {
-                "description": "Ingests a transaction by txid, parsing and saving to the store",
-                "consumes": [
-                    "application/json"
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "indexer"
-                ],
-                "summary": "Ingest a transaction by txid",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "description": "Transaction ID",
-                        "name": "txid",
-                        "in": "path",
-                        "required": true
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "$ref": "#/definitions/github_com_b-open-io_1sat-stack_pkg_indexer.IndexContext"
-                        }
-                    },
-                    "400": {
-                        "description": "Bad Request",
-                        "schema": {
-                            "type": "object",
-                            "additionalProperties": {
-                                "type": "string"
-                            }
-                        }
-                    },
-                    "404": {
-                        "description": "Not Found",
-                        "schema": {
-                            "type": "object",
-                            "additionalProperties": {
-                                "type": "string"
-                            }
-                        }
-                    },
-                    "500": {
-                        "description": "Internal Server Error",
-                        "schema": {
-                            "type": "object",
-                            "additionalProperties": {
-                                "type": "string"
-                            }
-                        }
-                    }
-                }
-            }
-        },
-        "/api/indexer/{txid}/parse": {
+        "/api/idx/parse/{txid}": {
             "get": {
                 "description": "Parses a transaction and returns the indexed context without saving",
                 "consumes": [
@@ -693,7 +670,7 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/github_com_b-open-io_1sat-stack_pkg_indexer.IndexContext"
+                            "$ref": "#/definitions/pkg_indexer.IndexContext"
                         }
                     },
                     "400": {
@@ -719,6 +696,29 @@ const docTemplate = `{
                         "schema": {
                             "type": "object",
                             "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/idx/tags": {
+            "get": {
+                "description": "Returns the list of tags from all registered indexers",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "indexer"
+                ],
+                "summary": "Get available indexer tags",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "array",
+                            "items": {
                                 "type": "string"
                             }
                         }
@@ -749,7 +749,7 @@ const docTemplate = `{
                     "200": {
                         "description": "Metadata",
                         "schema": {
-                            "$ref": "#/definitions/github_com_b-open-io_1sat-stack_pkg_ordfs.Response"
+                            "$ref": "#/definitions/pkg_ordfs.Response"
                         }
                     },
                     "400": {
@@ -897,7 +897,7 @@ const docTemplate = `{
                     "application/json"
                 ],
                 "tags": [
-                    "owners"
+                    "own"
                 ],
                 "summary": "Get owner balance",
                 "parameters": [
@@ -932,7 +932,7 @@ const docTemplate = `{
                     "text/event-stream"
                 ],
                 "tags": [
-                    "owners"
+                    "own"
                 ],
                 "summary": "Stream owner sync via SSE",
                 "parameters": [
@@ -967,7 +967,7 @@ const docTemplate = `{
                     "application/json"
                 ],
                 "tags": [
-                    "owners"
+                    "own"
                 ],
                 "summary": "Get owner TXOs",
                 "parameters": [
@@ -986,67 +986,11 @@ const docTemplate = `{
                         "in": "query"
                     },
                     {
-                        "type": "string",
-                        "description": "Comma-separated list of tags to include",
-                        "name": "tags",
-                        "in": "query"
-                    },
-                    {
-                        "type": "number",
-                        "description": "Starting score for pagination",
-                        "name": "from",
-                        "in": "query"
-                    },
-                    {
                         "type": "boolean",
-                        "description": "Reverse order",
-                        "name": "rev",
+                        "default": true,
+                        "description": "Filter for unspent outputs only",
+                        "name": "unspent",
                         "in": "query"
-                    },
-                    {
-                        "type": "integer",
-                        "default": 100,
-                        "description": "Maximum number of results",
-                        "name": "limit",
-                        "in": "query"
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "type": "array",
-                            "items": {
-                                "$ref": "#/definitions/github_com_b-open-io_1sat-stack_pkg_txo.IndexedOutput"
-                            }
-                        }
-                    },
-                    "500": {
-                        "description": "Internal server error",
-                        "schema": {
-                            "type": "string"
-                        }
-                    }
-                }
-            }
-        },
-        "/api/own/{owner}/utxos": {
-            "get": {
-                "description": "Get unspent transaction outputs owned by a specific owner",
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "owners"
-                ],
-                "summary": "Get owner UTXOs",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "description": "Owner identifier (address, pubkey, or script hash)",
-                        "name": "owner",
-                        "in": "path",
-                        "required": true
                     },
                     {
                         "type": "string",

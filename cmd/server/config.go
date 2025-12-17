@@ -18,6 +18,7 @@ import (
 	"github.com/b-open-io/1sat-stack/pkg/indexer/parse/p2pkh"
 	"github.com/b-open-io/1sat-stack/pkg/indexer/parse/shrug"
 	"github.com/b-open-io/1sat-stack/pkg/ordfs"
+	"github.com/b-open-io/1sat-stack/pkg/ovr"
 	"github.com/b-open-io/1sat-stack/pkg/own"
 	"github.com/b-open-io/1sat-stack/pkg/pubsub"
 	"github.com/b-open-io/1sat-stack/pkg/store"
@@ -57,6 +58,9 @@ type Config struct {
 
 	// BSV21 token support
 	BSV21 bsv21.Config `mapstructure:"bsv21"`
+
+	// Overlay engine
+	Overlay ovr.Config `mapstructure:"overlay"`
 
 	// Content serving
 	ORDFS ordfs.Config `mapstructure:"ordfs"`
@@ -98,6 +102,7 @@ type Services struct {
 	TXO     *txo.Services
 	Indexer *indexer.Services
 	BSV21   *bsv21.Services
+	Overlay *ovr.Services
 	ORDFS   *ordfs.Services
 	Own     *own.Services
 
@@ -145,6 +150,7 @@ func (c *Config) SetDefaults(v *viper.Viper) {
 	// Package configs
 	c.Indexer.SetDefaults(v, "indexer")
 	c.BSV21.SetDefaults(v, "bsv21")
+	c.Overlay.SetDefaults(v, "overlay")
 	c.ORDFS.SetDefaults(v, "ordfs")
 	c.Own.SetDefaults(v, "own")
 }
@@ -239,16 +245,16 @@ func (c *Config) Initialize(ctx context.Context, logger *slog.Logger) (*Services
 		}
 		// Create protocol indexers - order matters as some indexers depend on others
 		indexers := []indexer.Indexer{
-			&p2pkh.P2PKHIndexer{},       // P2PKH address extraction
-			&lock.LockIndexer{},         // Lock protocol
+			&p2pkh.P2PKHIndexer{},        // P2PKH address extraction
+			&lock.LockIndexer{},          // Lock protocol
 			&onesat.InscriptionIndexer{}, // 1Sat ordinals inscriptions
-			&onesat.OriginIndexer{},     // Origin tracking
-			&onesat.Bsv20Indexer{},      // BSV-20 fungible tokens
-			&onesat.Bsv21Indexer{},      // BSV-21 fungible tokens
-			&onesat.OrdLockIndexer{},    // Ordinal locks
-			&bitcom.BitcomIndexer{},     // Bitcom protocols (B, MAP, SIGMA)
-			&cosign.CosignIndexer{},     // Cosign protocol
-			&shrug.ShrugIndexer{},       // Shrug tokens
+			&onesat.OriginIndexer{},      // Origin tracking
+			&onesat.Bsv20Indexer{},       // BSV-20 fungible tokens
+			&onesat.Bsv21Indexer{},       // BSV-21 fungible tokens
+			&onesat.OrdLockIndexer{},     // Ordinal locks
+			&bitcom.BitcomIndexer{},      // Bitcom protocols (B, MAP, SIGMA)
+			&cosign.CosignIndexer{},      // Cosign protocol
+			&shrug.ShrugIndexer{},        // Shrug tokens
 		}
 		indexerSvc, err := c.Indexer.Initialize(ctx, logger, svc.TXO.OutputStore, svc.Beef.Storage, ps, indexers)
 		if err != nil {
@@ -259,11 +265,29 @@ func (c *Config) Initialize(ctx context.Context, logger *slog.Logger) (*Services
 
 	// Initialize BSV21 with chaintracks for merkle proof validation
 	if c.BSV21.Mode != bsv21.ModeDisabled && svc.TXO != nil {
-		bsv21Svc, err := c.BSV21.Initialize(ctx, logger, svc.TXO.OutputStore, svc.Chaintracks, nil)
+		bsv21Svc, err := c.BSV21.Initialize(ctx, logger, svc.TXO.OutputStore, svc.Chaintracks)
 		if err != nil {
 			return nil, fmt.Errorf("failed to initialize bsv21: %w", err)
 		}
 		svc.BSV21 = bsv21Svc
+
+		// Register BSV21 lookup service with overlay engine
+		if svc.Overlay != nil {
+			svc.Overlay.RegisterLookupService("bsv21", svc.BSV21.Lookup)
+		}
+	}
+
+	// Initialize overlay engine (before BSV21 so we can pass it for topic registration)
+	if c.Overlay.Mode != ovr.ModeDisabled && svc.TXO != nil {
+		overlaySvc, err := c.Overlay.Initialize(ctx, logger, &ovr.InitializeDeps{
+			OutputStore:  svc.TXO.OutputStore,
+			ChainTracker: svc.Chaintracks,
+			// Storage: nil for now - BSV21 can provide this later via SetStorage
+		})
+		if err != nil {
+			return nil, fmt.Errorf("failed to initialize overlay: %w", err)
+		}
+		svc.Overlay = overlaySvc
 	}
 
 	// Initialize ORDFS content serving
@@ -348,10 +372,10 @@ func (c *Config) RegisterRoutes(app *fiber.App, svc *Services) {
 	if svc.Indexer != nil && svc.Indexer.Routes != nil {
 		prefix := c.Indexer.Routes.Prefix
 		if prefix == "" {
-			prefix = "/indexer"
+			prefix = "/idx"
 		}
 		svc.Indexer.Routes.Register(api, prefix)
-		capabilities = append(capabilities, "indexer")
+		capabilities = append(capabilities, "idx")
 	}
 
 	// Register BSV21 routes
@@ -362,6 +386,17 @@ func (c *Config) RegisterRoutes(app *fiber.App, svc *Services) {
 		}
 		svc.BSV21.Routes.Register(api, prefix)
 		capabilities = append(capabilities, "bsv21")
+	}
+
+	// Register overlay routes
+	if svc.Overlay != nil && svc.Overlay.Routes != nil {
+		prefix := c.Overlay.Routes.Prefix
+		if prefix == "" {
+			prefix = "/overlay"
+		}
+		overlayGroup := api.Group(prefix)
+		svc.Overlay.Routes.Register(overlayGroup)
+		capabilities = append(capabilities, "overlay")
 	}
 
 	// Register ORDFS routes
@@ -379,10 +414,10 @@ func (c *Config) RegisterRoutes(app *fiber.App, svc *Services) {
 
 	// Register Chaintracks routes (block headers, chain tip, etc.)
 	if svc.ChaintracksRoutes != nil {
-		blockGroup := api.Group("/block")
+		blockGroup := api.Group("/blk")
 		svc.ChaintracksRoutes.Register(blockGroup)
 		capabilities = append(capabilities, "chaintracks")
-		slog.Debug("registered chaintracks routes", "prefix", "/block")
+		slog.Debug("registered chaintracks routes", "prefix", "/blk")
 	}
 
 	// Register Arcade routes (transaction broadcast, status)
@@ -479,6 +514,12 @@ func (svc *Services) Close() error {
 	if svc.BSV21 != nil {
 		if err := svc.BSV21.Close(); err != nil {
 			errs = append(errs, fmt.Errorf("bsv21 close: %w", err))
+		}
+	}
+
+	if svc.Overlay != nil {
+		if err := svc.Overlay.Close(); err != nil {
+			errs = append(errs, fmt.Errorf("overlay close: %w", err))
 		}
 	}
 

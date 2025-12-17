@@ -43,7 +43,6 @@ func NewRoutes(ctx context.Context, outputStore *txo.OutputStore, ingestCtx *ind
 // Register registers all owner routes on the given router.
 func (r *Routes) Register(router fiber.Router) {
 	router.Get("/:owner/txos", r.OwnerTxos)
-	router.Get("/:owner/utxos", r.OwnerUtxos)
 	router.Get("/:owner/balance", r.OwnerBalance)
 	router.Get("/:owner/sync", r.OwnerSync)
 }
@@ -51,10 +50,11 @@ func (r *Routes) Register(router fiber.Router) {
 // OwnerTxos returns transaction outputs owned by a specific owner.
 // @Summary Get owner TXOs
 // @Description Get transaction outputs owned by a specific owner (address/pubkey/script hash)
-// @Tags owners
+// @Tags own
 // @Produce json
 // @Param owner path string true "Owner identifier (address, pubkey, or script hash)"
 // @Param refresh query bool false "Refresh owner data from blockchain before returning" default(true)
+// @Param unspent query bool false "Filter for unspent outputs only" default(true)
 // @Param tags query string false "Comma-separated list of tags to include"
 // @Param from query number false "Starting score for pagination"
 // @Param rev query bool false "Reverse order"
@@ -75,48 +75,8 @@ func (r *Routes) OwnerTxos(c *fiber.Ctx) error {
 	cfg := txo.NewOutputSearchCfg().
 		WithStringKeys("own:" + owner).
 		WithLimit(uint32(c.QueryInt("limit", 100))).
-		WithReverse(c.QueryBool("rev", false))
-
-	// Parse tags
-	if tagsQuery := c.Query("tags", ""); tagsQuery != "" {
-		tags := strings.Split(tagsQuery, ",")
-		cfg.WithTags(tags...)
-	}
-
-	// Parse from score
-	if from := c.QueryFloat("from", 0); from != 0 {
-		cfg.From = &from
-	}
-
-	outputs, err := r.outputStore.SearchOutputs(c.Context(), cfg)
-	if err != nil {
-		return err
-	}
-
-	return c.JSON(outputs)
-}
-
-// OwnerUtxos returns unspent transaction outputs owned by a specific owner.
-// @Summary Get owner UTXOs
-// @Description Get unspent transaction outputs owned by a specific owner
-// @Tags owners
-// @Produce json
-// @Param owner path string true "Owner identifier (address, pubkey, or script hash)"
-// @Param tags query string false "Comma-separated list of tags to include"
-// @Param from query number false "Starting score for pagination"
-// @Param rev query bool false "Reverse order"
-// @Param limit query int false "Maximum number of results" default(100)
-// @Success 200 {array} txo.IndexedOutput
-// @Failure 500 {string} string "Internal server error"
-// @Router /api/own/{owner}/utxos [get]
-func (r *Routes) OwnerUtxos(c *fiber.Ctx) error {
-	owner := c.Params("owner")
-
-	cfg := txo.NewOutputSearchCfg().
-		WithStringKeys("own:" + owner).
-		WithLimit(uint32(c.QueryInt("limit", 100))).
 		WithReverse(c.QueryBool("rev", false)).
-		WithFilterSpent(true) // Only unspent
+		WithFilterSpent(c.QueryBool("unspent", true))
 
 	// Parse tags
 	if tagsQuery := c.Query("tags", ""); tagsQuery != "" {
@@ -140,7 +100,7 @@ func (r *Routes) OwnerUtxos(c *fiber.Ctx) error {
 // OwnerBalance returns the satoshi balance for a specific owner.
 // @Summary Get owner balance
 // @Description Get the satoshi balance for a specific owner
-// @Tags owners
+// @Tags own
 // @Produce json
 // @Param owner path string true "Owner identifier (address, pubkey, or script hash)"
 // @Success 200 {object} BalanceResponse
@@ -179,7 +139,7 @@ type SyncOutput struct {
 // OwnerSync streams owner sync via SSE.
 // @Summary Stream owner sync via SSE
 // @Description Stream paginated outputs for wallet synchronization via Server-Sent Events. Streams all outputs until exhausted, then triggers background sync and sends retry directive.
-// @Tags owners
+// @Tags own
 // @Produce text/event-stream
 // @Param owner path string true "Owner identifier (address, pubkey, or script hash)"
 // @Param from query number false "Starting score for pagination"

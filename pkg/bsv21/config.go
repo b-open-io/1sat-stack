@@ -54,9 +54,10 @@ func (c *Config) SetDefaults(v *viper.Viper, prefix string) {
 
 // Services holds initialized BSV21 services
 type Services struct {
-	Indexer *Indexer
-	Lookup  *Lookup
-	Routes  *Routes
+	Indexer      *Indexer
+	Lookup       *Lookup
+	TopicManager *TopicManager
+	Routes       *Routes
 }
 
 // Initialize creates BSV21 services from the configuration
@@ -65,7 +66,6 @@ func (c *Config) Initialize(
 	logger *slog.Logger,
 	txoStorage *txo.OutputStore,
 	chaintracker chaintracks.Chaintracks,
-	activeTopics func(topic string) bool,
 ) (*Services, error) {
 	if c.Mode == ModeDisabled {
 		return nil, nil
@@ -112,9 +112,13 @@ func (c *Config) Initialize(
 		// Create lookup service
 		lookup := NewLookup(txoStorage)
 
+		// Create topic manager for overlay engine integration
+		topicManager := NewTopicManager("bsv21", txoStorage, c.WhitelistTokens)
+
 		svc := &Services{
-			Indexer: idx,
-			Lookup:  lookup,
+			Indexer:      idx,
+			Lookup:       lookup,
+			TopicManager: topicManager,
 		}
 
 		// Create routes if enabled
@@ -123,7 +127,6 @@ func (c *Config) Initialize(
 				Storage:      txoStorage,
 				Lookup:       lookup,
 				ChainTracker: chaintracker,
-				ActiveTopics: activeTopics,
 				Logger:       logger,
 			})
 		}

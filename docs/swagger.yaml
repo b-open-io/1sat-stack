@@ -853,7 +853,7 @@ paths:
       summary: Get multi-address unspent outputs
       tags:
       - bsv21
-  /api/bsv21/{tokenId}/block/{height}:
+  /api/bsv21/{tokenId}/blk/{height}:
     get:
       parameters:
       - description: Token ID
@@ -904,7 +904,7 @@ paths:
       summary: Get transaction details
       tags:
       - bsv21
-  /api/indexer/{txid}/ingest:
+  /api/idx/ingest/{txid}:
     post:
       consumes:
       - application/json
@@ -921,7 +921,7 @@ paths:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/github_com_b-open-io_1sat-stack_pkg_indexer.IndexContext'
+            $ref: '#/definitions/pkg_indexer.IndexContext'
         "400":
           description: Bad Request
           schema:
@@ -943,7 +943,44 @@ paths:
       summary: Ingest a transaction by txid
       tags:
       - indexer
-  /api/indexer/{txid}/parse:
+  /api/idx/parse:
+    post:
+      consumes:
+      - application/octet-stream
+      description: Parses a transaction from raw bytes and returns the indexed context
+        without saving
+      parameters:
+      - description: Raw transaction bytes
+        in: body
+        name: tx
+        required: true
+        schema:
+          items:
+            type: integer
+          type: array
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/pkg_indexer.IndexContext'
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Parse a transaction from raw bytes
+      tags:
+      - indexer
+  /api/idx/parse/{txid}:
     get:
       consumes:
       - application/json
@@ -960,7 +997,7 @@ paths:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/github_com_b-open-io_1sat-stack_pkg_indexer.IndexContext'
+            $ref: '#/definitions/pkg_indexer.IndexContext'
         "400":
           description: Bad Request
           schema:
@@ -982,44 +1019,7 @@ paths:
       summary: Parse a transaction by txid
       tags:
       - indexer
-  /api/indexer/parse:
-    post:
-      consumes:
-      - application/octet-stream
-      description: Parses a transaction from raw bytes and returns the indexed context
-        without saving
-      parameters:
-      - description: Raw transaction bytes
-        in: body
-        name: tx
-        required: true
-        schema:
-          items:
-            type: integer
-          type: array
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            $ref: '#/definitions/github_com_b-open-io_1sat-stack_pkg_indexer.IndexContext'
-        "400":
-          description: Bad Request
-          schema:
-            additionalProperties:
-              type: string
-            type: object
-        "500":
-          description: Internal Server Error
-          schema:
-            additionalProperties:
-              type: string
-            type: object
-      summary: Parse a transaction from raw bytes
-      tags:
-      - indexer
-  /api/indexer/tags:
+  /api/idx/tags:
     get:
       description: Returns the list of tags from all registered indexers
       produces:
@@ -1050,7 +1050,7 @@ paths:
         "200":
           description: Metadata
           schema:
-            $ref: '#/definitions/github_com_b-open-io_1sat-stack_pkg_ordfs.Response'
+            $ref: '#/definitions/pkg_ordfs.Response'
         "400":
           description: Bad request
           schema:
@@ -1165,7 +1165,7 @@ paths:
             type: string
       summary: Get owner balance
       tags:
-      - owners
+      - own
   /api/own/{owner}/sync:
     get:
       description: Stream paginated outputs for wallet synchronization via Server-Sent
@@ -1190,7 +1190,7 @@ paths:
             type: string
       summary: Stream owner sync via SSE
       tags:
-      - owners
+      - own
   /api/own/{owner}/txos:
     get:
       description: Get transaction outputs owned by a specific owner (address/pubkey/script
@@ -1205,6 +1205,11 @@ paths:
         description: Refresh owner data from blockchain before returning
         in: query
         name: refresh
+        type: boolean
+      - default: true
+        description: Filter for unspent outputs only
+        in: query
+        name: unspent
         type: boolean
       - description: Comma-separated list of tags to include
         in: query
@@ -1238,49 +1243,7 @@ paths:
             type: string
       summary: Get owner TXOs
       tags:
-      - owners
-  /api/own/{owner}/utxos:
-    get:
-      description: Get unspent transaction outputs owned by a specific owner
-      parameters:
-      - description: Owner identifier (address, pubkey, or script hash)
-        in: path
-        name: owner
-        required: true
-        type: string
-      - description: Comma-separated list of tags to include
-        in: query
-        name: tags
-        type: string
-      - description: Starting score for pagination
-        in: query
-        name: from
-        type: number
-      - description: Reverse order
-        in: query
-        name: rev
-        type: boolean
-      - default: 100
-        description: Maximum number of results
-        in: query
-        name: limit
-        type: integer
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            items:
-              $ref: '#/definitions/github_com_b-open-io_1sat-stack_pkg_txo.IndexedOutput'
-            type: array
-        "500":
-          description: Internal server error
-          schema:
-            type: string
-      summary: Get owner UTXOs
-      tags:
-      - owners
+      - own
   /api/sse/{topics}:
     get:
       description: Establishes an SSE connection for real-time event streaming
