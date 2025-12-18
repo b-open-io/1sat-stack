@@ -7,192 +7,231 @@ Wire the overlay engine from `go-overlay-services` into `1sat-stack`. This provi
 - Topic-based transaction filtering and admission
 - Peer-to-peer synchronization via GASP
 
-**Note:** Topic Manager and Lookup Service implementations are documented separately in `TOPIC_MANAGERS.md`.
+## Current State (Completed)
 
-## Key Concepts
+The following infrastructure is in place:
 
-### Indexers vs Topic Managers
+- **Overlay Engine** initialized in `pkg/ovr/config.go`
+- **Storage Interface** (`pkg/txo/engine_storage.go`) implements `engine.Storage`
+- **Routes** registered in `cmd/server/config.go`
+- **Dynamic Topic Registration** (`pkg/ovr/services.go`)
 
-**Indexers** (existing `pkg/indexer/parse/*`):
-- Parse transaction data
-- Extract structured information
-- Filter by presence of data (return nil if data not found)
-- Shared parsing logic reusable by topic managers
-
-**Topic Managers** (overlay pattern):
-- USE parsers to understand the data
-- Apply topic-specific admission logic
-- Decide if transaction fits the confines of a specific topic
-- More specific filtering than just "data present"
-
-Example: BSV21 Topic Manager parses the BSV21 data (using shared parsing), then applies admission logic like "is this a valid token transfer for tokens I'm tracking?"
-
-## The Overlay Flow
+## Package Structure (Refactored)
 
 ```
-HTTP POST /submit (x-topics: ["bsv21", "mytoken"])
-    │
-    ▼
-Engine.Submit(TaggedBEEF)
-    │
-    ▼
-┌─────────────────────────────────────────────────────┐
-│ For each topic:                                      │
-│  1. TopicManager.IdentifyAdmissibleOutputs(beef)    │
-│     └─ Parse data, apply admission logic            │
-│     └─ Returns: OutputsToAdmit, AncillaryTxids      │
-│  2. Storage.MarkUTXOsAsSpent()                      │
-│  3. LookupService.OutputSpent()                     │
-│  4. Storage.InsertOutputs()                         │
-│  5. LookupService.OutputAdmittedByTopic()           │
-│     └─ Extract data, create events, save indexes    │
-└─────────────────────────────────────────────────────┘
-    │
-    ▼
-Return STEAK (per-topic admission results)
+pkg/
+├── parse/           # Output-level parsers using go-templates
+│   ├── parse.go     # ParseContext, ParseResult, GetData helper
+│   ├── p2pkh.go     # P2PKH parser
+│   ├── lock.go      # Lock contract parser
+│   ├── inscription.go # Inscription parser
+│   ├── bsv21.go     # BSV21 token parser
+│   ├── ordlock.go   # OrdLock listing parser
+│   ├── cosign.go    # Cosign parser
+│   ├── shrug.go     # Shrug token parser
+│   └── bitcom.go    # Bitcom + B, MAP, AIP, BAP, Sigma parsers
+├── topic/           # Topic managers (admission logic)
+│   ├── registry.go  # Auto-registration registry
+│   ├── onesat.go    # 1Sat topic manager (catch-all)
+│   └── bsv21.go     # BSV21 topic manager
+└── lookup/          # Lookup services (indexing/querying)
+    ├── registry.go  # Auto-registration registry
+    ├── onesat.go    # 1Sat lookup service (runs all parsers)
+    └── bsv21.go     # BSV21 lookup service
 ```
 
-## Implementation Plan
+## Parsers (`pkg/parse/`)
 
-### Phase 1: Initialize Overlay Engine
+Output-level parsers use `go-templates` decoders directly.
 
-Use `engine.NewEngine()` directly from `go-overlay-services`.
+### Parser Architecture
 
-**File to modify:** `cmd/server/config.go`
+Each parser:
+- Takes a `*ParseContext` containing output metadata and accumulated results
+- Returns a `*ParseResult` with tag, data, events, and owners
+- Uses `go-templates` `Decode` functions directly (no reimplementation)
 
 ```go
-import "github.com/bsv-blockchain/go-overlay-services/pkg/core/engine"
+// ParseContext holds accumulated parse results and output metadata.
+type ParseContext struct {
+    Outpoint      *transaction.Outpoint
+    LockingScript []byte
+    Satoshis      uint64
+    Results       map[string]*ParseResult  // Accumulated results keyed by tag
+}
 
-// In Initialize():
-if c.Overlay.Mode != "disabled" {
-    svc.OverlayEngine = engine.NewEngine(engine.Engine{
-        Managers:       buildTopicManagers(...),
-        LookupServices: buildLookupServices(...),
-        Storage:        svc.TXO.OutputStore,  // Already implements engine.Storage
-        ChainTracker:   svc.Chaintracks,
+// ParseResult holds the output of parsing a single transaction output.
+type ParseResult struct {
+    Tag    string          // Identifier (e.g., "p2pkh", "insc")
+    Data   any             // Parsed data structure from go-templates
+    Events []string        // Events to index
+    Owners []*types.PKHash // Owners associated with this output
+}
+```
+
+### Implemented Parsers
+
+| Parser | Tag | Template | Dependencies |
+|--------|-----|----------|--------------|
+| `ParseP2PKH` | `p2pkh` | `p2pkh.Decode` | none |
+| `ParseLock` | `lock` | `lockup.Decode` | none |
+| `ParseInscription` | `insc` | `inscription.Decode` | satoshis == 1 |
+| `ParseBSV21` | `bsv21` | `bsv21.Decode` | outpoint for deploy |
+| `ParseOrdLock` | `ordlock` | `ordlock.Decode` | satoshis == 1 |
+| `ParseCosign` | `cosign` | `cosign.Decode` | none |
+| `ParseShrug` | `shrug` | `shrug.Decode` | outpoint for deploy |
+
+### Bitcom Parsers (Cascading)
+
+Bitcom parsing is split into a base parser and sub-parsers that read from the base:
+
+| Parser | Tag | Template | Dependencies |
+|--------|-----|----------|--------------|
+| `ParseBitcom` | `bitcom` | `bitcom.Decode` | none (run first) |
+| `ParseB` | `b` | `bitcom.DecodeB` | requires `bitcom` |
+| `ParseMAP` | `map` | `bitcom.DecodeMap` | requires `bitcom` |
+| `ParseAIP` | `aip` | `bitcom.DecodeAIP` | requires `bitcom` |
+| `ParseBAP` | `bap` | `bitcom.DecodeBAP` | requires `bitcom` |
+| `ParseSigma` | `sigma` | `bitcom.DecodeSIGMA` | requires `bitcom` |
+
+Sub-parsers access the base bitcom data via:
+```go
+bc := GetData[bitcom.Bitcom](ctx, TagBitcom)
+```
+
+## Topic Managers (`pkg/topic/`)
+
+### Auto-Registration
+
+Topic managers self-register via `init()`:
+
+```go
+// pkg/topic/registry.go
+var Registry = map[string]Factory{}
+
+func init() {
+    Register("1sat", func(topicName string, storage engine.Storage, logger *slog.Logger) (engine.TopicManager, error) {
+        return NewOneSatTopicManager(), nil
+    })
+    Register("bsv21", func(topicName string, storage engine.Storage, logger *slog.Logger) (engine.TopicManager, error) {
+        return NewBSV21TopicManager(topicName, storage, nil), nil
     })
 }
 ```
 
-### Phase 2: Register Overlay Routes
+### OneSatTopicManager
 
-Add overlay routes from go-overlay-services to the server.
-
-**File to modify:** `cmd/server/config.go`
+Admits ALL outputs (catch-all behavior):
 
 ```go
-import overlayserver "github.com/bsv-blockchain/go-overlay-services/pkg/server"
-
-// In Services struct:
-type Services struct {
-    // ... existing fields
-    OverlayEngine *engine.Engine
-}
-
-// In Initialize():
-if c.Overlay.Mode != "disabled" {
-    svc.OverlayEngine = overlay.NewEngine(overlay.EngineConfig{
-        Storage:      svc.TXO.OutputStore,
-        ChainTracker: svc.Chaintracks,
-        Managers:     buildTopicManagers(...),
-        Lookups:      buildLookupServices(...),
-    })
-}
-
-// In RegisterRoutes():
-if svc.OverlayEngine != nil {
-    overlayserver.RegisterRoutes(app, &overlayserver.RegisterRoutesConfig{
-        Engine: svc.OverlayEngine,
-        // ... other config
-    })
-}
-```
-
-### Phase 3: Update Storage for HeightScore
-
-Modify `InsertOutputs` to use HeightScore from MerklePath instead of timestamp.
-
-**File to modify:** `pkg/txo/engine_storage.go`
-
-```go
-func (s *OutputStore) InsertOutputs(ctx context.Context, topic string, txid *chainhash.Hash, outputVouts []uint32, outpointsConsumed []*transaction.Outpoint, beefData []byte, ancillaryTxids []*chainhash.Hash) error {
-    // Parse BEEF to get MerklePath
-    _, tx, _, err := transaction.ParseBeef(beefData)
-    if err != nil {
-        return err
+func (tm *OneSatTopicManager) IdentifyAdmissibleOutputs(ctx context.Context, beefBytes []byte, previousCoins []uint32) (overlay.AdmittanceInstructions, error) {
+    _, tx, _, err := transaction.ParseBeef(beefBytes)
+    // ... error handling ...
+    
+    // Admit all outputs
+    admit.OutputsToAdmit = make([]uint32, len(tx.Outputs))
+    for i := range tx.Outputs {
+        admit.OutputsToAdmit[i] = uint32(i)
     }
+    return admit, nil
+}
+```
 
-    // Calculate score from MerklePath if available, otherwise use timestamp
-    var score float64
-    if tx.MerklePath != nil {
-        height := tx.MerklePath.BlockHeight
-        var idx uint64
-        for _, leaf := range tx.MerklePath.Path[0] {
-            if leaf.Hash != nil && leaf.Hash.Equal(*txid) {
-                idx = leaf.Offset
-                break
-            }
+### BSV21TopicManager
+
+Validates token transfers and admits only valid BSV21 outputs.
+
+## Lookup Services (`pkg/lookup/`)
+
+### Auto-Registration
+
+Lookup services self-register via `init()`:
+
+```go
+// pkg/lookup/registry.go
+var Registry = map[string]Factory{}
+
+func init() {
+    Register("1sat", func(storage *txo.OutputStore, logger *slog.Logger) (engine.LookupService, error) {
+        return NewOneSatLookup(storage, logger), nil
+    })
+    Register("bsv21", func(storage *txo.OutputStore, logger *slog.Logger) (engine.LookupService, error) {
+        return NewBSV21Lookup(storage), nil
+    })
+}
+```
+
+### OneSatLookup
+
+Runs all parsers when an output is admitted:
+
+```go
+func (l *OneSatLookup) OutputAdmittedByTopic(ctx context.Context, payload *engine.OutputAdmittedByTopic) error {
+    // Parse BEEF, create ParseContext
+    parseCtx := parse.NewParseContext(outpoint, output.LockingScript.Bytes(), output.Satoshis)
+
+    // Run all parsers
+    for _, parser := range l.parsers {
+        if result := parser(parseCtx); result != nil {
+            parseCtx.AddResult(result)
         }
-        score = HeightScore(height, idx)
-    } else {
-        score = float64(time.Now().UnixNano())
     }
 
-    // ... rest of implementation using score
+    // Collect events with tag prefixes, store to database
+    // ...
 }
 ```
 
-### Phase 4: Configuration
+### BSV21Lookup
 
-Add overlay configuration options.
+Indexes BSV21 token data with balance tracking and mint caching.
 
-**File to modify:** `cmd/server/config.go`
+## Server Configuration
+
+The overlay engine and lookup services are wired in `cmd/server/config.go`:
 
 ```go
-type OverlayConfig struct {
-    Mode   string `mapstructure:"mode"` // disabled, embedded
-    Routes struct {
-        Enabled bool   `mapstructure:"enabled"`
-        Prefix  string `mapstructure:"prefix"` // default: /overlay
-    } `mapstructure:"routes"`
-}
+// Initialize overlay engine
+overlaySvc, err := c.Overlay.Initialize(ctx, logger, &ovr.InitializeDeps{
+    OutputStore:  svc.TXO.OutputStore,
+    ChainTracker: svc.Chaintracks,
+})
+svc.Overlay = overlaySvc
+
+// Register 1Sat lookup service
+onesatLookup := lookup.NewOneSatLookup(svc.TXO.OutputStore, logger)
+svc.Overlay.RegisterLookupService("1sat", onesatLookup)
+
+// Register BSV21 lookup service (after BSV21 init)
+svc.Overlay.RegisterLookupService("bsv21", svc.BSV21.Lookup)
 ```
-
-## Existing Infrastructure
-
-The following already exists and will be reused:
-
-**Storage Interface** (`pkg/txo/engine_storage.go`):
-- `OutputStore` implements `engine.Storage`
-- `InsertOutputs`, `FindOutputs`, `MarkUTXOsAsSpent`, etc.
-
-**Example Topic Manager** (`pkg/bsv21/topic.go`):
-- `TopicManager` for BSV21 tokens
-- Shows pattern for admission logic
-
-**Example Lookup Service** (`pkg/bsv21/lookup.go`):
-- `Lookup` for BSV21 tokens
-- Shows pattern for data extraction and event creation
-
-## Files Summary
-
-**Modified files:**
-- `cmd/server/config.go` - Add overlay engine init, config, and routes
-- `pkg/txo/engine_storage.go` - HeightScore from MerklePath
 
 ## Design Decisions
 
-1. **Scoring** - Use HeightScore from the start for confirmed transactions. Extract height from BEEF's MerklePath in InsertOutputs.
+1. **Parsers use go-templates directly** - No reimplementation of parsing logic.
 
-2. **Parsers are shared** - Topic Managers and Lookup Services reuse parsing logic from `pkg/indexer/parse/*`. No duplication of parsing code.
+2. **ParseContext enables cascading** - Parsers can read results from previous parsers via `GetData[T](ctx, tag)`.
 
-3. **Arcade unchanged** - Remains external. Handles broadcast to network, consumed by but not the entry point for overlay flow.
+3. **Data types from go-templates** - ParseResult.Data contains actual types from go-templates.
 
-4. **GASP sync** - Comes free with overlay engine. Handles peer-to-peer synchronization.
+4. **Events are tag-relative** - Events returned by parsers don't include the tag prefix. The lookup service adds the prefix when saving.
 
-## Next Steps
+5. **1Sat admits everything** - The 1sat topic is a catch-all. Specialized topics (BSV21, BAP, BSocial) can coexist with their own admission logic.
 
-After this infrastructure is in place:
-1. Define specific Topic Managers (see `TOPIC_MANAGERS.md`)
-2. Define specific Lookup Services
-3. Wire them into the engine configuration
+6. **Separated packages** - `parse/`, `topic/`, `lookup/` provide clear separation of concerns.
+
+## Future Work
+
+### Additional Topic Managers
+
+From `bsocial-overlay/`:
+- **BAP Topic Manager** - Bitcoin Attestation Protocol identity management
+- **BSocial Topic Manager** - Social posts, likes, follows, etc.
+
+These will have their own admission logic and lookup services, but can coexist with the 1sat catch-all topic.
+
+## Related Documentation
+
+- `TOPIC_MANAGERS.md` - Specific topic manager implementations
+- `../go-templates/` - Template decoders used by parsers
+- `../bsocial-overlay/` - BAP and BSocial topic manager reference implementations

@@ -14,20 +14,24 @@ import (
 	"github.com/b-open-io/1sat-stack/pkg/indexer/parse/bitcom"
 	"github.com/b-open-io/1sat-stack/pkg/indexer/parse/cosign"
 	"github.com/b-open-io/1sat-stack/pkg/indexer/parse/lock"
-	"github.com/b-open-io/1sat-stack/pkg/indexer/parse/onesat"
+	idxonesat "github.com/b-open-io/1sat-stack/pkg/indexer/parse/onesat"
 	"github.com/b-open-io/1sat-stack/pkg/indexer/parse/p2pkh"
 	"github.com/b-open-io/1sat-stack/pkg/indexer/parse/shrug"
+	"github.com/b-open-io/1sat-stack/pkg/lookup"
 	"github.com/b-open-io/1sat-stack/pkg/ordfs"
-	"github.com/b-open-io/1sat-stack/pkg/ovr"
+	"github.com/b-open-io/1sat-stack/pkg/overlay"
 	"github.com/b-open-io/1sat-stack/pkg/own"
 	"github.com/b-open-io/1sat-stack/pkg/pubsub"
 	"github.com/b-open-io/1sat-stack/pkg/store"
+	"github.com/b-open-io/1sat-stack/pkg/topic"
 	"github.com/b-open-io/1sat-stack/pkg/txo"
+	"github.com/b-open-io/go-junglebus"
 	arcadeconfig "github.com/bsv-blockchain/arcade/config"
 	arcaderoutes "github.com/bsv-blockchain/arcade/routes/fiber"
 	"github.com/bsv-blockchain/go-chaintracks/chaintracks"
 	chaintracksconfig "github.com/bsv-blockchain/go-chaintracks/config"
 	chaintracksroutes "github.com/bsv-blockchain/go-chaintracks/routes/fiber"
+	"github.com/bsv-blockchain/go-overlay-services/pkg/core/engine"
 	p2p "github.com/bsv-blockchain/go-teranode-p2p-client"
 	"github.com/gofiber/fiber/v2"
 	"github.com/spf13/viper"
@@ -60,7 +64,7 @@ type Config struct {
 	BSV21 bsv21.Config `mapstructure:"bsv21"`
 
 	// Overlay engine
-	Overlay ovr.Config `mapstructure:"overlay"`
+	Overlay overlay.Config `mapstructure:"overlay"`
 
 	// Content serving
 	ORDFS ordfs.Config `mapstructure:"ordfs"`
@@ -102,11 +106,12 @@ type Services struct {
 	TXO     *txo.Services
 	Indexer *indexer.Services
 	BSV21   *bsv21.Services
-	Overlay *ovr.Services
+	Overlay *overlay.Services
 	ORDFS   *ordfs.Services
 	Own     *own.Services
 
 	// External services
+	JungleBus         *junglebus.Client
 	P2PClient         *p2p.Client
 	Chaintracks       chaintracks.Chaintracks
 	ChaintracksRoutes *chaintracksroutes.Routes
@@ -177,6 +182,16 @@ func (c *Config) Initialize(ctx context.Context, logger *slog.Logger) (*Services
 	}
 	svc.PubSub = pubsubSvc
 
+	// Initialize JungleBus client (shared by multiple services)
+	jbClient, err := junglebus.New(
+		junglebus.WithHTTP(c.Network.JungleBus),
+	)
+	if err != nil {
+		return nil, fmt.Errorf("failed to initialize junglebus client: %w", err)
+	}
+	svc.JungleBus = jbClient
+	logger.Info("junglebus client initialized", "url", c.Network.JungleBus)
+
 	// Initialize beef storage
 	beefSvc, err := c.Beef.Initialize(ctx, logger, nil)
 	if err != nil {
@@ -245,16 +260,16 @@ func (c *Config) Initialize(ctx context.Context, logger *slog.Logger) (*Services
 		}
 		// Create protocol indexers - order matters as some indexers depend on others
 		indexers := []indexer.Indexer{
-			&p2pkh.P2PKHIndexer{},        // P2PKH address extraction
-			&lock.LockIndexer{},          // Lock protocol
-			&onesat.InscriptionIndexer{}, // 1Sat ordinals inscriptions
-			&onesat.OriginIndexer{},      // Origin tracking
-			&onesat.Bsv20Indexer{},       // BSV-20 fungible tokens
-			&onesat.Bsv21Indexer{},       // BSV-21 fungible tokens
-			&onesat.OrdLockIndexer{},     // Ordinal locks
-			&bitcom.BitcomIndexer{},      // Bitcom protocols (B, MAP, SIGMA)
-			&cosign.CosignIndexer{},      // Cosign protocol
-			&shrug.ShrugIndexer{},        // Shrug tokens
+			&p2pkh.P2PKHIndexer{},           // P2PKH address extraction
+			&lock.LockIndexer{},             // Lock protocol
+			&idxonesat.InscriptionIndexer{}, // 1Sat ordinals inscriptions
+			&idxonesat.OriginIndexer{},      // Origin tracking
+			&idxonesat.Bsv20Indexer{},       // BSV-20 fungible tokens
+			&idxonesat.Bsv21Indexer{},       // BSV-21 fungible tokens
+			&idxonesat.OrdLockIndexer{},     // Ordinal locks
+			&bitcom.BitcomIndexer{},         // Bitcom protocols (B, MAP, SIGMA)
+			&cosign.CosignIndexer{},         // Cosign protocol
+			&shrug.ShrugIndexer{},           // Shrug tokens
 		}
 		indexerSvc, err := c.Indexer.Initialize(ctx, logger, svc.TXO.OutputStore, svc.Beef.Storage, ps, indexers)
 		if err != nil {
@@ -263,7 +278,25 @@ func (c *Config) Initialize(ctx context.Context, logger *slog.Logger) (*Services
 		svc.Indexer = indexerSvc
 	}
 
-	// Initialize BSV21 with chaintracks for merkle proof validation
+	// Initialize overlay engine FIRST (BSV21 needs it for topic/lookup registration)
+	if c.Overlay.Mode != overlay.ModeDisabled && svc.TXO != nil {
+		overlaySvc, err := c.Overlay.Initialize(ctx, logger, &overlay.InitializeDeps{
+			OutputStore:  svc.TXO.OutputStore,
+			ChainTracker: svc.Chaintracks,
+			// Storage: nil for now - Fee service can provide this later
+		})
+		if err != nil {
+			return nil, fmt.Errorf("failed to initialize overlay: %w", err)
+		}
+		svc.Overlay = overlaySvc
+
+		// Register 1Sat lookup service (comprehensive indexer for all outputs)
+		onesatLookup := lookup.NewOneSatLookup(svc.TXO.OutputStore, logger)
+		svc.Overlay.RegisterLookupService("1sat", onesatLookup)
+		logger.Info("1Sat lookup service registered with overlay engine")
+	}
+
+	// Initialize BSV21 AFTER overlay so we can wire them together
 	if c.BSV21.Mode != bsv21.ModeDisabled && svc.TXO != nil {
 		bsv21Svc, err := c.BSV21.Initialize(ctx, logger, svc.TXO.OutputStore, svc.Chaintracks)
 		if err != nil {
@@ -271,23 +304,18 @@ func (c *Config) Initialize(ctx context.Context, logger *slog.Logger) (*Services
 		}
 		svc.BSV21 = bsv21Svc
 
-		// Register BSV21 lookup service with overlay engine
+		// Wire BSV21 to overlay engine
 		if svc.Overlay != nil {
+			// Register BSV21 lookup service
 			svc.Overlay.RegisterLookupService("bsv21", svc.BSV21.Lookup)
-		}
-	}
+			logger.Info("BSV21 lookup service registered with overlay engine")
 
-	// Initialize overlay engine (before BSV21 so we can pass it for topic registration)
-	if c.Overlay.Mode != ovr.ModeDisabled && svc.TXO != nil {
-		overlaySvc, err := c.Overlay.Initialize(ctx, logger, &ovr.InitializeDeps{
-			OutputStore:  svc.TXO.OutputStore,
-			ChainTracker: svc.Chaintracks,
-			// Storage: nil for now - BSV21 can provide this later via SetStorage
-		})
-		if err != nil {
-			return nil, fmt.Errorf("failed to initialize overlay: %w", err)
+			// Register tm_bsv21 discovery topic (admits all deploy+mint operations)
+			svc.Overlay.RegisterTopic("tm_bsv21", func(topicName string) (engine.TopicManager, error) {
+				return topic.NewBsv21DiscoveryTopicManager(topicName, svc.TXO.OutputStore, logger), nil
+			})
+			logger.Info("BSV21 discovery topic (tm_bsv21) registered with overlay engine")
 		}
-		svc.Overlay = overlaySvc
 	}
 
 	// Initialize ORDFS content serving
@@ -300,13 +328,14 @@ func (c *Config) Initialize(ctx context.Context, logger *slog.Logger) (*Services
 		svc.ORDFS = ordfsSvc
 	}
 
-	// Initialize owner services (depends on TXO and Indexer)
+	// Initialize owner services (depends on TXO, Beef, Overlay)
 	if c.Own.Mode != own.ModeDisabled && svc.TXO != nil {
-		var ingestCtx *indexer.IngestCtx
-		if svc.Indexer != nil {
-			ingestCtx = svc.Indexer.IngestCtx
-		}
-		ownSvc, err := c.Own.Initialize(ctx, logger, svc.TXO.OutputStore, ingestCtx)
+		ownSvc, err := c.Own.Initialize(ctx, logger, &own.InitializeDeps{
+			JungleBus:   svc.JungleBus,
+			BeefStorage: svc.Beef.Storage,
+			Overlay:     svc.Overlay,
+			OutputStore: svc.TXO.OutputStore,
+		})
 		if err != nil {
 			return nil, fmt.Errorf("failed to initialize own: %w", err)
 		}
@@ -358,24 +387,24 @@ func (c *Config) RegisterRoutes(app *fiber.App, svc *Services) {
 	if svc.Own != nil && svc.Own.Routes != nil {
 		prefix := c.Own.Routes.Prefix
 		if prefix == "" {
-			prefix = "/own"
+			prefix = "/owner"
 		}
 		ownGroup := api.Group(prefix)
 		svc.Own.Routes.Register(ownGroup)
-		capabilities = append(capabilities, "own")
-		slog.Debug("registered own routes", "prefix", prefix)
+		capabilities = append(capabilities, "owner")
+		slog.Debug("registered owner routes", "prefix", prefix)
 	} else {
-		slog.Debug("own routes not registered", "ownNil", svc.Own == nil, "ownMode", c.Own.Mode)
+		slog.Debug("owner routes not registered", "ownNil", svc.Own == nil, "ownMode", c.Own.Mode)
 	}
 
 	// Register indexer routes
 	if svc.Indexer != nil && svc.Indexer.Routes != nil {
 		prefix := c.Indexer.Routes.Prefix
 		if prefix == "" {
-			prefix = "/idx"
+			prefix = "/indexer"
 		}
 		svc.Indexer.Routes.Register(api, prefix)
-		capabilities = append(capabilities, "idx")
+		capabilities = append(capabilities, "indexer")
 	}
 
 	// Register BSV21 routes
@@ -414,34 +443,54 @@ func (c *Config) RegisterRoutes(app *fiber.App, svc *Services) {
 
 	// Register Chaintracks routes (block headers, chain tip, etc.)
 	if svc.ChaintracksRoutes != nil {
-		blockGroup := api.Group("/blk")
+		blockGroup := api.Group("/chaintracks")
 		svc.ChaintracksRoutes.Register(blockGroup)
 		capabilities = append(capabilities, "chaintracks")
-		slog.Debug("registered chaintracks routes", "prefix", "/blk")
+		slog.Debug("registered chaintracks routes", "prefix", "/chaintracks")
 	}
 
 	// Register Arcade routes (transaction broadcast, status)
 	if svc.ArcadeRoutes != nil {
-		arcGroup := api.Group("/arc")
+		arcGroup := api.Group("/arcade")
 		svc.ArcadeRoutes.Register(arcGroup)
 		capabilities = append(capabilities, "arcade")
-		slog.Debug("registered arcade routes", "prefix", "/arc")
+		slog.Debug("registered arcade routes", "prefix", "/arcade")
 	}
 
 	// Health check endpoint
-	api.Get("/health", func(c *fiber.Ctx) error {
-		return c.JSON(fiber.Map{
-			"status": "ok",
-		})
-	})
+	api.Get("/health", handleHealth)
 
 	// Capabilities endpoint - returns list of enabled services
-	api.Get("/capabilities", func(c *fiber.Ctx) error {
-		return c.JSON(capabilities)
-	})
+	api.Get("/capabilities", handleCapabilities(capabilities))
 
 	// Setup API documentation routes
 	registerDocsRoutes(app)
+}
+
+// handleHealth returns the health status
+// @Summary Health check
+// @Description Returns the health status of the service
+// @Tags system
+// @Produce json
+// @Success 200 {object} map[string]string "status: ok"
+// @Router /health [get]
+func handleHealth(c *fiber.Ctx) error {
+	return c.JSON(fiber.Map{
+		"status": "ok",
+	})
+}
+
+// handleCapabilities returns the list of enabled capabilities
+// @Summary Get capabilities
+// @Description Returns the list of enabled service capabilities
+// @Tags system
+// @Produce json
+// @Success 200 {array} string "List of enabled capabilities"
+// @Router /capabilities [get]
+func handleCapabilities(capabilities []string) fiber.Handler {
+	return func(c *fiber.Ctx) error {
+		return c.JSON(capabilities)
+	}
 }
 
 // registerDocsRoutes sets up Swagger/Scalar API documentation

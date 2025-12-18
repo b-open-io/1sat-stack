@@ -1,0 +1,173 @@
+package own
+
+import (
+	"context"
+	"fmt"
+	"log/slog"
+	"sync"
+
+	"github.com/b-open-io/1sat-stack/pkg/beef"
+	"github.com/b-open-io/1sat-stack/pkg/overlay"
+	"github.com/b-open-io/1sat-stack/pkg/txo"
+	"github.com/b-open-io/go-junglebus"
+	"github.com/bsv-blockchain/go-overlay-services/pkg/core/engine"
+	"github.com/bsv-blockchain/go-sdk/chainhash"
+	sdkoverlay "github.com/bsv-blockchain/go-sdk/overlay"
+)
+
+const (
+	// OwnerSyncKey is the key used to track owner sync progress
+	OwnerSyncKey = "own:sync"
+)
+
+// OwnerSync handles syncing transactions for owners from JungleBus
+type OwnerSync struct {
+	jb          *junglebus.Client
+	beefStorage *beef.Storage
+	overlay     *overlay.Services
+	outputStore *txo.OutputStore
+	concurrency int
+	logger      *slog.Logger
+}
+
+// NewOwnerSync creates a new OwnerSync instance
+func NewOwnerSync(
+	jb *junglebus.Client,
+	beefStorage *beef.Storage,
+	overlay *overlay.Services,
+	outputStore *txo.OutputStore,
+	logger *slog.Logger,
+) *OwnerSync {
+	if logger == nil {
+		logger = slog.Default()
+	}
+	return &OwnerSync{
+		jb:          jb,
+		beefStorage: beefStorage,
+		overlay:     overlay,
+		outputStore: outputStore,
+		concurrency: 8,
+		logger:      logger,
+	}
+}
+
+// WithConcurrency sets the concurrency level for syncing
+func (s *OwnerSync) WithConcurrency(n int) *OwnerSync {
+	s.concurrency = n
+	return s
+}
+
+// Sync syncs all transactions for an owner from JungleBus.
+// It fetches transactions starting from the last synced height and submits them to the overlay.
+func (s *OwnerSync) Sync(ctx context.Context, owner string) error {
+	// Get last synced height
+	lastHeight, err := s.outputStore.LogScore(ctx, OwnerSyncKey, []byte(owner))
+	if err != nil {
+		return err
+	}
+
+	// Fetch transactions from JungleBus
+	addTxns, err := s.jb.GetAddressTransactions(ctx, owner, uint32(lastHeight))
+	if err != nil {
+		return err
+	}
+
+	if len(addTxns) == 0 {
+		return nil
+	}
+
+	limiter := make(chan struct{}, s.concurrency)
+	var wg sync.WaitGroup
+	var mu sync.Mutex
+	var firstErr error
+	var processed, skipped int
+	var newMaxHeight float64 = lastHeight
+
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+
+	for _, addTxn := range addTxns {
+		// Stop if context cancelled
+		if ctx.Err() != nil {
+			break
+		}
+
+		// Skip if already before last synced height
+		if float64(addTxn.BlockHeight) < lastHeight {
+			skipped++
+			continue
+		}
+
+		wg.Add(1)
+		limiter <- struct{}{}
+
+		go func(txid string, blockHeight uint32) {
+			defer func() {
+				<-limiter
+				wg.Done()
+			}()
+
+			if err := s.submitToOverlay(ctx, txid); err != nil {
+				s.logger.Error("OwnerSync: error submitting txid", "txid", txid, "error", err)
+				mu.Lock()
+				if firstErr == nil {
+					firstErr = err
+					cancel()
+				}
+				mu.Unlock()
+			} else {
+				mu.Lock()
+				processed++
+				if float64(blockHeight) > newMaxHeight {
+					newMaxHeight = float64(blockHeight)
+				}
+				mu.Unlock()
+			}
+		}(addTxn.TransactionID, addTxn.BlockHeight)
+	}
+
+	wg.Wait()
+
+	if firstErr != nil {
+		return firstErr
+	}
+
+	// Update sync progress
+	if err := s.outputStore.Log(ctx, OwnerSyncKey, []byte(owner), newMaxHeight); err != nil {
+		return err
+	}
+
+	s.logger.Debug("OwnerSync complete", "owner", owner, "processed", processed, "skipped", skipped)
+	return nil
+}
+
+// submitToOverlay builds BEEF with inputs and submits to overlay
+func (s *OwnerSync) submitToOverlay(ctx context.Context, txidStr string) error {
+	txid, err := chainhash.NewHashFromHex(txidStr)
+	if err != nil {
+		return fmt.Errorf("invalid txid %s: %w", txidStr, err)
+	}
+
+	// Load transaction with all inputs populated (needed for overlay validation)
+	tx, err := s.beefStorage.BuildFullBeefTx(ctx, txid)
+	if err != nil {
+		return fmt.Errorf("failed to load tx %s: %w", txidStr, err)
+	}
+
+	// Build BEEF with all input transactions
+	beefBytes, err := tx.AtomicBEEF(false)
+	if err != nil {
+		return fmt.Errorf("failed to build beef: %w", err)
+	}
+
+	// Submit to overlay with tm_1sat topic
+	_, err = s.overlay.Submit(ctx, sdkoverlay.TaggedBEEF{
+		Beef:   beefBytes,
+		Topics: []string{"tm_1sat"},
+	}, engine.SubmitModeHistorical)
+	if err != nil {
+		return fmt.Errorf("failed to submit to overlay: %w", err)
+	}
+
+	return nil
+}

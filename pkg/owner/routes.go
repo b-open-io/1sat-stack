@@ -9,8 +9,6 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/b-open-io/go-junglebus"
-	"github.com/b-open-io/1sat-stack/pkg/indexer"
 	"github.com/b-open-io/1sat-stack/pkg/store"
 	"github.com/b-open-io/1sat-stack/pkg/txo"
 	"github.com/bsv-blockchain/go-sdk/transaction"
@@ -20,22 +18,20 @@ import (
 // Routes provides HTTP handlers for owner queries.
 type Routes struct {
 	ctx         context.Context
+	sync        *OwnerSync
 	outputStore *txo.OutputStore
-	ingestCtx   *indexer.IngestCtx
-	jb          *junglebus.Client
 	logger      *slog.Logger
 }
 
 // NewRoutes creates a new Routes instance.
-func NewRoutes(ctx context.Context, outputStore *txo.OutputStore, ingestCtx *indexer.IngestCtx, jb *junglebus.Client, logger *slog.Logger) *Routes {
+func NewRoutes(ctx context.Context, sync *OwnerSync, outputStore *txo.OutputStore, logger *slog.Logger) *Routes {
 	if logger == nil {
 		logger = slog.Default()
 	}
 	return &Routes{
 		ctx:         ctx,
+		sync:        sync,
 		outputStore: outputStore,
-		ingestCtx:   ingestCtx,
-		jb:          jb,
 		logger:      logger,
 	}
 }
@@ -61,13 +57,13 @@ func (r *Routes) Register(router fiber.Router) {
 // @Param limit query int false "Maximum number of results" default(100)
 // @Success 200 {array} txo.IndexedOutput
 // @Failure 500 {string} string "Internal server error"
-// @Router /api/own/{owner}/txos [get]
+// @Router /owner/{owner}/txos [get]
 func (r *Routes) OwnerTxos(c *fiber.Ctx) error {
 	owner := c.Params("owner")
 
 	// Sync by default
-	if c.QueryBool("refresh", true) && r.ingestCtx != nil && r.jb != nil {
-		if err := SyncOwner(c.Context(), owner, r.ingestCtx, r.jb, r.outputStore, r.logger); err != nil {
+	if c.QueryBool("refresh", true) && r.sync != nil {
+		if err := r.sync.Sync(c.Context(), owner); err != nil {
 			return err
 		}
 	}
@@ -105,7 +101,7 @@ func (r *Routes) OwnerTxos(c *fiber.Ctx) error {
 // @Param owner path string true "Owner identifier (address, pubkey, or script hash)"
 // @Success 200 {object} BalanceResponse
 // @Failure 500 {string} string "Internal server error"
-// @Router /api/own/{owner}/balance [get]
+// @Router /owner/{owner}/balance [get]
 func (r *Routes) OwnerBalance(c *fiber.Ctx) error {
 	owner := c.Params("owner")
 
@@ -144,7 +140,7 @@ type SyncOutput struct {
 // @Param owner path string true "Owner identifier (address, pubkey, or script hash)"
 // @Param from query number false "Starting score for pagination"
 // @Success 200 {string} string "SSE stream of SyncOutput events"
-// @Router /api/own/{owner}/sync [get]
+// @Router /owner/{owner}/sync [get]
 func (r *Routes) OwnerSync(c *fiber.Ctx) error {
 	owner := c.Params("owner")
 
@@ -197,9 +193,9 @@ func (r *Routes) OwnerSync(c *fiber.Ctx) error {
 
 			if len(results) == 0 {
 				// Trigger sync in background so new items are ready when client returns
-				if r.ingestCtx != nil && r.jb != nil {
+				if r.sync != nil {
 					go func() {
-						if err := SyncOwner(r.ctx, owner, r.ingestCtx, r.jb, r.outputStore, r.logger); err != nil {
+						if err := r.sync.Sync(r.ctx, owner); err != nil {
 							r.logger.Error("OwnerSync background sync error", "error", err)
 						}
 					}()
@@ -253,9 +249,9 @@ func (r *Routes) OwnerSync(c *fiber.Ctx) error {
 
 			if !hasMore {
 				// Trigger sync in background so new items are ready when client returns
-				if r.ingestCtx != nil && r.jb != nil {
+				if r.sync != nil {
 					go func() {
-						if err := SyncOwner(r.ctx, owner, r.ingestCtx, r.jb, r.outputStore, r.logger); err != nil {
+						if err := r.sync.Sync(r.ctx, owner); err != nil {
 							r.logger.Error("OwnerSync background sync error", "error", err)
 						}
 					}()

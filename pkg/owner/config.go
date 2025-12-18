@@ -2,12 +2,12 @@ package own
 
 import (
 	"context"
-	"fmt"
 	"log/slog"
 
-	"github.com/b-open-io/go-junglebus"
-	"github.com/b-open-io/1sat-stack/pkg/indexer"
+	"github.com/b-open-io/1sat-stack/pkg/beef"
+	"github.com/b-open-io/1sat-stack/pkg/overlay"
 	"github.com/b-open-io/1sat-stack/pkg/txo"
+	"github.com/b-open-io/go-junglebus"
 	"github.com/spf13/viper"
 )
 
@@ -19,8 +19,7 @@ const (
 
 // Config holds owner service configuration.
 type Config struct {
-	Mode      string `mapstructure:"mode"`      // disabled, embedded
-	JungleBus string `mapstructure:"junglebus"` // JungleBus URL
+	Mode string `mapstructure:"mode"` // disabled, embedded
 
 	Routes RoutesConfig `mapstructure:"routes"`
 }
@@ -39,23 +38,29 @@ func (c *Config) SetDefaults(v *viper.Viper, prefix string) {
 	}
 
 	v.SetDefault(p+"mode", ModeEmbedded)
-	v.SetDefault(p+"junglebus", "https://junglebus.gorillapool.io")
 	v.SetDefault(p+"routes.enabled", true)
 	v.SetDefault(p+"routes.prefix", "")
 }
 
 // Services holds initialized owner services.
 type Services struct {
-	JungleBus *junglebus.Client
-	Routes    *Routes
+	Sync   *OwnerSync
+	Routes *Routes
+}
+
+// InitializeDeps holds dependencies for owner service initialization
+type InitializeDeps struct {
+	JungleBus   *junglebus.Client
+	BeefStorage *beef.Storage
+	Overlay     *overlay.Services
+	OutputStore *txo.OutputStore
 }
 
 // Initialize creates an owner service from the configuration.
 func (c *Config) Initialize(
 	ctx context.Context,
 	logger *slog.Logger,
-	outputStore *txo.OutputStore,
-	ingestCtx *indexer.IngestCtx,
+	deps *InitializeDeps,
 ) (*Services, error) {
 	if c.Mode == ModeDisabled {
 		return nil, nil
@@ -65,31 +70,24 @@ func (c *Config) Initialize(
 		logger = slog.Default()
 	}
 
-	switch c.Mode {
-	case ModeEmbedded:
-		// Initialize JungleBus client
-		jb, err := junglebus.New(
-			junglebus.WithHTTP(c.JungleBus),
-		)
-		if err != nil {
-			return nil, fmt.Errorf("failed to create junglebus client: %w", err)
-		}
-
-		svc := &Services{JungleBus: jb}
-
-		if c.Routes.Enabled {
-			svc.Routes = NewRoutes(ctx, outputStore, ingestCtx, jb, logger)
-		}
-
-		return svc, nil
-
-	default:
-		return nil, fmt.Errorf("unknown own mode: %s", c.Mode)
+	svc := &Services{
+		Sync: NewOwnerSync(
+			deps.JungleBus,
+			deps.BeefStorage,
+			deps.Overlay,
+			deps.OutputStore,
+			logger,
+		),
 	}
+
+	if c.Routes.Enabled {
+		svc.Routes = NewRoutes(ctx, svc.Sync, deps.OutputStore, logger)
+	}
+
+	return svc, nil
 }
 
 // Close closes the owner service.
 func (s *Services) Close() error {
-	// Nothing to close
 	return nil
 }

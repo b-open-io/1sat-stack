@@ -393,6 +393,25 @@ func (s *Storage) BuildBeefTx(ctx context.Context, txid *chainhash.Hash) (*trans
 	return tx, nil
 }
 
+// BuildFullBeefTx loads a transaction with all input source transactions populated,
+// regardless of whether the main transaction has a merkle path.
+// This is needed for overlay submission where inputs must be validated.
+func (s *Storage) BuildFullBeefTx(ctx context.Context, txid *chainhash.Hash) (*transaction.Transaction, error) {
+	tx, err := s.LoadTx(ctx, txid)
+	if err != nil {
+		return nil, err
+	}
+
+	for _, input := range tx.Inputs {
+		input.SourceTransaction, err = s.BuildBeefTx(ctx, input.SourceTXID)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	return tx, nil
+}
+
 // LoadRawTx loads just the raw transaction bytes
 func (s *Storage) LoadRawTx(ctx context.Context, txid *chainhash.Hash) ([]byte, error) {
 	for i, storage := range s.storages {

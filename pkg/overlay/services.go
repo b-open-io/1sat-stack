@@ -1,12 +1,14 @@
-package ovr
+package overlay
 
 import (
 	"context"
+	"errors"
 	"log/slog"
 	"sync"
 	"time"
 
 	"github.com/bsv-blockchain/go-overlay-services/pkg/core/engine"
+	"github.com/bsv-blockchain/go-sdk/overlay"
 )
 
 // TopicManagerFactory creates a TopicManager instance for a given topic name
@@ -182,6 +184,32 @@ func (s *Services) UnregisterLookupService(name string) {
 		s.Engine.UnregisterLookupService(name)
 		s.logger.Info("unregistered lookup service", "name", name)
 	}
+}
+
+// GetEngine returns the overlay engine for direct access
+func (s *Services) GetEngine() *engine.Engine {
+	return s.Engine
+}
+
+// Submit submits a tagged BEEF to the overlay engine
+func (s *Services) Submit(ctx context.Context, beef overlay.TaggedBEEF, mode engine.SumbitMode) (overlay.Steak, error) {
+	if s.Engine == nil {
+		return nil, errors.New("overlay engine not initialized")
+	}
+	return s.Engine.Submit(ctx, beef, mode, nil)
+}
+
+// GetTopics returns list of active topic names from the engine
+func (s *Services) GetTopics() []string {
+	if s.Engine == nil {
+		return nil
+	}
+	managers := s.Engine.ListTopicManagers()
+	topics := make([]string, 0, len(managers))
+	for name := range managers {
+		topics = append(topics, name)
+	}
+	return topics
 }
 
 // Close cleans up overlay services

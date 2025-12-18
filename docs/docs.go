@@ -23,1409 +23,6 @@ const docTemplate = `{
     "host": "{{.Host}}",
     "basePath": "{{.BasePath}}",
     "paths": {
-        "/api/beef/{txid}": {
-            "get": {
-                "description": "Retrieves the BEEF (BSV Envelope Format) for a specific transaction",
-                "produces": [
-                    "application/octet-stream"
-                ],
-                "tags": [
-                    "beef"
-                ],
-                "summary": "Get BEEF for a transaction",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "description": "Transaction ID",
-                        "name": "txid",
-                        "in": "path",
-                        "required": true
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "BEEF bytes",
-                        "schema": {
-                            "type": "file"
-                        }
-                    },
-                    "404": {
-                        "description": "Transaction not found",
-                        "schema": {
-                            "type": "object",
-                            "additionalProperties": {
-                                "type": "string"
-                            }
-                        }
-                    }
-                }
-            }
-        },
-        "/api/beef/{txid}/proof": {
-            "get": {
-                "description": "Retrieves just the merkle proof bytes for a transaction",
-                "produces": [
-                    "application/octet-stream"
-                ],
-                "tags": [
-                    "beef"
-                ],
-                "summary": "Get merkle proof",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "description": "Transaction ID",
-                        "name": "txid",
-                        "in": "path",
-                        "required": true
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "Merkle proof bytes",
-                        "schema": {
-                            "type": "file"
-                        }
-                    },
-                    "404": {
-                        "description": "Proof not found",
-                        "schema": {
-                            "type": "object",
-                            "additionalProperties": {
-                                "type": "string"
-                            }
-                        }
-                    }
-                }
-            }
-        },
-        "/api/beef/{txid}/raw": {
-            "get": {
-                "description": "Retrieves just the raw transaction bytes (without proof)",
-                "produces": [
-                    "application/octet-stream"
-                ],
-                "tags": [
-                    "beef"
-                ],
-                "summary": "Get raw transaction",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "description": "Transaction ID",
-                        "name": "txid",
-                        "in": "path",
-                        "required": true
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "Raw transaction bytes",
-                        "schema": {
-                            "type": "file"
-                        }
-                    },
-                    "404": {
-                        "description": "Transaction not found",
-                        "schema": {
-                            "type": "object",
-                            "additionalProperties": {
-                                "type": "string"
-                            }
-                        }
-                    }
-                }
-            }
-        },
-        "/api/bsv21/{tokenId}": {
-            "get": {
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "bsv21"
-                ],
-                "summary": "Get BSV21 token details",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "description": "Token ID (outpoint format: txid_vout)",
-                        "name": "tokenId",
-                        "in": "path",
-                        "required": true
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "$ref": "#/definitions/github_com_b-open-io_1sat-stack_pkg_bsv21.TokenResponse"
-                        }
-                    }
-                }
-            }
-        },
-        "/api/bsv21/{tokenId}/blk/{height}": {
-            "get": {
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "bsv21"
-                ],
-                "summary": "Get block data for a token",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "description": "Token ID",
-                        "name": "tokenId",
-                        "in": "path",
-                        "required": true
-                    },
-                    {
-                        "type": "integer",
-                        "description": "Block height",
-                        "name": "height",
-                        "in": "path",
-                        "required": true
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "$ref": "#/definitions/github_com_b-open-io_1sat-stack_pkg_bsv21.BlockResponse"
-                        }
-                    }
-                }
-            }
-        },
-        "/api/bsv21/{tokenId}/tx/{txid}": {
-            "get": {
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "bsv21"
-                ],
-                "summary": "Get transaction details",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "description": "Token ID",
-                        "name": "tokenId",
-                        "in": "path",
-                        "required": true
-                    },
-                    {
-                        "type": "string",
-                        "description": "Transaction ID",
-                        "name": "txid",
-                        "in": "path",
-                        "required": true
-                    },
-                    {
-                        "type": "boolean",
-                        "description": "Include BEEF data",
-                        "name": "beef",
-                        "in": "query"
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "type": "object",
-                            "additionalProperties": true
-                        }
-                    }
-                }
-            }
-        },
-        "/api/bsv21/{tokenId}/{lockType}/balance": {
-            "post": {
-                "consumes": [
-                    "application/json"
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "bsv21"
-                ],
-                "summary": "Get multi-address token balance",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "description": "Token ID",
-                        "name": "tokenId",
-                        "in": "path",
-                        "required": true
-                    },
-                    {
-                        "type": "string",
-                        "description": "Lock type",
-                        "name": "lockType",
-                        "in": "path",
-                        "required": true
-                    },
-                    {
-                        "description": "Array of addresses (max 100)",
-                        "name": "addresses",
-                        "in": "body",
-                        "required": true,
-                        "schema": {
-                            "type": "array",
-                            "items": {
-                                "type": "string"
-                            }
-                        }
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "$ref": "#/definitions/github_com_b-open-io_1sat-stack_pkg_bsv21.BalanceResponse"
-                        }
-                    }
-                }
-            }
-        },
-        "/api/bsv21/{tokenId}/{lockType}/history": {
-            "post": {
-                "consumes": [
-                    "application/json"
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "bsv21"
-                ],
-                "summary": "Get multi-address transaction history",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "description": "Token ID",
-                        "name": "tokenId",
-                        "in": "path",
-                        "required": true
-                    },
-                    {
-                        "type": "string",
-                        "description": "Lock type",
-                        "name": "lockType",
-                        "in": "path",
-                        "required": true
-                    },
-                    {
-                        "description": "Array of addresses (max 100)",
-                        "name": "addresses",
-                        "in": "body",
-                        "required": true,
-                        "schema": {
-                            "type": "array",
-                            "items": {
-                                "type": "string"
-                            }
-                        }
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "type": "array",
-                            "items": {
-                                "$ref": "#/definitions/github_com_b-open-io_1sat-stack_pkg_txo.IndexedOutput"
-                            }
-                        }
-                    }
-                }
-            }
-        },
-        "/api/bsv21/{tokenId}/{lockType}/unspent": {
-            "post": {
-                "consumes": [
-                    "application/json"
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "bsv21"
-                ],
-                "summary": "Get multi-address unspent outputs",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "description": "Token ID",
-                        "name": "tokenId",
-                        "in": "path",
-                        "required": true
-                    },
-                    {
-                        "type": "string",
-                        "description": "Lock type",
-                        "name": "lockType",
-                        "in": "path",
-                        "required": true
-                    },
-                    {
-                        "description": "Array of addresses (max 100)",
-                        "name": "addresses",
-                        "in": "body",
-                        "required": true,
-                        "schema": {
-                            "type": "array",
-                            "items": {
-                                "type": "string"
-                            }
-                        }
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "type": "array",
-                            "items": {
-                                "$ref": "#/definitions/github_com_b-open-io_1sat-stack_pkg_txo.IndexedOutput"
-                            }
-                        }
-                    }
-                }
-            }
-        },
-        "/api/bsv21/{tokenId}/{lockType}/{address}/balance": {
-            "get": {
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "bsv21"
-                ],
-                "summary": "Get address token balance",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "description": "Token ID",
-                        "name": "tokenId",
-                        "in": "path",
-                        "required": true
-                    },
-                    {
-                        "type": "string",
-                        "description": "Lock type (p2pkh, cos, list, etc.)",
-                        "name": "lockType",
-                        "in": "path",
-                        "required": true
-                    },
-                    {
-                        "type": "string",
-                        "description": "Address",
-                        "name": "address",
-                        "in": "path",
-                        "required": true
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "$ref": "#/definitions/github_com_b-open-io_1sat-stack_pkg_bsv21.BalanceResponse"
-                        }
-                    }
-                }
-            }
-        },
-        "/api/bsv21/{tokenId}/{lockType}/{address}/history": {
-            "get": {
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "bsv21"
-                ],
-                "summary": "Get address transaction history",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "description": "Token ID",
-                        "name": "tokenId",
-                        "in": "path",
-                        "required": true
-                    },
-                    {
-                        "type": "string",
-                        "description": "Lock type",
-                        "name": "lockType",
-                        "in": "path",
-                        "required": true
-                    },
-                    {
-                        "type": "string",
-                        "description": "Address",
-                        "name": "address",
-                        "in": "path",
-                        "required": true
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "type": "array",
-                            "items": {
-                                "$ref": "#/definitions/github_com_b-open-io_1sat-stack_pkg_txo.IndexedOutput"
-                            }
-                        }
-                    }
-                }
-            }
-        },
-        "/api/bsv21/{tokenId}/{lockType}/{address}/unspent": {
-            "get": {
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "bsv21"
-                ],
-                "summary": "Get address unspent outputs",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "description": "Token ID",
-                        "name": "tokenId",
-                        "in": "path",
-                        "required": true
-                    },
-                    {
-                        "type": "string",
-                        "description": "Lock type",
-                        "name": "lockType",
-                        "in": "path",
-                        "required": true
-                    },
-                    {
-                        "type": "string",
-                        "description": "Address",
-                        "name": "address",
-                        "in": "path",
-                        "required": true
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "type": "array",
-                            "items": {
-                                "$ref": "#/definitions/github_com_b-open-io_1sat-stack_pkg_txo.IndexedOutput"
-                            }
-                        }
-                    }
-                }
-            }
-        },
-        "/api/idx/ingest/{txid}": {
-            "post": {
-                "description": "Ingests a transaction by txid, parsing and saving to the store",
-                "consumes": [
-                    "application/json"
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "indexer"
-                ],
-                "summary": "Ingest a transaction by txid",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "description": "Transaction ID",
-                        "name": "txid",
-                        "in": "path",
-                        "required": true
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "$ref": "#/definitions/pkg_indexer.IndexContext"
-                        }
-                    },
-                    "400": {
-                        "description": "Bad Request",
-                        "schema": {
-                            "type": "object",
-                            "additionalProperties": {
-                                "type": "string"
-                            }
-                        }
-                    },
-                    "404": {
-                        "description": "Not Found",
-                        "schema": {
-                            "type": "object",
-                            "additionalProperties": {
-                                "type": "string"
-                            }
-                        }
-                    },
-                    "500": {
-                        "description": "Internal Server Error",
-                        "schema": {
-                            "type": "object",
-                            "additionalProperties": {
-                                "type": "string"
-                            }
-                        }
-                    }
-                }
-            }
-        },
-        "/api/idx/parse": {
-            "post": {
-                "description": "Parses a transaction from raw bytes and returns the indexed context without saving",
-                "consumes": [
-                    "application/octet-stream"
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "indexer"
-                ],
-                "summary": "Parse a transaction from raw bytes",
-                "parameters": [
-                    {
-                        "description": "Raw transaction bytes",
-                        "name": "tx",
-                        "in": "body",
-                        "required": true,
-                        "schema": {
-                            "type": "array",
-                            "items": {
-                                "type": "integer"
-                            }
-                        }
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "$ref": "#/definitions/pkg_indexer.IndexContext"
-                        }
-                    },
-                    "400": {
-                        "description": "Bad Request",
-                        "schema": {
-                            "type": "object",
-                            "additionalProperties": {
-                                "type": "string"
-                            }
-                        }
-                    },
-                    "500": {
-                        "description": "Internal Server Error",
-                        "schema": {
-                            "type": "object",
-                            "additionalProperties": {
-                                "type": "string"
-                            }
-                        }
-                    }
-                }
-            }
-        },
-        "/api/idx/parse/{txid}": {
-            "get": {
-                "description": "Parses a transaction and returns the indexed context without saving",
-                "consumes": [
-                    "application/json"
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "indexer"
-                ],
-                "summary": "Parse a transaction by txid",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "description": "Transaction ID",
-                        "name": "txid",
-                        "in": "path",
-                        "required": true
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "$ref": "#/definitions/pkg_indexer.IndexContext"
-                        }
-                    },
-                    "400": {
-                        "description": "Bad Request",
-                        "schema": {
-                            "type": "object",
-                            "additionalProperties": {
-                                "type": "string"
-                            }
-                        }
-                    },
-                    "404": {
-                        "description": "Not Found",
-                        "schema": {
-                            "type": "object",
-                            "additionalProperties": {
-                                "type": "string"
-                            }
-                        }
-                    },
-                    "500": {
-                        "description": "Internal Server Error",
-                        "schema": {
-                            "type": "object",
-                            "additionalProperties": {
-                                "type": "string"
-                            }
-                        }
-                    }
-                }
-            }
-        },
-        "/api/idx/tags": {
-            "get": {
-                "description": "Returns the list of tags from all registered indexers",
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "indexer"
-                ],
-                "summary": "Get available indexer tags",
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "type": "array",
-                            "items": {
-                                "type": "string"
-                            }
-                        }
-                    }
-                }
-            }
-        },
-        "/api/ordfs/metadata/{path}": {
-            "get": {
-                "description": "Get metadata about inscription content without downloading the content",
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "ordfs"
-                ],
-                "summary": "Get content metadata",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "description": "Outpoint (txid_vout) or txid",
-                        "name": "path",
-                        "in": "path",
-                        "required": true
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "Metadata",
-                        "schema": {
-                            "$ref": "#/definitions/pkg_ordfs.Response"
-                        }
-                    },
-                    "400": {
-                        "description": "Bad request",
-                        "schema": {
-                            "type": "object",
-                            "additionalProperties": {
-                                "type": "string"
-                            }
-                        }
-                    },
-                    "404": {
-                        "description": "Not found",
-                        "schema": {
-                            "type": "object",
-                            "additionalProperties": {
-                                "type": "string"
-                            }
-                        }
-                    }
-                }
-            }
-        },
-        "/api/ordfs/output/{path}": {
-            "get": {
-                "description": "Get the raw transaction output bytes",
-                "produces": [
-                    "application/octet-stream"
-                ],
-                "tags": [
-                    "ordfs"
-                ],
-                "summary": "Get raw output",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "description": "Outpoint (txid_vout) or txid",
-                        "name": "path",
-                        "in": "path",
-                        "required": true
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "Output bytes",
-                        "schema": {
-                            "type": "file"
-                        }
-                    },
-                    "400": {
-                        "description": "Bad request",
-                        "schema": {
-                            "type": "object",
-                            "additionalProperties": {
-                                "type": "string"
-                            }
-                        }
-                    },
-                    "404": {
-                        "description": "Not found",
-                        "schema": {
-                            "type": "object",
-                            "additionalProperties": {
-                                "type": "string"
-                            }
-                        }
-                    }
-                }
-            }
-        },
-        "/api/ordfs/preview": {
-            "post": {
-                "description": "Echo back the request body for preview rendering",
-                "consumes": [
-                    "*/*"
-                ],
-                "produces": [
-                    "*/*"
-                ],
-                "tags": [
-                    "ordfs"
-                ],
-                "summary": "Preview posted content",
-                "responses": {
-                    "200": {
-                        "description": "Content",
-                        "schema": {
-                            "type": "string"
-                        }
-                    },
-                    "400": {
-                        "description": "Bad request",
-                        "schema": {
-                            "type": "object",
-                            "additionalProperties": {
-                                "type": "string"
-                            }
-                        }
-                    }
-                }
-            }
-        },
-        "/api/ordfs/preview/{b64HtmlData}": {
-            "get": {
-                "description": "Decode and render base64-encoded HTML",
-                "produces": [
-                    "text/html"
-                ],
-                "tags": [
-                    "ordfs"
-                ],
-                "summary": "Preview HTML content",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "description": "Base64-encoded HTML content",
-                        "name": "b64HtmlData",
-                        "in": "path",
-                        "required": true
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "HTML content",
-                        "schema": {
-                            "type": "string"
-                        }
-                    },
-                    "400": {
-                        "description": "Bad request",
-                        "schema": {
-                            "type": "object",
-                            "additionalProperties": {
-                                "type": "string"
-                            }
-                        }
-                    }
-                }
-            }
-        },
-        "/api/own/{owner}/balance": {
-            "get": {
-                "description": "Get the satoshi balance for a specific owner",
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "own"
-                ],
-                "summary": "Get owner balance",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "description": "Owner identifier (address, pubkey, or script hash)",
-                        "name": "owner",
-                        "in": "path",
-                        "required": true
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "$ref": "#/definitions/pkg_own.BalanceResponse"
-                        }
-                    },
-                    "500": {
-                        "description": "Internal server error",
-                        "schema": {
-                            "type": "string"
-                        }
-                    }
-                }
-            }
-        },
-        "/api/own/{owner}/sync": {
-            "get": {
-                "description": "Stream paginated outputs for wallet synchronization via Server-Sent Events. Streams all outputs until exhausted, then triggers background sync and sends retry directive.",
-                "produces": [
-                    "text/event-stream"
-                ],
-                "tags": [
-                    "own"
-                ],
-                "summary": "Stream owner sync via SSE",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "description": "Owner identifier (address, pubkey, or script hash)",
-                        "name": "owner",
-                        "in": "path",
-                        "required": true
-                    },
-                    {
-                        "type": "number",
-                        "description": "Starting score for pagination",
-                        "name": "from",
-                        "in": "query"
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "SSE stream of SyncOutput events",
-                        "schema": {
-                            "type": "string"
-                        }
-                    }
-                }
-            }
-        },
-        "/api/own/{owner}/txos": {
-            "get": {
-                "description": "Get transaction outputs owned by a specific owner (address/pubkey/script hash)",
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "own"
-                ],
-                "summary": "Get owner TXOs",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "description": "Owner identifier (address, pubkey, or script hash)",
-                        "name": "owner",
-                        "in": "path",
-                        "required": true
-                    },
-                    {
-                        "type": "boolean",
-                        "default": true,
-                        "description": "Refresh owner data from blockchain before returning",
-                        "name": "refresh",
-                        "in": "query"
-                    },
-                    {
-                        "type": "boolean",
-                        "default": true,
-                        "description": "Filter for unspent outputs only",
-                        "name": "unspent",
-                        "in": "query"
-                    },
-                    {
-                        "type": "string",
-                        "description": "Comma-separated list of tags to include",
-                        "name": "tags",
-                        "in": "query"
-                    },
-                    {
-                        "type": "number",
-                        "description": "Starting score for pagination",
-                        "name": "from",
-                        "in": "query"
-                    },
-                    {
-                        "type": "boolean",
-                        "description": "Reverse order",
-                        "name": "rev",
-                        "in": "query"
-                    },
-                    {
-                        "type": "integer",
-                        "default": 100,
-                        "description": "Maximum number of results",
-                        "name": "limit",
-                        "in": "query"
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "type": "array",
-                            "items": {
-                                "$ref": "#/definitions/github_com_b-open-io_1sat-stack_pkg_txo.IndexedOutput"
-                            }
-                        }
-                    },
-                    "500": {
-                        "description": "Internal server error",
-                        "schema": {
-                            "type": "string"
-                        }
-                    }
-                }
-            }
-        },
-        "/api/sse/{topics}": {
-            "get": {
-                "description": "Establishes an SSE connection for real-time event streaming",
-                "produces": [
-                    "text/event-stream"
-                ],
-                "tags": [
-                    "sse"
-                ],
-                "summary": "Subscribe to Server-Sent Events",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "description": "Comma-separated list of topics to subscribe to",
-                        "name": "topics",
-                        "in": "path",
-                        "required": true
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "SSE stream",
-                        "schema": {
-                            "type": "string"
-                        }
-                    }
-                }
-            }
-        },
-        "/api/txo/outpoint/{outpoint}": {
-            "get": {
-                "description": "Get a transaction output by its outpoint",
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "txos"
-                ],
-                "summary": "Get TXO by outpoint",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "description": "Outpoint in format txid_vout or txid:vout",
-                        "name": "outpoint",
-                        "in": "path",
-                        "required": true
-                    },
-                    {
-                        "type": "string",
-                        "description": "Comma-separated list of tags to include",
-                        "name": "tags",
-                        "in": "query"
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "$ref": "#/definitions/pkg_txo.IndexedOutput"
-                        }
-                    },
-                    "400": {
-                        "description": "Invalid outpoint format",
-                        "schema": {
-                            "type": "string"
-                        }
-                    },
-                    "404": {
-                        "description": "TXO not found",
-                        "schema": {
-                            "type": "string"
-                        }
-                    },
-                    "500": {
-                        "description": "Internal server error",
-                        "schema": {
-                            "type": "string"
-                        }
-                    }
-                }
-            }
-        },
-        "/api/txo/outpoint/{outpoint}/spend": {
-            "get": {
-                "description": "Get the spending transaction for an outpoint",
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "txos"
-                ],
-                "summary": "Get spend info for outpoint",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "description": "Outpoint in format txid_vout or txid:vout",
-                        "name": "outpoint",
-                        "in": "path",
-                        "required": true
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "$ref": "#/definitions/pkg_txo.SpendResponse"
-                        }
-                    },
-                    "400": {
-                        "description": "Invalid outpoint format",
-                        "schema": {
-                            "type": "string"
-                        }
-                    },
-                    "500": {
-                        "description": "Internal server error",
-                        "schema": {
-                            "type": "string"
-                        }
-                    }
-                }
-            }
-        },
-        "/api/txo/outpoints": {
-            "post": {
-                "description": "Get multiple transaction outputs by their outpoints",
-                "consumes": [
-                    "application/json"
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "txos"
-                ],
-                "summary": "Get multiple TXOs",
-                "parameters": [
-                    {
-                        "description": "Array of outpoints",
-                        "name": "outpoints",
-                        "in": "body",
-                        "required": true,
-                        "schema": {
-                            "type": "array",
-                            "items": {
-                                "type": "string"
-                            }
-                        }
-                    },
-                    {
-                        "type": "string",
-                        "description": "Comma-separated list of tags to include",
-                        "name": "tags",
-                        "in": "query"
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "type": "array",
-                            "items": {
-                                "$ref": "#/definitions/pkg_txo.IndexedOutput"
-                            }
-                        }
-                    },
-                    "500": {
-                        "description": "Internal server error",
-                        "schema": {
-                            "type": "string"
-                        }
-                    }
-                }
-            }
-        },
-        "/api/txo/outpoints/spends": {
-            "post": {
-                "description": "Get spending transactions for multiple outpoints",
-                "consumes": [
-                    "application/json"
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "txos"
-                ],
-                "summary": "Get spends for multiple outpoints",
-                "parameters": [
-                    {
-                        "description": "Array of outpoints",
-                        "name": "outpoints",
-                        "in": "body",
-                        "required": true,
-                        "schema": {
-                            "type": "array",
-                            "items": {
-                                "type": "string"
-                            }
-                        }
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "type": "array",
-                            "items": {
-                                "$ref": "#/definitions/pkg_txo.SpendResponse"
-                            }
-                        }
-                    },
-                    "500": {
-                        "description": "Internal server error",
-                        "schema": {
-                            "type": "string"
-                        }
-                    }
-                }
-            }
-        },
-        "/api/txo/search": {
-            "post": {
-                "description": "Search transaction outputs by multiple indexed keys",
-                "consumes": [
-                    "application/json"
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "search"
-                ],
-                "summary": "Search outputs by multiple keys",
-                "parameters": [
-                    {
-                        "description": "Search parameters",
-                        "name": "request",
-                        "in": "body",
-                        "required": true,
-                        "schema": {
-                            "$ref": "#/definitions/pkg_txo.SearchRequest"
-                        }
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "type": "array",
-                            "items": {
-                                "$ref": "#/definitions/pkg_txo.IndexedOutput"
-                            }
-                        }
-                    },
-                    "400": {
-                        "description": "Invalid request",
-                        "schema": {
-                            "type": "string"
-                        }
-                    },
-                    "500": {
-                        "description": "Internal server error",
-                        "schema": {
-                            "type": "string"
-                        }
-                    }
-                }
-            }
-        },
-        "/api/txo/search/{key}": {
-            "get": {
-                "description": "Search transaction outputs by an indexed key",
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "search"
-                ],
-                "summary": "Search outputs by key",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "description": "Search key (e.g., own:address, txid:hash)",
-                        "name": "key",
-                        "in": "path",
-                        "required": true
-                    },
-                    {
-                        "type": "number",
-                        "description": "Starting score for pagination",
-                        "name": "from",
-                        "in": "query"
-                    },
-                    {
-                        "type": "boolean",
-                        "description": "Reverse order",
-                        "name": "rev",
-                        "in": "query"
-                    },
-                    {
-                        "type": "integer",
-                        "default": 100,
-                        "description": "Maximum number of results",
-                        "name": "limit",
-                        "in": "query"
-                    },
-                    {
-                        "type": "boolean",
-                        "description": "Filter for unspent outputs only",
-                        "name": "unspent",
-                        "in": "query"
-                    },
-                    {
-                        "type": "string",
-                        "description": "Comma-separated list of tags to include",
-                        "name": "tags",
-                        "in": "query"
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "type": "array",
-                            "items": {
-                                "$ref": "#/definitions/pkg_txo.IndexedOutput"
-                            }
-                        }
-                    },
-                    "500": {
-                        "description": "Internal server error",
-                        "schema": {
-                            "type": "string"
-                        }
-                    }
-                }
-            }
-        },
-        "/api/txo/tx/{txid}": {
-            "get": {
-                "description": "Get all transaction outputs for a specific transaction",
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "txos"
-                ],
-                "summary": "Get TXOs by transaction ID",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "description": "Transaction ID",
-                        "name": "txid",
-                        "in": "path",
-                        "required": true
-                    },
-                    {
-                        "type": "string",
-                        "description": "Comma-separated list of tags to include",
-                        "name": "tags",
-                        "in": "query"
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "type": "array",
-                            "items": {
-                                "$ref": "#/definitions/pkg_txo.IndexedOutput"
-                            }
-                        }
-                    },
-                    "400": {
-                        "description": "Invalid txid",
-                        "schema": {
-                            "type": "string"
-                        }
-                    },
-                    "500": {
-                        "description": "Internal server error",
-                        "schema": {
-                            "type": "string"
-                        }
-                    }
-                }
-            }
-        },
         "/arc/callback": {
             "post": {
                 "description": "Receives transaction status updates from Arc broadcaster",
@@ -1481,7 +78,7 @@ const docTemplate = `{
                 }
             }
         },
-        "/arc/events": {
+        "/arcade/events": {
             "get": {
                 "description": "Server-Sent Events stream of transaction status updates. If callbackToken is provided, only events for that token are streamed.",
                 "produces": [
@@ -1509,7 +106,7 @@ const docTemplate = `{
                 }
             }
         },
-        "/arc/policy": {
+        "/arcade/policy": {
             "get": {
                 "description": "Returns the transaction policy configuration including fee rates and limits",
                 "produces": [
@@ -1529,7 +126,7 @@ const docTemplate = `{
                 }
             }
         },
-        "/arc/tx": {
+        "/arcade/tx": {
             "post": {
                 "description": "Submit a single transaction for broadcast. Accepts raw transaction bytes, hex string, or JSON with rawTx field.",
                 "consumes": [
@@ -1613,7 +210,7 @@ const docTemplate = `{
                 }
             }
         },
-        "/arc/tx/{txid}": {
+        "/arcade/tx/{txid}": {
             "get": {
                 "description": "Get the current status of a submitted transaction",
                 "produces": [
@@ -1660,7 +257,7 @@ const docTemplate = `{
                 }
             }
         },
-        "/arc/txs": {
+        "/arcade/txs": {
             "post": {
                 "description": "Submit multiple transactions for broadcast",
                 "consumes": [
@@ -1739,7 +336,537 @@ const docTemplate = `{
                 }
             }
         },
-        "/block/header/hash/{hash}": {
+        "/beef/{txid}": {
+            "get": {
+                "description": "Retrieves the BEEF (BSV Envelope Format) for a specific transaction",
+                "produces": [
+                    "application/octet-stream"
+                ],
+                "tags": [
+                    "beef"
+                ],
+                "summary": "Get BEEF for a transaction",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Transaction ID",
+                        "name": "txid",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "BEEF bytes",
+                        "schema": {
+                            "type": "file"
+                        }
+                    },
+                    "404": {
+                        "description": "Transaction not found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/beef/{txid}/proof": {
+            "get": {
+                "description": "Retrieves just the merkle proof bytes for a transaction",
+                "produces": [
+                    "application/octet-stream"
+                ],
+                "tags": [
+                    "beef"
+                ],
+                "summary": "Get merkle proof",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Transaction ID",
+                        "name": "txid",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Merkle proof bytes",
+                        "schema": {
+                            "type": "file"
+                        }
+                    },
+                    "404": {
+                        "description": "Proof not found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/beef/{txid}/raw": {
+            "get": {
+                "description": "Retrieves just the raw transaction bytes (without proof)",
+                "produces": [
+                    "application/octet-stream"
+                ],
+                "tags": [
+                    "beef"
+                ],
+                "summary": "Get raw transaction",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Transaction ID",
+                        "name": "txid",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Raw transaction bytes",
+                        "schema": {
+                            "type": "file"
+                        }
+                    },
+                    "404": {
+                        "description": "Transaction not found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/bsv21/{tokenId}": {
+            "get": {
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "bsv21"
+                ],
+                "summary": "Get BSV21 token details",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Token ID (outpoint format: txid_vout)",
+                        "name": "tokenId",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_b-open-io_1sat-stack_pkg_bsv21.TokenResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/bsv21/{tokenId}/blk/{height}": {
+            "get": {
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "bsv21"
+                ],
+                "summary": "Get block data for a token",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Token ID",
+                        "name": "tokenId",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Block height",
+                        "name": "height",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_b-open-io_1sat-stack_pkg_bsv21.BlockResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/bsv21/{tokenId}/tx/{txid}": {
+            "get": {
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "bsv21"
+                ],
+                "summary": "Get transaction details",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Token ID",
+                        "name": "tokenId",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Transaction ID",
+                        "name": "txid",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "boolean",
+                        "description": "Include BEEF data",
+                        "name": "beef",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    }
+                }
+            }
+        },
+        "/bsv21/{tokenId}/{lockType}/balance": {
+            "post": {
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "bsv21"
+                ],
+                "summary": "Get multi-address token balance",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Token ID",
+                        "name": "tokenId",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Lock type",
+                        "name": "lockType",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Array of addresses (max 100)",
+                        "name": "addresses",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_b-open-io_1sat-stack_pkg_bsv21.BalanceResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/bsv21/{tokenId}/{lockType}/history": {
+            "post": {
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "bsv21"
+                ],
+                "summary": "Get multi-address transaction history",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Token ID",
+                        "name": "tokenId",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Lock type",
+                        "name": "lockType",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Array of addresses (max 100)",
+                        "name": "addresses",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/github_com_b-open-io_1sat-stack_pkg_txo.IndexedOutput"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/bsv21/{tokenId}/{lockType}/unspent": {
+            "post": {
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "bsv21"
+                ],
+                "summary": "Get multi-address unspent outputs",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Token ID",
+                        "name": "tokenId",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Lock type",
+                        "name": "lockType",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Array of addresses (max 100)",
+                        "name": "addresses",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/github_com_b-open-io_1sat-stack_pkg_txo.IndexedOutput"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/bsv21/{tokenId}/{lockType}/{address}/balance": {
+            "get": {
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "bsv21"
+                ],
+                "summary": "Get address token balance",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Token ID",
+                        "name": "tokenId",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Lock type (p2pkh, cos, list, etc.)",
+                        "name": "lockType",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Address",
+                        "name": "address",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_b-open-io_1sat-stack_pkg_bsv21.BalanceResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/bsv21/{tokenId}/{lockType}/{address}/history": {
+            "get": {
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "bsv21"
+                ],
+                "summary": "Get address transaction history",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Token ID",
+                        "name": "tokenId",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Lock type",
+                        "name": "lockType",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Address",
+                        "name": "address",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/github_com_b-open-io_1sat-stack_pkg_txo.IndexedOutput"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/bsv21/{tokenId}/{lockType}/{address}/unspent": {
+            "get": {
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "bsv21"
+                ],
+                "summary": "Get address unspent outputs",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Token ID",
+                        "name": "tokenId",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Lock type",
+                        "name": "lockType",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Address",
+                        "name": "address",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/github_com_b-open-io_1sat-stack_pkg_txo.IndexedOutput"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/capabilities": {
+            "get": {
+                "description": "Returns the list of enabled service capabilities",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "system"
+                ],
+                "summary": "Get capabilities",
+                "responses": {
+                    "200": {
+                        "description": "List of enabled capabilities",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/chaintracks/header/hash/{hash}": {
             "get": {
                 "description": "Returns a block header with the specified hash",
                 "produces": [
@@ -1780,7 +907,7 @@ const docTemplate = `{
                 }
             }
         },
-        "/block/header/height/{height}": {
+        "/chaintracks/header/height/{height}": {
             "get": {
                 "description": "Returns a block header at the specified height",
                 "produces": [
@@ -1821,7 +948,7 @@ const docTemplate = `{
                 }
             }
         },
-        "/block/headers": {
+        "/chaintracks/headers": {
             "get": {
                 "description": "Returns block headers starting from height as binary data (80 bytes per header)",
                 "produces": [
@@ -1863,7 +990,7 @@ const docTemplate = `{
                 }
             }
         },
-        "/block/height": {
+        "/chaintracks/height": {
             "get": {
                 "description": "Returns the current blockchain height",
                 "produces": [
@@ -1883,7 +1010,7 @@ const docTemplate = `{
                 }
             }
         },
-        "/block/network": {
+        "/chaintracks/network": {
             "get": {
                 "description": "Returns the Bitcoin network this service is connected to",
                 "produces": [
@@ -1909,7 +1036,7 @@ const docTemplate = `{
                 }
             }
         },
-        "/block/tip": {
+        "/chaintracks/tip": {
             "get": {
                 "description": "Returns the current chain tip block header",
                 "produces": [
@@ -1935,7 +1062,7 @@ const docTemplate = `{
                 }
             }
         },
-        "/block/tip/stream": {
+        "/chaintracks/tip/stream": {
             "get": {
                 "description": "Server-Sent Events stream of chain tip updates. Sends the current tip immediately, then broadcasts new tips as they arrive.",
                 "produces": [
@@ -2021,6 +1148,1349 @@ const docTemplate = `{
                     },
                     "503": {
                         "description": "Service Unavailable",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
+        "/indexer/ingest/{txid}": {
+            "post": {
+                "description": "Ingests a transaction by txid, parsing and saving to the store",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "indexer"
+                ],
+                "summary": "Ingest a transaction by txid",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Transaction ID",
+                        "name": "txid",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_b-open-io_1sat-stack_pkg_indexer.IndexContext"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/indexer/parse": {
+            "post": {
+                "description": "Parses a transaction from raw bytes and returns the indexed context without saving",
+                "consumes": [
+                    "application/octet-stream"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "indexer"
+                ],
+                "summary": "Parse a transaction from raw bytes",
+                "parameters": [
+                    {
+                        "description": "Raw transaction bytes",
+                        "name": "tx",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "type": "integer"
+                            }
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_b-open-io_1sat-stack_pkg_indexer.IndexContext"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/indexer/parse/{txid}": {
+            "get": {
+                "description": "Parses a transaction and returns the indexed context without saving",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "indexer"
+                ],
+                "summary": "Parse a transaction by txid",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Transaction ID",
+                        "name": "txid",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_b-open-io_1sat-stack_pkg_indexer.IndexContext"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/indexer/tags": {
+            "get": {
+                "description": "Returns the list of tags from all registered indexers",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "indexer"
+                ],
+                "summary": "Get available indexer tags",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/ordfs/metadata/{path}": {
+            "get": {
+                "description": "Get metadata about inscription content without downloading the content",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "ordfs"
+                ],
+                "summary": "Get content metadata",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Outpoint (txid_vout) or txid",
+                        "name": "path",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Metadata",
+                        "schema": {
+                            "$ref": "#/definitions/pkg_ordfs.Response"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Not found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/ordfs/output/{path}": {
+            "get": {
+                "description": "Get the raw transaction output bytes",
+                "produces": [
+                    "application/octet-stream"
+                ],
+                "tags": [
+                    "ordfs"
+                ],
+                "summary": "Get raw output",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Outpoint (txid_vout) or txid",
+                        "name": "path",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Output bytes",
+                        "schema": {
+                            "type": "file"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Not found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/ordfs/preview": {
+            "post": {
+                "description": "Echo back the request body for preview rendering",
+                "consumes": [
+                    "*/*"
+                ],
+                "produces": [
+                    "*/*"
+                ],
+                "tags": [
+                    "ordfs"
+                ],
+                "summary": "Preview posted content",
+                "responses": {
+                    "200": {
+                        "description": "Content",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/ordfs/preview/{b64HtmlData}": {
+            "get": {
+                "description": "Decode and render base64-encoded HTML",
+                "produces": [
+                    "text/html"
+                ],
+                "tags": [
+                    "ordfs"
+                ],
+                "summary": "Preview HTML content",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Base64-encoded HTML content",
+                        "name": "b64HtmlData",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "HTML content",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/overlay/admin/startGASPSync": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Start GASP synchronization (requires admin bearer token)",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "overlay-admin"
+                ],
+                "summary": "Start GASP sync",
+                "responses": {
+                    "200": {
+                        "description": "message field with status",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/overlay/admin/syncAdvertisements": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Trigger advertisement sync (requires admin bearer token)",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "overlay-admin"
+                ],
+                "summary": "Sync advertisements",
+                "responses": {
+                    "200": {
+                        "description": "message field with status",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/overlay/getDocumentationForLookupServiceProvider": {
+            "get": {
+                "description": "Returns markdown documentation for a specific lookup service",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "overlay"
+                ],
+                "summary": "Get lookup service documentation",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Name of the lookup service",
+                        "name": "lookupService",
+                        "in": "query",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "documentation field with markdown content",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Bad request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/overlay/getDocumentationForTopicManager": {
+            "get": {
+                "description": "Returns markdown documentation for a specific topic manager",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "overlay"
+                ],
+                "summary": "Get topic manager documentation",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Name of the topic manager",
+                        "name": "topicManager",
+                        "in": "query",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "documentation field with markdown content",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Bad request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/overlay/listLookupServiceProviders": {
+            "get": {
+                "description": "Returns a list of all registered lookup service providers with their metadata",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "overlay"
+                ],
+                "summary": "List lookup service providers",
+                "responses": {
+                    "200": {
+                        "description": "Map of lookup service names to metadata",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    }
+                }
+            }
+        },
+        "/overlay/listTopicManagers": {
+            "get": {
+                "description": "Returns a list of all registered topic managers with their metadata",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "overlay"
+                ],
+                "summary": "List topic managers",
+                "responses": {
+                    "200": {
+                        "description": "Map of topic manager names to metadata",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    }
+                }
+            }
+        },
+        "/overlay/lookup": {
+            "post": {
+                "description": "Query a lookup service for outputs matching the query",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "overlay"
+                ],
+                "summary": "Lookup query",
+                "parameters": [
+                    {
+                        "description": "Lookup query with service name and query params",
+                        "name": "query",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "type": "object"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Lookup response with outputs",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "400": {
+                        "description": "Bad request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/overlay/requestForeignGASPNode": {
+            "post": {
+                "description": "Request a GASP node from a foreign overlay",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "overlay"
+                ],
+                "summary": "Request foreign GASP node",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Topic identifier",
+                        "name": "X-BSV-Topic",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "description": "Request with graphID, txID, and outputIndex",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "type": "object"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "GASP node data",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "400": {
+                        "description": "Bad request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/overlay/requestSyncResponse": {
+            "post": {
+                "description": "Request synchronization data for a topic (GASP protocol)",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "overlay"
+                ],
+                "summary": "Request sync response",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Topic identifier",
+                        "name": "X-BSV-Topic",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "description": "Sync request with version and since parameters",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "type": "object"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Sync response with UTXOList",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "400": {
+                        "description": "Bad request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/overlay/submit": {
+            "post": {
+                "description": "Submit a transaction to the overlay engine for processing",
+                "consumes": [
+                    "application/octet-stream"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "overlay"
+                ],
+                "summary": "Submit transaction",
+                "parameters": [
+                    {
+                        "type": "array",
+                        "items": {
+                            "type": "string"
+                        },
+                        "collectionFormat": "csv",
+                        "description": "Topic names to submit to",
+                        "name": "x-topics",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "description": "Serialized transaction data",
+                        "name": "transaction",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "type": "integer"
+                            }
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "STEAK response with admission results",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "400": {
+                        "description": "Bad request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/owner/{owner}/balance": {
+            "get": {
+                "description": "Get the satoshi balance for a specific owner",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "own"
+                ],
+                "summary": "Get owner balance",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Owner identifier (address, pubkey, or script hash)",
+                        "name": "owner",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/own.BalanceResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
+        "/owner/{owner}/sync": {
+            "get": {
+                "description": "Stream paginated outputs for wallet synchronization via Server-Sent Events. Streams all outputs until exhausted, then triggers background sync and sends retry directive.",
+                "produces": [
+                    "text/event-stream"
+                ],
+                "tags": [
+                    "own"
+                ],
+                "summary": "Stream owner sync via SSE",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Owner identifier (address, pubkey, or script hash)",
+                        "name": "owner",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "number",
+                        "description": "Starting score for pagination",
+                        "name": "from",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "SSE stream of SyncOutput events",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
+        "/owner/{owner}/txos": {
+            "get": {
+                "description": "Get transaction outputs owned by a specific owner (address/pubkey/script hash)",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "own"
+                ],
+                "summary": "Get owner TXOs",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Owner identifier (address, pubkey, or script hash)",
+                        "name": "owner",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "boolean",
+                        "default": true,
+                        "description": "Refresh owner data from blockchain before returning",
+                        "name": "refresh",
+                        "in": "query"
+                    },
+                    {
+                        "type": "boolean",
+                        "default": true,
+                        "description": "Filter for unspent outputs only",
+                        "name": "unspent",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Comma-separated list of tags to include",
+                        "name": "tags",
+                        "in": "query"
+                    },
+                    {
+                        "type": "number",
+                        "description": "Starting score for pagination",
+                        "name": "from",
+                        "in": "query"
+                    },
+                    {
+                        "type": "boolean",
+                        "description": "Reverse order",
+                        "name": "rev",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "default": 100,
+                        "description": "Maximum number of results",
+                        "name": "limit",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/github_com_b-open-io_1sat-stack_pkg_txo.IndexedOutput"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
+        "/sse/{topics}": {
+            "get": {
+                "description": "Establishes an SSE connection for real-time event streaming",
+                "produces": [
+                    "text/event-stream"
+                ],
+                "tags": [
+                    "sse"
+                ],
+                "summary": "Subscribe to Server-Sent Events",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Comma-separated list of topics to subscribe to",
+                        "name": "topics",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "SSE stream",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
+        "/txo/outpoint/{outpoint}": {
+            "get": {
+                "description": "Get a transaction output by its outpoint",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "txos"
+                ],
+                "summary": "Get TXO by outpoint",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Outpoint in format txid_vout or txid:vout",
+                        "name": "outpoint",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Comma-separated list of tags to include",
+                        "name": "tags",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/pkg_txo.IndexedOutput"
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid outpoint format",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "404": {
+                        "description": "TXO not found",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
+        "/txo/outpoint/{outpoint}/spend": {
+            "get": {
+                "description": "Get the spending transaction for an outpoint",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "txos"
+                ],
+                "summary": "Get spend info for outpoint",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Outpoint in format txid_vout or txid:vout",
+                        "name": "outpoint",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/pkg_txo.SpendResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid outpoint format",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
+        "/txo/outpoints": {
+            "post": {
+                "description": "Get multiple transaction outputs by their outpoints",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "txos"
+                ],
+                "summary": "Get multiple TXOs",
+                "parameters": [
+                    {
+                        "description": "Array of outpoints",
+                        "name": "outpoints",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    {
+                        "type": "string",
+                        "description": "Comma-separated list of tags to include",
+                        "name": "tags",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/pkg_txo.IndexedOutput"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
+        "/txo/outpoints/spends": {
+            "post": {
+                "description": "Get spending transactions for multiple outpoints",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "txos"
+                ],
+                "summary": "Get spends for multiple outpoints",
+                "parameters": [
+                    {
+                        "description": "Array of outpoints",
+                        "name": "outpoints",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/pkg_txo.SpendResponse"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
+        "/txo/search": {
+            "post": {
+                "description": "Search transaction outputs by multiple indexed keys",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "search"
+                ],
+                "summary": "Search outputs by multiple keys",
+                "parameters": [
+                    {
+                        "description": "Search parameters",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/pkg_txo.SearchRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/pkg_txo.IndexedOutput"
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid request",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
+        "/txo/search/{key}": {
+            "get": {
+                "description": "Search transaction outputs by an indexed key",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "search"
+                ],
+                "summary": "Search outputs by key",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Search key (e.g., own:address, txid:hash)",
+                        "name": "key",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "number",
+                        "description": "Starting score for pagination",
+                        "name": "from",
+                        "in": "query"
+                    },
+                    {
+                        "type": "boolean",
+                        "description": "Reverse order",
+                        "name": "rev",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "default": 100,
+                        "description": "Maximum number of results",
+                        "name": "limit",
+                        "in": "query"
+                    },
+                    {
+                        "type": "boolean",
+                        "description": "Filter for unspent outputs only",
+                        "name": "unspent",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Comma-separated list of tags to include",
+                        "name": "tags",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/pkg_txo.IndexedOutput"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
+        "/txo/tx/{txid}": {
+            "get": {
+                "description": "Get all transaction outputs for a specific transaction",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "txos"
+                ],
+                "summary": "Get TXOs by transaction ID",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Transaction ID",
+                        "name": "txid",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Comma-separated list of tags to include",
+                        "name": "tags",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/pkg_txo.IndexedOutput"
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid txid",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
                         "schema": {
                             "type": "string"
                         }
@@ -2289,17 +2759,6 @@ const docTemplate = `{
                 }
             }
         },
-        "github_com_b-open-io_1sat-stack_pkg_own.BalanceResponse": {
-            "type": "object",
-            "properties": {
-                "balance": {
-                    "type": "integer"
-                },
-                "count": {
-                    "type": "integer"
-                }
-            }
-        },
         "github_com_b-open-io_1sat-stack_pkg_txo.IndexedOutput": {
             "type": "object",
             "properties": {
@@ -2534,6 +2993,17 @@ const docTemplate = `{
                 }
             }
         },
+        "own.BalanceResponse": {
+            "type": "object",
+            "properties": {
+                "balance": {
+                    "type": "integer"
+                },
+                "count": {
+                    "type": "integer"
+                }
+            }
+        },
         "pkg_bsv21.BalanceResponse": {
             "type": "object",
             "properties": {
@@ -2692,17 +3162,6 @@ const docTemplate = `{
                     "$ref": "#/definitions/transaction.Outpoint"
                 },
                 "sequence": {
-                    "type": "integer"
-                }
-            }
-        },
-        "pkg_own.BalanceResponse": {
-            "type": "object",
-            "properties": {
-                "balance": {
-                    "type": "integer"
-                },
-                "count": {
                     "type": "integer"
                 }
             }

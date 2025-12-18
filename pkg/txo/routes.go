@@ -48,7 +48,7 @@ func (r *Routes) Register(router fiber.Router) {
 // @Failure 400 {string} string "Invalid outpoint format"
 // @Failure 404 {string} string "TXO not found"
 // @Failure 500 {string} string "Internal server error"
-// @Router /api/txo/outpoint/{outpoint} [get]
+// @Router /txo/outpoint/{outpoint} [get]
 func (r *Routes) GetTxo(c *fiber.Ctx) error {
 	op, err := ParseOutpoint(c.Params("outpoint"))
 	if err != nil {
@@ -80,7 +80,7 @@ func (r *Routes) GetTxo(c *fiber.Ctx) error {
 // @Success 200 {object} SpendResponse
 // @Failure 400 {string} string "Invalid outpoint format"
 // @Failure 500 {string} string "Internal server error"
-// @Router /api/txo/outpoint/{outpoint}/spend [get]
+// @Router /txo/outpoint/{outpoint}/spend [get]
 func (r *Routes) GetSpend(c *fiber.Ctx) error {
 	op, err := ParseOutpoint(c.Params("outpoint"))
 	if err != nil {
@@ -116,7 +116,7 @@ type SpendResponse struct {
 // @Param tags query string false "Comma-separated list of tags to include"
 // @Success 200 {array} IndexedOutput
 // @Failure 500 {string} string "Internal server error"
-// @Router /api/txo/outpoints [post]
+// @Router /txo/outpoints [post]
 func (r *Routes) GetTxos(c *fiber.Ctx) error {
 	var outpoints []string
 	if err := c.BodyParser(&outpoints); err != nil {
@@ -153,7 +153,7 @@ func (r *Routes) GetTxos(c *fiber.Ctx) error {
 // @Param outpoints body []string true "Array of outpoints"
 // @Success 200 {array} SpendResponse
 // @Failure 500 {string} string "Internal server error"
-// @Router /api/txo/outpoints/spends [post]
+// @Router /txo/outpoints/spends [post]
 func (r *Routes) GetSpends(c *fiber.Ctx) error {
 	var outpoints []string
 	if err := c.BodyParser(&outpoints); err != nil {
@@ -195,7 +195,7 @@ func (r *Routes) GetSpends(c *fiber.Ctx) error {
 // @Success 200 {array} IndexedOutput
 // @Failure 400 {string} string "Invalid txid"
 // @Failure 500 {string} string "Internal server error"
-// @Router /api/txo/tx/{txid} [get]
+// @Router /txo/tx/{txid} [get]
 func (r *Routes) TxosByTxid(c *fiber.Ctx) error {
 	txidStr := c.Params("txid")
 
@@ -230,7 +230,7 @@ func (r *Routes) TxosByTxid(c *fiber.Ctx) error {
 // @Param tags query string false "Comma-separated list of tags to include"
 // @Success 200 {array} IndexedOutput
 // @Failure 500 {string} string "Internal server error"
-// @Router /api/txo/search/{key} [get]
+// @Router /txo/search/{key} [get]
 func (r *Routes) SearchByKey(c *fiber.Ctx) error {
 	key := c.Params("key")
 
@@ -276,7 +276,7 @@ type SearchRequest struct {
 // @Success 200 {array} IndexedOutput
 // @Failure 400 {string} string "Invalid request"
 // @Failure 500 {string} string "Internal server error"
-// @Router /api/txo/search [post]
+// @Router /txo/search [post]
 func (r *Routes) SearchByKeys(c *fiber.Ctx) error {
 	var req SearchRequest
 	if err := c.BodyParser(&req); err != nil {

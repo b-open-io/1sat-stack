@@ -1,4 +1,4 @@
-package ovr
+package overlay
 
 import (
 	"context"

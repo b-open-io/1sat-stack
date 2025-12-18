@@ -10,7 +10,7 @@ import (
 	"github.com/b-open-io/1sat-stack/pkg/bsv21"
 	"github.com/b-open-io/1sat-stack/pkg/indexer"
 	"github.com/b-open-io/1sat-stack/pkg/ordfs"
-	"github.com/b-open-io/1sat-stack/pkg/ovr"
+	"github.com/b-open-io/1sat-stack/pkg/overlay"
 	"github.com/b-open-io/1sat-stack/pkg/pubsub"
 	"github.com/b-open-io/1sat-stack/pkg/store"
 	"github.com/b-open-io/1sat-stack/pkg/txo"
@@ -52,7 +52,7 @@ func TestConfigSetDefaults(t *testing.T) {
 	if v.GetString("bsv21.mode") != bsv21.ModeDisabled {
 		t.Errorf("expected bsv21.mode=disabled, got %s", v.GetString("bsv21.mode"))
 	}
-	if v.GetString("overlay.mode") != ovr.ModeDisabled {
+	if v.GetString("overlay.mode") != overlay.ModeDisabled {
 		t.Errorf("expected overlay.mode=disabled, got %s", v.GetString("overlay.mode"))
 	}
 	if v.GetString("ordfs.mode") != ordfs.ModeDisabled {
@@ -74,7 +74,7 @@ func TestConfigInitializeDisabled(t *testing.T) {
 		TXO:     txo.Config{Mode: txo.ModeDisabled},
 		Indexer: indexer.Config{Mode: indexer.ModeDisabled},
 		BSV21:   bsv21.Config{Mode: bsv21.ModeDisabled},
-		Overlay: ovr.Config{Mode: ovr.ModeDisabled},
+		Overlay: overlay.Config{Mode: overlay.ModeDisabled},
 		ORDFS:   ordfs.Config{Mode: ordfs.ModeDisabled},
 	}
 
