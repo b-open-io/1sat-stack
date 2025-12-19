@@ -26,6 +26,7 @@ import (
 
 // SyncConfig holds BSV21 sync configuration
 type SyncConfig struct {
+	Enabled            bool   `mapstructure:"enabled"`             // Enable sync services
 	SubscriptionID     string `mapstructure:"subscription_id"`     // JungleBus subscription for BSV21
 	FromBlock          uint64 `mapstructure:"from_block"`          // Starting block (default: 811302)
 	CategorizerWorkers int    `mapstructure:"categorizer_workers"` // Concurrency for categorizer

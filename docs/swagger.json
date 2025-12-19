@@ -493,320 +493,7 @@
                 }
             }
         },
-        "/arc/callback": {
-            "post": {
-                "description": "Receives transaction status updates from Arc broadcaster",
-                "consumes": [
-                    "application/json"
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "merkle"
-                ],
-                "summary": "Handle Arc callback",
-                "parameters": [
-                    {
-                        "description": "Arc callback payload",
-                        "name": "callback",
-                        "in": "body",
-                        "required": true,
-                        "schema": {
-                            "$ref": "#/definitions/merkle.ArcCallback"
-                        }
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "type": "object",
-                            "additionalProperties": {
-                                "type": "string"
-                            }
-                        }
-                    },
-                    "400": {
-                        "description": "Bad request",
-                        "schema": {
-                            "type": "object",
-                            "additionalProperties": {
-                                "type": "string"
-                            }
-                        }
-                    },
-                    "500": {
-                        "description": "Internal server error",
-                        "schema": {
-                            "type": "object",
-                            "additionalProperties": {
-                                "type": "string"
-                            }
-                        }
-                    }
-                }
-            }
-        },
-        "/arcade/events": {
-            "get": {
-                "description": "Server-Sent Events stream of transaction status updates. If callbackToken is provided, only events for that token are streamed.",
-                "produces": [
-                    "text/event-stream"
-                ],
-                "tags": [
-                    "arcade"
-                ],
-                "summary": "Stream transaction events",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "description": "Callback token from transaction submission",
-                        "name": "callbackToken",
-                        "in": "query"
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "SSE stream of transaction status updates",
-                        "schema": {
-                            "type": "string"
-                        }
-                    }
-                }
-            }
-        },
-        "/arcade/policy": {
-            "get": {
-                "description": "Returns the transaction policy configuration including fee rates and limits",
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "arcade"
-                ],
-                "summary": "Get policy",
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "$ref": "#/definitions/models.Policy"
-                        }
-                    }
-                }
-            }
-        },
-        "/arcade/tx": {
-            "post": {
-                "description": "Submit a single transaction for broadcast. Accepts raw transaction bytes, hex string, or JSON with rawTx field.",
-                "consumes": [
-                    "application/json",
-                    "application/octet-stream",
-                    "text/plain"
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "arcade"
-                ],
-                "summary": "Submit transaction",
-                "parameters": [
-                    {
-                        "description": "Transaction data",
-                        "name": "transaction",
-                        "in": "body",
-                        "required": true,
-                        "schema": {
-                            "$ref": "#/definitions/fiber.TransactionRequest"
-                        }
-                    },
-                    {
-                        "type": "string",
-                        "description": "URL for status callbacks",
-                        "name": "X-CallbackUrl",
-                        "in": "header"
-                    },
-                    {
-                        "type": "string",
-                        "description": "Token for SSE event filtering",
-                        "name": "X-CallbackToken",
-                        "in": "header"
-                    },
-                    {
-                        "type": "string",
-                        "description": "Send all status updates (true/false)",
-                        "name": "X-FullStatusUpdates",
-                        "in": "header"
-                    },
-                    {
-                        "type": "string",
-                        "description": "Skip fee validation (true/false)",
-                        "name": "X-SkipFeeValidation",
-                        "in": "header"
-                    },
-                    {
-                        "type": "string",
-                        "description": "Skip script validation (true/false)",
-                        "name": "X-SkipScriptValidation",
-                        "in": "header"
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "$ref": "#/definitions/models.TransactionStatus"
-                        }
-                    },
-                    "400": {
-                        "description": "Bad Request",
-                        "schema": {
-                            "type": "object",
-                            "additionalProperties": {
-                                "type": "string"
-                            }
-                        }
-                    },
-                    "500": {
-                        "description": "Internal Server Error",
-                        "schema": {
-                            "type": "object",
-                            "additionalProperties": {
-                                "type": "string"
-                            }
-                        }
-                    }
-                }
-            }
-        },
-        "/arcade/tx/{txid}": {
-            "get": {
-                "description": "Get the current status of a submitted transaction",
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "arcade"
-                ],
-                "summary": "Get transaction status",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "description": "Transaction ID",
-                        "name": "txid",
-                        "in": "path",
-                        "required": true
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "$ref": "#/definitions/models.TransactionStatus"
-                        }
-                    },
-                    "404": {
-                        "description": "Not Found",
-                        "schema": {
-                            "type": "object",
-                            "additionalProperties": {
-                                "type": "string"
-                            }
-                        }
-                    },
-                    "500": {
-                        "description": "Internal Server Error",
-                        "schema": {
-                            "type": "object",
-                            "additionalProperties": {
-                                "type": "string"
-                            }
-                        }
-                    }
-                }
-            }
-        },
-        "/arcade/txs": {
-            "post": {
-                "description": "Submit multiple transactions for broadcast",
-                "consumes": [
-                    "application/json"
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "arcade"
-                ],
-                "summary": "Submit multiple transactions",
-                "parameters": [
-                    {
-                        "description": "Array of transactions",
-                        "name": "transactions",
-                        "in": "body",
-                        "required": true,
-                        "schema": {
-                            "type": "array",
-                            "items": {
-                                "$ref": "#/definitions/fiber.TransactionRequest"
-                            }
-                        }
-                    },
-                    {
-                        "type": "string",
-                        "description": "URL for status callbacks",
-                        "name": "X-CallbackUrl",
-                        "in": "header"
-                    },
-                    {
-                        "type": "string",
-                        "description": "Token for SSE event filtering",
-                        "name": "X-CallbackToken",
-                        "in": "header"
-                    },
-                    {
-                        "type": "string",
-                        "description": "Send all status updates (true/false)",
-                        "name": "X-FullStatusUpdates",
-                        "in": "header"
-                    },
-                    {
-                        "type": "string",
-                        "description": "Skip fee validation (true/false)",
-                        "name": "X-SkipFeeValidation",
-                        "in": "header"
-                    },
-                    {
-                        "type": "string",
-                        "description": "Skip script validation (true/false)",
-                        "name": "X-SkipScriptValidation",
-                        "in": "header"
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "type": "array",
-                            "items": {
-                                "$ref": "#/definitions/models.TransactionStatus"
-                            }
-                        }
-                    },
-                    "400": {
-                        "description": "Bad Request",
-                        "schema": {
-                            "type": "object",
-                            "additionalProperties": {
-                                "type": "string"
-                            }
-                        }
-                    }
-                }
-            }
-        },
-        "/beef/{txid}": {
+        "/api/beef/{txid}": {
             "get": {
                 "description": "Retrieves the BEEF (BSV Envelope Format) for a specific transaction",
                 "produces": [
@@ -882,44 +569,6 @@
                 }
             }
         },
-        "/beef/{txid}/tx": {
-            "get": {
-                "description": "Retrieves just the raw transaction bytes (without proof)",
-                "produces": [
-                    "application/octet-stream"
-                ],
-                "tags": [
-                    "beef"
-                ],
-                "summary": "Get transaction",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "description": "Transaction ID",
-                        "name": "txid",
-                        "in": "path",
-                        "required": true
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "Transaction bytes",
-                        "schema": {
-                            "type": "file"
-                        }
-                    },
-                    "404": {
-                        "description": "Transaction not found",
-                        "schema": {
-                            "type": "object",
-                            "additionalProperties": {
-                                "type": "string"
-                            }
-                        }
-                    }
-                }
-            }
-        },
         "/api/bsv21/{tokenId}": {
             "get": {
                 "produces": [
@@ -943,41 +592,6 @@
                         "description": "OK",
                         "schema": {
                             "$ref": "#/definitions/github_com_b-open-io_1sat-stack_pkg_bsv21.TokenResponse"
-                        }
-                    }
-                }
-            }
-        },
-        "/bsv21/{tokenId}/blk/{height}": {
-            "get": {
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "bsv21"
-                ],
-                "summary": "Get block data for a token",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "description": "Token ID",
-                        "name": "tokenId",
-                        "in": "path",
-                        "required": true
-                    },
-                    {
-                        "type": "integer",
-                        "description": "Block height",
-                        "name": "height",
-                        "in": "path",
-                        "required": true
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "$ref": "#/definitions/github_com_b-open-io_1sat-stack_pkg_bsv21.BlockResponse"
                         }
                     }
                 }
@@ -1308,6 +922,663 @@
                             "items": {
                                 "$ref": "#/definitions/github_com_b-open-io_1sat-stack_pkg_txo.IndexedOutput"
                             }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/indexer/parse": {
+            "post": {
+                "description": "Parses a transaction from raw bytes and returns the indexed context without saving",
+                "consumes": [
+                    "application/octet-stream"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "indexer"
+                ],
+                "summary": "Parse a transaction from raw bytes",
+                "parameters": [
+                    {
+                        "description": "Raw transaction bytes",
+                        "name": "tx",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "type": "integer"
+                            }
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/pkg_indexer.IndexContext"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/indexer/tags": {
+            "get": {
+                "description": "Returns the list of tags from all registered indexers",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "indexer"
+                ],
+                "summary": "Get available indexer tags",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/ordfs/metadata/{path}": {
+            "get": {
+                "description": "Get metadata about inscription content without downloading the content",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "ordfs"
+                ],
+                "summary": "Get content metadata",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Outpoint (txid_vout) or txid",
+                        "name": "path",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Metadata",
+                        "schema": {
+                            "$ref": "#/definitions/pkg_ordfs.Response"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Not found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/ordfs/output/{path}": {
+            "get": {
+                "description": "Get the raw transaction output bytes",
+                "produces": [
+                    "application/octet-stream"
+                ],
+                "tags": [
+                    "ordfs"
+                ],
+                "summary": "Get raw output",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Outpoint (txid_vout) or txid",
+                        "name": "path",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Output bytes",
+                        "schema": {
+                            "type": "file"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Not found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/ordfs/preview": {
+            "post": {
+                "description": "Echo back the request body for preview rendering",
+                "consumes": [
+                    "*/*"
+                ],
+                "produces": [
+                    "*/*"
+                ],
+                "tags": [
+                    "ordfs"
+                ],
+                "summary": "Preview posted content",
+                "responses": {
+                    "200": {
+                        "description": "Content",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/ordfs/preview/{b64HtmlData}": {
+            "get": {
+                "description": "Decode and render base64-encoded HTML",
+                "produces": [
+                    "text/html"
+                ],
+                "tags": [
+                    "ordfs"
+                ],
+                "summary": "Preview HTML content",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Base64-encoded HTML content",
+                        "name": "b64HtmlData",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "HTML content",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/sse/{topics}": {
+            "get": {
+                "description": "Establishes an SSE connection for real-time event streaming",
+                "produces": [
+                    "text/event-stream"
+                ],
+                "tags": [
+                    "sse"
+                ],
+                "summary": "Subscribe to Server-Sent Events",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Comma-separated list of topics to subscribe to",
+                        "name": "topics",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "SSE stream",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
+        "/arc/callback": {
+            "post": {
+                "description": "Receives transaction status updates from Arc broadcaster",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "merkle"
+                ],
+                "summary": "Handle Arc callback",
+                "parameters": [
+                    {
+                        "description": "Arc callback payload",
+                        "name": "callback",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/merkle.ArcCallback"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Bad request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/arcade/events": {
+            "get": {
+                "description": "Server-Sent Events stream of transaction status updates. If callbackToken is provided, only events for that token are streamed.",
+                "produces": [
+                    "text/event-stream"
+                ],
+                "tags": [
+                    "arcade"
+                ],
+                "summary": "Stream transaction events",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Callback token from transaction submission",
+                        "name": "callbackToken",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "SSE stream of transaction status updates",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
+        "/arcade/policy": {
+            "get": {
+                "description": "Returns the transaction policy configuration including fee rates and limits",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "arcade"
+                ],
+                "summary": "Get policy",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/models.Policy"
+                        }
+                    }
+                }
+            }
+        },
+        "/arcade/tx": {
+            "post": {
+                "description": "Submit a single transaction for broadcast. Accepts raw transaction bytes, hex string, or JSON with rawTx field.",
+                "consumes": [
+                    "application/json",
+                    "application/octet-stream",
+                    "text/plain"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "arcade"
+                ],
+                "summary": "Submit transaction",
+                "parameters": [
+                    {
+                        "description": "Transaction data",
+                        "name": "transaction",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/fiber.TransactionRequest"
+                        }
+                    },
+                    {
+                        "type": "string",
+                        "description": "URL for status callbacks",
+                        "name": "X-CallbackUrl",
+                        "in": "header"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Token for SSE event filtering",
+                        "name": "X-CallbackToken",
+                        "in": "header"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Send all status updates (true/false)",
+                        "name": "X-FullStatusUpdates",
+                        "in": "header"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Skip fee validation (true/false)",
+                        "name": "X-SkipFeeValidation",
+                        "in": "header"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Skip script validation (true/false)",
+                        "name": "X-SkipScriptValidation",
+                        "in": "header"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/models.TransactionStatus"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/arcade/tx/{txid}": {
+            "get": {
+                "description": "Get the current status of a submitted transaction",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "arcade"
+                ],
+                "summary": "Get transaction status",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Transaction ID",
+                        "name": "txid",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/models.TransactionStatus"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/arcade/txs": {
+            "post": {
+                "description": "Submit multiple transactions for broadcast",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "arcade"
+                ],
+                "summary": "Submit multiple transactions",
+                "parameters": [
+                    {
+                        "description": "Array of transactions",
+                        "name": "transactions",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/fiber.TransactionRequest"
+                            }
+                        }
+                    },
+                    {
+                        "type": "string",
+                        "description": "URL for status callbacks",
+                        "name": "X-CallbackUrl",
+                        "in": "header"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Token for SSE event filtering",
+                        "name": "X-CallbackToken",
+                        "in": "header"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Send all status updates (true/false)",
+                        "name": "X-FullStatusUpdates",
+                        "in": "header"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Skip fee validation (true/false)",
+                        "name": "X-SkipFeeValidation",
+                        "in": "header"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Skip script validation (true/false)",
+                        "name": "X-SkipScriptValidation",
+                        "in": "header"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/models.TransactionStatus"
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/beef/{txid}/tx": {
+            "get": {
+                "description": "Retrieves just the raw transaction bytes (without proof)",
+                "produces": [
+                    "application/octet-stream"
+                ],
+                "tags": [
+                    "beef"
+                ],
+                "summary": "Get transaction",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Transaction ID",
+                        "name": "txid",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Transaction bytes",
+                        "schema": {
+                            "type": "file"
+                        }
+                    },
+                    "404": {
+                        "description": "Transaction not found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/bsv21/{tokenId}/blk/{height}": {
+            "get": {
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "bsv21"
+                ],
+                "summary": "Get block data for a token",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Token ID",
+                        "name": "tokenId",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Block height",
+                        "name": "height",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_b-open-io_1sat-stack_pkg_bsv21.BlockResponse"
                         }
                     }
                 }
@@ -1651,7 +1922,7 @@
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/github_com_b-open-io_1sat-stack_pkg_indexer.IndexContext"
+                            "$ref": "#/definitions/pkg_indexer.IndexContext"
                         }
                     },
                     "400": {
@@ -1665,61 +1936,6 @@
                     },
                     "404": {
                         "description": "Not Found",
-                        "schema": {
-                            "type": "object",
-                            "additionalProperties": {
-                                "type": "string"
-                            }
-                        }
-                    },
-                    "500": {
-                        "description": "Internal Server Error",
-                        "schema": {
-                            "type": "object",
-                            "additionalProperties": {
-                                "type": "string"
-                            }
-                        }
-                    }
-                }
-            }
-        },
-        "/indexer/parse": {
-            "post": {
-                "description": "Parses a transaction from raw bytes and returns the indexed context without saving",
-                "consumes": [
-                    "application/octet-stream"
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "indexer"
-                ],
-                "summary": "Parse a transaction from raw bytes",
-                "parameters": [
-                    {
-                        "description": "Raw transaction bytes",
-                        "name": "tx",
-                        "in": "body",
-                        "required": true,
-                        "schema": {
-                            "type": "array",
-                            "items": {
-                                "type": "integer"
-                            }
-                        }
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "$ref": "#/definitions/github_com_b-open-io_1sat-stack_pkg_indexer.IndexContext"
-                        }
-                    },
-                    "400": {
-                        "description": "Bad Request",
                         "schema": {
                             "type": "object",
                             "additionalProperties": {
@@ -1765,7 +1981,7 @@
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/github_com_b-open-io_1sat-stack_pkg_indexer.IndexContext"
+                            "$ref": "#/definitions/pkg_indexer.IndexContext"
                         }
                     },
                     "400": {
@@ -1788,193 +2004,6 @@
                     },
                     "500": {
                         "description": "Internal Server Error",
-                        "schema": {
-                            "type": "object",
-                            "additionalProperties": {
-                                "type": "string"
-                            }
-                        }
-                    }
-                }
-            }
-        },
-        "/indexer/tags": {
-            "get": {
-                "description": "Returns the list of tags from all registered indexers",
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "indexer"
-                ],
-                "summary": "Get available indexer tags",
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "type": "array",
-                            "items": {
-                                "type": "string"
-                            }
-                        }
-                    }
-                }
-            }
-        },
-        "/ordfs/metadata/{path}": {
-            "get": {
-                "description": "Get metadata about inscription content without downloading the content",
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "ordfs"
-                ],
-                "summary": "Get content metadata",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "description": "Outpoint (txid_vout) or txid",
-                        "name": "path",
-                        "in": "path",
-                        "required": true
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "Metadata",
-                        "schema": {
-                            "$ref": "#/definitions/github_com_b-open-io_1sat-stack_pkg_ordfs.Response"
-                        }
-                    },
-                    "400": {
-                        "description": "Bad request",
-                        "schema": {
-                            "type": "object",
-                            "additionalProperties": {
-                                "type": "string"
-                            }
-                        }
-                    },
-                    "404": {
-                        "description": "Not found",
-                        "schema": {
-                            "type": "object",
-                            "additionalProperties": {
-                                "type": "string"
-                            }
-                        }
-                    }
-                }
-            }
-        },
-        "/api/ordfs/output/{path}": {
-            "get": {
-                "description": "Get the raw transaction output bytes",
-                "produces": [
-                    "application/octet-stream"
-                ],
-                "tags": [
-                    "ordfs"
-                ],
-                "summary": "Get raw output",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "description": "Outpoint (txid_vout) or txid",
-                        "name": "path",
-                        "in": "path",
-                        "required": true
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "Output bytes",
-                        "schema": {
-                            "type": "file"
-                        }
-                    },
-                    "400": {
-                        "description": "Bad request",
-                        "schema": {
-                            "type": "object",
-                            "additionalProperties": {
-                                "type": "string"
-                            }
-                        }
-                    },
-                    "404": {
-                        "description": "Not found",
-                        "schema": {
-                            "type": "object",
-                            "additionalProperties": {
-                                "type": "string"
-                            }
-                        }
-                    }
-                }
-            }
-        },
-        "/ordfs/preview": {
-            "post": {
-                "description": "Echo back the request body for preview rendering",
-                "consumes": [
-                    "*/*"
-                ],
-                "produces": [
-                    "*/*"
-                ],
-                "tags": [
-                    "ordfs"
-                ],
-                "summary": "Preview posted content",
-                "responses": {
-                    "200": {
-                        "description": "Content",
-                        "schema": {
-                            "type": "string"
-                        }
-                    },
-                    "400": {
-                        "description": "Bad request",
-                        "schema": {
-                            "type": "object",
-                            "additionalProperties": {
-                                "type": "string"
-                            }
-                        }
-                    }
-                }
-            }
-        },
-        "/ordfs/preview/{b64HtmlData}": {
-            "get": {
-                "description": "Decode and render base64-encoded HTML",
-                "produces": [
-                    "text/html"
-                ],
-                "tags": [
-                    "ordfs"
-                ],
-                "summary": "Preview HTML content",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "description": "Base64-encoded HTML content",
-                        "name": "b64HtmlData",
-                        "in": "path",
-                        "required": true
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "HTML content",
-                        "schema": {
-                            "type": "string"
-                        }
-                    },
-                    "400": {
-                        "description": "Bad request",
                         "schema": {
                             "type": "object",
                             "additionalProperties": {
@@ -2455,7 +2484,7 @@
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/github_com_b-open-io_1sat-stack_pkg_owner.BalanceResponse"
+                            "$ref": "#/definitions/pkg_owner.BalanceResponse"
                         }
                     },
                     "500": {
@@ -2572,35 +2601,6 @@
                     },
                     "500": {
                         "description": "Internal server error",
-                        "schema": {
-                            "type": "string"
-                        }
-                    }
-                }
-            }
-        },
-        "/sse/{topics}": {
-            "get": {
-                "description": "Establishes an SSE connection for real-time event streaming",
-                "produces": [
-                    "text/event-stream"
-                ],
-                "tags": [
-                    "sse"
-                ],
-                "summary": "Subscribe to Server-Sent Events",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "description": "Comma-separated list of topics to subscribe to",
-                        "name": "topics",
-                        "in": "path",
-                        "required": true
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "SSE stream",
                         "schema": {
                             "type": "string"
                         }

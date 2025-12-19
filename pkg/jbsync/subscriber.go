@@ -148,7 +148,7 @@ func (s *Subscriber) Start(ctx context.Context) error {
 
 				// Only update if moving forward
 				if uint64(finalSafeHeight) <= startBlock {
-					s.logger.Warn("skipping backward progress update",
+					s.logger.Debug("skipping backward progress update",
 						"last_written", startBlock,
 						"attempted", finalSafeHeight)
 					return

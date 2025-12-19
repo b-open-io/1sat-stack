@@ -4,6 +4,9 @@ import "github.com/spf13/viper"
 
 // SubscriberConfig holds configuration for a JungleBus topic subscriber
 type SubscriberConfig struct {
+	// AutoStart determines whether this subscriber should start automatically
+	AutoStart bool `mapstructure:"autostart"`
+
 	// SubscriptionID is the JungleBus subscription/topic ID (used for progress tracking)
 	SubscriptionID string `mapstructure:"subscription_id"`
 

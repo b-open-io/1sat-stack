@@ -5,10 +5,13 @@ import (
 	"fmt"
 	"log/slog"
 
+	"github.com/b-open-io/1sat-stack/pkg/beef"
 	lookuppkg "github.com/b-open-io/1sat-stack/pkg/lookup"
+	"github.com/b-open-io/1sat-stack/pkg/overlay"
 	topicpkg "github.com/b-open-io/1sat-stack/pkg/topic"
 	"github.com/b-open-io/1sat-stack/pkg/txo"
 	"github.com/b-open-io/1sat-stack/pkg/types"
+	"github.com/b-open-io/go-junglebus"
 	"github.com/bsv-blockchain/go-chaintracks/chaintracks"
 	"github.com/spf13/viper"
 )
@@ -28,6 +31,9 @@ type Config struct {
 	WhitelistTokens []string `mapstructure:"whitelist_tokens"` // Token IDs to index (empty = all)
 	BlacklistTokens []string `mapstructure:"blacklist_tokens"` // Token IDs to exclude
 	Network         string   `mapstructure:"network"`          // mainnet, testnet
+
+	// Sync settings
+	Sync *SyncConfig `mapstructure:"sync"` // JungleBus sync configuration
 
 	// Routes settings
 	Routes RoutesConfig `mapstructure:"routes"`
@@ -50,6 +56,8 @@ func (c *Config) SetDefaults(v *viper.Viper, prefix string) {
 	v.SetDefault(p+"whitelist_tokens", []string{})
 	v.SetDefault(p+"blacklist_tokens", []string{})
 	v.SetDefault(p+"network", "mainnet")
+	v.SetDefault(p+"sync.enabled", false)
+	v.SetDefault(p+"sync.categorizer_workers", 8)
 	v.SetDefault(p+"routes.enabled", true)
 	v.SetDefault(p+"routes.prefix", "/bsv21")
 }
@@ -59,6 +67,7 @@ type Services struct {
 	Indexer      *Indexer
 	Lookup       *lookuppkg.BSV21Lookup
 	TopicManager *topicpkg.Bsv21ValidatedTopicManager
+	Sync         *SyncServices
 	Routes       *Routes
 }
 
@@ -68,6 +77,9 @@ func (c *Config) Initialize(
 	logger *slog.Logger,
 	txoStorage *txo.OutputStore,
 	chaintracker chaintracks.Chaintracks,
+	beefStorage *beef.Storage,
+	overlaySvc *overlay.Services,
+	jbClient *junglebus.Client,
 ) (*Services, error) {
 	if c.Mode == ModeDisabled {
 		return nil, nil
@@ -121,6 +133,24 @@ func (c *Config) Initialize(
 			Indexer:      idx,
 			Lookup:       bsv21Lookup,
 			TopicManager: topicManager,
+		}
+
+		// Create sync services if enabled
+		if c.Sync != nil && c.Sync.Enabled {
+			syncSvc, err := NewSyncServices(
+				c.Sync,
+				txoStorage.Store,
+				beefStorage,
+				overlaySvc,
+				nil, // feeService - not needed for categorization only
+				chaintracker,
+				jbClient,
+				logger,
+			)
+			if err != nil {
+				return nil, fmt.Errorf("failed to create BSV21 sync services: %w", err)
+			}
+			svc.Sync = syncSvc
 		}
 
 		// Create routes if enabled
