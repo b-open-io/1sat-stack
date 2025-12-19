@@ -5,7 +5,9 @@ import (
 	"log/slog"
 	"strconv"
 
+	lookuppkg "github.com/b-open-io/1sat-stack/pkg/lookup"
 	"github.com/b-open-io/1sat-stack/pkg/txo"
+	"github.com/b-open-io/1sat-stack/pkg/types"
 	"github.com/bsv-blockchain/go-chaintracks/chaintracks"
 	"github.com/bsv-blockchain/go-sdk/chainhash"
 	"github.com/bsv-blockchain/go-sdk/transaction"
@@ -15,18 +17,16 @@ import (
 // Routes provides HTTP handlers for BSV21 API
 type Routes struct {
 	storage      *txo.OutputStore
-	lookup       *Lookup
+	lookup       *lookuppkg.BSV21Lookup
 	chaintracker chaintracks.Chaintracks
-	activeTopics func(topic string) bool // Function to check if topic is active
 	logger       *slog.Logger
 }
 
 // RoutesDeps holds dependencies for BSV21 routes
 type RoutesDeps struct {
 	Storage      *txo.OutputStore
-	Lookup       *Lookup
+	Lookup       *lookuppkg.BSV21Lookup
 	ChainTracker chaintracks.Chaintracks
-	ActiveTopics func(topic string) bool
 	Logger       *slog.Logger
 }
 
@@ -40,7 +40,6 @@ func NewRoutes(cfg *RoutesDeps) *Routes {
 		storage:      cfg.Storage,
 		lookup:       cfg.Lookup,
 		chaintracker: cfg.ChainTracker,
-		activeTopics: cfg.ActiveTopics,
 		logger:       logger,
 	}
 }
@@ -50,7 +49,7 @@ func (r *Routes) Register(app fiber.Router, prefix string) {
 	g := app.Group(prefix)
 
 	g.Get("/:tokenId", r.GetToken)
-	g.Get("/:tokenId/block/:height", r.GetBlockData)
+	g.Get("/:tokenId/blk/:height", r.GetBlockData)
 	g.Get("/:tokenId/tx/:txid", r.GetTransaction)
 	g.Get("/:tokenId/:lockType/:address/balance", r.GetAddressBalance)
 	g.Get("/:tokenId/:lockType/:address/history", r.GetAddressHistory)
@@ -74,10 +73,10 @@ type TokenResponse struct {
 
 // TransactionData represents a transaction with its outputs
 type TransactionData struct {
-	TxID        string             `json:"txid"`
+	TxID        string               `json:"txid"`
 	Outputs     []*txo.IndexedOutput `json:"outputs"`
-	Beef        []byte             `json:"beef,omitempty"`
-	BlockHeight uint32             `json:"block_height,omitempty"`
+	Beef        []byte               `json:"beef,omitempty"`
+	BlockHeight uint32               `json:"block_height,omitempty"`
 }
 
 // BlockResponse represents block data for a token
@@ -105,13 +104,6 @@ type ErrorResponse struct {
 	Message string `json:"message"`
 }
 
-func (r *Routes) isTopicActive(topic string) bool {
-	if r.activeTopics == nil {
-		return true
-	}
-	return r.activeTopics(topic)
-}
-
 // GetToken retrieves BSV21 token details
 // @Summary Get BSV21 token details
 // @Tags bsv21
@@ -121,13 +113,6 @@ func (r *Routes) isTopicActive(topic string) bool {
 // @Router /api/bsv21/{tokenId} [get]
 func (r *Routes) GetToken(c *fiber.Ctx) error {
 	tokenIdStr := c.Params("tokenId")
-
-	topic := "tm_" + tokenIdStr
-	if !r.isTopicActive(topic) {
-		return c.Status(fiber.StatusServiceUnavailable).JSON(ErrorResponse{
-			Message: "Topic not available",
-		})
-	}
 
 	outpoint, err := transaction.OutpointFromString(tokenIdStr)
 	if err != nil {
@@ -158,17 +143,10 @@ func (r *Routes) GetToken(c *fiber.Ctx) error {
 // @Param tokenId path string true "Token ID"
 // @Param height path int true "Block height"
 // @Success 200 {object} BlockResponse
-// @Router /api/bsv21/{tokenId}/block/{height} [get]
+// @Router /bsv21/{tokenId}/blk/{height} [get]
 func (r *Routes) GetBlockData(c *fiber.Ctx) error {
 	tokenId := c.Params("tokenId")
 	heightStr := c.Params("height")
-
-	topic := "tm_" + tokenId
-	if !r.isTopicActive(topic) {
-		return c.Status(fiber.StatusServiceUnavailable).JSON(ErrorResponse{
-			Message: "Topic not available",
-		})
-	}
 
 	height64, err := strconv.ParseUint(heightStr, 10, 32)
 	if err != nil {
@@ -179,11 +157,11 @@ func (r *Routes) GetBlockData(c *fiber.Ctx) error {
 	height := uint32(height64)
 
 	// Search for outputs at this height in the topic
-	score := txo.HeightScore(height, 0)
-	scoreEnd := txo.HeightScore(height+1, 0)
+	score := types.HeightScore(height, 0)
+	scoreEnd := types.HeightScore(height+1, 0)
 
 	cfg := txo.NewOutputSearchCfg().
-		WithStringKeys("tp:" + topic).
+		WithStringKeys("tp:tm_"+tokenId).
 		WithRange(&score, &scoreEnd)
 
 	outputs, err := r.storage.SearchOutputs(c.Context(), cfg)
@@ -246,15 +224,7 @@ func (r *Routes) GetBlockData(c *fiber.Ctx) error {
 // @Success 200 {object} map[string]interface{}
 // @Router /api/bsv21/{tokenId}/tx/{txid} [get]
 func (r *Routes) GetTransaction(c *fiber.Ctx) error {
-	tokenId := c.Params("tokenId")
 	txidStr := c.Params("txid")
-
-	topic := "tm_" + tokenId
-	if !r.isTopicActive(topic) {
-		return c.Status(fiber.StatusServiceUnavailable).JSON(ErrorResponse{
-			Message: "Topic not available",
-		})
-	}
 
 	txid, err := chainhash.NewHashFromHex(txidStr)
 	if err != nil {
@@ -316,13 +286,6 @@ func (r *Routes) GetAddressBalance(c *fiber.Ctx) error {
 	lockType := c.Params("lockType")
 	address := c.Params("address")
 
-	topic := "tm_" + tokenId
-	if !r.isTopicActive(topic) {
-		return c.Status(fiber.StatusServiceUnavailable).JSON(ErrorResponse{
-			Message: "Topic not available",
-		})
-	}
-
 	event := fmt.Sprintf("%s:%s:%s", lockType, address, tokenId)
 
 	balance, outputs, err := r.lookup.GetBalance(c.Context(), []string{event})
@@ -353,13 +316,6 @@ func (r *Routes) GetAddressHistory(c *fiber.Ctx) error {
 	lockType := c.Params("lockType")
 	address := c.Params("address")
 
-	topic := "tm_" + tokenId
-	if !r.isTopicActive(topic) {
-		return c.Status(fiber.StatusServiceUnavailable).JSON(ErrorResponse{
-			Message: "Topic not available",
-		})
-	}
-
 	event := fmt.Sprintf("%s:%s:%s", lockType, address, tokenId)
 	cfg := parseOutputSearchConfig(c)
 	cfg.Keys = [][]byte{[]byte(event)}
@@ -388,13 +344,6 @@ func (r *Routes) GetAddressUnspent(c *fiber.Ctx) error {
 	tokenId := c.Params("tokenId")
 	lockType := c.Params("lockType")
 	address := c.Params("address")
-
-	topic := "tm_" + tokenId
-	if !r.isTopicActive(topic) {
-		return c.Status(fiber.StatusServiceUnavailable).JSON(ErrorResponse{
-			Message: "Topic not available",
-		})
-	}
 
 	event := fmt.Sprintf("%s:%s:%s", lockType, address, tokenId)
 	cfg := txo.NewOutputSearchCfg().
@@ -425,13 +374,6 @@ func (r *Routes) GetAddressUnspent(c *fiber.Ctx) error {
 func (r *Routes) GetMultiAddressBalance(c *fiber.Ctx) error {
 	tokenId := c.Params("tokenId")
 	lockType := c.Params("lockType")
-
-	topic := "tm_" + tokenId
-	if !r.isTopicActive(topic) {
-		return c.Status(fiber.StatusServiceUnavailable).JSON(ErrorResponse{
-			Message: "Topic not available",
-		})
-	}
 
 	var addresses []string
 	if err := c.BodyParser(&addresses); err != nil {
@@ -484,13 +426,6 @@ func (r *Routes) GetMultiAddressBalance(c *fiber.Ctx) error {
 func (r *Routes) GetMultiAddressHistory(c *fiber.Ctx) error {
 	tokenId := c.Params("tokenId")
 	lockType := c.Params("lockType")
-
-	topic := "tm_" + tokenId
-	if !r.isTopicActive(topic) {
-		return c.Status(fiber.StatusServiceUnavailable).JSON(ErrorResponse{
-			Message: "Topic not available",
-		})
-	}
 
 	var addresses []string
 	if err := c.BodyParser(&addresses); err != nil {
@@ -546,13 +481,6 @@ func (r *Routes) GetMultiAddressHistory(c *fiber.Ctx) error {
 func (r *Routes) GetMultiAddressUnspent(c *fiber.Ctx) error {
 	tokenId := c.Params("tokenId")
 	lockType := c.Params("lockType")
-
-	topic := "tm_" + tokenId
-	if !r.isTopicActive(topic) {
-		return c.Status(fiber.StatusServiceUnavailable).JSON(ErrorResponse{
-			Message: "Topic not available",
-		})
-	}
 
 	var addresses []string
 	if err := c.BodyParser(&addresses); err != nil {

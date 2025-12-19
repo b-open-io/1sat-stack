@@ -1,5 +1,26 @@
 basePath: /api
 definitions:
+  admin.ProgressItem:
+    properties:
+      block:
+        type: number
+      id:
+        type: string
+    type: object
+  admin.QueueInfo:
+    properties:
+      count:
+        type: integer
+      name:
+        type: string
+    type: object
+  admin.QueueItem:
+    properties:
+      score:
+        type: number
+      value:
+        type: string
+    type: object
   chaintracks.BlockHeader:
     properties:
       bits:
@@ -175,7 +196,7 @@ definitions:
       sequence:
         type: integer
     type: object
-  github_com_b-open-io_1sat-stack_pkg_own.BalanceResponse:
+  github_com_b-open-io_1sat-stack_pkg_owner.BalanceResponse:
     properties:
       balance:
         type: integer
@@ -449,7 +470,7 @@ definitions:
       sequence:
         type: integer
     type: object
-  pkg_own.BalanceResponse:
+  pkg_owner.BalanceResponse:
     properties:
       balance:
         type: integer
@@ -569,7 +590,531 @@ info:
   title: 1Sat Stack API
   version: "1.0"
 paths:
-  /api/beef/{txid}:
+  /admin/api/blacklist:
+    get:
+      description: Returns the list of blacklisted topics
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: List of blacklisted topics
+          schema:
+            items:
+              type: string
+            type: array
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Get blacklist
+      tags:
+      - admin
+    post:
+      consumes:
+      - application/json
+      description: Adds a topic to the blacklist
+      parameters:
+      - description: Topic to add
+        in: body
+        name: body
+        required: true
+        schema:
+          type: object
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: success message
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "400":
+          description: Bad request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Add to blacklist
+      tags:
+      - admin
+  /admin/api/blacklist/{topic}:
+    delete:
+      description: Removes a topic from the blacklist
+      parameters:
+      - description: Topic ID to remove
+        in: path
+        name: topic
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: success message
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Remove from blacklist
+      tags:
+      - admin
+  /admin/api/lookups/active:
+    get:
+      description: Returns the list of currently active lookup services from the overlay
+        engine
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: List of active lookup services
+          schema:
+            items:
+              type: string
+            type: array
+      summary: Get active lookup services
+      tags:
+      - admin
+  /admin/api/progress:
+    get:
+      description: Returns all sync progress entries
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: List of progress entries
+          schema:
+            items:
+              $ref: '#/definitions/admin.ProgressItem'
+            type: array
+      summary: Get progress
+      tags:
+      - admin
+  /admin/api/progress/{id}:
+    delete:
+      description: Deletes a sync progress entry
+      parameters:
+      - description: Progress ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: success message
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Delete progress
+      tags:
+      - admin
+    put:
+      consumes:
+      - application/json
+      description: Updates a sync progress entry
+      parameters:
+      - description: Progress ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Block height
+        in: body
+        name: body
+        required: true
+        schema:
+          type: object
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: success message
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "400":
+          description: Bad request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Update progress
+      tags:
+      - admin
+  /admin/api/queues:
+    get:
+      description: 'Returns the list of queues (sorted sets with q: prefix)'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: List of queues with counts
+          schema:
+            items:
+              $ref: '#/definitions/admin.QueueInfo'
+            type: array
+      summary: Get queues
+      tags:
+      - admin
+  /admin/api/queues/{name}:
+    get:
+      description: Returns the first 25 items from a queue
+      parameters:
+      - description: Queue name
+        in: path
+        name: name
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: List of queue items
+          schema:
+            items:
+              $ref: '#/definitions/admin.QueueItem'
+            type: array
+      summary: Get queue items
+      tags:
+      - admin
+  /admin/api/topics/active:
+    get:
+      description: Returns the list of currently active topics from the overlay engine
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: List of active topics
+          schema:
+            items:
+              type: string
+            type: array
+      summary: Get active topics
+      tags:
+      - admin
+  /admin/api/whitelist:
+    get:
+      description: Returns the list of whitelisted topics
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: List of whitelisted topics
+          schema:
+            items:
+              type: string
+            type: array
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Get whitelist
+      tags:
+      - admin
+    post:
+      consumes:
+      - application/json
+      description: Adds a topic to the whitelist
+      parameters:
+      - description: Topic to add
+        in: body
+        name: body
+        required: true
+        schema:
+          type: object
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: success message
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "400":
+          description: Bad request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Add to whitelist
+      tags:
+      - admin
+  /admin/api/whitelist/{topic}:
+    delete:
+      description: Removes a topic from the whitelist
+      parameters:
+      - description: Topic ID to remove
+        in: path
+        name: topic
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: success message
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Remove from whitelist
+      tags:
+      - admin
+  /arc/callback:
+    post:
+      consumes:
+      - application/json
+      description: Receives transaction status updates from Arc broadcaster
+      parameters:
+      - description: Arc callback payload
+        in: body
+        name: callback
+        required: true
+        schema:
+          $ref: '#/definitions/merkle.ArcCallback'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "400":
+          description: Bad request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Handle Arc callback
+      tags:
+      - merkle
+  /arcade/events:
+    get:
+      description: Server-Sent Events stream of transaction status updates. If callbackToken
+        is provided, only events for that token are streamed.
+      parameters:
+      - description: Callback token from transaction submission
+        in: query
+        name: callbackToken
+        type: string
+      produces:
+      - text/event-stream
+      responses:
+        "200":
+          description: SSE stream of transaction status updates
+          schema:
+            type: string
+      summary: Stream transaction events
+      tags:
+      - arcade
+  /arcade/policy:
+    get:
+      description: Returns the transaction policy configuration including fee rates
+        and limits
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.Policy'
+      summary: Get policy
+      tags:
+      - arcade
+  /arcade/tx:
+    post:
+      consumes:
+      - application/json
+      - application/octet-stream
+      - text/plain
+      description: Submit a single transaction for broadcast. Accepts raw transaction
+        bytes, hex string, or JSON with rawTx field.
+      parameters:
+      - description: Transaction data
+        in: body
+        name: transaction
+        required: true
+        schema:
+          $ref: '#/definitions/fiber.TransactionRequest'
+      - description: URL for status callbacks
+        in: header
+        name: X-CallbackUrl
+        type: string
+      - description: Token for SSE event filtering
+        in: header
+        name: X-CallbackToken
+        type: string
+      - description: Send all status updates (true/false)
+        in: header
+        name: X-FullStatusUpdates
+        type: string
+      - description: Skip fee validation (true/false)
+        in: header
+        name: X-SkipFeeValidation
+        type: string
+      - description: Skip script validation (true/false)
+        in: header
+        name: X-SkipScriptValidation
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.TransactionStatus'
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Submit transaction
+      tags:
+      - arcade
+  /arcade/tx/{txid}:
+    get:
+      description: Get the current status of a submitted transaction
+      parameters:
+      - description: Transaction ID
+        in: path
+        name: txid
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.TransactionStatus'
+        "404":
+          description: Not Found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Get transaction status
+      tags:
+      - arcade
+  /arcade/txs:
+    post:
+      consumes:
+      - application/json
+      description: Submit multiple transactions for broadcast
+      parameters:
+      - description: Array of transactions
+        in: body
+        name: transactions
+        required: true
+        schema:
+          items:
+            $ref: '#/definitions/fiber.TransactionRequest'
+          type: array
+      - description: URL for status callbacks
+        in: header
+        name: X-CallbackUrl
+        type: string
+      - description: Token for SSE event filtering
+        in: header
+        name: X-CallbackToken
+        type: string
+      - description: Send all status updates (true/false)
+        in: header
+        name: X-FullStatusUpdates
+        type: string
+      - description: Skip fee validation (true/false)
+        in: header
+        name: X-SkipFeeValidation
+        type: string
+      - description: Skip script validation (true/false)
+        in: header
+        name: X-SkipScriptValidation
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/models.TransactionStatus'
+            type: array
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Submit multiple transactions
+      tags:
+      - arcade
+  /beef/{txid}:
     get:
       description: Retrieves the BEEF (BSV Envelope Format) for a specific transaction
       parameters:
@@ -619,7 +1164,7 @@ paths:
       summary: Get merkle proof
       tags:
       - beef
-  /api/beef/{txid}/raw:
+  /beef/{txid}/tx:
     get:
       description: Retrieves just the raw transaction bytes (without proof)
       parameters:
@@ -632,7 +1177,7 @@ paths:
       - application/octet-stream
       responses:
         "200":
-          description: Raw transaction bytes
+          description: Transaction bytes
           schema:
             type: file
         "404":
@@ -641,7 +1186,7 @@ paths:
             additionalProperties:
               type: string
             type: object
-      summary: Get raw transaction
+      summary: Get transaction
       tags:
       - beef
   /api/bsv21/{tokenId}:
@@ -853,7 +1398,7 @@ paths:
       summary: Get multi-address unspent outputs
       tags:
       - bsv21
-  /api/bsv21/{tokenId}/block/{height}:
+  /bsv21/{tokenId}/blk/{height}:
     get:
       parameters:
       - description: Token ID
@@ -904,7 +1449,214 @@ paths:
       summary: Get transaction details
       tags:
       - bsv21
-  /api/indexer/{txid}/ingest:
+  /capabilities:
+    get:
+      description: Returns the list of enabled service capabilities
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: List of enabled capabilities
+          schema:
+            items:
+              type: string
+            type: array
+      summary: Get capabilities
+      tags:
+      - system
+  /chaintracks/header/hash/{hash}:
+    get:
+      description: Returns a block header with the specified hash
+      parameters:
+      - description: Block hash (hex)
+        in: path
+        name: hash
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/chaintracks.BlockHeader'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/fiber.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/fiber.ErrorResponse'
+      summary: Get header by hash
+      tags:
+      - chaintracks
+  /chaintracks/header/height/{height}:
+    get:
+      description: Returns a block header at the specified height
+      parameters:
+      - description: Block height
+        in: path
+        name: height
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/chaintracks.BlockHeader'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/fiber.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/fiber.ErrorResponse'
+      summary: Get header by height
+      tags:
+      - chaintracks
+  /chaintracks/headers:
+    get:
+      description: Returns block headers starting from height as binary data (80 bytes
+        per header)
+      parameters:
+      - description: Starting block height
+        in: query
+        name: height
+        required: true
+        type: integer
+      - description: Number of headers to return
+        in: query
+        name: count
+        required: true
+        type: integer
+      produces:
+      - application/octet-stream
+      responses:
+        "200":
+          description: Concatenated 80-byte headers
+          schema:
+            type: string
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/fiber.ErrorResponse'
+      summary: Get multiple headers
+      tags:
+      - chaintracks
+  /chaintracks/height:
+    get:
+      description: Returns the current blockchain height
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/fiber.HeightResponse'
+      summary: Get chain height
+      tags:
+      - chaintracks
+  /chaintracks/network:
+    get:
+      description: Returns the Bitcoin network this service is connected to
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/fiber.NetworkResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/fiber.ErrorResponse'
+      summary: Get network name
+      tags:
+      - chaintracks
+  /chaintracks/tip:
+    get:
+      description: Returns the current chain tip block header
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/chaintracks.BlockHeader'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/fiber.ErrorResponse'
+      summary: Get chain tip
+      tags:
+      - chaintracks
+  /chaintracks/tip/stream:
+    get:
+      description: Server-Sent Events stream of chain tip updates. Sends the current
+        tip immediately, then broadcasts new tips as they arrive.
+      produces:
+      - text/event-stream
+      responses:
+        "200":
+          description: SSE stream of BlockHeader JSON objects
+          schema:
+            type: string
+      summary: Stream chain tip updates
+      tags:
+      - chaintracks
+  /content/{path}:
+    get:
+      description: Serve the content of an inscription by outpoint or txid
+      parameters:
+      - description: Outpoint (txid_vout) or txid
+        in: path
+        name: path
+        required: true
+        type: string
+      produces:
+      - application/octet-stream
+      responses:
+        "200":
+          description: Content
+          schema:
+            type: file
+        "400":
+          description: Bad request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Not found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Get inscription content
+      tags:
+      - ordfs
+  /health:
+    get:
+      description: Returns the health status of the service
+      produces:
+      - text/plain
+      responses:
+        "200":
+          description: OK
+          schema:
+            type: string
+        "503":
+          description: Service Unavailable
+          schema:
+            type: string
+      summary: Health check
+      tags:
+      - arcade
+  /indexer/ingest/{txid}:
     post:
       consumes:
       - application/json
@@ -943,7 +1695,44 @@ paths:
       summary: Ingest a transaction by txid
       tags:
       - indexer
-  /api/indexer/{txid}/parse:
+  /indexer/parse:
+    post:
+      consumes:
+      - application/octet-stream
+      description: Parses a transaction from raw bytes and returns the indexed context
+        without saving
+      parameters:
+      - description: Raw transaction bytes
+        in: body
+        name: tx
+        required: true
+        schema:
+          items:
+            type: integer
+          type: array
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/github_com_b-open-io_1sat-stack_pkg_indexer.IndexContext'
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Parse a transaction from raw bytes
+      tags:
+      - indexer
+  /indexer/parse/{txid}:
     get:
       consumes:
       - application/json
@@ -982,44 +1771,7 @@ paths:
       summary: Parse a transaction by txid
       tags:
       - indexer
-  /api/indexer/parse:
-    post:
-      consumes:
-      - application/octet-stream
-      description: Parses a transaction from raw bytes and returns the indexed context
-        without saving
-      parameters:
-      - description: Raw transaction bytes
-        in: body
-        name: tx
-        required: true
-        schema:
-          items:
-            type: integer
-          type: array
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            $ref: '#/definitions/github_com_b-open-io_1sat-stack_pkg_indexer.IndexContext'
-        "400":
-          description: Bad Request
-          schema:
-            additionalProperties:
-              type: string
-            type: object
-        "500":
-          description: Internal Server Error
-          schema:
-            additionalProperties:
-              type: string
-            type: object
-      summary: Parse a transaction from raw bytes
-      tags:
-      - indexer
-  /api/indexer/tags:
+  /indexer/tags:
     get:
       description: Returns the list of tags from all registered indexers
       produces:
@@ -1034,7 +1786,7 @@ paths:
       summary: Get available indexer tags
       tags:
       - indexer
-  /api/ordfs/metadata/{path}:
+  /ordfs/metadata/{path}:
     get:
       description: Get metadata about inscription content without downloading the
         content
@@ -1097,7 +1849,7 @@ paths:
       summary: Get raw output
       tags:
       - ordfs
-  /api/ordfs/preview:
+  /ordfs/preview:
     post:
       consumes:
       - '*/*'
@@ -1118,7 +1870,7 @@ paths:
       summary: Preview posted content
       tags:
       - ordfs
-  /api/ordfs/preview/{b64HtmlData}:
+  /ordfs/preview/{b64HtmlData}:
     get:
       description: Decode and render base64-encoded HTML
       parameters:
@@ -1143,7 +1895,302 @@ paths:
       summary: Preview HTML content
       tags:
       - ordfs
-  /api/own/{owner}/balance:
+  /overlay/admin/startGASPSync:
+    post:
+      description: Start GASP synchronization (requires admin bearer token)
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: message field with status
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Start GASP sync
+      tags:
+      - overlay-admin
+  /overlay/admin/syncAdvertisements:
+    post:
+      description: Trigger advertisement sync (requires admin bearer token)
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: message field with status
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Sync advertisements
+      tags:
+      - overlay-admin
+  /overlay/getDocumentationForLookupServiceProvider:
+    get:
+      description: Returns markdown documentation for a specific lookup service
+      parameters:
+      - description: Name of the lookup service
+        in: query
+        name: lookupService
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: documentation field with markdown content
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "400":
+          description: Bad request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Get lookup service documentation
+      tags:
+      - overlay
+  /overlay/getDocumentationForTopicManager:
+    get:
+      description: Returns markdown documentation for a specific topic manager
+      parameters:
+      - description: Name of the topic manager
+        in: query
+        name: topicManager
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: documentation field with markdown content
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "400":
+          description: Bad request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Get topic manager documentation
+      tags:
+      - overlay
+  /overlay/listLookupServiceProviders:
+    get:
+      description: Returns a list of all registered lookup service providers with
+        their metadata
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Map of lookup service names to metadata
+          schema:
+            additionalProperties: true
+            type: object
+      summary: List lookup service providers
+      tags:
+      - overlay
+  /overlay/listTopicManagers:
+    get:
+      description: Returns a list of all registered topic managers with their metadata
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Map of topic manager names to metadata
+          schema:
+            additionalProperties: true
+            type: object
+      summary: List topic managers
+      tags:
+      - overlay
+  /overlay/lookup:
+    post:
+      consumes:
+      - application/json
+      description: Query a lookup service for outputs matching the query
+      parameters:
+      - description: Lookup query with service name and query params
+        in: body
+        name: query
+        required: true
+        schema:
+          type: object
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Lookup response with outputs
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: Bad request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Lookup query
+      tags:
+      - overlay
+  /overlay/requestForeignGASPNode:
+    post:
+      consumes:
+      - application/json
+      description: Request a GASP node from a foreign overlay
+      parameters:
+      - description: Topic identifier
+        in: header
+        name: X-BSV-Topic
+        required: true
+        type: string
+      - description: Request with graphID, txID, and outputIndex
+        in: body
+        name: request
+        required: true
+        schema:
+          type: object
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: GASP node data
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: Bad request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Request foreign GASP node
+      tags:
+      - overlay
+  /overlay/requestSyncResponse:
+    post:
+      consumes:
+      - application/json
+      description: Request synchronization data for a topic (GASP protocol)
+      parameters:
+      - description: Topic identifier
+        in: header
+        name: X-BSV-Topic
+        required: true
+        type: string
+      - description: Sync request with version and since parameters
+        in: body
+        name: request
+        required: true
+        schema:
+          type: object
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Sync response with UTXOList
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: Bad request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Request sync response
+      tags:
+      - overlay
+  /overlay/submit:
+    post:
+      consumes:
+      - application/octet-stream
+      description: Submit a transaction to the overlay engine for processing
+      parameters:
+      - collectionFormat: csv
+        description: Topic names to submit to
+        in: header
+        items:
+          type: string
+        name: x-topics
+        required: true
+        type: array
+      - description: Serialized transaction data
+        in: body
+        name: transaction
+        required: true
+        schema:
+          items:
+            type: integer
+          type: array
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: STEAK response with admission results
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: Bad request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Submit transaction
+      tags:
+      - overlay
+  /owner/{owner}/balance:
     get:
       description: Get the satoshi balance for a specific owner
       parameters:
@@ -1158,15 +2205,15 @@ paths:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/pkg_own.BalanceResponse'
+            $ref: '#/definitions/github_com_b-open-io_1sat-stack_pkg_owner.BalanceResponse'
         "500":
           description: Internal server error
           schema:
             type: string
       summary: Get owner balance
       tags:
-      - owners
-  /api/own/{owner}/sync:
+      - own
+  /owner/{owner}/sync:
     get:
       description: Stream paginated outputs for wallet synchronization via Server-Sent
         Events. Streams all outputs until exhausted, then triggers background sync
@@ -1190,8 +2237,8 @@ paths:
             type: string
       summary: Stream owner sync via SSE
       tags:
-      - owners
-  /api/own/{owner}/txos:
+      - own
+  /owner/{owner}/txos:
     get:
       description: Get transaction outputs owned by a specific owner (address/pubkey/script
         hash)
@@ -1205,6 +2252,11 @@ paths:
         description: Refresh owner data from blockchain before returning
         in: query
         name: refresh
+        type: boolean
+      - default: true
+        description: Filter for unspent outputs only
+        in: query
+        name: unspent
         type: boolean
       - description: Comma-separated list of tags to include
         in: query
@@ -1238,50 +2290,8 @@ paths:
             type: string
       summary: Get owner TXOs
       tags:
-      - owners
-  /api/own/{owner}/utxos:
-    get:
-      description: Get unspent transaction outputs owned by a specific owner
-      parameters:
-      - description: Owner identifier (address, pubkey, or script hash)
-        in: path
-        name: owner
-        required: true
-        type: string
-      - description: Comma-separated list of tags to include
-        in: query
-        name: tags
-        type: string
-      - description: Starting score for pagination
-        in: query
-        name: from
-        type: number
-      - description: Reverse order
-        in: query
-        name: rev
-        type: boolean
-      - default: 100
-        description: Maximum number of results
-        in: query
-        name: limit
-        type: integer
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            items:
-              $ref: '#/definitions/github_com_b-open-io_1sat-stack_pkg_txo.IndexedOutput'
-            type: array
-        "500":
-          description: Internal server error
-          schema:
-            type: string
-      summary: Get owner UTXOs
-      tags:
-      - owners
-  /api/sse/{topics}:
+      - own
+  /sse/{topics}:
     get:
       description: Establishes an SSE connection for real-time event streaming
       parameters:
@@ -1300,7 +2310,7 @@ paths:
       summary: Subscribe to Server-Sent Events
       tags:
       - sse
-  /api/txo/outpoint/{outpoint}:
+  /txo/outpoint/{outpoint}:
     get:
       description: Get a transaction output by its outpoint
       parameters:
@@ -1335,7 +2345,7 @@ paths:
       summary: Get TXO by outpoint
       tags:
       - txos
-  /api/txo/outpoint/{outpoint}/spend:
+  /txo/outpoint/{outpoint}/spend:
     get:
       description: Get the spending transaction for an outpoint
       parameters:
@@ -1362,7 +2372,7 @@ paths:
       summary: Get spend info for outpoint
       tags:
       - txos
-  /api/txo/outpoints:
+  /txo/outpoints:
     post:
       consumes:
       - application/json
@@ -1396,7 +2406,7 @@ paths:
       summary: Get multiple TXOs
       tags:
       - txos
-  /api/txo/outpoints/spends:
+  /txo/outpoints/spends:
     post:
       consumes:
       - application/json
@@ -1426,7 +2436,7 @@ paths:
       summary: Get spends for multiple outpoints
       tags:
       - txos
-  /api/txo/search:
+  /txo/search:
     post:
       consumes:
       - application/json
@@ -1458,7 +2468,7 @@ paths:
       summary: Search outputs by multiple keys
       tags:
       - search
-  /api/txo/search/{key}:
+  /txo/search/{key}:
     get:
       description: Search transaction outputs by an indexed key
       parameters:
@@ -1504,7 +2514,7 @@ paths:
       summary: Search outputs by key
       tags:
       - search
-  /api/txo/tx/{txid}:
+  /txo/tx/{txid}:
     get:
       description: Get all transaction outputs for a specific transaction
       parameters:
@@ -1537,405 +2547,4 @@ paths:
       summary: Get TXOs by transaction ID
       tags:
       - txos
-  /arc/callback:
-    post:
-      consumes:
-      - application/json
-      description: Receives transaction status updates from Arc broadcaster
-      parameters:
-      - description: Arc callback payload
-        in: body
-        name: callback
-        required: true
-        schema:
-          $ref: '#/definitions/merkle.ArcCallback'
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            additionalProperties:
-              type: string
-            type: object
-        "400":
-          description: Bad request
-          schema:
-            additionalProperties:
-              type: string
-            type: object
-        "500":
-          description: Internal server error
-          schema:
-            additionalProperties:
-              type: string
-            type: object
-      summary: Handle Arc callback
-      tags:
-      - merkle
-  /arc/events:
-    get:
-      description: Server-Sent Events stream of transaction status updates. If callbackToken
-        is provided, only events for that token are streamed.
-      parameters:
-      - description: Callback token from transaction submission
-        in: query
-        name: callbackToken
-        type: string
-      produces:
-      - text/event-stream
-      responses:
-        "200":
-          description: SSE stream of transaction status updates
-          schema:
-            type: string
-      summary: Stream transaction events
-      tags:
-      - arcade
-  /arc/policy:
-    get:
-      description: Returns the transaction policy configuration including fee rates
-        and limits
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            $ref: '#/definitions/models.Policy'
-      summary: Get policy
-      tags:
-      - arcade
-  /arc/tx:
-    post:
-      consumes:
-      - application/json
-      - application/octet-stream
-      - text/plain
-      description: Submit a single transaction for broadcast. Accepts raw transaction
-        bytes, hex string, or JSON with rawTx field.
-      parameters:
-      - description: Transaction data
-        in: body
-        name: transaction
-        required: true
-        schema:
-          $ref: '#/definitions/fiber.TransactionRequest'
-      - description: URL for status callbacks
-        in: header
-        name: X-CallbackUrl
-        type: string
-      - description: Token for SSE event filtering
-        in: header
-        name: X-CallbackToken
-        type: string
-      - description: Send all status updates (true/false)
-        in: header
-        name: X-FullStatusUpdates
-        type: string
-      - description: Skip fee validation (true/false)
-        in: header
-        name: X-SkipFeeValidation
-        type: string
-      - description: Skip script validation (true/false)
-        in: header
-        name: X-SkipScriptValidation
-        type: string
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            $ref: '#/definitions/models.TransactionStatus'
-        "400":
-          description: Bad Request
-          schema:
-            additionalProperties:
-              type: string
-            type: object
-        "500":
-          description: Internal Server Error
-          schema:
-            additionalProperties:
-              type: string
-            type: object
-      summary: Submit transaction
-      tags:
-      - arcade
-  /arc/tx/{txid}:
-    get:
-      description: Get the current status of a submitted transaction
-      parameters:
-      - description: Transaction ID
-        in: path
-        name: txid
-        required: true
-        type: string
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            $ref: '#/definitions/models.TransactionStatus'
-        "404":
-          description: Not Found
-          schema:
-            additionalProperties:
-              type: string
-            type: object
-        "500":
-          description: Internal Server Error
-          schema:
-            additionalProperties:
-              type: string
-            type: object
-      summary: Get transaction status
-      tags:
-      - arcade
-  /arc/txs:
-    post:
-      consumes:
-      - application/json
-      description: Submit multiple transactions for broadcast
-      parameters:
-      - description: Array of transactions
-        in: body
-        name: transactions
-        required: true
-        schema:
-          items:
-            $ref: '#/definitions/fiber.TransactionRequest'
-          type: array
-      - description: URL for status callbacks
-        in: header
-        name: X-CallbackUrl
-        type: string
-      - description: Token for SSE event filtering
-        in: header
-        name: X-CallbackToken
-        type: string
-      - description: Send all status updates (true/false)
-        in: header
-        name: X-FullStatusUpdates
-        type: string
-      - description: Skip fee validation (true/false)
-        in: header
-        name: X-SkipFeeValidation
-        type: string
-      - description: Skip script validation (true/false)
-        in: header
-        name: X-SkipScriptValidation
-        type: string
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            items:
-              $ref: '#/definitions/models.TransactionStatus'
-            type: array
-        "400":
-          description: Bad Request
-          schema:
-            additionalProperties:
-              type: string
-            type: object
-      summary: Submit multiple transactions
-      tags:
-      - arcade
-  /block/header/hash/{hash}:
-    get:
-      description: Returns a block header with the specified hash
-      parameters:
-      - description: Block hash (hex)
-        in: path
-        name: hash
-        required: true
-        type: string
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            $ref: '#/definitions/chaintracks.BlockHeader'
-        "400":
-          description: Bad Request
-          schema:
-            $ref: '#/definitions/fiber.ErrorResponse'
-        "404":
-          description: Not Found
-          schema:
-            $ref: '#/definitions/fiber.ErrorResponse'
-      summary: Get header by hash
-      tags:
-      - chaintracks
-  /block/header/height/{height}:
-    get:
-      description: Returns a block header at the specified height
-      parameters:
-      - description: Block height
-        in: path
-        name: height
-        required: true
-        type: integer
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            $ref: '#/definitions/chaintracks.BlockHeader'
-        "400":
-          description: Bad Request
-          schema:
-            $ref: '#/definitions/fiber.ErrorResponse'
-        "404":
-          description: Not Found
-          schema:
-            $ref: '#/definitions/fiber.ErrorResponse'
-      summary: Get header by height
-      tags:
-      - chaintracks
-  /block/headers:
-    get:
-      description: Returns block headers starting from height as binary data (80 bytes
-        per header)
-      parameters:
-      - description: Starting block height
-        in: query
-        name: height
-        required: true
-        type: integer
-      - description: Number of headers to return
-        in: query
-        name: count
-        required: true
-        type: integer
-      produces:
-      - application/octet-stream
-      responses:
-        "200":
-          description: Concatenated 80-byte headers
-          schema:
-            type: string
-        "400":
-          description: Bad Request
-          schema:
-            $ref: '#/definitions/fiber.ErrorResponse'
-      summary: Get multiple headers
-      tags:
-      - chaintracks
-  /block/height:
-    get:
-      description: Returns the current blockchain height
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            $ref: '#/definitions/fiber.HeightResponse'
-      summary: Get chain height
-      tags:
-      - chaintracks
-  /block/network:
-    get:
-      description: Returns the Bitcoin network this service is connected to
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            $ref: '#/definitions/fiber.NetworkResponse'
-        "500":
-          description: Internal Server Error
-          schema:
-            $ref: '#/definitions/fiber.ErrorResponse'
-      summary: Get network name
-      tags:
-      - chaintracks
-  /block/tip:
-    get:
-      description: Returns the current chain tip block header
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            $ref: '#/definitions/chaintracks.BlockHeader'
-        "404":
-          description: Not Found
-          schema:
-            $ref: '#/definitions/fiber.ErrorResponse'
-      summary: Get chain tip
-      tags:
-      - chaintracks
-  /block/tip/stream:
-    get:
-      description: Server-Sent Events stream of chain tip updates. Sends the current
-        tip immediately, then broadcasts new tips as they arrive.
-      produces:
-      - text/event-stream
-      responses:
-        "200":
-          description: SSE stream of BlockHeader JSON objects
-          schema:
-            type: string
-      summary: Stream chain tip updates
-      tags:
-      - chaintracks
-  /content/{path}:
-    get:
-      description: Serve the content of an inscription by outpoint or txid
-      parameters:
-      - description: Outpoint (txid_vout) or txid
-        in: path
-        name: path
-        required: true
-        type: string
-      produces:
-      - application/octet-stream
-      responses:
-        "200":
-          description: Content
-          schema:
-            type: file
-        "400":
-          description: Bad request
-          schema:
-            additionalProperties:
-              type: string
-            type: object
-        "404":
-          description: Not found
-          schema:
-            additionalProperties:
-              type: string
-            type: object
-      summary: Get inscription content
-      tags:
-      - ordfs
-  /health:
-    get:
-      description: Returns the health status of the service
-      produces:
-      - text/plain
-      responses:
-        "200":
-          description: OK
-          schema:
-            type: string
-        "503":
-          description: Service Unavailable
-          schema:
-            type: string
-      summary: Health check
-      tags:
-      - arcade
 swagger: "2.0"

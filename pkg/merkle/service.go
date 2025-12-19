@@ -11,6 +11,7 @@ import (
 	"github.com/b-open-io/1sat-stack/pkg/pubsub"
 	"github.com/b-open-io/1sat-stack/pkg/store"
 	"github.com/b-open-io/1sat-stack/pkg/txo"
+	"github.com/b-open-io/1sat-stack/pkg/types"
 	"github.com/bsv-blockchain/go-sdk/chainhash"
 	"github.com/bsv-blockchain/go-sdk/transaction"
 	"github.com/bsv-blockchain/go-sdk/transaction/chaintracker"
@@ -219,7 +220,7 @@ func (s *Service) handleRejectedCallback(callback ArcCallback) {
 // SetChainTip updates the immutability threshold based on the current chain tip.
 // Call this when receiving block notifications from external source.
 func (s *Service) SetChainTip(height uint32) {
-	s.immutableScore = txo.HeightScore(height-ImmutabilityBlocks, 0)
+	s.immutableScore = types.HeightScore(height-ImmutabilityBlocks, 0)
 	s.logger.Info("chain tip updated", "height", height, "immutable_threshold", s.immutableScore)
 }
 
@@ -253,7 +254,7 @@ func (s *Service) ValidateAndUpdateTx(ctx context.Context, txid *chainhash.Hash,
 	var newScore float64
 	for _, path := range tx.MerklePath.Path[0] {
 		if txid.IsEqual(path.Hash) {
-			newScore = txo.HeightScore(tx.MerklePath.BlockHeight, path.Offset)
+			newScore = types.HeightScore(tx.MerklePath.BlockHeight, path.Offset)
 			break
 		}
 	}

@@ -1,4 +1,4 @@
-package bsv21
+package topic
 
 import (
 	"context"
@@ -38,20 +38,20 @@ func NewMissingInputError(txid, missingTxID *chainhash.Hash, inputIndex, outputI
 	}
 }
 
-// TopicManager implements the overlay TopicManager interface for BSV21
-type TopicManager struct {
+// Bsv21ValidatedTopicManager implements the overlay TopicManager interface for BSV21.
+// It validates token transfers by checking input/output balances.
+// This matches the implementation in bsv21-overlay/topics/bsv21-topic-validated.go
+type Bsv21ValidatedTopicManager struct {
 	topic    string
 	storage  engine.Storage
 	tokenIds map[string]struct{}
-	logger   *slog.Logger
 }
 
-// NewTopicManager creates a new BSV21 topic manager
-func NewTopicManager(topic string, storage engine.Storage, tokenIds []string) *TopicManager {
-	tm := &TopicManager{
+// NewBsv21ValidatedTopicManager creates a new BSV21 validated topic manager
+func NewBsv21ValidatedTopicManager(topic string, storage engine.Storage, tokenIds []string) *Bsv21ValidatedTopicManager {
+	tm := &Bsv21ValidatedTopicManager{
 		topic:   topic,
 		storage: storage,
-		logger:  slog.Default(),
 	}
 	if len(tokenIds) > 0 {
 		tm.tokenIds = make(map[string]struct{}, len(tokenIds))
@@ -63,7 +63,7 @@ func NewTopicManager(topic string, storage engine.Storage, tokenIds []string) *T
 }
 
 // HasTokenId returns true if the tokenId is managed by this topic
-func (tm *TopicManager) HasTokenId(tokenId string) bool {
+func (tm *Bsv21ValidatedTopicManager) HasTokenId(tokenId string) bool {
 	if tm.tokenIds == nil {
 		return true // Accept all tokens if no whitelist
 	}
@@ -80,7 +80,7 @@ type tokenSummary struct {
 }
 
 // IdentifyAdmissibleOutputs determines which outputs should be admitted
-func (tm *TopicManager) IdentifyAdmissibleOutputs(ctx context.Context, beefBytes []byte, previousCoins []uint32) (admit overlay.AdmittanceInstructions, err error) {
+func (tm *Bsv21ValidatedTopicManager) IdentifyAdmissibleOutputs(ctx context.Context, beefBytes []byte, previousCoins []uint32) (admit overlay.AdmittanceInstructions, err error) {
 	_, tx, txid, err := transaction.ParseBeef(beefBytes)
 	if err != nil {
 		return admit, err
@@ -141,7 +141,7 @@ func (tm *TopicManager) IdentifyAdmissibleOutputs(ctx context.Context, beefBytes
 						continue
 					}
 					if slices.Contains(previousCoins, uint32(vin)) {
-						tm.logger.Debug("BSV21_INPUT_FOUND",
+						slog.Debug("BSV21_INPUT_FOUND",
 							"topic", tm.topic,
 							"txid", txid.String(),
 							"vin", vin,
@@ -177,7 +177,7 @@ func (tm *TopicManager) IdentifyAdmissibleOutputs(ctx context.Context, beefBytes
 }
 
 // IdentifyNeededInputs returns the inputs needed for processing
-func (tm *TopicManager) IdentifyNeededInputs(ctx context.Context, beefBytes []byte) ([]*transaction.Outpoint, error) {
+func (tm *Bsv21ValidatedTopicManager) IdentifyNeededInputs(ctx context.Context, beefBytes []byte) ([]*transaction.Outpoint, error) {
 	_, tx, _, err := transaction.ParseBeef(beefBytes)
 	if err != nil {
 		return nil, err
@@ -212,12 +212,12 @@ func (tm *TopicManager) IdentifyNeededInputs(ctx context.Context, beefBytes []by
 }
 
 // GetDocumentation returns documentation for this topic manager
-func (tm *TopicManager) GetDocumentation() string {
-	return "BSV21 Topic Manager"
+func (tm *Bsv21ValidatedTopicManager) GetDocumentation() string {
+	return "BSV21 Validated Topic Manager"
 }
 
 // GetMetaData returns metadata for this topic manager
-func (tm *TopicManager) GetMetaData() *overlay.MetaData {
+func (tm *Bsv21ValidatedTopicManager) GetMetaData() *overlay.MetaData {
 	return &overlay.MetaData{
 		Name: "BSV21",
 	}

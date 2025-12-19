@@ -86,7 +86,41 @@ func (s *slogAdapter) Debugf(format string, args ...interface{}) {
 	s.logger.Debug(fmt.Sprintf(format, args...))
 }
 
+// NewBadgerStoreFromConfig creates a new BadgerDB-backed Store from config.
+func NewBadgerStoreFromConfig(cfg *BadgerConfig, logger *slog.Logger) (*BadgerStore, error) {
+	if logger == nil {
+		logger = slog.Default()
+	}
+
+	path := expandPath(cfg.Path)
+
+	var opts badger.Options
+	if cfg.InMemory {
+		opts = badger.DefaultOptions("").WithInMemory(true)
+	} else {
+		if path == "" {
+			return nil, fmt.Errorf("path required for disk-based storage")
+		}
+		opts = badger.DefaultOptions(path)
+	}
+
+	opts = opts.WithLogger(&slogAdapter{logger: logger})
+
+	logger.Info("opening BadgerDB", "path", path, "inMemory", cfg.InMemory)
+
+	db, err := badger.Open(opts)
+	if err != nil {
+		return nil, fmt.Errorf("failed to open badger db: %w", err)
+	}
+
+	return &BadgerStore{
+		db:     db,
+		logger: logger,
+	}, nil
+}
+
 // NewBadgerStore creates a new BadgerDB-backed Store.
+// Deprecated: Use NewBadgerStoreFromConfig instead.
 // Connection string format:
 //   - badger:///path/to/db - disk-based storage
 //   - badger://~/.1sat/store - disk-based storage with home directory expansion
@@ -600,7 +634,7 @@ func (s *BadgerStore) ZScore(ctx context.Context, key, member []byte) (float64, 
 		})
 	})
 	if errors.Is(err, badger.ErrKeyNotFound) {
-		return 0, nil
+		return 0, ErrKeyNotFound
 	}
 	return score, err
 }
@@ -701,6 +735,70 @@ func (s *BadgerStore) ZSum(ctx context.Context, key []byte) (float64, error) {
 
 func (s *BadgerStore) Search(ctx context.Context, cfg *SearchCfg) ([]ScoredMember, error) {
 	return Search(ctx, s, cfg)
+}
+
+// ZKeys returns all sorted set keys matching a prefix.
+// It scans for unique sorted set keys by looking at member entries.
+// Members are binary (typically 32 or 36 bytes), so we find the key
+// by looking for the last colon that precedes binary data.
+func (s *BadgerStore) ZKeys(ctx context.Context, prefix []byte) ([]string, error) {
+	seen := make(map[string]struct{})
+	fullPrefix := append([]byte(nil), prefixZSetMember...)
+	fullPrefix = append(fullPrefix, prefix...)
+
+	err := s.db.View(func(txn *badger.Txn) error {
+		opts := badger.DefaultIteratorOptions
+		opts.Prefix = fullPrefix
+		opts.PrefetchValues = false
+
+		it := txn.NewIterator(opts)
+		defer it.Close()
+
+		for it.Rewind(); it.Valid(); it.Next() {
+			k := it.Item().Key()
+			// Key format: zset:member:<key>:<member>
+			// Strip prefix "zset:member:"
+			afterPrefix := k[len(prefixZSetMember):]
+
+			// Members are binary (32 or 36 bytes typically)
+			// Find the key by looking for the last colon before binary data
+			// We try common member sizes: 32 (hash) and 36 (outpoint)
+			var key string
+			for _, memberLen := range []int{32, 36} {
+				if len(afterPrefix) > memberLen+1 {
+					// Check if there's a colon separator at the right position
+					sepIdx := len(afterPrefix) - memberLen - 1
+					if afterPrefix[sepIdx] == ':' {
+						key = string(afterPrefix[:sepIdx])
+						break
+					}
+				}
+			}
+
+			// Fallback: find last colon (for other member sizes)
+			if key == "" {
+				lastColon := bytes.LastIndexByte(afterPrefix, ':')
+				if lastColon > 0 {
+					key = string(afterPrefix[:lastColon])
+				}
+			}
+
+			if key != "" {
+				seen[key] = struct{}{}
+			}
+		}
+		return nil
+	})
+
+	if err != nil {
+		return nil, err
+	}
+
+	keys := make([]string, 0, len(seen))
+	for k := range seen {
+		keys = append(keys, k)
+	}
+	return keys, nil
 }
 
 // KV Operations

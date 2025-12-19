@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
-	"time"
 
 	"github.com/b-open-io/1sat-stack/pkg/txo"
 	"github.com/b-open-io/1sat-stack/pkg/types"
@@ -13,14 +12,6 @@ import (
 	"github.com/bsv-blockchain/go-sdk/script"
 	"github.com/bsv-blockchain/go-sdk/transaction"
 )
-
-// HeightScore calculates the score for a block height and index
-func HeightScore(height uint32, idx uint64) float64 {
-	if height == 0 {
-		return float64(time.Now().UnixNano())
-	}
-	return float64(uint64(height)*1000000000 + idx)
-}
 
 // OutputContext holds additional context for an output during indexing
 type OutputContext struct {
@@ -76,7 +67,7 @@ func NewIndexContext(ctx context.Context, store *txo.OutputStore, tx *transactio
 			}
 		}
 	}
-	idxCtx.Score = HeightScore(idxCtx.Height, idxCtx.Idx)
+	idxCtx.Score = types.HeightScore(idxCtx.Height, idxCtx.Idx)
 	for _, indexer := range indexers {
 		idxCtx.tags = append(idxCtx.tags, indexer.Tag())
 	}

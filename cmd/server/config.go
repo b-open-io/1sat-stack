@@ -8,25 +8,33 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/b-open-io/1sat-stack/admin"
 	"github.com/b-open-io/1sat-stack/pkg/beef"
 	"github.com/b-open-io/1sat-stack/pkg/bsv21"
+	"github.com/b-open-io/1sat-stack/pkg/fees"
 	"github.com/b-open-io/1sat-stack/pkg/indexer"
 	"github.com/b-open-io/1sat-stack/pkg/indexer/parse/bitcom"
 	"github.com/b-open-io/1sat-stack/pkg/indexer/parse/cosign"
 	"github.com/b-open-io/1sat-stack/pkg/indexer/parse/lock"
-	"github.com/b-open-io/1sat-stack/pkg/indexer/parse/onesat"
+	idxonesat "github.com/b-open-io/1sat-stack/pkg/indexer/parse/onesat"
 	"github.com/b-open-io/1sat-stack/pkg/indexer/parse/p2pkh"
 	"github.com/b-open-io/1sat-stack/pkg/indexer/parse/shrug"
+	"github.com/b-open-io/1sat-stack/pkg/jbsync"
+	"github.com/b-open-io/1sat-stack/pkg/lookup"
 	"github.com/b-open-io/1sat-stack/pkg/ordfs"
-	"github.com/b-open-io/1sat-stack/pkg/own"
+	"github.com/b-open-io/1sat-stack/pkg/overlay"
+	"github.com/b-open-io/1sat-stack/pkg/owner"
 	"github.com/b-open-io/1sat-stack/pkg/pubsub"
 	"github.com/b-open-io/1sat-stack/pkg/store"
+	"github.com/b-open-io/1sat-stack/pkg/topic"
 	"github.com/b-open-io/1sat-stack/pkg/txo"
+	"github.com/b-open-io/go-junglebus"
 	arcadeconfig "github.com/bsv-blockchain/arcade/config"
 	arcaderoutes "github.com/bsv-blockchain/arcade/routes/fiber"
 	"github.com/bsv-blockchain/go-chaintracks/chaintracks"
 	chaintracksconfig "github.com/bsv-blockchain/go-chaintracks/config"
 	chaintracksroutes "github.com/bsv-blockchain/go-chaintracks/routes/fiber"
+	"github.com/bsv-blockchain/go-overlay-services/pkg/core/engine"
 	p2p "github.com/bsv-blockchain/go-teranode-p2p-client"
 	"github.com/gofiber/fiber/v2"
 	"github.com/spf13/viper"
@@ -34,11 +42,14 @@ import (
 
 // Config holds the complete server configuration
 type Config struct {
-	// Network settings
-	Network NetworkConfig `mapstructure:"network"`
+	// Network: "main" or "test"
+	Network string `mapstructure:"network"`
 
 	// Server settings
 	Server ServerConfig `mapstructure:"server"`
+
+	// JungleBus client configuration
+	JungleBus JungleBusConfig `mapstructure:"junglebus"`
 
 	// Core services - these are the shared dependencies
 	Store  store.Config  `mapstructure:"store"`
@@ -58,17 +69,29 @@ type Config struct {
 	// BSV21 token support
 	BSV21 bsv21.Config `mapstructure:"bsv21"`
 
+	// Overlay engine
+	Overlay overlay.Config `mapstructure:"overlay"`
+
 	// Content serving
 	ORDFS ordfs.Config `mapstructure:"ordfs"`
 
 	// Owner services
-	Own own.Config `mapstructure:"own"`
+	Owner owner.Config `mapstructure:"owner"`
+
+	// Fee service for topic management
+	Fees fees.Config `mapstructure:"fees"`
+
+	// Admin UI
+	Admin admin.Config `mapstructure:"admin"`
 }
 
-// NetworkConfig holds network settings
-type NetworkConfig struct {
-	Type      string `mapstructure:"type"`      // main or test
-	JungleBus string `mapstructure:"junglebus"` // JungleBus service URL
+// JungleBusConfig holds JungleBus client configuration
+type JungleBusConfig struct {
+	URL     string `mapstructure:"url"`     // Server URL
+	Token   string `mapstructure:"token"`   // API token (optional)
+	SSL     bool   `mapstructure:"ssl"`     // Use SSL (default: true)
+	Version string `mapstructure:"version"` // API version (default: v1)
+	Debug   bool   `mapstructure:"debug"`   // Enable debug logging
 }
 
 // MerkleConfig holds merkle service configuration
@@ -98,10 +121,17 @@ type Services struct {
 	TXO     *txo.Services
 	Indexer *indexer.Services
 	BSV21   *bsv21.Services
+	Overlay *overlay.Services
 	ORDFS   *ordfs.Services
-	Own     *own.Services
+	Own     *owner.Services
+	Fees    *fees.FeeService
+	Admin   *admin.Services
+
+	// JungleBus subscriptions
+	JBSubscribers []*jbsync.Subscriber
 
 	// External services
+	JungleBus         *junglebus.Client
 	P2PClient         *p2p.Client
 	Chaintracks       chaintracks.Chaintracks
 	ChaintracksRoutes *chaintracksroutes.Routes
@@ -111,9 +141,15 @@ type Services struct {
 
 // SetDefaults configures viper defaults for all settings
 func (c *Config) SetDefaults(v *viper.Viper) {
-	// Network defaults
-	v.SetDefault("network.type", "main")
-	v.SetDefault("network.junglebus", "https://junglebus.gorillapool.io")
+	// Network default
+	v.SetDefault("network", "main")
+
+	// JungleBus defaults
+	v.SetDefault("junglebus.url", "https://junglebus.gorillapool.io")
+	v.SetDefault("junglebus.token", "")
+	v.SetDefault("junglebus.ssl", true)
+	v.SetDefault("junglebus.version", "v1")
+	v.SetDefault("junglebus.debug", false)
 
 	// Server defaults
 	v.SetDefault("server.port", 8080)
@@ -145,8 +181,11 @@ func (c *Config) SetDefaults(v *viper.Viper) {
 	// Package configs
 	c.Indexer.SetDefaults(v, "indexer")
 	c.BSV21.SetDefaults(v, "bsv21")
+	c.Overlay.SetDefaults(v, "overlay")
 	c.ORDFS.SetDefaults(v, "ordfs")
-	c.Own.SetDefaults(v, "own")
+	c.Owner.SetDefaults(v, "owner")
+	c.Fees.SetDefaults(v, "fees")
+	c.Admin.SetDefaults(v, "admin")
 }
 
 // Initialize creates all services from the configuration
@@ -171,8 +210,25 @@ func (c *Config) Initialize(ctx context.Context, logger *slog.Logger) (*Services
 	}
 	svc.PubSub = pubsubSvc
 
-	// Initialize beef storage
-	beefSvc, err := c.Beef.Initialize(ctx, logger, nil)
+	// Initialize JungleBus client (shared by multiple services)
+	jbOpts := []junglebus.ClientOps{
+		junglebus.WithHTTP(c.JungleBus.URL),
+		junglebus.WithSSL(c.JungleBus.SSL),
+		junglebus.WithVersion(c.JungleBus.Version),
+		junglebus.WithDebugging(c.JungleBus.Debug),
+	}
+	if c.JungleBus.Token != "" {
+		jbOpts = append(jbOpts, junglebus.WithToken(c.JungleBus.Token))
+	}
+	jbClient, err := junglebus.New(jbOpts...)
+	if err != nil {
+		return nil, fmt.Errorf("failed to initialize junglebus client: %w", err)
+	}
+	svc.JungleBus = jbClient
+	logger.Info("junglebus client initialized", "url", c.JungleBus.URL)
+
+	// Initialize beef storage (pass JungleBus client for fallback lookups)
+	beefSvc, err := c.Beef.Initialize(ctx, logger, nil, svc.JungleBus)
 	if err != nil {
 		return nil, fmt.Errorf("failed to initialize beef: %w", err)
 	}
@@ -181,7 +237,7 @@ func (c *Config) Initialize(ctx context.Context, logger *slog.Logger) (*Services
 	// Initialize P2P client (shared by chaintracks and arcade)
 	if c.Chaintracks.Mode == chaintracksconfig.ModeEmbedded || c.Arcade.Mode == arcadeconfig.ModeEmbedded {
 		// Set network on P2P config
-		c.P2P.Network = c.Network.Type
+		c.P2P.Network = c.Network
 		p2pClient, err := c.P2P.Initialize(ctx, "1sat-stack")
 		if err != nil {
 			return nil, fmt.Errorf("failed to initialize p2p client: %w", err)
@@ -205,7 +261,7 @@ func (c *Config) Initialize(ctx context.Context, logger *slog.Logger) (*Services
 	// Initialize Arcade
 	if c.Arcade.Mode != "" && c.Arcade.Mode != "disabled" {
 		// Set network from main config
-		c.Arcade.Network = c.Network.Type
+		c.Arcade.Network = c.Network
 		arcadeSvc, err := c.Arcade.Initialize(ctx, logger, svc.Chaintracks, svc.P2PClient)
 		if err != nil {
 			return nil, fmt.Errorf("failed to initialize arcade: %w", err)
@@ -224,7 +280,7 @@ func (c *Config) Initialize(ctx context.Context, logger *slog.Logger) (*Services
 
 	// Initialize TXO storage with shared dependencies
 	if c.TXO.Mode != txo.ModeDisabled {
-		txoSvc, err := c.TXO.InitializeWithDeps(ctx, storeSvc, pubsubSvc, beefSvc, logger)
+		txoSvc, err := c.TXO.Initialize(ctx, logger, storeSvc, pubsubSvc, beefSvc)
 		if err != nil {
 			return nil, fmt.Errorf("failed to initialize txo: %w", err)
 		}
@@ -239,16 +295,16 @@ func (c *Config) Initialize(ctx context.Context, logger *slog.Logger) (*Services
 		}
 		// Create protocol indexers - order matters as some indexers depend on others
 		indexers := []indexer.Indexer{
-			&p2pkh.P2PKHIndexer{},       // P2PKH address extraction
-			&lock.LockIndexer{},         // Lock protocol
-			&onesat.InscriptionIndexer{}, // 1Sat ordinals inscriptions
-			&onesat.OriginIndexer{},     // Origin tracking
-			&onesat.Bsv20Indexer{},      // BSV-20 fungible tokens
-			&onesat.Bsv21Indexer{},      // BSV-21 fungible tokens
-			&onesat.OrdLockIndexer{},    // Ordinal locks
-			&bitcom.BitcomIndexer{},     // Bitcom protocols (B, MAP, SIGMA)
-			&cosign.CosignIndexer{},     // Cosign protocol
-			&shrug.ShrugIndexer{},       // Shrug tokens
+			&p2pkh.P2PKHIndexer{},           // P2PKH address extraction
+			&lock.LockIndexer{},             // Lock protocol
+			&idxonesat.InscriptionIndexer{}, // 1Sat ordinals inscriptions
+			&idxonesat.OriginIndexer{},      // Origin tracking
+			&idxonesat.Bsv20Indexer{},       // BSV-20 fungible tokens
+			&idxonesat.Bsv21Indexer{},       // BSV-21 fungible tokens
+			&idxonesat.OrdLockIndexer{},     // Ordinal locks
+			&bitcom.BitcomIndexer{},         // Bitcom protocols (B, MAP, SIGMA)
+			&cosign.CosignIndexer{},         // Cosign protocol
+			&shrug.ShrugIndexer{},           // Shrug tokens
 		}
 		indexerSvc, err := c.Indexer.Initialize(ctx, logger, svc.TXO.OutputStore, svc.Beef.Storage, ps, indexers)
 		if err != nil {
@@ -257,13 +313,58 @@ func (c *Config) Initialize(ctx context.Context, logger *slog.Logger) (*Services
 		svc.Indexer = indexerSvc
 	}
 
-	// Initialize BSV21 with chaintracks for merkle proof validation
+	// Initialize overlay engine FIRST (BSV21 needs it for topic/lookup registration)
+	if c.Overlay.Mode != overlay.ModeDisabled && svc.TXO != nil {
+		overlaySvc, err := c.Overlay.Initialize(ctx, logger, &overlay.InitializeDeps{
+			OutputStore:  svc.TXO.OutputStore,
+			ChainTracker: svc.Chaintracks,
+			// Storage: nil for now - Fee service can provide this later
+		})
+		if err != nil {
+			return nil, fmt.Errorf("failed to initialize overlay: %w", err)
+		}
+		svc.Overlay = overlaySvc
+
+		// Set topic whitelist/blacklist from config
+		svc.Overlay.SetTopicWhitelist(c.Overlay.TopicWhitelist)
+		svc.Overlay.SetTopicBlacklist(c.Overlay.TopicBlacklist)
+
+		// Register 1Sat lookup service (comprehensive indexer for all outputs)
+		onesatLookup := lookup.NewOneSatLookup(svc.TXO.OutputStore, logger)
+		svc.Overlay.RegisterLookupService("1sat", onesatLookup)
+		logger.Info("1Sat lookup service registered with overlay engine")
+
+		// Register tm_1sat topic factory
+		svc.Overlay.RegisterTopic("tm_1sat", func(topicName string) (engine.TopicManager, error) {
+			return topic.NewOneSatTopicManager(), nil
+		})
+	}
+
+	// Initialize BSV21 AFTER overlay so we can wire them together
 	if c.BSV21.Mode != bsv21.ModeDisabled && svc.TXO != nil {
-		bsv21Svc, err := c.BSV21.Initialize(ctx, logger, svc.TXO.OutputStore, svc.Chaintracks, nil)
+		bsv21Svc, err := c.BSV21.Initialize(ctx, logger, svc.TXO.OutputStore, svc.Chaintracks)
 		if err != nil {
 			return nil, fmt.Errorf("failed to initialize bsv21: %w", err)
 		}
 		svc.BSV21 = bsv21Svc
+
+		// Wire BSV21 to overlay engine
+		if svc.Overlay != nil {
+			// Register BSV21 lookup service
+			svc.Overlay.RegisterLookupService("bsv21", svc.BSV21.Lookup)
+			logger.Info("BSV21 lookup service registered with overlay engine")
+
+			// Register tm_bsv21 discovery topic (admits all deploy+mint operations)
+			svc.Overlay.RegisterTopic("tm_bsv21", func(topicName string) (engine.TopicManager, error) {
+				return topic.NewBsv21DiscoveryTopicManager(topicName, svc.TXO.OutputStore, logger), nil
+			})
+			logger.Info("BSV21 discovery topic (tm_bsv21) registered with overlay engine")
+		}
+	}
+
+	// Activate whitelisted topics after all factories are registered
+	if svc.Overlay != nil {
+		svc.Overlay.ActivateConfiguredTopics()
 	}
 
 	// Initialize ORDFS content serving
@@ -276,20 +377,69 @@ func (c *Config) Initialize(ctx context.Context, logger *slog.Logger) (*Services
 		svc.ORDFS = ordfsSvc
 	}
 
-	// Initialize owner services (depends on TXO and Indexer)
-	if c.Own.Mode != own.ModeDisabled && svc.TXO != nil {
-		var ingestCtx *indexer.IngestCtx
-		if svc.Indexer != nil {
-			ingestCtx = svc.Indexer.IngestCtx
-		}
-		ownSvc, err := c.Own.Initialize(ctx, logger, svc.TXO.OutputStore, ingestCtx)
+	// Initialize owner services (depends on TXO, Beef, Overlay)
+	if c.Owner.Mode != owner.ModeDisabled && svc.TXO != nil && svc.Overlay != nil {
+		ownSvc, err := c.Owner.Initialize(ctx, logger, &owner.InitializeDeps{
+			JungleBus:   svc.JungleBus,
+			BeefStorage: svc.Beef.Storage,
+			Overlay:     svc.Overlay,
+			OutputStore: svc.TXO.OutputStore,
+		})
 		if err != nil {
 			return nil, fmt.Errorf("failed to initialize own: %w", err)
 		}
 		svc.Own = ownSvc
-		logger.Debug("own service initialized", "mode", c.Own.Mode)
+		logger.Debug("own service initialized", "mode", c.Owner.Mode)
 	} else {
-		logger.Debug("own service not initialized", "mode", c.Own.Mode, "txoNil", svc.TXO == nil)
+		logger.Debug("own service not initialized", "mode", c.Owner.Mode, "txoNil", svc.TXO == nil)
+	}
+
+	// Initialize fee service (for topic whitelist/blacklist management)
+	if c.Fees.Mode != fees.ModeDisabled && svc.Store != nil && svc.TXO != nil {
+		feeService, err := c.Fees.Initialize(ctx, logger, &fees.InitializeDeps{
+			Store:       svc.Store.Store,
+			OutputStore: svc.TXO.OutputStore,
+		})
+		if err != nil {
+			return nil, fmt.Errorf("failed to initialize fees: %w", err)
+		}
+		svc.Fees = feeService
+	}
+
+	// Initialize admin UI (depends on fee service and overlay)
+	if c.Admin.Mode != admin.ModeDisabled && svc.Fees != nil {
+		adminSvc, err := c.Admin.Initialize(ctx, logger, &admin.InitializeDeps{
+			FeeService: svc.Fees,
+			Overlay:    svc.Overlay,
+			Store:      svc.Store.Store,
+		})
+		if err != nil {
+			return nil, fmt.Errorf("failed to initialize admin: %w", err)
+		}
+		svc.Admin = adminSvc
+	}
+
+	// Initialize JungleBus subscriptions for queue population
+	if svc.Store != nil && svc.JungleBus != nil {
+		// BSV21 subscription - populates the bsv21 queue with transaction IDs
+		bsv21SubCfg := &jbsync.SubscriberConfig{
+			SubscriptionID: "51ce778bfa6c7c5fd3f3b6fbaf96ebde1348198c33ca26cb1a8fadbfee0212d7",
+			QueueName:      "bsv21",
+			FromBlock:      783968, // BSV21 genesis block
+			BatchSize:      1000,
+			ReorgDepth:     6,
+			EnableMempool:  true,
+		}
+
+		bsv21Sub, err := jbsync.NewSubscriber(bsv21SubCfg, svc.Store.Store, svc.Chaintracks, svc.JungleBus, logger)
+		if err != nil {
+			return nil, fmt.Errorf("failed to create bsv21 subscriber: %w", err)
+		}
+		svc.JBSubscribers = append(svc.JBSubscribers, bsv21Sub)
+		logger.Info("BSV21 JungleBus subscriber initialized",
+			"subscription_id", bsv21SubCfg.SubscriptionID,
+			"queue", bsv21SubCfg.QueueName,
+			"from_block", bsv21SubCfg.FromBlock)
 	}
 
 	return svc, nil
@@ -321,27 +471,23 @@ func (c *Config) RegisterRoutes(app *fiber.App, svc *Services) {
 
 	// Register TXO routes
 	if svc.TXO != nil && svc.TXO.Routes != nil {
-		prefix := c.TXO.Routes.Prefix
-		if prefix == "" {
-			prefix = "/txo"
-		}
-		txoGroup := api.Group(prefix)
+		txoGroup := api.Group("/txo")
 		svc.TXO.Routes.Register(txoGroup)
 		capabilities = append(capabilities, "txo")
 	}
 
 	// Register owner routes
 	if svc.Own != nil && svc.Own.Routes != nil {
-		prefix := c.Own.Routes.Prefix
+		prefix := c.Owner.Routes.Prefix
 		if prefix == "" {
-			prefix = "/own"
+			prefix = "/owner"
 		}
 		ownGroup := api.Group(prefix)
 		svc.Own.Routes.Register(ownGroup)
-		capabilities = append(capabilities, "own")
-		slog.Debug("registered own routes", "prefix", prefix)
+		capabilities = append(capabilities, "owner")
+		slog.Debug("registered owner routes", "prefix", prefix)
 	} else {
-		slog.Debug("own routes not registered", "ownNil", svc.Own == nil, "ownMode", c.Own.Mode)
+		slog.Debug("owner routes not registered", "ownNil", svc.Own == nil, "ownMode", c.Owner.Mode)
 	}
 
 	// Register indexer routes
@@ -364,6 +510,17 @@ func (c *Config) RegisterRoutes(app *fiber.App, svc *Services) {
 		capabilities = append(capabilities, "bsv21")
 	}
 
+	// Register overlay routes
+	if svc.Overlay != nil && svc.Overlay.Routes != nil {
+		prefix := c.Overlay.Routes.Prefix
+		if prefix == "" {
+			prefix = "/overlay"
+		}
+		overlayGroup := api.Group(prefix)
+		svc.Overlay.Routes.Register(overlayGroup)
+		capabilities = append(capabilities, "overlay")
+	}
+
 	// Register ORDFS routes
 	if svc.ORDFS != nil && svc.ORDFS.Routes != nil {
 		prefix := c.ORDFS.Routes.Prefix
@@ -379,26 +536,37 @@ func (c *Config) RegisterRoutes(app *fiber.App, svc *Services) {
 
 	// Register Chaintracks routes (block headers, chain tip, etc.)
 	if svc.ChaintracksRoutes != nil {
-		blockGroup := api.Group("/block")
+		blockGroup := api.Group("/chaintracks")
 		svc.ChaintracksRoutes.Register(blockGroup)
 		capabilities = append(capabilities, "chaintracks")
-		slog.Debug("registered chaintracks routes", "prefix", "/block")
+		slog.Debug("registered chaintracks routes", "prefix", "/chaintracks")
 	}
 
 	// Register Arcade routes (transaction broadcast, status)
 	if svc.ArcadeRoutes != nil {
-		arcGroup := api.Group("/arc")
+		arcGroup := api.Group("/arcade")
 		svc.ArcadeRoutes.Register(arcGroup)
 		capabilities = append(capabilities, "arcade")
-		slog.Debug("registered arcade routes", "prefix", "/arc")
+		slog.Debug("registered arcade routes", "prefix", "/arcade")
+	}
+
+	// Register Admin routes
+	if svc.Admin != nil && svc.Admin.Routes != nil {
+		prefix := c.Admin.Routes.Prefix
+		if prefix == "" {
+			prefix = "/admin"
+		}
+		adminGroup := api.Group(prefix)
+		svc.Admin.Routes.Register(adminGroup)
+		capabilities = append(capabilities, "admin")
+		slog.Debug("registered admin routes", "prefix", prefix)
 	}
 
 	// Health check endpoint
-	api.Get("/health", func(c *fiber.Ctx) error {
-		return c.JSON(fiber.Map{
-			"status": "ok",
-		})
-	})
+	api.Get("/health", handleHealth)
+
+	// Capabilities endpoint - returns list of enabled services
+	api.Get("/capabilities", handleCapabilities(capabilities))
 
 	// Capabilities endpoint - returns list of enabled services
 	api.Get("/capabilities", func(c *fiber.Ctx) error {
@@ -407,6 +575,32 @@ func (c *Config) RegisterRoutes(app *fiber.App, svc *Services) {
 
 	// Setup API documentation routes
 	registerDocsRoutes(app)
+}
+
+// handleHealth returns the health status
+// @Summary Health check
+// @Description Returns the health status of the service
+// @Tags system
+// @Produce json
+// @Success 200 {object} map[string]string "status: ok"
+// @Router /health [get]
+func handleHealth(c *fiber.Ctx) error {
+	return c.JSON(fiber.Map{
+		"status": "ok",
+	})
+}
+
+// handleCapabilities returns the list of enabled capabilities
+// @Summary Get capabilities
+// @Description Returns the list of enabled service capabilities
+// @Tags system
+// @Produce json
+// @Success 200 {array} string "List of enabled capabilities"
+// @Router /capabilities [get]
+func handleCapabilities(capabilities []string) fiber.Handler {
+	return func(c *fiber.Ctx) error {
+		return c.JSON(capabilities)
+	}
 }
 
 // registerDocsRoutes sets up Swagger/Scalar API documentation
@@ -464,6 +658,12 @@ func (svc *Services) Close() error {
 	var errs []error
 
 	// Close in reverse order of initialization
+	if svc.Admin != nil {
+		if err := svc.Admin.Close(); err != nil {
+			errs = append(errs, fmt.Errorf("admin close: %w", err))
+		}
+	}
+
 	if svc.Own != nil {
 		if err := svc.Own.Close(); err != nil {
 			errs = append(errs, fmt.Errorf("own close: %w", err))
@@ -479,6 +679,12 @@ func (svc *Services) Close() error {
 	if svc.BSV21 != nil {
 		if err := svc.BSV21.Close(); err != nil {
 			errs = append(errs, fmt.Errorf("bsv21 close: %w", err))
+		}
+	}
+
+	if svc.Overlay != nil {
+		if err := svc.Overlay.Close(); err != nil {
+			errs = append(errs, fmt.Errorf("overlay close: %w", err))
 		}
 	}
 
@@ -530,6 +736,21 @@ func (svc *Services) Close() error {
 		return fmt.Errorf("close errors: %v", errs)
 	}
 	return nil
+}
+
+// StartSubscribers starts all JungleBus subscribers in background goroutines.
+// The subscribers will run until the context is cancelled.
+func (svc *Services) StartSubscribers(ctx context.Context, logger *slog.Logger) {
+	for _, sub := range svc.JBSubscribers {
+		go func(s *jbsync.Subscriber) {
+			if err := s.Start(ctx); err != nil {
+				logger.Error("JungleBus subscriber error", "error", err)
+			}
+		}(sub)
+	}
+	if len(svc.JBSubscribers) > 0 {
+		logger.Info("started JungleBus subscribers", "count", len(svc.JBSubscribers))
+	}
 }
 
 // LoadConfig loads configuration from file and environment.

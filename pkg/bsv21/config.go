@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"log/slog"
 
+	lookuppkg "github.com/b-open-io/1sat-stack/pkg/lookup"
+	topicpkg "github.com/b-open-io/1sat-stack/pkg/topic"
 	"github.com/b-open-io/1sat-stack/pkg/txo"
 	"github.com/b-open-io/1sat-stack/pkg/types"
 	"github.com/bsv-blockchain/go-chaintracks/chaintracks"
@@ -54,9 +56,10 @@ func (c *Config) SetDefaults(v *viper.Viper, prefix string) {
 
 // Services holds initialized BSV21 services
 type Services struct {
-	Indexer *Indexer
-	Lookup  *Lookup
-	Routes  *Routes
+	Indexer      *Indexer
+	Lookup       *lookuppkg.BSV21Lookup
+	TopicManager *topicpkg.Bsv21ValidatedTopicManager
+	Routes       *Routes
 }
 
 // Initialize creates BSV21 services from the configuration
@@ -65,7 +68,6 @@ func (c *Config) Initialize(
 	logger *slog.Logger,
 	txoStorage *txo.OutputStore,
 	chaintracker chaintracks.Chaintracks,
-	activeTopics func(topic string) bool,
 ) (*Services, error) {
 	if c.Mode == ModeDisabled {
 		return nil, nil
@@ -110,20 +112,23 @@ func (c *Config) Initialize(
 		}
 
 		// Create lookup service
-		lookup := NewLookup(txoStorage)
+		bsv21Lookup := lookuppkg.NewBSV21Lookup(txoStorage)
+
+		// Create topic manager for overlay engine integration
+		topicManager := topicpkg.NewBsv21ValidatedTopicManager("bsv21", txoStorage, c.WhitelistTokens)
 
 		svc := &Services{
-			Indexer: idx,
-			Lookup:  lookup,
+			Indexer:      idx,
+			Lookup:       bsv21Lookup,
+			TopicManager: topicManager,
 		}
 
 		// Create routes if enabled
 		if c.Routes.Enabled && txoStorage != nil {
 			svc.Routes = NewRoutes(&RoutesDeps{
 				Storage:      txoStorage,
-				Lookup:       lookup,
+				Lookup:       bsv21Lookup,
 				ChainTracker: chaintracker,
-				ActiveTopics: activeTopics,
 				Logger:       logger,
 			})
 		}

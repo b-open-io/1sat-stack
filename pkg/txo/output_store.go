@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/binary"
 	"encoding/json"
+	"fmt"
 
 	"github.com/b-open-io/1sat-stack/pkg/beef"
 	"github.com/b-open-io/1sat-stack/pkg/pubsub"
@@ -282,12 +283,15 @@ func (s *OutputStore) SaveSpend(ctx context.Context, op *transaction.Outpoint, s
 
 	if len(eventsBytes) > 0 {
 		var events []string
-		if err := json.Unmarshal(eventsBytes, &events); err == nil {
-			for _, event := range events {
-				s.Store.ZAdd(ctx, keyEventSpnd(event), store.ScoredMember{
-					Member: opBytes,
-					Score:  score,
-				})
+		if err := json.Unmarshal(eventsBytes, &events); err != nil {
+			return fmt.Errorf("failed to unmarshal events for %s: %w", op.String(), err)
+		}
+		for _, event := range events {
+			if err := s.Store.ZAdd(ctx, keyEventSpnd(event), store.ScoredMember{
+				Member: opBytes,
+				Score:  score,
+			}); err != nil {
+				return fmt.Errorf("failed to add to spent index %s: %w", event, err)
 			}
 		}
 	}
@@ -555,7 +559,9 @@ func (s *OutputStore) loadOutputs(ctx context.Context, ops []*transaction.Outpoi
 
 		// Parse events
 		if ev, ok := fields[fldEvent]; ok {
-			json.Unmarshal(ev, &output.Events)
+			if err := json.Unmarshal(ev, &output.Events); err != nil {
+				return nil, fmt.Errorf("failed to unmarshal events for %s: %w", op.String(), err)
+			}
 		}
 
 		// Parse tag data based on cfg.IncludeTags
@@ -563,9 +569,10 @@ func (s *OutputStore) loadOutputs(ctx context.Context, ops []*transaction.Outpoi
 			for _, tag := range cfg.IncludeTags {
 				if data, ok := fields[fldData+tag]; ok {
 					var tagData any
-					if err := json.Unmarshal(data, &tagData); err == nil {
-						output.Data[tag] = tagData
+					if err := json.Unmarshal(data, &tagData); err != nil {
+						return nil, fmt.Errorf("failed to unmarshal tag %s for %s: %w", tag, op.String(), err)
 					}
+					output.Data[tag] = tagData
 				}
 			}
 		} else if cfg == nil {
@@ -574,9 +581,10 @@ func (s *OutputStore) loadOutputs(ctx context.Context, ops []*transaction.Outpoi
 				if len(field) > len(fldData) && field[:len(fldData)] == fldData {
 					tag := field[len(fldData):]
 					var tagData any
-					if err := json.Unmarshal(data, &tagData); err == nil {
-						output.Data[tag] = tagData
+					if err := json.Unmarshal(data, &tagData); err != nil {
+						return nil, fmt.Errorf("failed to unmarshal tag %s for %s: %w", tag, op.String(), err)
 					}
+					output.Data[tag] = tagData
 				}
 			}
 		}
@@ -681,13 +689,78 @@ func (s *OutputStore) IsTxInTopic(ctx context.Context, txid *chainhash.Hash, top
 
 // === Rollback ===
 
-// Rollback removes all data for a transaction
+// Rollback removes all data for a transaction and recursively rolls back
+// any transactions that spent its outputs. Order of operations:
+// 1. Recursively rollback downstream spenders
+// 2. Un-spend inputs this transaction consumed
+// 3. Delete event indices
+// 4. Delete hash field data
+// 5. Delete output references
 func (s *OutputStore) Rollback(ctx context.Context, txid *chainhash.Hash) error {
 	outputs, err := s.LoadOutputsByTxid(ctx, txid, nil)
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to load outputs for %s: %w", txid.String(), err)
 	}
 
+	// Collect inputs consumed by this transaction (from in:* fields)
+	inputsToUnspend := make(map[string]*transaction.Outpoint)
+
+	for _, output := range outputs {
+		if output == nil {
+			continue
+		}
+		hashKey := keyOutHash(&output.Outpoint)
+		fields, err := s.Store.HGetAll(ctx, hashKey)
+		if err != nil {
+			return fmt.Errorf("failed to get fields for %s: %w", output.Outpoint.String(), err)
+		}
+		for field, data := range fields {
+			if len(field) > len(fldInputs) && field[:len(fldInputs)] == fldInputs {
+				for i := 0; i+36 <= len(data); i += 36 {
+					input := transaction.NewOutpointFromBytes(data[i : i+36])
+					if input != nil {
+						inputsToUnspend[input.String()] = input
+					}
+				}
+			}
+		}
+	}
+
+	// 1. Recursively rollback any transactions that spent our outputs
+	for _, output := range outputs {
+		if output == nil {
+			continue
+		}
+		spendTxid, err := s.GetSpend(ctx, &output.Outpoint)
+		if err != nil {
+			return fmt.Errorf("failed to get spend for %s: %w", output.Outpoint.String(), err)
+		}
+		if spendTxid != nil {
+			if err := s.Rollback(ctx, spendTxid); err != nil {
+				return fmt.Errorf("failed to rollback spending tx %s: %w", spendTxid.String(), err)
+			}
+		}
+	}
+
+	// 2. Un-spend the inputs this transaction consumed
+	for _, input := range inputsToUnspend {
+		// Remove spend marker
+		if err := s.Store.HDel(ctx, hashSpnd, outpointBytes(input)); err != nil {
+			return fmt.Errorf("failed to un-spend %s: %w", input.String(), err)
+		}
+		// Remove from spent event indices
+		events, err := s.GetEvents(ctx, input)
+		if err != nil {
+			return fmt.Errorf("failed to get events for input %s: %w", input.String(), err)
+		}
+		for _, event := range events {
+			if err := s.Store.ZRem(ctx, keyEventSpnd(event), outpointBytes(input)); err != nil {
+				return fmt.Errorf("failed to remove from spent index %s: %w", event, err)
+			}
+		}
+	}
+
+	// 3-5. Delete our event indices, hash fields, and references
 	for _, output := range outputs {
 		if output == nil {
 			continue
@@ -695,25 +768,40 @@ func (s *OutputStore) Rollback(ctx context.Context, txid *chainhash.Hash) error 
 
 		op := &output.Outpoint
 		opBytes := outpointBytes(op)
-
-		// Get events to remove from sorted sets
-		events, _ := s.GetEvents(ctx, op)
-		for _, event := range events {
-			s.Store.ZRem(ctx, keyEvent(event), opBytes)
-			s.Store.ZRem(ctx, keyEventSpnd(event), opBytes)
-		}
-
-		// Delete all hash fields via scan (we need to delete the hash key itself)
-		// Since we're using HSet, we need to get all fields and delete them
 		hashKey := keyOutHash(op)
-		fields, _ := s.Store.HGetAll(ctx, hashKey)
-		for field := range fields {
-			s.Store.HDel(ctx, hashKey, []byte(field))
+
+		// 3. Delete event index entries
+		events, err := s.GetEvents(ctx, op)
+		if err != nil {
+			return fmt.Errorf("failed to get events for %s: %w", op.String(), err)
+		}
+		for _, event := range events {
+			if err := s.Store.ZRem(ctx, keyEvent(event), opBytes); err != nil {
+				return fmt.Errorf("failed to remove event %s: %w", event, err)
+			}
+			if err := s.Store.ZRem(ctx, keyEventSpnd(event), opBytes); err != nil {
+				return fmt.Errorf("failed to remove event spend %s: %w", event, err)
+			}
 		}
 
-		// Remove from bulk lookup hashes
-		s.Store.HDel(ctx, hashSpnd, opBytes)
-		s.Store.HDel(ctx, hashSats, opBytes)
+		// 4. Delete all hash fields
+		fields, err := s.Store.HGetAll(ctx, hashKey)
+		if err != nil {
+			return fmt.Errorf("failed to get hash fields for %s: %w", op.String(), err)
+		}
+		for field := range fields {
+			if err := s.Store.HDel(ctx, hashKey, []byte(field)); err != nil {
+				return fmt.Errorf("failed to delete hash field %s: %w", field, err)
+			}
+		}
+
+		// 5. Remove from bulk lookup hashes (output references - last)
+		if err := s.Store.HDel(ctx, hashSpnd, opBytes); err != nil {
+			return fmt.Errorf("failed to remove spend reference for %s: %w", op.String(), err)
+		}
+		if err := s.Store.HDel(ctx, hashSats, opBytes); err != nil {
+			return fmt.Errorf("failed to remove sats reference for %s: %w", op.String(), err)
+		}
 	}
 
 	return nil
