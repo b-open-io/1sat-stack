@@ -18,20 +18,20 @@ const (
 // Provider constants
 const (
 	ProviderBadger = "badger"
+	ProviderRedis  = "redis"
 	// Future providers:
 	// ProviderTiKV     = "tikv"
-	// ProviderRedis    = "redis"
 	// ProviderAerospike = "aerospike"
 )
 
 // Config holds store configuration.
 type Config struct {
 	Mode     string       `mapstructure:"mode"`     // disabled, embedded, remote
-	Provider string       `mapstructure:"provider"` // badger, tikv, redis, aerospike
+	Provider string       `mapstructure:"provider"` // badger, redis, tikv, aerospike
 	Badger   BadgerConfig `mapstructure:"badger"`   // Badger-specific config
+	Redis    RedisConfig  `mapstructure:"redis"`    // Redis-specific config
 	// Future providers:
 	// TiKV     TiKVConfig     `mapstructure:"tikv"`
-	// Redis    RedisConfig    `mapstructure:"redis"`
 	// Aerospike AerospikeConfig `mapstructure:"aerospike"`
 }
 
@@ -51,6 +51,9 @@ func (c *Config) SetDefaults(v *viper.Viper, prefix string) {
 	v.SetDefault(p+"provider", ProviderBadger)
 	v.SetDefault(p+"badger.path", "~/.1sat/store")
 	v.SetDefault(p+"badger.in_memory", false)
+	v.SetDefault(p+"redis.addr", "localhost:6379")
+	v.SetDefault(p+"redis.password", "")
+	v.SetDefault(p+"redis.db", 0)
 }
 
 // Services holds initialized store services.
@@ -91,11 +94,16 @@ func (c *Config) initializeEmbedded(logger *slog.Logger) (*Services, error) {
 		}
 		return &Services{Store: store}, nil
 
+	case ProviderRedis:
+		store, err := NewRedisStore(&c.Redis, logger)
+		if err != nil {
+			return nil, fmt.Errorf("failed to initialize redis store: %w", err)
+		}
+		return &Services{Store: store}, nil
+
 	// Future providers:
 	// case ProviderTiKV:
 	//     return c.initializeTiKV(logger)
-	// case ProviderRedis:
-	//     return c.initializeRedis(logger)
 
 	default:
 		return nil, fmt.Errorf("unknown store provider: %s", c.Provider)

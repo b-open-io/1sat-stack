@@ -99,6 +99,10 @@ merkle:
 # BSV21 token support (optional)
 bsv21:
   mode: embedded
+  sync:
+    enabled: false
+    categorizer_workers: 8
+    token_workers: 16
   routes:
     enabled: true
 
@@ -123,3 +127,14 @@ ordfs:
   mode: embedded
   routes:
     enabled: true
+
+# JungleBus Sync subscriptions
+jbsync:
+  subscribers:
+    - subscription_id: "51ce778bfa6c7c5fd3f3b6fbaf96ebde1348198c33ca26cb1a8fadbfee0212d7"
+      queue_name: "bsv21"
+      from_block: 783968  # BSV21 genesis block
+      batch_size: 1000
+      reorg_depth: 6
+      enable_mempool: true
+      autostart: true

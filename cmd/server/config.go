@@ -83,6 +83,15 @@ type Config struct {
 
 	// Admin UI
 	Admin admin.Config `mapstructure:"admin"`
+
+	// JungleBus Sync subscriptions
+	JBSync JBSyncConfig `mapstructure:"jbsync"`
+}
+
+// JBSyncConfig holds configuration for JungleBus sync subscriptions
+type JBSyncConfig struct {
+	// Subscribers is the list of subscription configurations
+	Subscribers []jbsync.SubscriberConfig `mapstructure:"subscribers"`
 }
 
 // JungleBusConfig holds JungleBus client configuration
@@ -342,7 +351,7 @@ func (c *Config) Initialize(ctx context.Context, logger *slog.Logger) (*Services
 
 	// Initialize BSV21 AFTER overlay so we can wire them together
 	if c.BSV21.Mode != bsv21.ModeDisabled && svc.TXO != nil {
-		bsv21Svc, err := c.BSV21.Initialize(ctx, logger, svc.TXO.OutputStore, svc.Chaintracks)
+		bsv21Svc, err := c.BSV21.Initialize(ctx, logger, svc.TXO.OutputStore, svc.Chaintracks, svc.Beef.Storage, svc.Overlay, svc.JungleBus)
 		if err != nil {
 			return nil, fmt.Errorf("failed to initialize bsv21: %w", err)
 		}
@@ -419,27 +428,23 @@ func (c *Config) Initialize(ctx context.Context, logger *slog.Logger) (*Services
 		svc.Admin = adminSvc
 	}
 
-	// Initialize JungleBus subscriptions for queue population
-	if svc.Store != nil && svc.JungleBus != nil {
-		// BSV21 subscription - populates the bsv21 queue with transaction IDs
-		bsv21SubCfg := &jbsync.SubscriberConfig{
-			SubscriptionID: "51ce778bfa6c7c5fd3f3b6fbaf96ebde1348198c33ca26cb1a8fadbfee0212d7",
-			QueueName:      "bsv21",
-			FromBlock:      783968, // BSV21 genesis block
-			BatchSize:      1000,
-			ReorgDepth:     6,
-			EnableMempool:  true,
+	// Initialize JungleBus subscriptions from config (only those with autostart enabled)
+	if svc.Store != nil && svc.JungleBus != nil && len(c.JBSync.Subscribers) > 0 {
+		for i := range c.JBSync.Subscribers {
+			subCfg := &c.JBSync.Subscribers[i]
+			if !subCfg.AutoStart {
+				continue
+			}
+			sub, err := jbsync.NewSubscriber(subCfg, svc.Store.Store, svc.Chaintracks, svc.JungleBus, logger)
+			if err != nil {
+				return nil, fmt.Errorf("failed to create subscriber %s: %w", subCfg.SubscriptionID, err)
+			}
+			svc.JBSubscribers = append(svc.JBSubscribers, sub)
+			logger.Info("JungleBus subscriber initialized",
+				"subscription_id", subCfg.SubscriptionID,
+				"queue", subCfg.GetQueueName(),
+				"from_block", subCfg.FromBlock)
 		}
-
-		bsv21Sub, err := jbsync.NewSubscriber(bsv21SubCfg, svc.Store.Store, svc.Chaintracks, svc.JungleBus, logger)
-		if err != nil {
-			return nil, fmt.Errorf("failed to create bsv21 subscriber: %w", err)
-		}
-		svc.JBSubscribers = append(svc.JBSubscribers, bsv21Sub)
-		logger.Info("BSV21 JungleBus subscriber initialized",
-			"subscription_id", bsv21SubCfg.SubscriptionID,
-			"queue", bsv21SubCfg.QueueName,
-			"from_block", bsv21SubCfg.FromBlock)
 	}
 
 	return svc, nil
@@ -750,6 +755,16 @@ func (svc *Services) StartSubscribers(ctx context.Context, logger *slog.Logger) 
 	}
 	if len(svc.JBSubscribers) > 0 {
 		logger.Info("started JungleBus subscribers", "count", len(svc.JBSubscribers))
+	}
+
+	// Start BSV21 sync services
+	if svc.BSV21 != nil && svc.BSV21.Sync != nil {
+		go func() {
+			if err := svc.BSV21.Sync.Start(ctx); err != nil {
+				logger.Error("BSV21 sync error", "error", err)
+			}
+		}()
+		logger.Info("started BSV21 sync services")
 	}
 }
 
