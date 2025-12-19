@@ -18,7 +18,7 @@ func NewRoutes(storage *Storage) *Routes {
 // Register registers routes with a fiber router group
 func (r *Routes) Register(router fiber.Router) {
 	router.Get("/:txid", r.getBeef)
-	router.Get("/:txid/raw", r.getRawTx)
+	router.Get("/:txid/tx", r.getRawTx)
 	router.Get("/:txid/proof", r.getProof)
 }
 
@@ -50,15 +50,15 @@ func (r *Routes) getBeef(c *fiber.Ctx) error {
 	return c.Send(beefBytes)
 }
 
-// getRawTx handles GET /:txid/raw - returns raw transaction bytes
-// @Summary Get raw transaction
+// getRawTx handles GET /:txid/tx - returns raw transaction bytes
+// @Summary Get transaction
 // @Description Retrieves just the raw transaction bytes (without proof)
 // @Tags beef
 // @Produce application/octet-stream
 // @Param txid path string true "Transaction ID"
-// @Success 200 {file} binary "Raw transaction bytes"
+// @Success 200 {file} binary "Transaction bytes"
 // @Failure 404 {object} map[string]string "Transaction not found"
-// @Router /api/beef/{txid}/raw [get]
+// @Router /beef/{txid}/tx [get]
 func (r *Routes) getRawTx(c *fiber.Ctx) error {
 	txidStr := c.Params("txid")
 	txid, err := chainhash.NewHashFromHex(txidStr)

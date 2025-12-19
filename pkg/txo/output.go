@@ -12,11 +12,11 @@ type IndexedOutput struct {
 	engine.Output // Embed canonical type
 
 	// Extended fields for indexing
-	Satoshis  uint64            `json:"satoshis,omitempty"`
-	Owners    []types.PKHash    `json:"owners,omitempty"`
-	Events    []string          `json:"events,omitempty"`
-	Data      map[string]any    `json:"data,omitempty"`
-	SpendTxid *chainhash.Hash   `json:"spend,omitempty"`
+	Satoshis  uint64          `json:"satoshis,omitempty"`
+	Owners    []types.PKHash  `json:"owners,omitempty"`
+	Events    []string        `json:"events,omitempty"`
+	Data      map[string]any  `json:"data,omitempty"`
+	SpendTxid *chainhash.Hash `json:"spend,omitempty"`
 }
 
 // AddOwner adds an owner to the output if not already present
@@ -79,12 +79,4 @@ func (o *IndexedOutput) GetData(tag string) (interface{}, bool) {
 	}
 	data, ok := o.Data[tag]
 	return data, ok
-}
-
-// HeightScore calculates the score for a block height and index
-func HeightScore(height uint32, idx uint64) float64 {
-	if height == 0 {
-		return 0
-	}
-	return float64(uint64(height)*1000000000 + idx)
 }

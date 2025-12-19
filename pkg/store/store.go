@@ -80,6 +80,9 @@ type Store interface {
 	// Search performs a multi-key sorted set search with cursor-based merge.
 	Search(ctx context.Context, cfg *SearchCfg) ([]ScoredMember, error)
 
+	// ZKeys returns all sorted set keys matching a prefix
+	ZKeys(ctx context.Context, prefix []byte) ([]string, error)
+
 	// Resource management
 	Close() error
 }

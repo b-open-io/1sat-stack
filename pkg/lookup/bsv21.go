@@ -1,4 +1,4 @@
-package bsv21
+package lookup
 
 import (
 	"context"
@@ -22,21 +22,21 @@ import (
 	"github.com/bsv-blockchain/go-sdk/transaction/template/p2pkh"
 )
 
-// Lookup implements the LookupService interface for BSV21
-type Lookup struct {
+// BSV21Lookup implements the LookupService interface for BSV21
+type BSV21Lookup struct {
 	storage   *txo.OutputStore
 	mintCache sync.Map // Cache of mint tokens by tokenId
 }
 
-// NewLookup creates a new BSV21 lookup service
-func NewLookup(storage *txo.OutputStore) *Lookup {
-	return &Lookup{
+// NewBSV21Lookup creates a new BSV21 lookup service
+func NewBSV21Lookup(storage *txo.OutputStore) *BSV21Lookup {
+	return &BSV21Lookup{
 		storage: storage,
 	}
 }
 
 // OutputAdmittedByTopic is called when an output is admitted to a topic
-func (l *Lookup) OutputAdmittedByTopic(ctx context.Context, payload *engine.OutputAdmittedByTopic) error {
+func (l *BSV21Lookup) OutputAdmittedByTopic(ctx context.Context, payload *engine.OutputAdmittedByTopic) error {
 	_, tx, txid, err := transaction.ParseBeef(payload.AtomicBEEF)
 	if err != nil {
 		return err
@@ -106,7 +106,7 @@ func (l *Lookup) OutputAdmittedByTopic(ctx context.Context, payload *engine.Outp
 	}
 
 	// Build BSV21 data structure
-	bsv21Data := map[string]interface{}{
+	bsv21Data := map[string]any{
 		"id":  b.Id,
 		"op":  b.Op,
 		"amt": strconv.FormatUint(b.Amt, 10),
@@ -135,46 +135,46 @@ func (l *Lookup) OutputAdmittedByTopic(ctx context.Context, payload *engine.Outp
 }
 
 // GetDocumentation returns documentation for this lookup service
-func (l *Lookup) GetDocumentation() string {
+func (l *BSV21Lookup) GetDocumentation() string {
 	return "BSV21 Lookup Service"
 }
 
 // GetMetaData returns metadata for this lookup service
-func (l *Lookup) GetMetaData() *overlay.MetaData {
+func (l *BSV21Lookup) GetMetaData() *overlay.MetaData {
 	return &overlay.MetaData{
 		Name: "BSV21",
 	}
 }
 
 // OutputSpent is called when a previously-admitted UTXO is spent
-func (l *Lookup) OutputSpent(ctx context.Context, payload *engine.OutputSpent) error {
+func (l *BSV21Lookup) OutputSpent(ctx context.Context, payload *engine.OutputSpent) error {
 	return nil
 }
 
 // OutputNoLongerRetainedInHistory is called when historical retention is no longer required
-func (l *Lookup) OutputNoLongerRetainedInHistory(ctx context.Context, outpoint *transaction.Outpoint, topic string) error {
+func (l *BSV21Lookup) OutputNoLongerRetainedInHistory(ctx context.Context, outpoint *transaction.Outpoint, topic string) error {
 	return nil
 }
 
 // OutputEvicted permanently removes the UTXO from all indices
-func (l *Lookup) OutputEvicted(ctx context.Context, outpoint *transaction.Outpoint) error {
+func (l *BSV21Lookup) OutputEvicted(ctx context.Context, outpoint *transaction.Outpoint) error {
 	return nil
 }
 
 // OutputBlockHeightUpdated is called when a transaction's block height is updated
-func (l *Lookup) OutputBlockHeightUpdated(ctx context.Context, txid *chainhash.Hash, blockHeight uint32, blockIndex uint64) error {
+func (l *BSV21Lookup) OutputBlockHeightUpdated(ctx context.Context, txid *chainhash.Hash, blockHeight uint32, blockIndex uint64) error {
 	return nil
 }
 
 // Lookup handles generic lookup queries
-func (l *Lookup) Lookup(ctx context.Context, question *lookup.LookupQuestion) (*lookup.LookupAnswer, error) {
+func (l *BSV21Lookup) Lookup(ctx context.Context, question *lookup.LookupQuestion) (*lookup.LookupAnswer, error) {
 	return &lookup.LookupAnswer{
 		Type: lookup.AnswerTypeFormula,
 	}, nil
 }
 
 // GetBalance calculates the total balance of BSV21 tokens for given event patterns
-func (l *Lookup) GetBalance(ctx context.Context, events []string) (uint64, int, error) {
+func (l *BSV21Lookup) GetBalance(ctx context.Context, events []string) (uint64, int, error) {
 	keys := make([][]byte, len(events))
 	for i, event := range events {
 		keys[i] = []byte(event)
@@ -204,7 +204,7 @@ func (l *Lookup) GetBalance(ctx context.Context, events []string) (uint64, int, 
 			continue
 		}
 
-		bsv21Data, ok := dataMap.(map[string]interface{})
+		bsv21Data, ok := dataMap.(map[string]any)
 		if !ok {
 			continue
 		}
@@ -227,12 +227,12 @@ func (l *Lookup) GetBalance(ctx context.Context, events []string) (uint64, int, 
 }
 
 // GetToken returns the mint transaction details for a specific BSV21 token
-func (l *Lookup) GetToken(ctx context.Context, outpoint *transaction.Outpoint) (map[string]interface{}, error) {
+func (l *BSV21Lookup) GetToken(ctx context.Context, outpoint *transaction.Outpoint) (map[string]any, error) {
 	tokenId := outpoint.OrdinalString()
 
 	// Check cache first
 	if cached, ok := l.mintCache.Load(tokenId); ok {
-		return cached.(map[string]interface{}), nil
+		return cached.(map[string]any), nil
 	}
 
 	// Load output data for this outpoint
@@ -251,7 +251,7 @@ func (l *Lookup) GetToken(ctx context.Context, outpoint *transaction.Outpoint) (
 		return nil, fmt.Errorf("token data not found")
 	}
 
-	bsv21Data, ok := bsv21DataRaw.(map[string]interface{})
+	bsv21Data, ok := bsv21DataRaw.(map[string]any)
 	if !ok {
 		return nil, fmt.Errorf("invalid token data format")
 	}
@@ -261,7 +261,7 @@ func (l *Lookup) GetToken(ctx context.Context, outpoint *transaction.Outpoint) (
 		return nil, fmt.Errorf("outpoint exists but is not a mint transaction (op=%s)", op)
 	}
 
-	response := map[string]interface{}{
+	response := map[string]any{
 		"id":   tokenId,
 		"txid": outpoint.Txid.String(),
 		"vout": outpoint.Index,

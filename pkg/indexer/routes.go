@@ -27,13 +27,13 @@ func NewRoutes(ingestCtx *IngestCtx, ps pubsub.PubSub) *Routes {
 func (r *Routes) Register(app fiber.Router, prefix string) {
 	g := app.Group(prefix)
 
-	g.Get("/:txid/parse", r.ParseTxidHandler)
+	g.Get("/parse/:txid", r.ParseTxidHandler)
 	g.Post("/parse", r.ParseTxHandler)
-	g.Post("/:txid/ingest", r.IngestTxidHandler)
+	g.Post("/ingest/:txid", r.IngestTxidHandler)
 	g.Get("/tags", r.TagsHandler)
 }
 
-// ParseTxidHandler handles GET /:txid/parse
+// ParseTxidHandler handles GET /parse/:txid
 // @Summary Parse a transaction by txid
 // @Description Parses a transaction and returns the indexed context without saving
 // @Tags indexer
@@ -44,7 +44,7 @@ func (r *Routes) Register(app fiber.Router, prefix string) {
 // @Failure 400 {object} map[string]string
 // @Failure 404 {object} map[string]string
 // @Failure 500 {object} map[string]string
-// @Router /api/indexer/{txid}/parse [get]
+// @Router /indexer/parse/{txid} [get]
 func (r *Routes) ParseTxidHandler(c *fiber.Ctx) error {
 	txid := c.Params("txid")
 	if txid == "" {
@@ -114,7 +114,7 @@ func (r *Routes) ParseTxHandler(c *fiber.Ctx) error {
 	return c.JSON(idxCtx)
 }
 
-// IngestTxidHandler handles POST /:txid/ingest
+// IngestTxidHandler handles POST /ingest/:txid
 // @Summary Ingest a transaction by txid
 // @Description Ingests a transaction by txid, parsing and saving to the store
 // @Tags indexer
@@ -125,7 +125,7 @@ func (r *Routes) ParseTxHandler(c *fiber.Ctx) error {
 // @Failure 400 {object} map[string]string
 // @Failure 404 {object} map[string]string
 // @Failure 500 {object} map[string]string
-// @Router /api/indexer/{txid}/ingest [post]
+// @Router /indexer/ingest/{txid} [post]
 func (r *Routes) IngestTxidHandler(c *fiber.Ctx) error {
 	txid := c.Params("txid")
 	if txid == "" {

@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/b-open-io/1sat-stack/pkg/store"
+	"github.com/b-open-io/1sat-stack/pkg/types"
 	"github.com/bsv-blockchain/go-overlay-services/pkg/core/engine"
 	"github.com/bsv-blockchain/go-sdk/chainhash"
 	"github.com/bsv-blockchain/go-sdk/overlay"
@@ -293,7 +294,7 @@ func (s *OutputStore) UpdateTransactionBEEF(ctx context.Context, txid *chainhash
 
 // UpdateOutputBlockHeight updates the block height for an output
 func (s *OutputStore) UpdateOutputBlockHeight(ctx context.Context, outpoint *transaction.Outpoint, topic string, blockHeight uint32, blockIndex uint64) error {
-	score := HeightScore(blockHeight, blockIndex)
+	score := types.HeightScore(blockHeight, blockIndex)
 
 	// Update in topic sorted set
 	return s.Store.ZAdd(ctx, keyTopicOut(topic), store.ScoredMember{

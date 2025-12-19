@@ -1,0 +1,802 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>1Sat Stack Admin</title>
+    <style>
+        :root {
+            --bg-primary: #1a1a2e;
+            --bg-secondary: #16213e;
+            --bg-card: #0f3460;
+            --text-primary: #eee;
+            --text-secondary: #aaa;
+            --accent: #e94560;
+            --accent-hover: #ff6b6b;
+            --success: #4ade80;
+            --warning: #fbbf24;
+            --border: #334155;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            min-height: 100vh;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 2rem;
+        }
+
+        header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 2rem;
+            padding-bottom: 1rem;
+            border-bottom: 1px solid var(--border);
+        }
+
+        h1 {
+            font-size: 1.75rem;
+            font-weight: 600;
+        }
+
+        h1 span {
+            color: var(--accent);
+        }
+
+        nav {
+            display: flex;
+            gap: 1rem;
+        }
+
+        nav a {
+            color: var(--text-secondary);
+            text-decoration: none;
+            padding: 0.5rem 1rem;
+            border-radius: 0.5rem;
+            transition: all 0.2s;
+        }
+
+        nav a:hover, nav a.active {
+            color: var(--text-primary);
+            background: var(--bg-card);
+        }
+
+        .grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
+            gap: 1.5rem;
+        }
+
+        .card {
+            background: var(--bg-secondary);
+            border-radius: 1rem;
+            padding: 1.5rem;
+            border: 1px solid var(--border);
+        }
+
+        .card-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 1rem;
+        }
+
+        .card h2 {
+            font-size: 1.25rem;
+            font-weight: 600;
+        }
+
+        .badge {
+            background: var(--bg-card);
+            padding: 0.25rem 0.75rem;
+            border-radius: 9999px;
+            font-size: 0.875rem;
+            color: var(--text-secondary);
+        }
+
+        .badge.success {
+            background: rgba(74, 222, 128, 0.2);
+            color: var(--success);
+        }
+
+        .badge.warning {
+            background: rgba(251, 191, 36, 0.2);
+            color: var(--warning);
+        }
+
+        .input-group {
+            display: flex;
+            gap: 0.5rem;
+            margin-bottom: 1rem;
+        }
+
+        input[type="text"] {
+            flex: 1;
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 0.5rem;
+            padding: 0.75rem 1rem;
+            color: var(--text-primary);
+            font-size: 0.875rem;
+        }
+
+        input[type="text"]::placeholder {
+            color: var(--text-secondary);
+        }
+
+        input[type="text"]:focus {
+            outline: none;
+            border-color: var(--accent);
+        }
+
+        button {
+            background: var(--accent);
+            color: white;
+            border: none;
+            border-radius: 0.5rem;
+            padding: 0.75rem 1.5rem;
+            font-size: 0.875rem;
+            font-weight: 500;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+
+        button:hover {
+            background: var(--accent-hover);
+        }
+
+        button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        button.secondary {
+            background: var(--bg-card);
+        }
+
+        button.secondary:hover {
+            background: var(--border);
+        }
+
+        .topic-list {
+            max-height: 400px;
+            overflow-y: auto;
+        }
+
+        .topic-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 0.75rem 1rem;
+            background: var(--bg-card);
+            border-radius: 0.5rem;
+            margin-bottom: 0.5rem;
+        }
+
+        .topic-item:last-child {
+            margin-bottom: 0;
+        }
+
+        .topic-name {
+            font-family: 'Monaco', 'Menlo', monospace;
+            font-size: 0.875rem;
+        }
+
+        .topic-item button {
+            background: transparent;
+            color: var(--accent);
+            padding: 0.25rem 0.5rem;
+            font-size: 0.75rem;
+        }
+
+        .topic-item button:hover {
+            background: rgba(233, 69, 96, 0.2);
+        }
+
+        .empty-state {
+            text-align: center;
+            padding: 2rem;
+            color: var(--text-secondary);
+        }
+
+        .loading {
+            text-align: center;
+            padding: 2rem;
+            color: var(--text-secondary);
+        }
+
+        .toast {
+            position: fixed;
+            bottom: 2rem;
+            right: 2rem;
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 0.5rem;
+            padding: 1rem 1.5rem;
+            display: none;
+            z-index: 1000;
+            animation: slideIn 0.3s ease;
+        }
+
+        .toast.success {
+            border-color: var(--success);
+        }
+
+        .toast.error {
+            border-color: var(--accent);
+        }
+
+        .toast.show {
+            display: block;
+        }
+
+        @keyframes slideIn {
+            from {
+                transform: translateX(100%);
+                opacity: 0;
+            }
+            to {
+                transform: translateX(0);
+                opacity: 1;
+            }
+        }
+
+        .section-title {
+            margin-bottom: 1.5rem;
+        }
+
+        .section-title h2 {
+            font-size: 1.5rem;
+            margin-bottom: 0.5rem;
+        }
+
+        .section-title p {
+            color: var(--text-secondary);
+        }
+
+        /* Scrollbar styling */
+        .topic-list::-webkit-scrollbar {
+            width: 6px;
+        }
+
+        .topic-list::-webkit-scrollbar-track {
+            background: var(--bg-card);
+            border-radius: 3px;
+        }
+
+        .topic-list::-webkit-scrollbar-thumb {
+            background: var(--border);
+            border-radius: 3px;
+        }
+
+        .topic-list::-webkit-scrollbar-thumb:hover {
+            background: var(--text-secondary);
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1><span>1Sat</span> Stack Admin</h1>
+            <nav>
+                <a href="#topics" class="active">Topics</a>
+            </nav>
+        </header>
+
+        <section id="topics">
+            <div class="section-title">
+                <h2>Topic Management</h2>
+                <p>Manage topic whitelist and blacklist for the overlay engine</p>
+            </div>
+
+            <div class="grid">
+                <!-- Whitelist Card -->
+                <div class="card">
+                    <div class="card-header">
+                        <h2>Whitelist</h2>
+                        <span class="badge success" id="whitelist-count">0 topics</span>
+                    </div>
+                    <p style="color: var(--text-secondary); margin-bottom: 1rem; font-size: 0.875rem;">
+                        Topics that are always active, regardless of balance
+                    </p>
+                    <div class="input-group">
+                        <input type="text" id="whitelist-input" placeholder="Enter topic ID (e.g., tm_example)">
+                        <button onclick="addToWhitelist()">Add</button>
+                    </div>
+                    <div class="topic-list" id="whitelist-items">
+                        <div class="loading">Loading...</div>
+                    </div>
+                </div>
+
+                <!-- Blacklist Card -->
+                <div class="card">
+                    <div class="card-header">
+                        <h2>Blacklist</h2>
+                        <span class="badge warning" id="blacklist-count">0 topics</span>
+                    </div>
+                    <p style="color: var(--text-secondary); margin-bottom: 1rem; font-size: 0.875rem;">
+                        Topics that are never active, even with positive balance
+                    </p>
+                    <div class="input-group">
+                        <input type="text" id="blacklist-input" placeholder="Enter topic ID (e.g., tm_spam)">
+                        <button onclick="addToBlacklist()">Add</button>
+                    </div>
+                    <div class="topic-list" id="blacklist-items">
+                        <div class="loading">Loading...</div>
+                    </div>
+                </div>
+
+                <!-- Active Topics Card -->
+                <div class="card">
+                    <div class="card-header">
+                        <h2>Active Topics</h2>
+                        <div>
+                            <span class="badge" id="active-count">0 topics</span>
+                            <button class="secondary" onclick="refreshActiveTopics()" style="margin-left: 0.5rem;">Refresh</button>
+                        </div>
+                    </div>
+                    <p style="color: var(--text-secondary); margin-bottom: 1rem; font-size: 0.875rem;">
+                        Currently active topic managers in the overlay engine
+                    </p>
+                    <div class="topic-list" id="active-items">
+                        <div class="loading">Loading...</div>
+                    </div>
+                </div>
+
+                <!-- Active Lookup Services Card -->
+                <div class="card">
+                    <div class="card-header">
+                        <h2>Lookup Services</h2>
+                        <div>
+                            <span class="badge" id="lookup-count">0 services</span>
+                            <button class="secondary" onclick="refreshLookups()" style="margin-left: 0.5rem;">Refresh</button>
+                        </div>
+                    </div>
+                    <p style="color: var(--text-secondary); margin-bottom: 1rem; font-size: 0.875rem;">
+                        Currently active lookup service providers in the overlay engine
+                    </p>
+                    <div class="topic-list" id="lookup-items">
+                        <div class="loading">Loading...</div>
+                    </div>
+                </div>
+
+                <!-- Queues Card -->
+                <div class="card">
+                    <div class="card-header">
+                        <h2>Queues</h2>
+                        <div>
+                            <span class="badge" id="queue-count">0 queues</span>
+                            <button class="secondary" onclick="refreshQueues()" style="margin-left: 0.5rem;">Refresh</button>
+                        </div>
+                    </div>
+                    <p style="color: var(--text-secondary); margin-bottom: 1rem; font-size: 0.875rem;">
+                        Processing queues (click to view items)
+                    </p>
+                    <div class="topic-list" id="queue-items">
+                        <div class="loading">Loading...</div>
+                    </div>
+                </div>
+
+                <!-- Progress Card -->
+                <div class="card" style="grid-column: 1 / -1;">
+                    <div class="card-header">
+                        <h2>Sync Progress</h2>
+                        <div>
+                            <span class="badge" id="progress-count">0 entries</span>
+                            <button class="secondary" onclick="refreshProgress()" style="margin-left: 0.5rem;">Refresh</button>
+                        </div>
+                    </div>
+                    <p style="color: var(--text-secondary); margin-bottom: 1rem; font-size: 0.875rem;">
+                        Sync progress tracking for subscriptions and addresses
+                    </p>
+                    <div class="topic-list" id="progress-items">
+                        <div class="loading">Loading...</div>
+                    </div>
+                </div>
+            </div>
+        </section>
+    </div>
+
+    <!-- Queue Items Modal -->
+    <div id="queue-modal" style="display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.8); z-index: 1000; overflow-y: auto;">
+        <div style="max-width: 800px; margin: 2rem auto; background: var(--bg-secondary); border-radius: 1rem; border: 1px solid var(--border);">
+            <div style="display: flex; justify-content: space-between; align-items: center; padding: 1.5rem; border-bottom: 1px solid var(--border);">
+                <h2 id="queue-modal-title">Queue Items</h2>
+                <button class="secondary" onclick="closeQueueModal()">Close</button>
+            </div>
+            <div style="padding: 1.5rem;">
+                <div class="topic-list" id="queue-modal-items" style="max-height: 60vh;">
+                    <div class="loading">Loading...</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="toast" id="toast"></div>
+
+    <script>
+        const API_BASE = window.location.pathname.replace(/\/$/, '') + '/api';
+
+        // Toast notification
+        function showToast(message, type = 'success') {
+            const toast = document.getElementById('toast');
+            toast.textContent = message;
+            toast.className = `toast show ${type}`;
+            setTimeout(() => {
+                toast.classList.remove('show');
+            }, 3000);
+        }
+
+        // Render topic list
+        function renderTopicList(containerId, topics, onRemove) {
+            const container = document.getElementById(containerId);
+            if (!topics || topics.length === 0) {
+                container.innerHTML = '<div class="empty-state">No topics</div>';
+                return;
+            }
+
+            container.innerHTML = topics.map(topic => `
+                <div class="topic-item">
+                    <span class="topic-name">${escapeHtml(topic)}</span>
+                    ${onRemove ? `<button onclick="${onRemove}('${escapeHtml(topic)}')">Remove</button>` : ''}
+                </div>
+            `).join('');
+        }
+
+        // Escape HTML to prevent XSS
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
+        // API calls
+        async function fetchWhitelist() {
+            try {
+                const response = await fetch(`${API_BASE}/whitelist`);
+                const topics = await response.json();
+                renderTopicList('whitelist-items', topics, 'removeFromWhitelist');
+                document.getElementById('whitelist-count').textContent = `${topics.length} topic${topics.length !== 1 ? 's' : ''}`;
+            } catch (error) {
+                console.error('Failed to fetch whitelist:', error);
+                document.getElementById('whitelist-items').innerHTML = '<div class="empty-state">Failed to load</div>';
+            }
+        }
+
+        async function fetchBlacklist() {
+            try {
+                const response = await fetch(`${API_BASE}/blacklist`);
+                const topics = await response.json();
+                renderTopicList('blacklist-items', topics, 'removeFromBlacklist');
+                document.getElementById('blacklist-count').textContent = `${topics.length} topic${topics.length !== 1 ? 's' : ''}`;
+            } catch (error) {
+                console.error('Failed to fetch blacklist:', error);
+                document.getElementById('blacklist-items').innerHTML = '<div class="empty-state">Failed to load</div>';
+            }
+        }
+
+        async function fetchActiveTopics() {
+            try {
+                const response = await fetch(`${API_BASE}/topics/active`);
+                const topics = await response.json();
+                renderTopicList('active-items', topics, null);
+                document.getElementById('active-count').textContent = `${topics.length} topic${topics.length !== 1 ? 's' : ''}`;
+            } catch (error) {
+                console.error('Failed to fetch active topics:', error);
+                document.getElementById('active-items').innerHTML = '<div class="empty-state">Failed to load</div>';
+            }
+        }
+
+        async function fetchLookups() {
+            try {
+                const response = await fetch(`${API_BASE}/lookups/active`);
+                const lookups = await response.json();
+                renderTopicList('lookup-items', lookups, null);
+                document.getElementById('lookup-count').textContent = `${lookups.length} service${lookups.length !== 1 ? 's' : ''}`;
+            } catch (error) {
+                console.error('Failed to fetch lookup services:', error);
+                document.getElementById('lookup-items').innerHTML = '<div class="empty-state">Failed to load</div>';
+            }
+        }
+
+        async function fetchQueues() {
+            try {
+                const response = await fetch(`${API_BASE}/queues`);
+                const queues = await response.json();
+                renderQueueList('queue-items', queues);
+                document.getElementById('queue-count').textContent = `${queues.length} queue${queues.length !== 1 ? 's' : ''}`;
+            } catch (error) {
+                console.error('Failed to fetch queues:', error);
+                document.getElementById('queue-items').innerHTML = '<div class="empty-state">Failed to load</div>';
+            }
+        }
+
+        function renderQueueList(containerId, queues) {
+            const container = document.getElementById(containerId);
+            if (!queues || queues.length === 0) {
+                container.innerHTML = '<div class="empty-state">No queues</div>';
+                return;
+            }
+
+            container.innerHTML = queues.map(q => `
+                <div class="topic-item" style="cursor: pointer;" onclick="showQueueItems('${escapeHtml(q.name)}')">
+                    <span class="topic-name">${escapeHtml(q.name)}</span>
+                    <span class="badge">${q.count} item${q.count !== 1 ? 's' : ''}</span>
+                </div>
+            `).join('');
+        }
+
+        async function showQueueItems(name) {
+            document.getElementById('queue-modal').style.display = 'block';
+            document.getElementById('queue-modal-title').textContent = name;
+            document.getElementById('queue-modal-items').innerHTML = '<div class="loading">Loading...</div>';
+
+            try {
+                const response = await fetch(`${API_BASE}/queues/${encodeURIComponent(name)}`);
+                const items = await response.json();
+                
+                if (!items || items.length === 0) {
+                    document.getElementById('queue-modal-items').innerHTML = '<div class="empty-state">Queue is empty</div>';
+                    return;
+                }
+
+                document.getElementById('queue-modal-items').innerHTML = items.map(item => `
+                    <div class="topic-item">
+                        <span class="topic-name" style="word-break: break-all;">${escapeHtml(item.value)}</span>
+                        <span class="badge" style="white-space: nowrap;">score: ${item.score}</span>
+                    </div>
+                `).join('');
+            } catch (error) {
+                console.error('Failed to fetch queue items:', error);
+                document.getElementById('queue-modal-items').innerHTML = '<div class="empty-state">Failed to load</div>';
+            }
+        }
+
+        function closeQueueModal() {
+            document.getElementById('queue-modal').style.display = 'none';
+        }
+
+        // Progress functions
+        async function fetchProgress() {
+            try {
+                const response = await fetch(`${API_BASE}/progress`);
+                const items = await response.json();
+                renderProgressList('progress-items', items);
+                document.getElementById('progress-count').textContent = `${items.length} entr${items.length !== 1 ? 'ies' : 'y'}`;
+            } catch (error) {
+                console.error('Failed to fetch progress:', error);
+                document.getElementById('progress-items').innerHTML = '<div class="empty-state">Failed to load</div>';
+            }
+        }
+
+        function renderProgressList(containerId, items) {
+            const container = document.getElementById(containerId);
+            if (!items || items.length === 0) {
+                container.innerHTML = '<div class="empty-state">No progress entries</div>';
+                return;
+            }
+
+            container.innerHTML = items.map(item => `
+                <div class="topic-item" data-progress-id="${escapeHtml(item.id)}">
+                    <span class="topic-name">${escapeHtml(item.id)}</span>
+                    <div style="display: flex; align-items: center; gap: 0.5rem;">
+                        <input type="number" id="progress-input-${escapeHtml(item.id)}" value="${Math.floor(item.block)}" 
+                               style="width: 120px; padding: 0.25rem 0.5rem; font-size: 0.875rem;"
+                               onclick="event.stopPropagation()">
+                        <button onclick="updateProgress('${escapeHtml(item.id)}'); event.stopPropagation();" 
+                                class="secondary" style="padding: 0.25rem 0.5rem; font-size: 0.75rem;">Update</button>
+                        <button onclick="deleteProgress('${escapeHtml(item.id)}'); event.stopPropagation();" 
+                                style="padding: 0.25rem 0.5rem; font-size: 0.75rem;">Delete</button>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        async function updateProgress(id) {
+            const input = document.getElementById(`progress-input-${id}`);
+            const block = parseFloat(input.value);
+            if (isNaN(block)) {
+                showToast('Please enter a valid block height', 'error');
+                return;
+            }
+
+            try {
+                const response = await fetch(`${API_BASE}/progress/${encodeURIComponent(id)}`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ block })
+                });
+
+                if (!response.ok) {
+                    const data = await response.json();
+                    throw new Error(data.error || 'Failed to update progress');
+                }
+
+                showToast(`Updated "${id}" to block ${Math.floor(block).toLocaleString()}`);
+            } catch (error) {
+                showToast(error.message, 'error');
+                fetchProgress(); // Refresh to restore original value
+            }
+        }
+
+        async function deleteProgress(id) {
+            if (!confirm(`Delete progress for "${id}"?`)) {
+                return;
+            }
+
+            try {
+                const response = await fetch(`${API_BASE}/progress/${encodeURIComponent(id)}`, {
+                    method: 'DELETE'
+                });
+
+                if (!response.ok) {
+                    const data = await response.json();
+                    throw new Error(data.error || 'Failed to delete progress');
+                }
+
+                showToast(`Deleted "${id}"`);
+                fetchProgress();
+            } catch (error) {
+                showToast(error.message, 'error');
+            }
+        }
+
+        function refreshProgress() {
+            document.getElementById('progress-items').innerHTML = '<div class="loading">Loading...</div>';
+            fetchProgress();
+        }
+
+        // Close modal on escape key
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape') {
+                closeQueueModal();
+            }
+        });
+
+        // Close modal on background click
+        document.getElementById('queue-modal').addEventListener('click', (e) => {
+            if (e.target.id === 'queue-modal') closeQueueModal();
+        });
+
+        async function addToWhitelist() {
+            const input = document.getElementById('whitelist-input');
+            const topic = input.value.trim();
+            if (!topic) {
+                showToast('Please enter a topic ID', 'error');
+                return;
+            }
+
+            try {
+                const response = await fetch(`${API_BASE}/whitelist`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ topic })
+                });
+
+                if (!response.ok) {
+                    const data = await response.json();
+                    throw new Error(data.error || 'Failed to add topic');
+                }
+
+                input.value = '';
+                showToast(`Added "${topic}" to whitelist`);
+                fetchWhitelist();
+                fetchActiveTopics();
+            } catch (error) {
+                showToast(error.message, 'error');
+            }
+        }
+
+        async function removeFromWhitelist(topic) {
+            try {
+                const response = await fetch(`${API_BASE}/whitelist/${encodeURIComponent(topic)}`, {
+                    method: 'DELETE'
+                });
+
+                if (!response.ok) {
+                    const data = await response.json();
+                    throw new Error(data.error || 'Failed to remove topic');
+                }
+
+                showToast(`Removed "${topic}" from whitelist`);
+                fetchWhitelist();
+                fetchActiveTopics();
+            } catch (error) {
+                showToast(error.message, 'error');
+            }
+        }
+
+        async function addToBlacklist() {
+            const input = document.getElementById('blacklist-input');
+            const topic = input.value.trim();
+            if (!topic) {
+                showToast('Please enter a topic ID', 'error');
+                return;
+            }
+
+            try {
+                const response = await fetch(`${API_BASE}/blacklist`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ topic })
+                });
+
+                if (!response.ok) {
+                    const data = await response.json();
+                    throw new Error(data.error || 'Failed to add topic');
+                }
+
+                input.value = '';
+                showToast(`Added "${topic}" to blacklist`);
+                fetchBlacklist();
+                fetchActiveTopics();
+            } catch (error) {
+                showToast(error.message, 'error');
+            }
+        }
+
+        async function removeFromBlacklist(topic) {
+            try {
+                const response = await fetch(`${API_BASE}/blacklist/${encodeURIComponent(topic)}`, {
+                    method: 'DELETE'
+                });
+
+                if (!response.ok) {
+                    const data = await response.json();
+                    throw new Error(data.error || 'Failed to remove topic');
+                }
+
+                showToast(`Removed "${topic}" from blacklist`);
+                fetchBlacklist();
+                fetchActiveTopics();
+            } catch (error) {
+                showToast(error.message, 'error');
+            }
+        }
+
+        function refreshActiveTopics() {
+            document.getElementById('active-items').innerHTML = '<div class="loading">Loading...</div>';
+            fetchActiveTopics();
+        }
+
+        function refreshLookups() {
+            document.getElementById('lookup-items').innerHTML = '<div class="loading">Loading...</div>';
+            fetchLookups();
+        }
+
+        function refreshQueues() {
+            document.getElementById('queue-items').innerHTML = '<div class="loading">Loading...</div>';
+            fetchQueues();
+        }
+
+        // Handle enter key on inputs
+        document.getElementById('whitelist-input').addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') addToWhitelist();
+        });
+
+        document.getElementById('blacklist-input').addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') addToBlacklist();
+        });
+
+        // Initial load
+        fetchWhitelist();
+        fetchBlacklist();
+        fetchActiveTopics();
+        fetchLookups();
+        fetchQueues();
+        fetchProgress();
+    </script>
+</body>
+</html>
