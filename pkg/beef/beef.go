@@ -95,13 +95,8 @@ type Storage struct {
 	chainTracker chaintracker.ChainTracker
 }
 
-// NewStorage creates a new Storage from a connection string with optional SPV validation
-func NewStorage(connectionString string, chainTracker chaintracker.ChainTracker) (*Storage, error) {
-	storages, err := parseConnectionString(connectionString)
-	if err != nil {
-		return nil, err
-	}
-
+// NewStorageFromProviders creates a new Storage from pre-configured providers
+func NewStorageFromProviders(storages []BaseBeefStorage, chainTracker chaintracker.ChainTracker) *Storage {
 	s := &Storage{
 		storages:     storages,
 		chainTracker: chainTracker,
@@ -115,7 +110,18 @@ func NewStorage(connectionString string, chainTracker chaintracker.ChainTracker)
 		return s.saveBeefInternal(context.Background(), &txid, beefBytes)
 	})
 
-	return s, nil
+	return s
+}
+
+// NewStorage creates a new Storage from a connection string with optional SPV validation.
+// Deprecated: Use NewStorageFromProviders or Config.Initialize instead.
+func NewStorage(connectionString string, chainTracker chaintracker.ChainTracker) (*Storage, error) {
+	storages, err := parseConnectionString(connectionString)
+	if err != nil {
+		return nil, err
+	}
+
+	return NewStorageFromProviders(storages, chainTracker), nil
 }
 
 // LoadBeef loads a BEEF from storage.
@@ -207,7 +213,7 @@ func (s *Storage) loadBeefInternal(ctx context.Context, txid *chainhash.Hash) ([
 		}
 	}
 
-	return beef.Bytes()
+	return beef.AtomicBytes(txid)
 }
 
 // SaveBeef saves a BEEF by decomposing it into individual transactions
@@ -525,19 +531,7 @@ func parseConnectionString(connectionString string) ([]BaseBeefStorage, error) {
 			storage = NewLRUBeefStorage(size)
 
 		case strings.HasPrefix(connectionString, "junglebus"):
-			parts := strings.SplitN(connectionString, "://", 2)
-			schemeParts := strings.SplitN(parts[0], "+", 2)
-
-			scheme := "https"
-			if len(schemeParts) > 1 && schemeParts[1] == "http" {
-				scheme = "http"
-			}
-
-			var junglebusURL string
-			if len(parts) > 1 && parts[1] != "" {
-				junglebusURL = scheme + "://" + parts[1]
-			}
-			storage = NewJunglebusBeefStorage(junglebusURL)
+			return nil, fmt.Errorf("junglebus provider requires using Config.Initialize() with a junglebus client")
 
 		case filepath.IsAbs(connectionString) || strings.HasPrefix(connectionString, "./") || strings.HasPrefix(connectionString, "../") || strings.HasPrefix(connectionString, "~/"):
 			expandedPath, err := expandHomePath(connectionString)

@@ -23,6 +23,483 @@ const docTemplate = `{
     "host": "{{.Host}}",
     "basePath": "{{.BasePath}}",
     "paths": {
+        "/admin/api/blacklist": {
+            "get": {
+                "description": "Returns the list of blacklisted topics",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "admin"
+                ],
+                "summary": "Get blacklist",
+                "responses": {
+                    "200": {
+                        "description": "List of blacklisted topics",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            },
+            "post": {
+                "description": "Adds a topic to the blacklist",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "admin"
+                ],
+                "summary": "Add to blacklist",
+                "parameters": [
+                    {
+                        "description": "Topic to add",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "type": "object"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "success message",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Bad request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/admin/api/blacklist/{topic}": {
+            "delete": {
+                "description": "Removes a topic from the blacklist",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "admin"
+                ],
+                "summary": "Remove from blacklist",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Topic ID to remove",
+                        "name": "topic",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "success message",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/admin/api/lookups/active": {
+            "get": {
+                "description": "Returns the list of currently active lookup services from the overlay engine",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "admin"
+                ],
+                "summary": "Get active lookup services",
+                "responses": {
+                    "200": {
+                        "description": "List of active lookup services",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/admin/api/progress": {
+            "get": {
+                "description": "Returns all sync progress entries",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "admin"
+                ],
+                "summary": "Get progress",
+                "responses": {
+                    "200": {
+                        "description": "List of progress entries",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/admin.ProgressItem"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/admin/api/progress/{id}": {
+            "put": {
+                "description": "Updates a sync progress entry",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "admin"
+                ],
+                "summary": "Update progress",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Progress ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Block height",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "type": "object"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "success message",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Bad request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            },
+            "delete": {
+                "description": "Deletes a sync progress entry",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "admin"
+                ],
+                "summary": "Delete progress",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Progress ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "success message",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/admin/api/queues": {
+            "get": {
+                "description": "Returns the list of queues (sorted sets with q: prefix)",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "admin"
+                ],
+                "summary": "Get queues",
+                "responses": {
+                    "200": {
+                        "description": "List of queues with counts",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/admin.QueueInfo"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/admin/api/queues/{name}": {
+            "get": {
+                "description": "Returns the first 25 items from a queue",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "admin"
+                ],
+                "summary": "Get queue items",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Queue name",
+                        "name": "name",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "List of queue items",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/admin.QueueItem"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/admin/api/topics/active": {
+            "get": {
+                "description": "Returns the list of currently active topics from the overlay engine",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "admin"
+                ],
+                "summary": "Get active topics",
+                "responses": {
+                    "200": {
+                        "description": "List of active topics",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/admin/api/whitelist": {
+            "get": {
+                "description": "Returns the list of whitelisted topics",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "admin"
+                ],
+                "summary": "Get whitelist",
+                "responses": {
+                    "200": {
+                        "description": "List of whitelisted topics",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            },
+            "post": {
+                "description": "Adds a topic to the whitelist",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "admin"
+                ],
+                "summary": "Add to whitelist",
+                "parameters": [
+                    {
+                        "description": "Topic to add",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "type": "object"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "success message",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Bad request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/admin/api/whitelist/{topic}": {
+            "delete": {
+                "description": "Removes a topic from the whitelist",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "admin"
+                ],
+                "summary": "Remove from whitelist",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Topic ID to remove",
+                        "name": "topic",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "success message",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
         "/arc/callback": {
             "post": {
                 "description": "Receives transaction status updates from Arc broadcaster",
@@ -412,7 +889,7 @@ const docTemplate = `{
                 }
             }
         },
-        "/beef/{txid}/raw": {
+        "/beef/{txid}/tx": {
             "get": {
                 "description": "Retrieves just the raw transaction bytes (without proof)",
                 "produces": [
@@ -421,7 +898,7 @@ const docTemplate = `{
                 "tags": [
                     "beef"
                 ],
-                "summary": "Get raw transaction",
+                "summary": "Get transaction",
                 "parameters": [
                     {
                         "type": "string",
@@ -433,7 +910,7 @@ const docTemplate = `{
                 ],
                 "responses": {
                     "200": {
-                        "description": "Raw transaction bytes",
+                        "description": "Transaction bytes",
                         "schema": {
                             "type": "file"
                         }
@@ -472,7 +949,7 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/github_com_b-open-io_1sat-stack_pkg_bsv21.TokenResponse"
+                            "$ref": "#/definitions/pkg_bsv21.TokenResponse"
                         }
                     }
                 }
@@ -507,7 +984,7 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/github_com_b-open-io_1sat-stack_pkg_bsv21.BlockResponse"
+                            "$ref": "#/definitions/pkg_bsv21.BlockResponse"
                         }
                     }
                 }
@@ -599,7 +1076,7 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/github_com_b-open-io_1sat-stack_pkg_bsv21.BalanceResponse"
+                            "$ref": "#/definitions/pkg_bsv21.BalanceResponse"
                         }
                     }
                 }
@@ -747,7 +1224,7 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/github_com_b-open-io_1sat-stack_pkg_bsv21.BalanceResponse"
+                            "$ref": "#/definitions/pkg_bsv21.BalanceResponse"
                         }
                     }
                 }
@@ -1985,7 +2462,7 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/own.BalanceResponse"
+                            "$ref": "#/definitions/github_com_b-open-io_1sat-stack_pkg_owner.BalanceResponse"
                         }
                     },
                     "500": {
@@ -2500,6 +2977,39 @@ const docTemplate = `{
         }
     },
     "definitions": {
+        "admin.ProgressItem": {
+            "type": "object",
+            "properties": {
+                "block": {
+                    "type": "number"
+                },
+                "id": {
+                    "type": "string"
+                }
+            }
+        },
+        "admin.QueueInfo": {
+            "type": "object",
+            "properties": {
+                "count": {
+                    "type": "integer"
+                },
+                "name": {
+                    "type": "string"
+                }
+            }
+        },
+        "admin.QueueItem": {
+            "type": "object",
+            "properties": {
+                "score": {
+                    "type": "number"
+                },
+                "value": {
+                    "type": "string"
+                }
+            }
+        },
         "chaintracks.BlockHeader": {
             "type": "object",
             "properties": {
@@ -2759,6 +3269,17 @@ const docTemplate = `{
                 }
             }
         },
+        "github_com_b-open-io_1sat-stack_pkg_owner.BalanceResponse": {
+            "type": "object",
+            "properties": {
+                "balance": {
+                    "type": "integer"
+                },
+                "count": {
+                    "type": "integer"
+                }
+            }
+        },
         "github_com_b-open-io_1sat-stack_pkg_txo.IndexedOutput": {
             "type": "object",
             "properties": {
@@ -2993,17 +3514,6 @@ const docTemplate = `{
                 }
             }
         },
-        "own.BalanceResponse": {
-            "type": "object",
-            "properties": {
-                "balance": {
-                    "type": "integer"
-                },
-                "count": {
-                    "type": "integer"
-                }
-            }
-        },
         "pkg_bsv21.BalanceResponse": {
             "type": "object",
             "properties": {
@@ -3162,6 +3672,17 @@ const docTemplate = `{
                     "$ref": "#/definitions/transaction.Outpoint"
                 },
                 "sequence": {
+                    "type": "integer"
+                }
+            }
+        },
+        "pkg_owner.BalanceResponse": {
+            "type": "object",
+            "properties": {
+                "balance": {
+                    "type": "integer"
+                },
+                "count": {
                     "type": "integer"
                 }
             }

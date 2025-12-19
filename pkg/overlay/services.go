@@ -30,6 +30,8 @@ type Services struct {
 
 	mu             sync.RWMutex
 	topicFactories map[string]TopicManagerFactory // topic name -> factory
+	topicWhitelist map[string]struct{}            // config-based whitelist
+	topicBlacklist map[string]struct{}            // config-based blacklist
 	syncStarted    bool
 	cancelSync     context.CancelFunc
 }
@@ -64,6 +66,84 @@ func (s *Services) GetRegisteredTopics() []string {
 		topics = append(topics, name)
 	}
 	return topics
+}
+
+// SetTopicWhitelist sets the config-based topic whitelist
+func (s *Services) SetTopicWhitelist(topics []string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.topicWhitelist = make(map[string]struct{}, len(topics))
+	for _, t := range topics {
+		s.topicWhitelist[t] = struct{}{}
+	}
+}
+
+// SetTopicBlacklist sets the config-based topic blacklist
+func (s *Services) SetTopicBlacklist(topics []string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.topicBlacklist = make(map[string]struct{}, len(topics))
+	for _, t := range topics {
+		s.topicBlacklist[t] = struct{}{}
+	}
+}
+
+// IsTopicActive checks if a topic should be active based on whitelist/blacklist
+func (s *Services) IsTopicActive(topicName string) bool {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	// If blacklisted, always inactive
+	if _, blacklisted := s.topicBlacklist[topicName]; blacklisted {
+		return false
+	}
+
+	// If whitelist is empty, all non-blacklisted topics are active
+	if len(s.topicWhitelist) == 0 {
+		return true
+	}
+
+	// Otherwise, must be in whitelist
+	_, whitelisted := s.topicWhitelist[topicName]
+	return whitelisted
+}
+
+// ActivateConfiguredTopics activates all topics that are in the whitelist and have registered factories
+func (s *Services) ActivateConfiguredTopics() {
+	s.mu.RLock()
+	factories := make(map[string]TopicManagerFactory, len(s.topicFactories))
+	for k, v := range s.topicFactories {
+		factories[k] = v
+	}
+	whitelist := make(map[string]struct{}, len(s.topicWhitelist))
+	for k := range s.topicWhitelist {
+		whitelist[k] = struct{}{}
+	}
+	s.mu.RUnlock()
+
+	s.logger.Debug("ActivateConfiguredTopics called",
+		"factories", len(factories),
+		"whitelist", len(whitelist))
+
+	for topicName := range whitelist {
+		s.logger.Debug("checking whitelisted topic", "topic", topicName)
+		if !s.IsTopicActive(topicName) {
+			s.logger.Debug("topic not active", "topic", topicName)
+			continue
+		}
+		factory, hasFactory := factories[topicName]
+		if !hasFactory {
+			s.logger.Warn("whitelisted topic has no registered factory", "topic", topicName)
+			continue
+		}
+		manager, err := factory(topicName)
+		if err != nil {
+			s.logger.Error("failed to create topic manager", "topic", topicName, "error", err)
+			continue
+		}
+		s.Engine.RegisterTopicManager(topicName, manager)
+		s.logger.Info("topic activated from config", "topic", topicName)
+	}
 }
 
 // StartSync begins periodic synchronization with database state.
@@ -210,6 +290,19 @@ func (s *Services) GetTopics() []string {
 		topics = append(topics, name)
 	}
 	return topics
+}
+
+// GetLookupServices returns list of active lookup service names from the engine
+func (s *Services) GetLookupServices() []string {
+	if s.Engine == nil {
+		return nil
+	}
+	providers := s.Engine.ListLookupServiceProviders()
+	services := make([]string, 0, len(providers))
+	for name := range providers {
+		services = append(services, name)
+	}
+	return services
 }
 
 // Close cleans up overlay services

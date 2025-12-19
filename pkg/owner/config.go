@@ -1,4 +1,4 @@
-package own
+package owner
 
 import (
 	"context"

@@ -50,12 +50,16 @@ func NewOneSatLookupWithTags(storage *txo.OutputStore, logger *slog.Logger, tags
 
 // OutputAdmittedByTopic is called when an output is admitted to a topic
 func (l *OneSatLookup) OutputAdmittedByTopic(ctx context.Context, payload *engine.OutputAdmittedByTopic) error {
+	l.logger.Debug("OutputAdmittedByTopic called", "topic", payload.Topic, "vout", payload.OutputIndex)
+
 	_, tx, txid, err := transaction.ParseBeef(payload.AtomicBEEF)
 	if err != nil {
+		l.logger.Error("failed to parse BEEF", "error", err)
 		return err
 	}
 
 	if int(payload.OutputIndex) >= len(tx.Outputs) {
+		l.logger.Debug("output index out of range", "vout", payload.OutputIndex, "outputs", len(tx.Outputs))
 		return nil
 	}
 
@@ -67,6 +71,8 @@ func (l *OneSatLookup) OutputAdmittedByTopic(ctx context.Context, payload *engin
 
 	// Parse the output
 	results := parse.Parse(outpoint, output.LockingScript.Bytes(), output.Satoshis, l.tags)
+
+	l.logger.Debug("parsed output", "outpoint", outpoint.String(), "results", len(results))
 
 	// If no parsers matched, nothing to index
 	if len(results) == 0 {
@@ -94,8 +100,25 @@ func (l *OneSatLookup) OutputAdmittedByTopic(ctx context.Context, payload *engin
 		}
 	}
 
-	// Save to storage
-	score := float64(time.Now().UnixNano())
+	// Calculate score from block height + block index if available, otherwise use timestamp
+	var score float64
+	if tx.MerklePath != nil && len(tx.MerklePath.Path) > 0 {
+		// Find the tx's position (offset) in the block from the merkle path leaf
+		var blockIdx uint64
+		for _, leaf := range tx.MerklePath.Path[0] {
+			if leaf.Hash != nil && leaf.Hash.Equal(*txid) {
+				blockIdx = leaf.Offset
+				break
+			}
+		}
+		// Score = blockHeight.blockIdx (block index as decimal fraction)
+		// This ensures proper ordering: by block first, then by position within block
+		score = float64(tx.MerklePath.BlockHeight) + float64(blockIdx)/1e9
+	} else {
+		// Fallback to timestamp for unconfirmed transactions
+		score = float64(time.Now().UnixNano())
+	}
+
 	if err := l.storage.SaveEvents(ctx, outpoint, allEvents, data, score); err != nil {
 		l.logger.Error("failed to save events",
 			"outpoint", outpoint.String(),

@@ -81,6 +81,9 @@ func main() {
 		}
 	}()
 
+	// Start JungleBus subscribers in background
+	svc.StartSubscribers(ctx, log)
+
 	// Create Fiber app
 	app := fiber.New(fiber.Config{
 		AppName:               "1sat-stack",

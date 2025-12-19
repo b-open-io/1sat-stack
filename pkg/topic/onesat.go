@@ -2,6 +2,7 @@ package topic
 
 import (
 	"context"
+	"log/slog"
 
 	"github.com/bsv-blockchain/go-overlay-services/pkg/core/engine"
 	"github.com/bsv-blockchain/go-sdk/overlay"
@@ -20,12 +21,19 @@ func NewOneSatTopicManager() *OneSatTopicManager {
 // IdentifyAdmissibleOutputs admits ALL outputs from the transaction.
 // As a catch-all topic, every output is potentially interesting for 1Sat indexing.
 func (tm *OneSatTopicManager) IdentifyAdmissibleOutputs(ctx context.Context, beefBytes []byte, previousCoins []uint32) (admit overlay.AdmittanceInstructions, err error) {
-	_, tx, _, err := transaction.ParseBeef(beefBytes)
+	_, tx, txid, err := transaction.ParseBeef(beefBytes)
 	if err != nil {
+		slog.Error("OneSatTopicManager: failed to parse BEEF", "error", err)
 		return admit, err
 	} else if tx == nil {
+		slog.Error("OneSatTopicManager: tx is nil")
 		return admit, engine.ErrInvalidBeef
 	}
+
+	slog.Debug("OneSatTopicManager: identifying admissible outputs",
+		"txid", txid.String(),
+		"outputs", len(tx.Outputs),
+		"previousCoins", len(previousCoins))
 
 	// Admit all outputs
 	admit.OutputsToAdmit = make([]uint32, len(tx.Outputs))

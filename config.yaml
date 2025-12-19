@@ -1,9 +1,15 @@
 # 1sat-stack configuration
 
-# Network settings
-network:
-  type: main                                    # main or test
-  junglebus: https://junglebus.gorillapool.io   # JungleBus service URL
+# Network: "main" or "test"
+network: main
+
+# JungleBus client configuration
+junglebus:
+  url: https://junglebus.gorillapool.io
+  # token: ""       # Optional API token
+  # ssl: true       # Use SSL (default: true)
+  # version: v1     # API version (default: v1)
+  # debug: false    # Enable debug logging
 
 # HTTP Server settings
 server:
@@ -14,12 +20,17 @@ server:
 # TXO storage - BadgerDB (default)
 store:
   mode: embedded
-  url: badger://~/.1sat/store
+  provider: badger
+  badger:
+    path: ~/.1sat/store
+    # in_memory: false
 
 # PubSub for events
 pubsub:
   mode: embedded
-  url: channels://  # in-memory, or redis://localhost:6379 for distributed
+  provider: channels  # channels (in-memory), or redis for distributed
+  channels:
+    buffer_size: 100
   routes:
     enabled: true
 
@@ -27,9 +38,13 @@ pubsub:
 beef:
   mode: embedded
   chain:
-    - lru://?size=100mb
-    - ~/.1sat/beef
-    - junglebus://
+    - provider: lru
+      lru:
+        size: 100mb
+    - provider: filesystem
+      filesystem:
+        path: ~/.1sat/beef
+    - provider: junglebus
   routes:
     enabled: true
 
@@ -43,7 +58,6 @@ txo:
 indexer:
   mode: embedded
   tag: IngestTag
-  network: mainnet
   concurrency: 1
   verbose: false
   indexers:
@@ -68,7 +82,6 @@ chaintracks:
 # Arcade configuration (transaction broadcasting)
 arcade:
   mode: embedded
-  network: main
   storage_path: ~/.1sat/arcade
   database:
     type: sqlite
@@ -86,9 +99,22 @@ merkle:
 # BSV21 token support (optional)
 bsv21:
   mode: embedded
-  network: mainnet
-  whitelist_tokens: []
-  blacklist_tokens: []
+  routes:
+    enabled: true
+
+# Overlay services
+overlay:
+  mode: embedded
+  topic_whitelist:
+    - tm_1sat
+    - tm_bsv21
+  # topic_blacklist: []  # Topics to disable even if whitelisted
+  routes:
+    enabled: true
+
+# Owner sync services
+owner:
+  mode: embedded
   routes:
     enabled: true
 

@@ -1,13 +1,15 @@
-package own
+package owner
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"sync"
 
 	"github.com/b-open-io/1sat-stack/pkg/beef"
 	"github.com/b-open-io/1sat-stack/pkg/overlay"
+	"github.com/b-open-io/1sat-stack/pkg/store"
 	"github.com/b-open-io/1sat-stack/pkg/txo"
 	"github.com/b-open-io/go-junglebus"
 	"github.com/bsv-blockchain/go-overlay-services/pkg/core/engine"
@@ -60,19 +62,28 @@ func (s *OwnerSync) WithConcurrency(n int) *OwnerSync {
 // Sync syncs all transactions for an owner from JungleBus.
 // It fetches transactions starting from the last synced height and submits them to the overlay.
 func (s *OwnerSync) Sync(ctx context.Context, owner string) error {
-	// Get last synced height
+	s.logger.Debug("OwnerSync starting", "owner", owner)
+
+	// Get last synced height (0 if not found)
 	lastHeight, err := s.outputStore.LogScore(ctx, OwnerSyncKey, []byte(owner))
-	if err != nil {
+	if err != nil && !errors.Is(err, store.ErrKeyNotFound) {
+		s.logger.Error("OwnerSync: failed to get last height", "owner", owner, "error", err)
 		return err
 	}
+
+	s.logger.Debug("OwnerSync: fetching from JungleBus", "owner", owner, "fromHeight", lastHeight)
 
 	// Fetch transactions from JungleBus
 	addTxns, err := s.jb.GetAddressTransactions(ctx, owner, uint32(lastHeight))
 	if err != nil {
+		s.logger.Error("OwnerSync: JungleBus fetch failed", "owner", owner, "error", err)
 		return err
 	}
 
+	s.logger.Debug("OwnerSync: fetched transactions", "owner", owner, "count", len(addTxns))
+
 	if len(addTxns) == 0 {
+		s.logger.Debug("OwnerSync: no new transactions", "owner", owner)
 		return nil
 	}
 
@@ -143,6 +154,10 @@ func (s *OwnerSync) Sync(ctx context.Context, owner string) error {
 
 // submitToOverlay builds BEEF with inputs and submits to overlay
 func (s *OwnerSync) submitToOverlay(ctx context.Context, txidStr string) error {
+	if s.overlay == nil {
+		return fmt.Errorf("overlay service not configured")
+	}
+
 	txid, err := chainhash.NewHashFromHex(txidStr)
 	if err != nil {
 		return fmt.Errorf("invalid txid %s: %w", txidStr, err)
@@ -161,12 +176,23 @@ func (s *OwnerSync) submitToOverlay(ctx context.Context, txidStr string) error {
 	}
 
 	// Submit to overlay with tm_1sat topic
-	_, err = s.overlay.Submit(ctx, sdkoverlay.TaggedBEEF{
+	steak, err := s.overlay.Submit(ctx, sdkoverlay.TaggedBEEF{
 		Beef:   beefBytes,
 		Topics: []string{"tm_1sat"},
 	}, engine.SubmitModeHistorical)
 	if err != nil {
 		return fmt.Errorf("failed to submit to overlay: %w", err)
+	}
+
+	// Log what was admitted
+	if steak != nil {
+		for topic, admit := range steak {
+			s.logger.Debug("overlay submit result",
+				"txid", txidStr,
+				"topic", topic,
+				"outputsAdmitted", len(admit.OutputsToAdmit),
+				"coinsRetained", len(admit.CoinsToRetain))
+		}
 	}
 
 	return nil

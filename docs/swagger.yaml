@@ -1,5 +1,26 @@
 basePath: /api
 definitions:
+  admin.ProgressItem:
+    properties:
+      block:
+        type: number
+      id:
+        type: string
+    type: object
+  admin.QueueInfo:
+    properties:
+      count:
+        type: integer
+      name:
+        type: string
+    type: object
+  admin.QueueItem:
+    properties:
+      score:
+        type: number
+      value:
+        type: string
+    type: object
   chaintracks.BlockHeader:
     properties:
       bits:
@@ -175,6 +196,13 @@ definitions:
       sequence:
         type: integer
     type: object
+  github_com_b-open-io_1sat-stack_pkg_owner.BalanceResponse:
+    properties:
+      balance:
+        type: integer
+      count:
+        type: integer
+    type: object
   github_com_b-open-io_1sat-stack_pkg_txo.IndexedOutput:
     properties:
       ancillaryTxids:
@@ -336,13 +364,6 @@ definitions:
       txid:
         type: string
     type: object
-  own.BalanceResponse:
-    properties:
-      balance:
-        type: integer
-      count:
-        type: integer
-    type: object
   pkg_bsv21.BalanceResponse:
     properties:
       balance:
@@ -447,6 +468,13 @@ definitions:
       parent:
         $ref: '#/definitions/transaction.Outpoint'
       sequence:
+        type: integer
+    type: object
+  pkg_owner.BalanceResponse:
+    properties:
+      balance:
+        type: integer
+      count:
         type: integer
     type: object
   pkg_txo.IndexedOutput:
@@ -562,6 +590,321 @@ info:
   title: 1Sat Stack API
   version: "1.0"
 paths:
+  /admin/api/blacklist:
+    get:
+      description: Returns the list of blacklisted topics
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: List of blacklisted topics
+          schema:
+            items:
+              type: string
+            type: array
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Get blacklist
+      tags:
+      - admin
+    post:
+      consumes:
+      - application/json
+      description: Adds a topic to the blacklist
+      parameters:
+      - description: Topic to add
+        in: body
+        name: body
+        required: true
+        schema:
+          type: object
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: success message
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "400":
+          description: Bad request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Add to blacklist
+      tags:
+      - admin
+  /admin/api/blacklist/{topic}:
+    delete:
+      description: Removes a topic from the blacklist
+      parameters:
+      - description: Topic ID to remove
+        in: path
+        name: topic
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: success message
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Remove from blacklist
+      tags:
+      - admin
+  /admin/api/lookups/active:
+    get:
+      description: Returns the list of currently active lookup services from the overlay
+        engine
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: List of active lookup services
+          schema:
+            items:
+              type: string
+            type: array
+      summary: Get active lookup services
+      tags:
+      - admin
+  /admin/api/progress:
+    get:
+      description: Returns all sync progress entries
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: List of progress entries
+          schema:
+            items:
+              $ref: '#/definitions/admin.ProgressItem'
+            type: array
+      summary: Get progress
+      tags:
+      - admin
+  /admin/api/progress/{id}:
+    delete:
+      description: Deletes a sync progress entry
+      parameters:
+      - description: Progress ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: success message
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Delete progress
+      tags:
+      - admin
+    put:
+      consumes:
+      - application/json
+      description: Updates a sync progress entry
+      parameters:
+      - description: Progress ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Block height
+        in: body
+        name: body
+        required: true
+        schema:
+          type: object
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: success message
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "400":
+          description: Bad request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Update progress
+      tags:
+      - admin
+  /admin/api/queues:
+    get:
+      description: 'Returns the list of queues (sorted sets with q: prefix)'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: List of queues with counts
+          schema:
+            items:
+              $ref: '#/definitions/admin.QueueInfo'
+            type: array
+      summary: Get queues
+      tags:
+      - admin
+  /admin/api/queues/{name}:
+    get:
+      description: Returns the first 25 items from a queue
+      parameters:
+      - description: Queue name
+        in: path
+        name: name
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: List of queue items
+          schema:
+            items:
+              $ref: '#/definitions/admin.QueueItem'
+            type: array
+      summary: Get queue items
+      tags:
+      - admin
+  /admin/api/topics/active:
+    get:
+      description: Returns the list of currently active topics from the overlay engine
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: List of active topics
+          schema:
+            items:
+              type: string
+            type: array
+      summary: Get active topics
+      tags:
+      - admin
+  /admin/api/whitelist:
+    get:
+      description: Returns the list of whitelisted topics
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: List of whitelisted topics
+          schema:
+            items:
+              type: string
+            type: array
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Get whitelist
+      tags:
+      - admin
+    post:
+      consumes:
+      - application/json
+      description: Adds a topic to the whitelist
+      parameters:
+      - description: Topic to add
+        in: body
+        name: body
+        required: true
+        schema:
+          type: object
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: success message
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "400":
+          description: Bad request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Add to whitelist
+      tags:
+      - admin
+  /admin/api/whitelist/{topic}:
+    delete:
+      description: Removes a topic from the whitelist
+      parameters:
+      - description: Topic ID to remove
+        in: path
+        name: topic
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: success message
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Remove from whitelist
+      tags:
+      - admin
   /arc/callback:
     post:
       consumes:
@@ -821,7 +1164,7 @@ paths:
       summary: Get merkle proof
       tags:
       - beef
-  /beef/{txid}/raw:
+  /beef/{txid}/tx:
     get:
       description: Retrieves just the raw transaction bytes (without proof)
       parameters:
@@ -834,7 +1177,7 @@ paths:
       - application/octet-stream
       responses:
         "200":
-          description: Raw transaction bytes
+          description: Transaction bytes
           schema:
             type: file
         "404":
@@ -843,7 +1186,7 @@ paths:
             additionalProperties:
               type: string
             type: object
-      summary: Get raw transaction
+      summary: Get transaction
       tags:
       - beef
   /bsv21/{tokenId}:
@@ -860,7 +1203,7 @@ paths:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/github_com_b-open-io_1sat-stack_pkg_bsv21.TokenResponse'
+            $ref: '#/definitions/pkg_bsv21.TokenResponse'
       summary: Get BSV21 token details
       tags:
       - bsv21
@@ -888,7 +1231,7 @@ paths:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/github_com_b-open-io_1sat-stack_pkg_bsv21.BalanceResponse'
+            $ref: '#/definitions/pkg_bsv21.BalanceResponse'
       summary: Get address token balance
       tags:
       - bsv21
@@ -981,7 +1324,7 @@ paths:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/github_com_b-open-io_1sat-stack_pkg_bsv21.BalanceResponse'
+            $ref: '#/definitions/pkg_bsv21.BalanceResponse'
       summary: Get multi-address token balance
       tags:
       - bsv21
@@ -1074,7 +1417,7 @@ paths:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/github_com_b-open-io_1sat-stack_pkg_bsv21.BlockResponse'
+            $ref: '#/definitions/pkg_bsv21.BlockResponse'
       summary: Get block data for a token
       tags:
       - bsv21
@@ -1862,7 +2205,7 @@ paths:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/own.BalanceResponse'
+            $ref: '#/definitions/github_com_b-open-io_1sat-stack_pkg_owner.BalanceResponse'
         "500":
           description: Internal server error
           schema:

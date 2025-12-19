@@ -18,8 +18,10 @@ const (
 
 // Config holds overlay engine configuration
 type Config struct {
-	Mode   string       `mapstructure:"mode"`
-	Routes RoutesConfig `mapstructure:"routes"`
+	Mode           string       `mapstructure:"mode"`
+	TopicWhitelist []string     `mapstructure:"topic_whitelist"` // Pre-configured topics to enable (e.g., ["tm_1sat", "tm_bsv21"])
+	TopicBlacklist []string     `mapstructure:"topic_blacklist"` // Topics to disable even if in whitelist
+	Routes         RoutesConfig `mapstructure:"routes"`
 }
 
 // RoutesConfig holds route configuration
@@ -34,6 +36,8 @@ type RoutesConfig struct {
 // SetDefaults configures viper defaults for overlay settings
 func (c *Config) SetDefaults(v *viper.Viper, prefix string) {
 	v.SetDefault(prefix+".mode", ModeDisabled)
+	v.SetDefault(prefix+".topic_whitelist", []string{})
+	v.SetDefault(prefix+".topic_blacklist", []string{})
 	v.SetDefault(prefix+".routes.enabled", true)
 	v.SetDefault(prefix+".routes.prefix", "/overlay")
 }
