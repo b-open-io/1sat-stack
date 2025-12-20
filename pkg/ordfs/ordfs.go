@@ -73,9 +73,6 @@ func (o *Ordfs) Load(ctx context.Context, req *Request) (*Response, error) {
 		if !req.Map {
 			resp.Map = nil
 		}
-		if req.Output {
-			resp.Output = output.Bytes()
-		}
 		return resp, nil
 	}
 
@@ -110,9 +107,6 @@ func (o *Ordfs) loadByTxid(ctx context.Context, req *Request) (*Response, error)
 			}
 			if !req.Map {
 				resp.Map = nil
-			}
-			if req.Output {
-				resp.Output = output.Bytes()
 			}
 
 			return resp, nil
@@ -847,14 +841,6 @@ func (o *Ordfs) loadResolution(ctx context.Context, req *Request, resolution *Re
 		Outpoint: resolution.Current,
 		Origin:   resolution.Origin,
 		Sequence: resolution.Sequence,
-	}
-
-	if req.Output && resolution.Current != nil {
-		output, err := o.loadOutput(ctx, resolution.Current)
-		if err != nil {
-			return nil, fmt.Errorf("failed to load output: %w", err)
-		}
-		response.Output = output.Bytes()
 	}
 
 	if resolution.Content != nil {
