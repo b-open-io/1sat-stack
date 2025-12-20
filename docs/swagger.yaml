@@ -151,6 +151,17 @@ definitions:
       txid:
         type: string
     type: object
+  github_com_b-open-io_1sat-stack_pkg_bsv21.WorkerStatus:
+    properties:
+      fee_address:
+        type: string
+      queue_depth:
+        type: integer
+      started_at:
+        type: string
+      token_id:
+        type: string
+    type: object
   github_com_b-open-io_1sat-stack_pkg_indexer.IndexContext:
     properties:
       height:
@@ -181,8 +192,9 @@ definitions:
       contentType:
         type: string
       map:
-        description: JSON string
-        type: string
+        items:
+          type: integer
+        type: array
       origin:
         $ref: '#/definitions/transaction.Outpoint'
       outpoint:
@@ -455,8 +467,9 @@ definitions:
       contentType:
         type: string
       map:
-        description: JSON string
-        type: string
+        items:
+          type: integer
+        type: array
       origin:
         $ref: '#/definitions/transaction.Outpoint'
       outpoint:
@@ -673,6 +686,21 @@ paths:
       summary: Remove from blacklist
       tags:
       - admin
+  /admin/api/bsv21/workers:
+    get:
+      description: Returns the status of all active BSV21 token workers
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: List of active workers
+          schema:
+            items:
+              $ref: '#/definitions/github_com_b-open-io_1sat-stack_pkg_bsv21.WorkerStatus'
+            type: array
+      summary: Get BSV21 workers
+      tags:
+      - admin
   /admin/api/lookups/active:
     get:
       description: Returns the list of currently active lookup services from the overlay
@@ -824,12 +852,12 @@ paths:
       - admin
   /admin/api/whitelist:
     get:
-      description: Returns the list of whitelisted topics
+      description: Returns the list of whitelisted BSV21 tokens (always active)
       produces:
       - application/json
       responses:
         "200":
-          description: List of whitelisted topics
+          description: List of whitelisted tokens
           schema:
             items:
               type: string
@@ -846,9 +874,9 @@ paths:
     post:
       consumes:
       - application/json
-      description: Adds a topic to the whitelist
+      description: Adds a BSV21 token to the whitelist (always active)
       parameters:
-      - description: Topic to add
+      - description: Token to add
         in: body
         name: body
         required: true
@@ -878,13 +906,13 @@ paths:
       summary: Add to whitelist
       tags:
       - admin
-  /admin/api/whitelist/{topic}:
+  /admin/api/whitelist/{token}:
     delete:
-      description: Removes a topic from the whitelist
+      description: Removes a BSV21 token from the whitelist
       parameters:
-      - description: Topic ID to remove
+      - description: Token ID to remove
         in: path
-        name: topic
+        name: token
         required: true
         type: string
       produces:
@@ -969,7 +997,7 @@ paths:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/github_com_b-open-io_1sat-stack_pkg_bsv21.TokenResponse'
+            $ref: '#/definitions/pkg_bsv21.TokenResponse'
       summary: Get BSV21 token details
       tags:
       - bsv21
@@ -997,7 +1025,7 @@ paths:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/github_com_b-open-io_1sat-stack_pkg_bsv21.BalanceResponse'
+            $ref: '#/definitions/pkg_bsv21.BalanceResponse'
       summary: Get address token balance
       tags:
       - bsv21
@@ -1090,7 +1118,7 @@ paths:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/github_com_b-open-io_1sat-stack_pkg_bsv21.BalanceResponse'
+            $ref: '#/definitions/pkg_bsv21.BalanceResponse'
       summary: Get multi-address token balance
       tags:
       - bsv21
@@ -1260,7 +1288,7 @@ paths:
         "200":
           description: Metadata
           schema:
-            $ref: '#/definitions/pkg_ordfs.Response'
+            $ref: '#/definitions/github_com_b-open-io_1sat-stack_pkg_ordfs.Response'
         "400":
           description: Bad request
           schema:
@@ -1274,37 +1302,6 @@ paths:
               type: string
             type: object
       summary: Get content metadata
-      tags:
-      - ordfs
-  /api/ordfs/output/{path}:
-    get:
-      description: Get the raw transaction output bytes
-      parameters:
-      - description: Outpoint (txid_vout) or txid
-        in: path
-        name: path
-        required: true
-        type: string
-      produces:
-      - application/octet-stream
-      responses:
-        "200":
-          description: Output bytes
-          schema:
-            type: file
-        "400":
-          description: Bad request
-          schema:
-            additionalProperties:
-              type: string
-            type: object
-        "404":
-          description: Not found
-          schema:
-            additionalProperties:
-              type: string
-            type: object
-      summary: Get raw output
       tags:
       - ordfs
   /api/ordfs/preview:
@@ -1351,6 +1348,37 @@ paths:
               type: string
             type: object
       summary: Preview HTML content
+      tags:
+      - ordfs
+  /api/ordfs/stream/{outpoint}:
+    get:
+      description: Stream content from an ordinal chain
+      parameters:
+      - description: Outpoint (txid_vout)
+        in: path
+        name: outpoint
+        required: true
+        type: string
+      produces:
+      - application/octet-stream
+      responses:
+        "200":
+          description: Streamed content
+          schema:
+            type: file
+        "400":
+          description: Bad request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Not found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Stream content
       tags:
       - ordfs
   /api/sse/{topics}:
@@ -1625,7 +1653,7 @@ paths:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/github_com_b-open-io_1sat-stack_pkg_bsv21.BlockResponse'
+            $ref: '#/definitions/pkg_bsv21.BlockResponse'
       summary: Get block data for a token
       tags:
       - bsv21
@@ -1790,9 +1818,10 @@ paths:
       - chaintracks
   /content/{path}:
     get:
-      description: Serve the content of an inscription by outpoint or txid
+      description: Serve the content of an inscription by outpoint or txid, with directory
+        and SPA support
       parameters:
-      - description: Outpoint (txid_vout) or txid
+      - description: Outpoint (txid_vout) or txid, optionally with :seq and /filepath
         in: path
         name: path
         required: true
@@ -2224,37 +2253,12 @@ paths:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/pkg_owner.BalanceResponse'
+            $ref: '#/definitions/github_com_b-open-io_1sat-stack_pkg_owner.BalanceResponse'
         "500":
           description: Internal server error
           schema:
             type: string
       summary: Get owner balance
-      tags:
-      - own
-  /owner/{owner}/sync:
-    get:
-      description: Stream paginated outputs for wallet synchronization via Server-Sent
-        Events. Streams all outputs until exhausted, then triggers background sync
-        and sends retry directive.
-      parameters:
-      - description: Owner identifier (address, pubkey, or script hash)
-        in: path
-        name: owner
-        required: true
-        type: string
-      - description: Starting score for pagination
-        in: query
-        name: from
-        type: number
-      produces:
-      - text/event-stream
-      responses:
-        "200":
-          description: SSE stream of SyncOutput events
-          schema:
-            type: string
-      summary: Stream owner sync via SSE
       tags:
       - own
   /owner/{owner}/txos:
@@ -2310,6 +2314,34 @@ paths:
       summary: Get owner TXOs
       tags:
       - own
+  /owner/sync:
+    get:
+      description: Stream paginated outputs for wallet synchronization via Server-Sent
+        Events. Streams all outputs until exhausted, then triggers background sync
+        and sends retry directive.
+      parameters:
+      - collectionFormat: csv
+        description: Owner identifier(s) (address, pubkey, or script hash)
+        in: query
+        items:
+          type: string
+        name: owner
+        required: true
+        type: array
+      - description: Starting score for pagination
+        in: query
+        name: from
+        type: number
+      produces:
+      - text/event-stream
+      responses:
+        "200":
+          description: SSE stream of SyncOutput events
+          schema:
+            type: string
+      summary: Stream owner sync via SSE
+      tags:
+      - owner
   /txo/outpoint/{outpoint}:
     get:
       description: Get a transaction output by its outpoint

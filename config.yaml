@@ -111,7 +111,7 @@ bsv21:
     token_workers: 16
     fee_per_output: 1000
     lifecycle_interval: 5m  # How often to check token balances and manage workers (default: 5m)
-    log_level: debug  # Highlight BSV21 sync (debug, info, warn, error)
+    log_level: debug  # Highlight BSV21 sync1 (debug, info, warn, error)
   routes:
     enabled: true
 

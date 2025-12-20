@@ -46,9 +46,6 @@ func (r *Routes) Register(router fiber.Router, prefix string) {
 	// Metadata endpoint - returns metadata without content bytes
 	g.Get("/metadata/*", r.HandleMetadata)
 
-	// Output endpoint - returns raw output bytes
-	g.Get("/output/*", r.HandleOutput)
-
 	// Preview endpoints - render HTML content
 	g.Get("/preview/:b64HtmlData", r.HandlePreview)
 	g.Post("/preview", r.HandlePreviewPost)
@@ -303,49 +300,6 @@ func (r *Routes) HandleMetadata(c *fiber.Ctx) error {
 		"sequence":      resp.Sequence,
 		"parent":        resp.Parent,
 	})
-}
-
-// HandleOutput returns raw output bytes
-// @Summary Get raw output
-// @Description Get the raw transaction output bytes
-// @Tags ordfs
-// @Produce octet-stream
-// @Param path path string true "Outpoint (txid_vout) or txid"
-// @Success 200 {file} binary "Output bytes"
-// @Failure 400 {object} map[string]string "Bad request"
-// @Failure 404 {object} map[string]string "Not found"
-// @Router /api/ordfs/output/{path} [get]
-func (r *Routes) HandleOutput(c *fiber.Ctx) error {
-	path := c.Params("*")
-	if path == "" {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
-			"error": "path is required",
-		})
-	}
-
-	req, err := parseContentPath(path)
-	if err != nil {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
-			"error": err.Error(),
-		})
-	}
-	req.Output = true
-
-	resp, err := r.ordfs.Load(c.Context(), req)
-	if err != nil {
-		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{
-			"error": err.Error(),
-		})
-	}
-
-	if resp.Output == nil {
-		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{
-			"error": "no output found",
-		})
-	}
-
-	c.Set("Content-Type", "application/octet-stream")
-	return c.Send(resp.Output)
 }
 
 // HandlePreview renders base64-encoded HTML content
