@@ -3,7 +3,7 @@ package pubsub
 import (
 	"context"
 	"fmt"
-	"log"
+	"log/slog"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -26,17 +26,24 @@ type SSEManager struct {
 	subscriptionCancel context.CancelFunc
 	ctx                context.Context
 	cancel             context.CancelFunc
+	logger             *slog.Logger
 }
 
 // NewSSEManager creates a new SSE manager
-func NewSSEManager(ctx context.Context, pubsub PubSub) *SSEManager {
+func NewSSEManager(ctx context.Context, pubsub PubSub, logger *slog.Logger) *SSEManager {
 	managerCtx, cancel := context.WithCancel(ctx)
+
+	if logger == nil {
+		logger = slog.Default()
+	}
+	logger = logger.With("component", "sse-manager")
 
 	manager := &SSEManager{
 		pubsub:       pubsub,
 		topicClients: make(map[string][]string),
 		ctx:          managerCtx,
 		cancel:       cancel,
+		logger:       logger,
 	}
 
 	go manager.broadcastLoop()
@@ -59,7 +66,7 @@ func (s *SSEManager) RegisterClient(topics []string, writer interface{}) string 
 		s.addClientToTopic(topic, clientID)
 	}
 
-	log.Printf("SSEManager: Registered client %s for topics: %v", clientID, topics)
+	s.logger.Debug("registered client", "clientID", clientID, "topics", topics)
 
 	s.updateSubscriptions()
 
@@ -81,7 +88,7 @@ func (s *SSEManager) DeregisterClient(clientID string) error {
 
 	s.clients.Delete(clientID)
 
-	log.Printf("SSEManager: Deregistered client %s", clientID)
+	s.logger.Debug("deregistered client", "clientID", clientID)
 
 	s.updateSubscriptions()
 
@@ -129,20 +136,20 @@ func (s *SSEManager) updateSubscriptions() {
 	}
 	s.topicMutex.RUnlock()
 
-	log.Printf("SSEManager: updateSubscriptions called, active topics: %v", topics)
+	s.logger.Debug("updating subscriptions", "topics", topics)
 
 	if len(topics) > 0 {
 		if s.subscriptionCancel != nil {
-			log.Printf("SSEManager: Cancelling old subscription")
+			s.logger.Debug("cancelling old subscription")
 			s.subscriptionCancel()
 		}
 
 		s.subscriptionCtx, s.subscriptionCancel = context.WithCancel(s.ctx)
 
 		if events, err := s.pubsub.Subscribe(s.subscriptionCtx, topics); err != nil {
-			log.Printf("SSEManager: Failed to update subscriptions: %v", err)
+			s.logger.Error("failed to update subscriptions", "error", err)
 		} else {
-			log.Printf("SSEManager: Successfully subscribed to %d topics", len(topics))
+			s.logger.Debug("subscribed to topics", "count", len(topics))
 			s.events.Store(events)
 		}
 	}
@@ -202,11 +209,11 @@ func (s *SSEManager) broadcastToClients(event Event) {
 				}
 				if _, err := writer.Write([]byte(data)); err == nil {
 					if flushErr := writer.Flush(); flushErr != nil {
-						log.Printf("SSEManager: Failed to flush to client %s: %v", clientID, flushErr)
+						s.logger.Debug("failed to flush to client", "clientID", clientID, "error", flushErr)
 						disconnectedClients = append(disconnectedClients, clientID)
 					}
 				} else {
-					log.Printf("SSEManager: Failed to write to client %s: %v", clientID, err)
+					s.logger.Debug("failed to write to client", "clientID", clientID, "error", err)
 					disconnectedClients = append(disconnectedClients, clientID)
 				}
 			}

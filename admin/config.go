@@ -4,7 +4,7 @@ import (
 	"context"
 	"log/slog"
 
-	"github.com/b-open-io/1sat-stack/pkg/fees"
+	"github.com/b-open-io/1sat-stack/pkg/bsv21"
 	"github.com/b-open-io/1sat-stack/pkg/overlay"
 	"github.com/b-open-io/1sat-stack/pkg/store"
 	"github.com/spf13/viper"
@@ -36,9 +36,9 @@ type Services struct {
 
 // InitializeDeps holds dependencies for admin initialization
 type InitializeDeps struct {
-	FeeService *fees.FeeService
-	Overlay    *overlay.Services
-	Store      store.Store
+	Overlay   *overlay.Services
+	Store     store.Store
+	BSV21Sync *bsv21.SyncServices
 }
 
 // SetDefaults sets default configuration values
@@ -61,8 +61,8 @@ func (c *Config) Initialize(ctx context.Context, logger *slog.Logger, deps *Init
 	svc := &Services{}
 
 	// Create routes if enabled
-	if c.Routes.Enabled && deps.FeeService != nil {
-		svc.Routes = NewRoutes(deps.FeeService, deps.Overlay, deps.Store, &c.Routes, logger)
+	if c.Routes.Enabled && deps.Store != nil {
+		svc.Routes = NewRoutes(deps.Overlay, deps.Store, deps.BSV21Sync, &c.Routes, logger)
 	}
 
 	logger.Info("admin service initialized", "mode", c.Mode)

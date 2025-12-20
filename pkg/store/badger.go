@@ -65,25 +65,50 @@ func (s *BadgerStore) update(fn func(txn *badger.Txn) error) error {
 	return badger.ErrConflict
 }
 
-// slogAdapter adapts slog.Logger to badger.Logger interface
+// slogAdapter adapts slog.Logger to badger.Logger interface with level filtering
 type slogAdapter struct {
 	logger *slog.Logger
+	level  slog.Level
 }
 
-func (s *slogAdapter) Errorf(format string, args ...interface{}) {
-	s.logger.Error(fmt.Sprintf(format, args...))
+func (s *slogAdapter) Errorf(format string, args ...any) {
+	if s.level <= slog.LevelError {
+		s.logger.Error(fmt.Sprintf(format, args...))
+	}
 }
 
-func (s *slogAdapter) Warningf(format string, args ...interface{}) {
-	s.logger.Warn(fmt.Sprintf(format, args...))
+func (s *slogAdapter) Warningf(format string, args ...any) {
+	if s.level <= slog.LevelWarn {
+		s.logger.Warn(fmt.Sprintf(format, args...))
+	}
 }
 
-func (s *slogAdapter) Infof(format string, args ...interface{}) {
-	s.logger.Info(fmt.Sprintf(format, args...))
+func (s *slogAdapter) Infof(format string, args ...any) {
+	if s.level <= slog.LevelInfo {
+		s.logger.Info(fmt.Sprintf(format, args...))
+	}
 }
 
-func (s *slogAdapter) Debugf(format string, args ...interface{}) {
-	s.logger.Debug(fmt.Sprintf(format, args...))
+func (s *slogAdapter) Debugf(format string, args ...any) {
+	if s.level <= slog.LevelDebug {
+		s.logger.Debug(fmt.Sprintf(format, args...))
+	}
+}
+
+// parseLogLevel converts a string to slog.Level
+func parseLogLevel(level string) slog.Level {
+	switch strings.ToLower(level) {
+	case "debug":
+		return slog.LevelDebug
+	case "info":
+		return slog.LevelInfo
+	case "warn", "warning":
+		return slog.LevelWarn
+	case "error":
+		return slog.LevelError
+	default:
+		return slog.LevelWarn // Default to warn to quiet BadgerDB
+	}
 }
 
 // NewBadgerStoreFromConfig creates a new BadgerDB-backed Store from config.
@@ -104,9 +129,14 @@ func NewBadgerStoreFromConfig(cfg *BadgerConfig, logger *slog.Logger) (*BadgerSt
 		opts = badger.DefaultOptions(path)
 	}
 
-	opts = opts.WithLogger(&slogAdapter{logger: logger})
+	// Create adapter with level filtering for BadgerDB logs
+	badgerLevel := parseLogLevel(cfg.LogLevel)
+	opts = opts.WithLogger(&slogAdapter{
+		logger: logger.With("component", "badger"),
+		level:  badgerLevel,
+	})
 
-	logger.Info("opening BadgerDB", "path", path, "inMemory", cfg.InMemory)
+	logger.Info("opening BadgerDB", "path", path, "inMemory", cfg.InMemory, "logLevel", cfg.LogLevel)
 
 	db, err := badger.Open(opts)
 	if err != nil {

@@ -6,9 +6,10 @@ import (
 	"io/fs"
 	"log/slog"
 	"net/http"
+	"net/url"
 	"sort"
 
-	"github.com/b-open-io/1sat-stack/pkg/fees"
+	"github.com/b-open-io/1sat-stack/pkg/bsv21"
 	"github.com/b-open-io/1sat-stack/pkg/overlay"
 	"github.com/b-open-io/1sat-stack/pkg/store"
 	"github.com/b-open-io/1sat-stack/pkg/types"
@@ -20,40 +21,46 @@ import (
 //go:embed ui/*
 var uiFS embed.FS
 
+// Storage keys for BSV21 token management
+const (
+	KeyBSV21Whitelist = "bsv21:whitelist"
+	KeyBSV21Blacklist = "bsv21:blacklist"
+)
+
 // Routes handles admin HTTP routes
 type Routes struct {
-	feeService *fees.FeeService
-	overlay    *overlay.Services
-	store      store.Store
-	config     *RoutesConfig
-	logger     *slog.Logger
+	overlay   *overlay.Services
+	store     store.Store
+	bsv21Sync *bsv21.SyncServices
+	config    *RoutesConfig
+	logger    *slog.Logger
 }
 
 // NewRoutes creates a new Routes instance
-func NewRoutes(feeService *fees.FeeService, overlaySvc *overlay.Services, s store.Store, cfg *RoutesConfig, logger *slog.Logger) *Routes {
+func NewRoutes(overlaySvc *overlay.Services, s store.Store, bsv21Sync *bsv21.SyncServices, cfg *RoutesConfig, logger *slog.Logger) *Routes {
 	return &Routes{
-		feeService: feeService,
-		overlay:    overlaySvc,
-		store:      s,
-		config:     cfg,
-		logger:     logger,
+		overlay:   overlaySvc,
+		store:     s,
+		bsv21Sync: bsv21Sync,
+		config:    cfg,
+		logger:    logger,
 	}
 }
 
 // Register registers admin routes on a Fiber app group
 func (r *Routes) Register(group fiber.Router) {
-	// API routes for topic management
+	// API routes for BSV21 token management
 	api := group.Group("/api")
 
-	// Whitelist endpoints
+	// Whitelist endpoints (tokens always active)
 	api.Get("/whitelist", r.handleGetWhitelist)
 	api.Post("/whitelist", r.handleAddToWhitelist)
-	api.Delete("/whitelist/:topic", r.handleRemoveFromWhitelist)
+	api.Delete("/whitelist/:token", r.handleRemoveFromWhitelist)
 
-	// Blacklist endpoints
+	// Blacklist endpoints (tokens never active)
 	api.Get("/blacklist", r.handleGetBlacklist)
 	api.Post("/blacklist", r.handleAddToBlacklist)
-	api.Delete("/blacklist/:topic", r.handleRemoveFromBlacklist)
+	api.Delete("/blacklist/:token", r.handleRemoveFromBlacklist)
 
 	// Active topics endpoint
 	api.Get("/topics/active", r.handleGetActiveTopics)
@@ -63,12 +70,15 @@ func (r *Routes) Register(group fiber.Router) {
 
 	// Queue endpoints
 	api.Get("/queues", r.handleGetQueues)
-	api.Get("/queues/:name", r.handleGetQueueItems)
+	api.Get("/queues/*", r.handleGetQueueItems)
 
 	// Progress endpoints
 	api.Get("/progress", r.handleGetProgress)
 	api.Put("/progress/:id", r.handleUpdateProgress)
 	api.Delete("/progress/:id", r.handleDeleteProgress)
+
+	// BSV21 worker endpoints
+	api.Get("/bsv21/workers", r.handleGetBSV21Workers)
 
 	// Serve static UI files
 	uiSubFS, err := fs.Sub(uiFS, "ui")
@@ -96,32 +106,36 @@ func (r *Routes) Register(group fiber.Router) {
 	r.logger.Debug("registered admin routes")
 }
 
-// handleGetWhitelist returns the list of whitelisted topics
+// handleGetWhitelist returns the list of whitelisted BSV21 tokens
 // @Summary Get whitelist
-// @Description Returns the list of whitelisted topics
+// @Description Returns the list of whitelisted BSV21 tokens (always active)
 // @Tags admin
 // @Produce json
-// @Success 200 {array} string "List of whitelisted topics"
+// @Success 200 {array} string "List of whitelisted tokens"
 // @Failure 500 {object} map[string]string "Internal server error"
 // @Router /admin/api/whitelist [get]
 func (r *Routes) handleGetWhitelist(c *fiber.Ctx) error {
-	topics, err := r.feeService.GetWhitelist(c.Context())
+	members, err := r.store.SMembers(c.Context(), []byte(KeyBSV21Whitelist))
 	if err != nil {
 		r.logger.Error("failed to get whitelist", "error", err)
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
 			"error": "failed to get whitelist",
 		})
 	}
-	return c.JSON(topics)
+	tokens := make([]string, len(members))
+	for i, m := range members {
+		tokens[i] = string(m)
+	}
+	return c.JSON(tokens)
 }
 
-// handleAddToWhitelist adds a topic to the whitelist
+// handleAddToWhitelist adds a token to the whitelist
 // @Summary Add to whitelist
-// @Description Adds a topic to the whitelist
+// @Description Adds a BSV21 token to the whitelist (always active)
 // @Tags admin
 // @Accept json
 // @Produce json
-// @Param body body object true "Topic to add" example({"topic": "tm_example"})
+// @Param body body object true "Token to add" example({"topic": "abc123..."})
 // @Success 200 {object} map[string]string "success message"
 // @Failure 400 {object} map[string]string "Bad request"
 // @Failure 500 {object} map[string]string "Internal server error"
@@ -138,56 +152,56 @@ func (r *Routes) handleAddToWhitelist(c *fiber.Ctx) error {
 
 	if req.Topic == "" {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
-			"error": "topic is required",
+			"error": "token is required",
 		})
 	}
 
-	if err := r.feeService.AddToWhitelist(c.Context(), req.Topic); err != nil {
-		r.logger.Error("failed to add to whitelist", "error", err, "topic", req.Topic)
+	if err := r.store.SAdd(c.Context(), []byte(KeyBSV21Whitelist), []byte(req.Topic)); err != nil {
+		r.logger.Error("failed to add to whitelist", "error", err, "token", req.Topic)
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
 			"error": "failed to add to whitelist",
 		})
 	}
 
-	r.logger.Info("added topic to whitelist", "topic", req.Topic)
+	r.logger.Info("added token to whitelist", "token", req.Topic)
 	return c.JSON(fiber.Map{
-		"message": "topic added to whitelist",
-		"topic":   req.Topic,
+		"message": "token added to whitelist",
+		"token":   req.Topic,
 	})
 }
 
-// handleRemoveFromWhitelist removes a topic from the whitelist
+// handleRemoveFromWhitelist removes a token from the whitelist
 // @Summary Remove from whitelist
-// @Description Removes a topic from the whitelist
+// @Description Removes a BSV21 token from the whitelist
 // @Tags admin
 // @Produce json
-// @Param topic path string true "Topic ID to remove"
+// @Param token path string true "Token ID to remove"
 // @Success 200 {object} map[string]string "success message"
 // @Failure 500 {object} map[string]string "Internal server error"
-// @Router /admin/api/whitelist/{topic} [delete]
+// @Router /admin/api/whitelist/{token} [delete]
 func (r *Routes) handleRemoveFromWhitelist(c *fiber.Ctx) error {
-	topic := c.Params("topic")
-	if topic == "" {
+	token := c.Params("token")
+	if token == "" {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
-			"error": "topic is required",
+			"error": "token is required",
 		})
 	}
 
-	if err := r.feeService.RemoveFromWhitelist(c.Context(), topic); err != nil {
-		r.logger.Error("failed to remove from whitelist", "error", err, "topic", topic)
+	if err := r.store.SRem(c.Context(), []byte(KeyBSV21Whitelist), []byte(token)); err != nil {
+		r.logger.Error("failed to remove from whitelist", "error", err, "token", token)
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
 			"error": "failed to remove from whitelist",
 		})
 	}
 
-	r.logger.Info("removed topic from whitelist", "topic", topic)
+	r.logger.Info("removed token from whitelist", "token", token)
 	return c.JSON(fiber.Map{
-		"message": "topic removed from whitelist",
-		"topic":   topic,
+		"message": "token removed from whitelist",
+		"token":   token,
 	})
 }
 
-// handleGetBlacklist returns the list of blacklisted topics
+// handleGetBlacklist returns the list of blacklisted BSV21 tokens
 // @Summary Get blacklist
 // @Description Returns the list of blacklisted topics
 // @Tags admin
@@ -196,12 +210,16 @@ func (r *Routes) handleRemoveFromWhitelist(c *fiber.Ctx) error {
 // @Failure 500 {object} map[string]string "Internal server error"
 // @Router /admin/api/blacklist [get]
 func (r *Routes) handleGetBlacklist(c *fiber.Ctx) error {
-	topics, err := r.feeService.GetBlacklist(c.Context())
+	members, err := r.store.SMembers(c.Context(), []byte(KeyBSV21Blacklist))
 	if err != nil {
 		r.logger.Error("failed to get blacklist", "error", err)
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
 			"error": "failed to get blacklist",
 		})
+	}
+	topics := make([]string, len(members))
+	for i, m := range members {
+		topics[i] = string(m)
 	}
 	return c.JSON(topics)
 }
@@ -233,7 +251,7 @@ func (r *Routes) handleAddToBlacklist(c *fiber.Ctx) error {
 		})
 	}
 
-	if err := r.feeService.AddToBlacklist(c.Context(), req.Topic); err != nil {
+	if err := r.store.SAdd(c.Context(), []byte(KeyBSV21Blacklist), []byte(req.Topic)); err != nil {
 		r.logger.Error("failed to add to blacklist", "error", err, "topic", req.Topic)
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
 			"error": "failed to add to blacklist",
@@ -264,7 +282,7 @@ func (r *Routes) handleRemoveFromBlacklist(c *fiber.Ctx) error {
 		})
 	}
 
-	if err := r.feeService.RemoveFromBlacklist(c.Context(), topic); err != nil {
+	if err := r.store.SRem(c.Context(), []byte(KeyBSV21Blacklist), []byte(topic)); err != nil {
 		r.logger.Error("failed to remove from blacklist", "error", err, "topic", topic)
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
 			"error": "failed to remove from blacklist",
@@ -380,7 +398,12 @@ func (r *Routes) handleGetQueueItems(c *fiber.Ctx) error {
 		return c.JSON([]QueueItem{})
 	}
 
-	name := c.Params("name")
+	nameEncoded := c.Params("*")
+	name, err := url.PathUnescape(nameEncoded)
+	if err != nil {
+		name = nameEncoded
+	}
+	r.logger.Debug("handleGetQueueItems", "nameEncoded", nameEncoded, "name", name, "path", c.Path())
 	if name == "" {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
 			"error": "queue name is required",
@@ -390,6 +413,7 @@ func (r *Routes) handleGetQueueItems(c *fiber.Ctx) error {
 	members, err := r.store.ZRange(c.Context(), []byte(name), store.ScoreRange{
 		Count: 25,
 	})
+	r.logger.Debug("handleGetQueueItems result", "name", name, "count", len(members), "err", err)
 	if err != nil {
 		r.logger.Error("failed to get queue items", "queue", name, "error", err)
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
@@ -564,4 +588,38 @@ func (r *Routes) handleDeleteProgress(c *fiber.Ctx) error {
 		"message": "progress deleted",
 		"id":      id,
 	})
+}
+
+// handleGetBSV21Workers returns the status of all active BSV21 token workers
+// @Summary Get BSV21 workers
+// @Description Returns the status of all active BSV21 token workers
+// @Tags admin
+// @Produce json
+// @Success 200 {array} bsv21.WorkerStatus "List of active workers"
+// @Router /admin/api/bsv21/workers [get]
+func (r *Routes) handleGetBSV21Workers(c *fiber.Ctx) error {
+	if r.bsv21Sync == nil {
+		r.logger.Debug("bsv21 workers: sync service is nil")
+		return c.JSON([]bsv21.WorkerStatus{})
+	}
+
+	manager := r.bsv21Sync.GetManager()
+	if manager == nil {
+		r.logger.Debug("bsv21 workers: manager is nil")
+		return c.JSON([]bsv21.WorkerStatus{})
+	}
+
+	workers := manager.ListWorkers(c.Context())
+	if workers == nil {
+		workers = []bsv21.WorkerStatus{}
+	}
+
+	r.logger.Debug("bsv21 workers", "count", len(workers))
+
+	// Sort by token ID for consistent ordering
+	sort.Slice(workers, func(i, j int) bool {
+		return workers[i].TokenID < workers[j].TokenID
+	})
+
+	return c.JSON(workers)
 }

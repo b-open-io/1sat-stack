@@ -3,6 +3,11 @@
 # Network: "main" or "test"
 network: main
 
+# Logging configuration
+logging:
+  # Default log level for all components (debug, info, warn, error)
+  level: info
+
 # JungleBus client configuration
 junglebus:
   url: https://junglebus.gorillapool.io
@@ -23,6 +28,7 @@ store:
   provider: badger
   badger:
     path: ~/.1sat/store
+    log_level: error  # Quiet BadgerDB internal logs (debug, info, warn, error)
     # in_memory: false
 
 # PubSub for events
@@ -100,9 +106,12 @@ merkle:
 bsv21:
   mode: embedded
   sync:
-    enabled: false
-    categorizer_workers: 8
+    enabled: true
+    dispatch_workers: 8
     token_workers: 16
+    fee_per_output: 1000
+    lifecycle_interval: 5m  # How often to check token balances and manage workers (default: 5m)
+    log_level: debug  # Highlight BSV21 sync (debug, info, warn, error)
   routes:
     enabled: true
 
@@ -124,7 +133,9 @@ owner:
 
 # ORDFS content serving (optional)
 ordfs:
-  mode: embedded
+  enabled: true
+  redis:
+    addr: localhost:6380
   routes:
     enabled: true
 

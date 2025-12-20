@@ -1,6 +1,8 @@
 package ordfs
 
 import (
+	"encoding/json"
+
 	"github.com/bsv-blockchain/go-sdk/chainhash"
 	"github.com/bsv-blockchain/go-sdk/transaction"
 )
@@ -23,7 +25,7 @@ type Response struct {
 	ContentType   string                `json:"contentType,omitempty"`
 	Content       []byte                `json:"content,omitempty"`
 	ContentLength int                   `json:"contentLength,omitempty"`
-	Map           string                `json:"map,omitempty"` // JSON string
+	Map           json.RawMessage       `json:"map,omitempty"`
 	Sequence      int                   `json:"sequence,omitempty"`
 	Output        []byte                `json:"output,omitempty"`
 	Parent        *transaction.Outpoint `json:"parent,omitempty"`
@@ -46,11 +48,4 @@ type ChainEntry struct {
 	ContentOutpoint *transaction.Outpoint
 	MapOutpoint     *transaction.Outpoint
 	ParentOutpoint  *transaction.Outpoint
-}
-
-// Loader interface for loading transactions and outputs
-type Loader interface {
-	LoadTx(txid string) (*transaction.Transaction, error)
-	LoadOutput(outpoint *transaction.Outpoint) (*transaction.TransactionOutput, error)
-	LoadSpend(outpoint string) (*chainhash.Hash, error)
 }

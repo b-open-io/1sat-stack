@@ -55,8 +55,8 @@ func TestConfigSetDefaults(t *testing.T) {
 	if v.GetString("overlay.mode") != overlay.ModeDisabled {
 		t.Errorf("expected overlay.mode=disabled, got %s", v.GetString("overlay.mode"))
 	}
-	if v.GetString("ordfs.mode") != ordfs.ModeDisabled {
-		t.Errorf("expected ordfs.mode=disabled, got %s", v.GetString("ordfs.mode"))
+	if v.GetBool("ordfs.enabled") != false {
+		t.Errorf("expected ordfs.enabled=false, got %v", v.GetBool("ordfs.enabled"))
 	}
 }
 
@@ -75,7 +75,7 @@ func TestConfigInitializeDisabled(t *testing.T) {
 		Indexer: indexer.Config{Mode: indexer.ModeDisabled},
 		BSV21:   bsv21.Config{Mode: bsv21.ModeDisabled},
 		Overlay: overlay.Config{Mode: overlay.ModeDisabled},
-		ORDFS:   ordfs.Config{Mode: ordfs.ModeDisabled},
+		ORDFS:   ordfs.Config{Enabled: false},
 	}
 
 	ctx := context.Background()
@@ -130,7 +130,7 @@ func TestConfigInitializeEmbeddedPubSub(t *testing.T) {
 		Beef:   beef.Config{Mode: beef.ModeDisabled},
 		TXO:    txo.Config{Mode: txo.ModeDisabled},
 		BSV21:  bsv21.Config{Mode: bsv21.ModeDisabled},
-		ORDFS:  ordfs.Config{Mode: ordfs.ModeDisabled},
+		ORDFS:  ordfs.Config{Enabled: false},
 	}
 
 	ctx := context.Background()

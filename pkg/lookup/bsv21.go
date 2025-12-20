@@ -55,8 +55,8 @@ func (l *BSV21Lookup) OutputAdmittedByTopic(ctx context.Context, payload *engine
 
 	events := make([]string, 0, 5)
 
-	// For mint operations, set the ID to the ordinal string
-	if b.Op == string(bsv21.OpMint) {
+	// For deploy operations, set the ID to the ordinal string
+	if b.Op == string(bsv21.OpDeployMint) || b.Op == string(bsv21.OpDeployAuth) {
 		b.Id = outpoint.OrdinalString()
 		if b.Symbol != nil {
 			events = append(events, fmt.Sprintf("sym:%s", *b.Symbol))

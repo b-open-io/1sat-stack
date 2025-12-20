@@ -46,7 +46,6 @@ func (c *Config) SetDefaults(v *viper.Viper, prefix string) {
 type InitializeDeps struct {
 	OutputStore  *txo.OutputStore
 	ChainTracker chaintracker.ChainTracker
-	Storage      Storage // Optional: for dynamic topic sync (implements GetActiveTopics)
 }
 
 // Initialize creates overlay services from configuration
@@ -60,8 +59,7 @@ func (c *Config) Initialize(ctx context.Context, logger *slog.Logger, deps *Init
 	}
 
 	svc := &Services{
-		logger:  logger,
-		Storage: deps.Storage,
+		logger: logger,
 	}
 
 	// Create the overlay engine

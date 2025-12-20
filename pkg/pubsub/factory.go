@@ -2,6 +2,7 @@ package pubsub
 
 import (
 	"fmt"
+	"log/slog"
 	"strings"
 )
 
@@ -10,7 +11,7 @@ import (
 //   - redis://localhost:6379 - Redis-based pub/sub
 //   - channels:// - In-memory channel-based pub/sub
 //   - Empty string: defaults to channels://
-func CreatePubSub(connectionString string) (PubSub, error) {
+func CreatePubSub(connectionString string, logger *slog.Logger) (PubSub, error) {
 	if connectionString == "" {
 		connectionString = "channels://"
 	}
@@ -21,7 +22,7 @@ func CreatePubSub(connectionString string) (PubSub, error) {
 		return nil, fmt.Errorf("redis pub/sub not yet implemented")
 
 	case strings.HasPrefix(connectionString, "channels://"):
-		return NewChannelPubSub(), nil
+		return NewChannelPubSub(logger), nil
 
 	default:
 		return nil, fmt.Errorf("unsupported pub/sub URL scheme: %s", connectionString)

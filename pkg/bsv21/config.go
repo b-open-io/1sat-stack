@@ -58,6 +58,7 @@ func (c *Config) SetDefaults(v *viper.Viper, prefix string) {
 	v.SetDefault(p+"network", "mainnet")
 	v.SetDefault(p+"sync.enabled", false)
 	v.SetDefault(p+"sync.categorizer_workers", 8)
+	v.SetDefault(p+"sync.lifecycle_interval", "5m")
 	v.SetDefault(p+"routes.enabled", true)
 	v.SetDefault(p+"routes.prefix", "/bsv21")
 }
@@ -141,8 +142,8 @@ func (c *Config) Initialize(
 				c.Sync,
 				txoStorage.Store,
 				beefStorage,
+				txoStorage,
 				overlaySvc,
-				nil, // feeService - not needed for categorization only
 				chaintracker,
 				jbClient,
 				logger,

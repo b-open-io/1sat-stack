@@ -14,9 +14,9 @@ replace github.com/bsv-blockchain/teranode => github.com/bsv-blockchain/teranode
 
 replace github.com/bsv-blockchain/go-overlay-services => github.com/bsv-blockchain/go-overlay-services v1.2.3-0.20251219055303-ddb3df30d6bd
 
-replace github.com/bitcoin-sv/go-templates => github.com/b-open-io/go-templates v0.0.0-20251219054903-65896714a8d6
+replace github.com/bitcoin-sv/go-templates => ../go-templates
 
-replace github.com/b-open-io/go-junglebus => github.com/b-open-io/go-junglebus v0.2.15-0.20251219054710-b2403decb968
+replace github.com/b-open-io/go-junglebus => ../go-junglebus
 
 require (
 	github.com/b-open-io/go-junglebus v0.3.4
@@ -28,6 +28,7 @@ require (
 	github.com/bsv-blockchain/go-teranode-p2p-client v0.0.0
 	github.com/dgraph-io/badger/v4 v4.8.0
 	github.com/gofiber/fiber/v2 v2.52.10
+	github.com/redis/go-redis/v9 v9.17.2
 	github.com/spf13/viper v1.21.0
 	github.com/swaggo/swag v1.16.6
 	golang.org/x/sync v0.19.0
@@ -236,7 +237,6 @@ require (
 	github.com/quic-go/quic-go v0.57.1 // indirect
 	github.com/quic-go/webtransport-go v0.9.0 // indirect
 	github.com/rcrowley/go-metrics v0.0.0-20201227073835-cf1acfcdf475 // indirect
-	github.com/redis/go-redis/v9 v9.17.2 // indirect
 	github.com/remyoudompheng/bigfft v0.0.0-20230129092748-24d4a6f8daec // indirect
 	github.com/rs/zerolog v1.33.0 // indirect
 	github.com/sagikazarmark/locafero v0.12.0 // indirect
