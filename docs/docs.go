@@ -149,6 +149,29 @@ const docTemplate = `{
                 }
             }
         },
+        "/admin/api/bsv21/workers": {
+            "get": {
+                "description": "Returns the status of all active BSV21 token workers",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "admin"
+                ],
+                "summary": "Get BSV21 workers",
+                "responses": {
+                    "200": {
+                        "description": "List of active workers",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/github_com_b-open-io_1sat-stack_pkg_bsv21.WorkerStatus"
+                            }
+                        }
+                    }
+                }
+            }
+        },
         "/admin/api/lookups/active": {
             "get": {
                 "description": "Returns the list of currently active lookup services from the overlay engine",
@@ -376,7 +399,7 @@ const docTemplate = `{
         },
         "/admin/api/whitelist": {
             "get": {
-                "description": "Returns the list of whitelisted topics",
+                "description": "Returns the list of whitelisted BSV21 tokens (always active)",
                 "produces": [
                     "application/json"
                 ],
@@ -386,7 +409,7 @@ const docTemplate = `{
                 "summary": "Get whitelist",
                 "responses": {
                     "200": {
-                        "description": "List of whitelisted topics",
+                        "description": "List of whitelisted tokens",
                         "schema": {
                             "type": "array",
                             "items": {
@@ -406,7 +429,7 @@ const docTemplate = `{
                 }
             },
             "post": {
-                "description": "Adds a topic to the whitelist",
+                "description": "Adds a BSV21 token to the whitelist (always active)",
                 "consumes": [
                     "application/json"
                 ],
@@ -419,7 +442,7 @@ const docTemplate = `{
                 "summary": "Add to whitelist",
                 "parameters": [
                     {
-                        "description": "Topic to add",
+                        "description": "Token to add",
                         "name": "body",
                         "in": "body",
                         "required": true,
@@ -459,9 +482,9 @@ const docTemplate = `{
                 }
             }
         },
-        "/admin/api/whitelist/{topic}": {
+        "/admin/api/whitelist/{token}": {
             "delete": {
-                "description": "Removes a topic from the whitelist",
+                "description": "Removes a BSV21 token from the whitelist",
                 "produces": [
                     "application/json"
                 ],
@@ -472,8 +495,8 @@ const docTemplate = `{
                 "parameters": [
                     {
                         "type": "string",
-                        "description": "Topic ID to remove",
-                        "name": "topic",
+                        "description": "Token ID to remove",
+                        "name": "token",
                         "in": "path",
                         "required": true
                     }
@@ -598,7 +621,7 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/github_com_b-open-io_1sat-stack_pkg_bsv21.TokenResponse"
+                            "$ref": "#/definitions/pkg_bsv21.TokenResponse"
                         }
                     }
                 }
@@ -690,7 +713,7 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/github_com_b-open-io_1sat-stack_pkg_bsv21.BalanceResponse"
+                            "$ref": "#/definitions/pkg_bsv21.BalanceResponse"
                         }
                     }
                 }
@@ -838,7 +861,7 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/github_com_b-open-io_1sat-stack_pkg_bsv21.BalanceResponse"
+                            "$ref": "#/definitions/pkg_bsv21.BalanceResponse"
                         }
                     }
                 }
@@ -1035,54 +1058,7 @@ const docTemplate = `{
                     "200": {
                         "description": "Metadata",
                         "schema": {
-                            "$ref": "#/definitions/pkg_ordfs.Response"
-                        }
-                    },
-                    "400": {
-                        "description": "Bad request",
-                        "schema": {
-                            "type": "object",
-                            "additionalProperties": {
-                                "type": "string"
-                            }
-                        }
-                    },
-                    "404": {
-                        "description": "Not found",
-                        "schema": {
-                            "type": "object",
-                            "additionalProperties": {
-                                "type": "string"
-                            }
-                        }
-                    }
-                }
-            }
-        },
-        "/api/ordfs/output/{path}": {
-            "get": {
-                "description": "Get the raw transaction output bytes",
-                "produces": [
-                    "application/octet-stream"
-                ],
-                "tags": [
-                    "ordfs"
-                ],
-                "summary": "Get raw output",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "description": "Outpoint (txid_vout) or txid",
-                        "name": "path",
-                        "in": "path",
-                        "required": true
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "Output bytes",
-                        "schema": {
-                            "type": "file"
+                            "$ref": "#/definitions/github_com_b-open-io_1sat-stack_pkg_ordfs.Response"
                         }
                     },
                     "400": {
@@ -1166,6 +1142,53 @@ const docTemplate = `{
                     },
                     "400": {
                         "description": "Bad request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/ordfs/stream/{outpoint}": {
+            "get": {
+                "description": "Stream content from an ordinal chain",
+                "produces": [
+                    "application/octet-stream"
+                ],
+                "tags": [
+                    "ordfs"
+                ],
+                "summary": "Stream content",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Outpoint (txid_vout)",
+                        "name": "outpoint",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Streamed content",
+                        "schema": {
+                            "type": "file"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Not found",
                         "schema": {
                             "type": "object",
                             "additionalProperties": {
@@ -1585,7 +1608,7 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/github_com_b-open-io_1sat-stack_pkg_bsv21.BlockResponse"
+                            "$ref": "#/definitions/pkg_bsv21.BlockResponse"
                         }
                     }
                 }
@@ -1832,7 +1855,7 @@ const docTemplate = `{
         },
         "/content/{path}": {
             "get": {
-                "description": "Serve the content of an inscription by outpoint or txid",
+                "description": "Serve the content of an inscription by outpoint or txid, with directory and SPA support",
                 "produces": [
                     "application/octet-stream"
                 ],
@@ -1843,7 +1866,7 @@ const docTemplate = `{
                 "parameters": [
                     {
                         "type": "string",
-                        "description": "Outpoint (txid_vout) or txid",
+                        "description": "Outpoint (txid_vout) or txid, optionally with :seq and /filepath",
                         "name": "path",
                         "in": "path",
                         "required": true
@@ -2468,6 +2491,45 @@ const docTemplate = `{
                 }
             }
         },
+        "/owner/sync": {
+            "get": {
+                "description": "Stream paginated outputs for wallet synchronization via Server-Sent Events. Streams all outputs until exhausted, then triggers background sync and sends retry directive.",
+                "produces": [
+                    "text/event-stream"
+                ],
+                "tags": [
+                    "owner"
+                ],
+                "summary": "Stream owner sync via SSE",
+                "parameters": [
+                    {
+                        "type": "array",
+                        "items": {
+                            "type": "string"
+                        },
+                        "collectionFormat": "csv",
+                        "description": "Owner identifier(s) (address, pubkey, or script hash)",
+                        "name": "owner",
+                        "in": "query",
+                        "required": true
+                    },
+                    {
+                        "type": "number",
+                        "description": "Starting score for pagination",
+                        "name": "from",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "SSE stream of SyncOutput events",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
         "/owner/{owner}/balance": {
             "get": {
                 "description": "Get the satoshi balance for a specific owner",
@@ -2491,46 +2553,11 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/pkg_owner.BalanceResponse"
+                            "$ref": "#/definitions/github_com_b-open-io_1sat-stack_pkg_owner.BalanceResponse"
                         }
                     },
                     "500": {
                         "description": "Internal server error",
-                        "schema": {
-                            "type": "string"
-                        }
-                    }
-                }
-            }
-        },
-        "/owner/{owner}/sync": {
-            "get": {
-                "description": "Stream paginated outputs for wallet synchronization via Server-Sent Events. Streams all outputs until exhausted, then triggers background sync and sends retry directive.",
-                "produces": [
-                    "text/event-stream"
-                ],
-                "tags": [
-                    "own"
-                ],
-                "summary": "Stream owner sync via SSE",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "description": "Owner identifier (address, pubkey, or script hash)",
-                        "name": "owner",
-                        "in": "path",
-                        "required": true
-                    },
-                    {
-                        "type": "number",
-                        "description": "Starting score for pagination",
-                        "name": "from",
-                        "in": "query"
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "SSE stream of SyncOutput events",
                         "schema": {
                             "type": "string"
                         }
@@ -3201,6 +3228,23 @@ const docTemplate = `{
                 }
             }
         },
+        "github_com_b-open-io_1sat-stack_pkg_bsv21.WorkerStatus": {
+            "type": "object",
+            "properties": {
+                "fee_address": {
+                    "type": "string"
+                },
+                "queue_depth": {
+                    "type": "integer"
+                },
+                "started_at": {
+                    "type": "string"
+                },
+                "token_id": {
+                    "type": "string"
+                }
+            }
+        },
         "github_com_b-open-io_1sat-stack_pkg_indexer.IndexContext": {
             "type": "object",
             "properties": {
@@ -3246,8 +3290,10 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "map": {
-                    "description": "JSON string",
-                    "type": "string"
+                    "type": "array",
+                    "items": {
+                        "type": "integer"
+                    }
                 },
                 "origin": {
                     "$ref": "#/definitions/transaction.Outpoint"
@@ -3653,8 +3699,10 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "map": {
-                    "description": "JSON string",
-                    "type": "string"
+                    "type": "array",
+                    "items": {
+                        "type": "integer"
+                    }
                 },
                 "origin": {
                     "$ref": "#/definitions/transaction.Outpoint"
