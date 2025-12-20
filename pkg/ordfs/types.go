@@ -14,7 +14,6 @@ type Request struct {
 	Seq      *int
 	Content  bool
 	Map      bool
-	Output   bool
 	Parent   bool
 }
 
@@ -27,7 +26,6 @@ type Response struct {
 	ContentLength int                   `json:"contentLength,omitempty"`
 	Map           json.RawMessage       `json:"map,omitempty"`
 	Sequence      int                   `json:"sequence,omitempty"`
-	Output        []byte                `json:"output,omitempty"`
 	Parent        *transaction.Outpoint `json:"parent,omitempty"`
 }
 

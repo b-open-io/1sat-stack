@@ -103,7 +103,6 @@ func (r *Routes) HandleContent(c *fiber.Ctx) error {
 			Seq:     pp.Seq,
 			Content: true,
 			Map:     c.QueryBool("map", false),
-			Output:  c.QueryBool("out", false),
 			Parent:  c.QueryBool("parent", false),
 		}
 	} else {
@@ -112,7 +111,6 @@ func (r *Routes) HandleContent(c *fiber.Ctx) error {
 			Seq:      pp.Seq,
 			Content:  true,
 			Map:      c.QueryBool("map", false),
-			Output:   c.QueryBool("out", false),
 			Parent:   c.QueryBool("parent", false),
 		}
 	}
@@ -187,14 +185,12 @@ func (r *Routes) handleDirectory(c *fiber.Ctx, resp *Response, pp *pointerPath, 
 			Txid:    &fileOutpoint.Txid,
 			Content: true,
 			Map:     c.QueryBool("map", false),
-			Output:  c.QueryBool("out", false),
 		}
 	} else {
 		fileReq = &Request{
 			Outpoint: fileOutpoint,
 			Content:  true,
 			Map:      c.QueryBool("map", false),
-			Output:   c.QueryBool("out", false),
 		}
 	}
 
@@ -219,10 +215,10 @@ func (r *Routes) sendContentResponse(c *fiber.Ctx, resp *Response, seq *int) err
 	c.Set("Content-Type", resp.ContentType)
 
 	if resp.Outpoint != nil {
-		c.Set("X-Outpoint", resp.Outpoint.String())
+		c.Set("X-Outpoint", resp.Outpoint.OrdinalString())
 	}
 	if resp.Origin != nil {
-		c.Set("X-Origin", resp.Origin.String())
+		c.Set("X-Origin", resp.Origin.OrdinalString())
 	}
 	c.Set("X-Ord-Seq", fmt.Sprintf("%d", resp.Sequence))
 
@@ -238,11 +234,7 @@ func (r *Routes) sendContentResponse(c *fiber.Ctx, resp *Response, seq *int) err
 	}
 
 	if resp.Parent != nil {
-		c.Set("X-Parent", resp.Parent.String())
-	}
-
-	if c.QueryBool("out", false) && len(resp.Output) > 0 {
-		c.Set("X-Output", base64.StdEncoding.EncodeToString(resp.Output))
+		c.Set("X-Parent", resp.Parent.OrdinalString())
 	}
 
 	// HEAD request - just send headers
@@ -290,16 +282,25 @@ func (r *Routes) HandleMetadata(c *fiber.Ctx) error {
 		})
 	}
 
-	// Return metadata without content bytes
-	return c.JSON(fiber.Map{
-		"outpoint":      resp.Outpoint,
-		"origin":        resp.Origin,
+	// Return metadata without content bytes, using OrdinalString for outpoints
+	result := fiber.Map{
 		"contentType":   resp.ContentType,
 		"contentLength": resp.ContentLength,
-		"map":           resp.Map,
 		"sequence":      resp.Sequence,
-		"parent":        resp.Parent,
-	})
+	}
+	if resp.Outpoint != nil {
+		result["outpoint"] = resp.Outpoint.OrdinalString()
+	}
+	if resp.Origin != nil {
+		result["origin"] = resp.Origin.OrdinalString()
+	}
+	if resp.Map != nil {
+		result["map"] = resp.Map
+	}
+	if resp.Parent != nil {
+		result["parent"] = resp.Parent.OrdinalString()
+	}
+	return c.JSON(result)
 }
 
 // HandlePreview renders base64-encoded HTML content
@@ -416,7 +417,7 @@ func (r *Routes) HandleStream(c *fiber.Ctx) error {
 	}
 
 	if streamResp.Origin != nil {
-		c.Set("X-Origin", streamResp.Origin.String())
+		c.Set("X-Origin", streamResp.Origin.OrdinalString())
 	}
 
 	return nil

@@ -95,6 +95,7 @@ func (w *Worker) Start(ctx context.Context) error {
 
 	processedCount := 0
 	statusTime := time.Now()
+	var lastScore float64
 
 	for {
 		select {
@@ -110,6 +111,7 @@ func (w *Worker) Start(ctx context.Context) error {
 				"key", w.key,
 				"processed", processedCount,
 				"rate", rate,
+				"lastScore", lastScore,
 			)
 			processedCount = 0
 			statusTime = time.Now()
@@ -151,6 +153,7 @@ func (w *Worker) Start(ctx context.Context) error {
 
 			for _, item := range items {
 				id := string(item.Member)
+				lastScore = item.Score
 
 				inflightMu.Lock()
 				if _, ok := inflight[id]; ok {
@@ -179,6 +182,12 @@ func (w *Worker) Start(ctx context.Context) error {
 
 					if err := w.handler(ctx, id, score); err != nil {
 						errChan <- workerError{id: id, score: score, err: err}
+						return
+					}
+
+					// Remove successfully processed item from queue
+					if err := w.store.ZRem(ctx, []byte(w.key), []byte(id)); err != nil {
+						w.logger.Error("failed to remove from queue", "key", w.key, "id", id, "error", err)
 					}
 				}(id, item.Score)
 			}

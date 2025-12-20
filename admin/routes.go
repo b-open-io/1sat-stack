@@ -49,36 +49,33 @@ func NewRoutes(overlaySvc *overlay.Services, s store.Store, bsv21Sync *bsv21.Syn
 
 // Register registers admin routes on a Fiber app group
 func (r *Routes) Register(group fiber.Router) {
-	// API routes for BSV21 token management
-	api := group.Group("/api")
-
 	// Whitelist endpoints (tokens always active)
-	api.Get("/whitelist", r.handleGetWhitelist)
-	api.Post("/whitelist", r.handleAddToWhitelist)
-	api.Delete("/whitelist/:token", r.handleRemoveFromWhitelist)
+	group.Get("/whitelist", r.handleGetWhitelist)
+	group.Post("/whitelist", r.handleAddToWhitelist)
+	group.Delete("/whitelist/:token", r.handleRemoveFromWhitelist)
 
 	// Blacklist endpoints (tokens never active)
-	api.Get("/blacklist", r.handleGetBlacklist)
-	api.Post("/blacklist", r.handleAddToBlacklist)
-	api.Delete("/blacklist/:token", r.handleRemoveFromBlacklist)
+	group.Get("/blacklist", r.handleGetBlacklist)
+	group.Post("/blacklist", r.handleAddToBlacklist)
+	group.Delete("/blacklist/:token", r.handleRemoveFromBlacklist)
 
 	// Active topics endpoint
-	api.Get("/topics/active", r.handleGetActiveTopics)
+	group.Get("/topics/active", r.handleGetActiveTopics)
 
 	// Active lookup services endpoint
-	api.Get("/lookups/active", r.handleGetActiveLookups)
+	group.Get("/lookups/active", r.handleGetActiveLookups)
 
 	// Queue endpoints
-	api.Get("/queues", r.handleGetQueues)
-	api.Get("/queues/*", r.handleGetQueueItems)
+	group.Get("/queues", r.handleGetQueues)
+	group.Get("/queues/*", r.handleGetQueueItems)
 
 	// Progress endpoints
-	api.Get("/progress", r.handleGetProgress)
-	api.Put("/progress/:id", r.handleUpdateProgress)
-	api.Delete("/progress/:id", r.handleDeleteProgress)
+	group.Get("/progress", r.handleGetProgress)
+	group.Put("/progress/:id", r.handleUpdateProgress)
+	group.Delete("/progress/:id", r.handleDeleteProgress)
 
 	// BSV21 worker endpoints
-	api.Get("/bsv21/workers", r.handleGetBSV21Workers)
+	group.Get("/bsv21/workers", r.handleGetBSV21Workers)
 
 	// Serve static UI files
 	uiSubFS, err := fs.Sub(uiFS, "ui")
