@@ -11,7 +11,6 @@ import (
 	"github.com/b-open-io/1sat-stack/admin"
 	"github.com/b-open-io/1sat-stack/pkg/beef"
 	"github.com/b-open-io/1sat-stack/pkg/bsv21"
-	"github.com/b-open-io/1sat-stack/pkg/fees"
 	"github.com/b-open-io/1sat-stack/pkg/indexer"
 	"github.com/b-open-io/1sat-stack/pkg/indexer/parse/bitcom"
 	"github.com/b-open-io/1sat-stack/pkg/indexer/parse/cosign"
@@ -20,6 +19,7 @@ import (
 	"github.com/b-open-io/1sat-stack/pkg/indexer/parse/p2pkh"
 	"github.com/b-open-io/1sat-stack/pkg/indexer/parse/shrug"
 	"github.com/b-open-io/1sat-stack/pkg/jbsync"
+	"github.com/b-open-io/1sat-stack/pkg/logging"
 	"github.com/b-open-io/1sat-stack/pkg/lookup"
 	"github.com/b-open-io/1sat-stack/pkg/ordfs"
 	"github.com/b-open-io/1sat-stack/pkg/overlay"
@@ -44,6 +44,9 @@ import (
 type Config struct {
 	// Network: "main" or "test"
 	Network string `mapstructure:"network"`
+
+	// Logging configuration
+	Logging logging.Config `mapstructure:"logging"`
 
 	// Server settings
 	Server ServerConfig `mapstructure:"server"`
@@ -77,9 +80,6 @@ type Config struct {
 
 	// Owner services
 	Owner owner.Config `mapstructure:"owner"`
-
-	// Fee service for topic management
-	Fees fees.Config `mapstructure:"fees"`
 
 	// Admin UI
 	Admin admin.Config `mapstructure:"admin"`
@@ -122,6 +122,22 @@ type ServerConfig struct {
 	BasePath string `mapstructure:"base_path"`
 }
 
+// CreateLogger creates a logger from the logging configuration.
+// If logLevelOverride is non-empty, it overrides the config level.
+func (c *Config) CreateLogger(logLevelOverride string) *slog.Logger {
+	// Use override if provided (from command line)
+	level := c.Logging.Level
+	if logLevelOverride != "" {
+		level = logLevelOverride
+	}
+
+	// Update config with effective level
+	c.Logging.Level = level
+	c.Logging.SetDefaults()
+
+	return logging.NewLogger(level)
+}
+
 // Services holds all initialized services
 type Services struct {
 	Store   *store.Services
@@ -133,7 +149,6 @@ type Services struct {
 	Overlay *overlay.Services
 	ORDFS   *ordfs.Services
 	Own     *owner.Services
-	Fees    *fees.FeeService
 	Admin   *admin.Services
 
 	// JungleBus subscriptions
@@ -152,6 +167,10 @@ type Services struct {
 func (c *Config) SetDefaults(v *viper.Viper) {
 	// Network default
 	v.SetDefault("network", "main")
+
+	// Logging defaults
+	v.SetDefault("logging.level", "info")
+	v.SetDefault("logging.components", map[string]string{})
 
 	// JungleBus defaults
 	v.SetDefault("junglebus.url", "https://junglebus.gorillapool.io")
@@ -193,7 +212,6 @@ func (c *Config) SetDefaults(v *viper.Viper) {
 	c.Overlay.SetDefaults(v, "overlay")
 	c.ORDFS.SetDefaults(v, "ordfs")
 	c.Owner.SetDefaults(v, "owner")
-	c.Fees.SetDefaults(v, "fees")
 	c.Admin.SetDefaults(v, "admin")
 }
 
@@ -377,9 +395,8 @@ func (c *Config) Initialize(ctx context.Context, logger *slog.Logger) (*Services
 	}
 
 	// Initialize ORDFS content serving
-	if c.ORDFS.Mode != ordfs.ModeDisabled && svc.Beef != nil {
-		loader := ordfs.NewBeefLoader(ctx, svc.Beef.Storage)
-		ordfsSvc, err := c.ORDFS.Initialize(ctx, logger, loader)
+	if c.ORDFS.Enabled {
+		ordfsSvc, err := c.ORDFS.Initialize(ctx, logger, svc.JungleBus)
 		if err != nil {
 			return nil, fmt.Errorf("failed to initialize ordfs: %w", err)
 		}
@@ -403,25 +420,17 @@ func (c *Config) Initialize(ctx context.Context, logger *slog.Logger) (*Services
 		logger.Debug("own service not initialized", "mode", c.Owner.Mode, "txoNil", svc.TXO == nil)
 	}
 
-	// Initialize fee service (for topic whitelist/blacklist management)
-	if c.Fees.Mode != fees.ModeDisabled && svc.Store != nil && svc.TXO != nil {
-		feeService, err := c.Fees.Initialize(ctx, logger, &fees.InitializeDeps{
-			Store:       svc.Store.Store,
-			OutputStore: svc.TXO.OutputStore,
-		})
-		if err != nil {
-			return nil, fmt.Errorf("failed to initialize fees: %w", err)
+	// Initialize admin UI
+	if c.Admin.Mode != admin.ModeDisabled && svc.Store != nil {
+		adminDeps := &admin.InitializeDeps{
+			Overlay: svc.Overlay,
+			Store:   svc.Store.Store,
 		}
-		svc.Fees = feeService
-	}
-
-	// Initialize admin UI (depends on fee service and overlay)
-	if c.Admin.Mode != admin.ModeDisabled && svc.Fees != nil {
-		adminSvc, err := c.Admin.Initialize(ctx, logger, &admin.InitializeDeps{
-			FeeService: svc.Fees,
-			Overlay:    svc.Overlay,
-			Store:      svc.Store.Store,
-		})
+		// Pass BSV21 sync services if available
+		if svc.BSV21 != nil {
+			adminDeps.BSV21Sync = svc.BSV21.Sync
+		}
+		adminSvc, err := c.Admin.Initialize(ctx, logger, adminDeps)
 		if err != nil {
 			return nil, fmt.Errorf("failed to initialize admin: %w", err)
 		}

@@ -39,6 +39,7 @@ type Config struct {
 type BadgerConfig struct {
 	Path     string `mapstructure:"path"`      // Path to database directory
 	InMemory bool   `mapstructure:"in_memory"` // Use in-memory storage
+	LogLevel string `mapstructure:"log_level"` // Log level for BadgerDB (debug, info, warn, error)
 }
 
 // SetDefaults sets viper defaults for store configuration.
@@ -51,6 +52,7 @@ func (c *Config) SetDefaults(v *viper.Viper, prefix string) {
 	v.SetDefault(p+"provider", ProviderBadger)
 	v.SetDefault(p+"badger.path", "~/.1sat/store")
 	v.SetDefault(p+"badger.in_memory", false)
+	v.SetDefault(p+"badger.log_level", "warn") // Default to warn to quiet BadgerDB
 	v.SetDefault(p+"redis.addr", "localhost:6379")
 	v.SetDefault(p+"redis.password", "")
 	v.SetDefault(p+"redis.db", 0)

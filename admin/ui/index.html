@@ -297,22 +297,22 @@
 
         <section id="topics">
             <div class="section-title">
-                <h2>Topic Management</h2>
-                <p>Manage topic whitelist and blacklist for the overlay engine</p>
+                <h2>Management</h2>
+                <p>Manage BSV21 tokens and view overlay status</p>
             </div>
 
             <div class="grid">
-                <!-- Whitelist Card -->
+                <!-- BSV21 Whitelist Card -->
                 <div class="card">
                     <div class="card-header">
-                        <h2>Whitelist</h2>
-                        <span class="badge success" id="whitelist-count">0 topics</span>
+                        <h2>BSV21 Token Whitelist</h2>
+                        <span class="badge success" id="whitelist-count">0 tokens</span>
                     </div>
                     <p style="color: var(--text-secondary); margin-bottom: 1rem; font-size: 0.875rem;">
-                        Topics that are always active, regardless of balance
+                        BSV21 tokens that are always active, regardless of balance
                     </p>
                     <div class="input-group">
-                        <input type="text" id="whitelist-input" placeholder="Enter topic ID (e.g., tm_example)">
+                        <input type="text" id="whitelist-input" placeholder="Enter token ID (e.g., abc123...)">
                         <button onclick="addToWhitelist()">Add</button>
                     </div>
                     <div class="topic-list" id="whitelist-items">
@@ -320,20 +320,37 @@
                     </div>
                 </div>
 
-                <!-- Blacklist Card -->
+                <!-- BSV21 Blacklist Card -->
                 <div class="card">
                     <div class="card-header">
-                        <h2>Blacklist</h2>
-                        <span class="badge warning" id="blacklist-count">0 topics</span>
+                        <h2>BSV21 Token Blacklist</h2>
+                        <span class="badge warning" id="blacklist-count">0 tokens</span>
                     </div>
                     <p style="color: var(--text-secondary); margin-bottom: 1rem; font-size: 0.875rem;">
-                        Topics that are never active, even with positive balance
+                        BSV21 tokens that will not be activated, even with positive balance
                     </p>
                     <div class="input-group">
-                        <input type="text" id="blacklist-input" placeholder="Enter topic ID (e.g., tm_spam)">
+                        <input type="text" id="blacklist-input" placeholder="Enter token ID (e.g., abc123...)">
                         <button onclick="addToBlacklist()">Add</button>
                     </div>
                     <div class="topic-list" id="blacklist-items">
+                        <div class="loading">Loading...</div>
+                    </div>
+                </div>
+
+                <!-- BSV21 Workers Card -->
+                <div class="card" style="grid-column: 1 / -1;">
+                    <div class="card-header">
+                        <h2>BSV21 Token Workers</h2>
+                        <div>
+                            <span class="badge success" id="worker-count">0 workers</span>
+                            <button class="secondary" onclick="refreshWorkers()" style="margin-left: 0.5rem;">Refresh</button>
+                        </div>
+                    </div>
+                    <p style="color: var(--text-secondary); margin-bottom: 1rem; font-size: 0.875rem;">
+                        Active token workers processing BSV21 transactions
+                    </p>
+                    <div class="topic-list" id="worker-items">
                         <div class="loading">Loading...</div>
                     </div>
                 </div>
@@ -373,7 +390,7 @@
                 </div>
 
                 <!-- Queues Card -->
-                <div class="card">
+                <div class="card" style="grid-column: 1 / -1;">
                     <div class="card-header">
                         <h2>Queues</h2>
                         <div>
@@ -466,9 +483,9 @@
         async function fetchWhitelist() {
             try {
                 const response = await fetch(`${API_BASE}/whitelist`);
-                const topics = await response.json();
-                renderTopicList('whitelist-items', topics, 'removeFromWhitelist');
-                document.getElementById('whitelist-count').textContent = `${topics.length} topic${topics.length !== 1 ? 's' : ''}`;
+                const tokens = await response.json();
+                renderTopicList('whitelist-items', tokens, 'removeFromWhitelist');
+                document.getElementById('whitelist-count').textContent = `${tokens.length} token${tokens.length !== 1 ? 's' : ''}`;
             } catch (error) {
                 console.error('Failed to fetch whitelist:', error);
                 document.getElementById('whitelist-items').innerHTML = '<div class="empty-state">Failed to load</div>';
@@ -478,9 +495,9 @@
         async function fetchBlacklist() {
             try {
                 const response = await fetch(`${API_BASE}/blacklist`);
-                const topics = await response.json();
-                renderTopicList('blacklist-items', topics, 'removeFromBlacklist');
-                document.getElementById('blacklist-count').textContent = `${topics.length} topic${topics.length !== 1 ? 's' : ''}`;
+                const tokens = await response.json();
+                renderTopicList('blacklist-items', tokens, 'removeFromBlacklist');
+                document.getElementById('blacklist-count').textContent = `${tokens.length} token${tokens.length !== 1 ? 's' : ''}`;
             } catch (error) {
                 console.error('Failed to fetch blacklist:', error);
                 document.getElementById('blacklist-items').innerHTML = '<div class="empty-state">Failed to load</div>';
@@ -521,6 +538,58 @@
                 console.error('Failed to fetch queues:', error);
                 document.getElementById('queue-items').innerHTML = '<div class="empty-state">Failed to load</div>';
             }
+        }
+
+        // BSV21 Workers functions
+        async function fetchWorkers() {
+            try {
+                const response = await fetch(`${API_BASE}/bsv21/workers`);
+                const workers = await response.json();
+                renderWorkerList('worker-items', workers);
+                document.getElementById('worker-count').textContent = `${workers.length} worker${workers.length !== 1 ? 's' : ''}`;
+            } catch (error) {
+                console.error('Failed to fetch workers:', error);
+                document.getElementById('worker-items').innerHTML = '<div class="empty-state">Failed to load</div>';
+            }
+        }
+
+        function renderWorkerList(containerId, workers) {
+            const container = document.getElementById(containerId);
+            if (!workers || workers.length === 0) {
+                container.innerHTML = '<div class="empty-state">No active workers</div>';
+                return;
+            }
+
+            container.innerHTML = workers.map(w => {
+                const uptime = formatUptime(new Date(w.started_at));
+                const queueClass = w.queue_depth > 100 ? 'warning' : w.queue_depth > 0 ? '' : 'success';
+                return `
+                    <div class="topic-item">
+                        <div style="flex: 1; min-width: 0;">
+                            <div class="topic-name" style="margin-bottom: 0.25rem;">${escapeHtml(w.token_id)}</div>
+                            <div style="font-size: 0.75rem; color: var(--text-secondary);">
+                                Fee: ${escapeHtml(w.fee_address)} · Up: ${uptime}
+                            </div>
+                        </div>
+                        <span class="badge ${queueClass}">${w.queue_depth} queued</span>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        function formatUptime(startedAt) {
+            const now = new Date();
+            const diff = Math.floor((now - startedAt) / 1000);
+            
+            if (diff < 60) return `${diff}s`;
+            if (diff < 3600) return `${Math.floor(diff / 60)}m`;
+            if (diff < 86400) return `${Math.floor(diff / 3600)}h ${Math.floor((diff % 3600) / 60)}m`;
+            return `${Math.floor(diff / 86400)}d ${Math.floor((diff % 86400) / 3600)}h`;
+        }
+
+        function refreshWorkers() {
+            document.getElementById('worker-items').innerHTML = '<div class="loading">Loading...</div>';
+            fetchWorkers();
         }
 
         function renderQueueList(containerId, queues) {
@@ -672,9 +741,9 @@
 
         async function addToWhitelist() {
             const input = document.getElementById('whitelist-input');
-            const topic = input.value.trim();
-            if (!topic) {
-                showToast('Please enter a topic ID', 'error');
+            const tokenId = input.value.trim();
+            if (!tokenId) {
+                showToast('Please enter a token ID', 'error');
                 return;
             }
 
@@ -682,37 +751,35 @@
                 const response = await fetch(`${API_BASE}/whitelist`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ topic })
+                    body: JSON.stringify({ topic: tokenId })
                 });
 
                 if (!response.ok) {
                     const data = await response.json();
-                    throw new Error(data.error || 'Failed to add topic');
+                    throw new Error(data.error || 'Failed to add token');
                 }
 
                 input.value = '';
-                showToast(`Added "${topic}" to whitelist`);
+                showToast(`Added "${tokenId}" to whitelist`);
                 fetchWhitelist();
-                fetchActiveTopics();
             } catch (error) {
                 showToast(error.message, 'error');
             }
         }
 
-        async function removeFromWhitelist(topic) {
+        async function removeFromWhitelist(tokenId) {
             try {
-                const response = await fetch(`${API_BASE}/whitelist/${encodeURIComponent(topic)}`, {
+                const response = await fetch(`${API_BASE}/whitelist/${encodeURIComponent(tokenId)}`, {
                     method: 'DELETE'
                 });
 
                 if (!response.ok) {
                     const data = await response.json();
-                    throw new Error(data.error || 'Failed to remove topic');
+                    throw new Error(data.error || 'Failed to remove token');
                 }
 
-                showToast(`Removed "${topic}" from whitelist`);
+                showToast(`Removed "${tokenId}" from whitelist`);
                 fetchWhitelist();
-                fetchActiveTopics();
             } catch (error) {
                 showToast(error.message, 'error');
             }
@@ -720,9 +787,9 @@
 
         async function addToBlacklist() {
             const input = document.getElementById('blacklist-input');
-            const topic = input.value.trim();
-            if (!topic) {
-                showToast('Please enter a topic ID', 'error');
+            const tokenId = input.value.trim();
+            if (!tokenId) {
+                showToast('Please enter a token ID', 'error');
                 return;
             }
 
@@ -730,37 +797,35 @@
                 const response = await fetch(`${API_BASE}/blacklist`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ topic })
+                    body: JSON.stringify({ topic: tokenId })
                 });
 
                 if (!response.ok) {
                     const data = await response.json();
-                    throw new Error(data.error || 'Failed to add topic');
+                    throw new Error(data.error || 'Failed to add token');
                 }
 
                 input.value = '';
-                showToast(`Added "${topic}" to blacklist`);
+                showToast(`Added "${tokenId}" to blacklist`);
                 fetchBlacklist();
-                fetchActiveTopics();
             } catch (error) {
                 showToast(error.message, 'error');
             }
         }
 
-        async function removeFromBlacklist(topic) {
+        async function removeFromBlacklist(tokenId) {
             try {
-                const response = await fetch(`${API_BASE}/blacklist/${encodeURIComponent(topic)}`, {
+                const response = await fetch(`${API_BASE}/blacklist/${encodeURIComponent(tokenId)}`, {
                     method: 'DELETE'
                 });
 
                 if (!response.ok) {
                     const data = await response.json();
-                    throw new Error(data.error || 'Failed to remove topic');
+                    throw new Error(data.error || 'Failed to remove token');
                 }
 
-                showToast(`Removed "${topic}" from blacklist`);
+                showToast(`Removed "${tokenId}" from blacklist`);
                 fetchBlacklist();
-                fetchActiveTopics();
             } catch (error) {
                 showToast(error.message, 'error');
             }
@@ -797,6 +862,10 @@
         fetchLookups();
         fetchQueues();
         fetchProgress();
+        fetchWorkers();
+
+        // Auto-refresh workers every 10 seconds
+        setInterval(fetchWorkers, 10000);
     </script>
 </body>
 </html>

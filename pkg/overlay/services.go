@@ -5,7 +5,6 @@ import (
 	"errors"
 	"log/slog"
 	"sync"
-	"time"
 
 	"github.com/bsv-blockchain/go-overlay-services/pkg/core/engine"
 	"github.com/bsv-blockchain/go-sdk/overlay"
@@ -14,30 +13,20 @@ import (
 // TopicManagerFactory creates a TopicManager instance for a given topic name
 type TopicManagerFactory func(topicName string) (engine.TopicManager, error)
 
-// Storage interface for reading active topics from database
-type Storage interface {
-	// GetActiveTopics returns the set of currently active topic names.
-	// This should apply whitelist/blacklist/active balance filtering.
-	GetActiveTopics(ctx context.Context) map[string]struct{}
-}
-
 // Services holds initialized overlay services
 type Services struct {
-	Engine  *engine.Engine
-	Routes  *Routes
-	Storage Storage // For reading active topics from database
-	logger  *slog.Logger
+	Engine *engine.Engine
+	Routes *Routes
+	logger *slog.Logger
 
 	mu             sync.RWMutex
 	topicFactories map[string]TopicManagerFactory // topic name -> factory
 	topicWhitelist map[string]struct{}            // config-based whitelist
 	topicBlacklist map[string]struct{}            // config-based blacklist
-	syncStarted    bool
-	cancelSync     context.CancelFunc
 }
 
-// RegisterTopic registers a topic with its factory function.
-// The factory will be called when the topic becomes active (per Storage.GetActiveTopics).
+// RegisterTopic registers a topic factory for static topics (tm_1sat, tm_bsv21).
+// The factory will be called when ActivateConfiguredTopics is called.
 func (s *Services) RegisterTopic(topicName string, factory TopicManagerFactory) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -45,27 +34,7 @@ func (s *Services) RegisterTopic(topicName string, factory TopicManagerFactory) 
 		s.topicFactories = make(map[string]TopicManagerFactory)
 	}
 	s.topicFactories[topicName] = factory
-	s.logger.Debug("topic registered", "name", topicName)
-}
-
-// UnregisterTopic removes a topic registration.
-// If the topic is currently active in the engine, it will be removed on next sync.
-func (s *Services) UnregisterTopic(topicName string) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	delete(s.topicFactories, topicName)
-	s.logger.Debug("topic unregistered", "name", topicName)
-}
-
-// GetRegisteredTopics returns a copy of all registered topic names
-func (s *Services) GetRegisteredTopics() []string {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-	topics := make([]string, 0, len(s.topicFactories))
-	for name := range s.topicFactories {
-		topics = append(topics, name)
-	}
-	return topics
+	s.logger.Debug("topic factory registered", "name", topicName)
 }
 
 // SetTopicWhitelist sets the config-based topic whitelist
@@ -88,24 +57,12 @@ func (s *Services) SetTopicBlacklist(topics []string) {
 	}
 }
 
-// IsTopicActive checks if a topic should be active based on whitelist/blacklist
-func (s *Services) IsTopicActive(topicName string) bool {
+// IsTopicBlacklisted checks if a topic is blacklisted
+func (s *Services) IsTopicBlacklisted(topicName string) bool {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-
-	// If blacklisted, always inactive
-	if _, blacklisted := s.topicBlacklist[topicName]; blacklisted {
-		return false
-	}
-
-	// If whitelist is empty, all non-blacklisted topics are active
-	if len(s.topicWhitelist) == 0 {
-		return true
-	}
-
-	// Otherwise, must be in whitelist
-	_, whitelisted := s.topicWhitelist[topicName]
-	return whitelisted
+	_, blacklisted := s.topicBlacklist[topicName]
+	return blacklisted
 }
 
 // ActivateConfiguredTopics activates all topics that are in the whitelist and have registered factories
@@ -119,6 +76,10 @@ func (s *Services) ActivateConfiguredTopics() {
 	for k := range s.topicWhitelist {
 		whitelist[k] = struct{}{}
 	}
+	blacklist := make(map[string]struct{}, len(s.topicBlacklist))
+	for k := range s.topicBlacklist {
+		blacklist[k] = struct{}{}
+	}
 	s.mu.RUnlock()
 
 	s.logger.Debug("ActivateConfiguredTopics called",
@@ -126,11 +87,12 @@ func (s *Services) ActivateConfiguredTopics() {
 		"whitelist", len(whitelist))
 
 	for topicName := range whitelist {
-		s.logger.Debug("checking whitelisted topic", "topic", topicName)
-		if !s.IsTopicActive(topicName) {
-			s.logger.Debug("topic not active", "topic", topicName)
+		// Skip blacklisted
+		if _, blocked := blacklist[topicName]; blocked {
+			s.logger.Debug("topic blacklisted, skipping", "topic", topicName)
 			continue
 		}
+
 		factory, hasFactory := factories[topicName]
 		if !hasFactory {
 			s.logger.Warn("whitelisted topic has no registered factory", "topic", topicName)
@@ -143,110 +105,6 @@ func (s *Services) ActivateConfiguredTopics() {
 		}
 		s.Engine.RegisterTopicManager(topicName, manager)
 		s.logger.Info("topic activated from config", "topic", topicName)
-	}
-}
-
-// StartSync begins periodic synchronization with database state.
-// Active topics (from Storage) that have registered factories will have
-// TopicManagers created and added to the engine.
-func (s *Services) StartSync(ctx context.Context) {
-	s.mu.Lock()
-	if s.syncStarted {
-		s.mu.Unlock()
-		return
-	}
-	s.syncStarted = true
-
-	// Create cancellable context for the sync goroutine
-	syncCtx, cancel := context.WithCancel(ctx)
-	s.cancelSync = cancel
-	s.mu.Unlock()
-
-	// Initial sync
-	s.syncTopics(syncCtx)
-
-	// Periodic sync goroutine
-	go func() {
-		ticker := time.NewTicker(30 * time.Second)
-		defer ticker.Stop()
-		for {
-			select {
-			case <-syncCtx.Done():
-				return
-			case <-ticker.C:
-				s.syncTopics(syncCtx)
-			}
-		}
-	}()
-
-	s.logger.Info("topic sync started", "interval", "30s")
-}
-
-// syncTopics reads active topics from database and registers/unregisters with engine.
-// A topic is activated if:
-//  1. It has a registered factory (via RegisterTopic)
-//  2. It is in the active set from Storage.GetActiveTopics()
-func (s *Services) syncTopics(ctx context.Context) {
-	if s.Engine == nil || s.Storage == nil {
-		return
-	}
-
-	// Get active topic names from database (whitelist + active - blacklist)
-	activeSet := s.Storage.GetActiveTopics(ctx)
-	if activeSet == nil {
-		return
-	}
-
-	// Get current topics from engine
-	currentTopics := s.Engine.ListTopicManagers()
-
-	// Get registered factories
-	s.mu.RLock()
-	factories := make(map[string]TopicManagerFactory, len(s.topicFactories))
-	for k, v := range s.topicFactories {
-		factories[k] = v
-	}
-	s.mu.RUnlock()
-
-	registered := 0
-	for topic := range activeSet {
-		// Only activate if we have a factory for this topic
-		factory, hasFactory := factories[topic]
-		if !hasFactory {
-			continue
-		}
-
-		// Skip if already in engine
-		if _, exists := currentTopics[topic]; exists {
-			continue
-		}
-
-		// Create and register the TopicManager
-		manager, err := factory(topic)
-		if err != nil {
-			s.logger.Error("failed to create topic manager", "name", topic, "error", err)
-			continue
-		}
-		s.Engine.RegisterTopicManager(topic, manager)
-		s.logger.Info("topic activated", "name", topic)
-		registered++
-	}
-
-	// Unregister topics no longer active
-	unregistered := 0
-	for topic := range currentTopics {
-		if _, active := activeSet[topic]; !active {
-			s.Engine.UnregisterTopicManager(topic)
-			s.logger.Info("topic deactivated", "name", topic)
-			unregistered++
-		}
-	}
-
-	if registered > 0 || unregistered > 0 {
-		s.logger.Debug("topic sync completed",
-			"registered", registered,
-			"unregistered", unregistered,
-			"active", len(activeSet))
 	}
 }
 
@@ -307,10 +165,5 @@ func (s *Services) GetLookupServices() []string {
 
 // Close cleans up overlay services
 func (s *Services) Close() error {
-	s.mu.Lock()
-	if s.cancelSync != nil {
-		s.cancelSync()
-	}
-	s.mu.Unlock()
 	return nil
 }

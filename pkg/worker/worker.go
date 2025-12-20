@@ -63,13 +63,16 @@ func New(cfg *Config) *Worker {
 		cfg.Logger = slog.Default()
 	}
 
+	// Add component tag with queue key for identification
+	logger := cfg.Logger.With("component", "worker", "queue", cfg.Key)
+
 	return &Worker{
 		store:       cfg.Store,
 		key:         cfg.Key,
 		concurrency: cfg.Concurrency,
 		handler:     cfg.Handler,
 		onError:     cfg.OnError,
-		logger:      cfg.Logger,
+		logger:      logger,
 		pageSize:    cfg.PageSize,
 		pollDelay:   cfg.PollDelay,
 		statusDelay: cfg.StatusDelay,

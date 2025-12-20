@@ -34,36 +34,19 @@ import (
 func main() {
 	// Parse command line flags
 	configPath := flag.String("config", "", "Path to config file")
-	logLevel := flag.String("log-level", "info", "Log level (debug, info, warn, error)")
+	logLevel := flag.String("log-level", "", "Log level override (debug, info, warn, error)")
 	flag.Parse()
 
-	// Parse log level
-	var level slog.Level
-	switch *logLevel {
-	case "debug":
-		level = slog.LevelDebug
-	case "info":
-		level = slog.LevelInfo
-	case "warn":
-		level = slog.LevelWarn
-	case "error":
-		level = slog.LevelError
-	default:
-		level = slog.LevelInfo
-	}
-
-	// Setup logger
-	log := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{
-		Level: level,
-	}))
-	slog.SetDefault(log)
-
-	// Load configuration
+	// Load configuration first (with basic logger for errors)
 	cfg, err := LoadConfig(*configPath)
 	if err != nil {
-		log.Error("failed to load config", "error", err)
+		slog.Error("failed to load config", "error", err)
 		os.Exit(1)
 	}
+
+	// Create logger from config, with command-line override if provided
+	log := cfg.CreateLogger(*logLevel)
+	slog.SetDefault(log)
 
 	// Create context that cancels on interrupt
 	ctx, cancel := context.WithCancel(context.Background())

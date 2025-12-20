@@ -94,7 +94,8 @@ func (tm *Bsv21ValidatedTopicManager) IdentifyAdmissibleOutputs(ctx context.Cont
 	// First pass: identify all relevant token IDs in outputs
 	for vout, output := range tx.Outputs {
 		if b := bsv21.Decode(output.LockingScript); b != nil {
-			if b.Op == string(bsv21.OpMint) {
+			// For deploy operations, tokenId = outpoint
+			if b.Op == string(bsv21.OpDeployMint) || b.Op == string(bsv21.OpDeployAuth) {
 				b.Id = (&transaction.Outpoint{
 					Txid:  *txid,
 					Index: uint32(vout),
@@ -105,7 +106,8 @@ func (tm *Bsv21ValidatedTopicManager) IdentifyAdmissibleOutputs(ctx context.Cont
 			}
 			relevantTokenIds[b.Id] = struct{}{}
 
-			if b.Op == string(bsv21.OpMint) {
+			// Deploy operations are always admitted (they create the token)
+			if b.Op == string(bsv21.OpDeployMint) || b.Op == string(bsv21.OpDeployAuth) {
 				admit.OutputsToAdmit = append(admit.OutputsToAdmit, uint32(vout))
 				continue
 			}
@@ -134,7 +136,8 @@ func (tm *Bsv21ValidatedTopicManager) IdentifyAdmissibleOutputs(ctx context.Cont
 			}
 			if sourceOutput := txin.SourceTxOutput(); sourceOutput != nil {
 				if b := bsv21.Decode(sourceOutput.LockingScript); b != nil {
-					if b.Op == string(bsv21.OpMint) {
+					// For deploy operations, tokenId = outpoint
+					if b.Op == string(bsv21.OpDeployMint) || b.Op == string(bsv21.OpDeployAuth) {
 						b.Id = outpoint.OrdinalString()
 					}
 					if !tm.HasTokenId(b.Id) {

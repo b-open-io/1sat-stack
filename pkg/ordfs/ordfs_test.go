@@ -1,78 +1,12 @@
 package ordfs
 
 import (
-	"context"
 	"testing"
 
-	"github.com/bsv-blockchain/go-sdk/chainhash"
 	"github.com/bsv-blockchain/go-sdk/script"
 	"github.com/bsv-blockchain/go-sdk/transaction"
 	"github.com/spf13/viper"
 )
-
-// mockLoader implements the Loader interface for testing
-type mockLoader struct {
-	txs     map[string]*transaction.Transaction
-	outputs map[string]*transaction.TransactionOutput
-	spends  map[string]*chainhash.Hash
-}
-
-func newMockLoader() *mockLoader {
-	return &mockLoader{
-		txs:     make(map[string]*transaction.Transaction),
-		outputs: make(map[string]*transaction.TransactionOutput),
-		spends:  make(map[string]*chainhash.Hash),
-	}
-}
-
-func (m *mockLoader) LoadTx(txid string) (*transaction.Transaction, error) {
-	if tx, ok := m.txs[txid]; ok {
-		return tx, nil
-	}
-	return nil, ErrNotFound
-}
-
-func (m *mockLoader) LoadOutput(outpoint *transaction.Outpoint) (*transaction.TransactionOutput, error) {
-	key := outpoint.String()
-	if output, ok := m.outputs[key]; ok {
-		return output, nil
-	}
-	// Try to get from tx
-	if tx, ok := m.txs[outpoint.Txid.String()]; ok {
-		if int(outpoint.Index) < len(tx.Outputs) {
-			return tx.Outputs[outpoint.Index], nil
-		}
-	}
-	return nil, ErrNotFound
-}
-
-func (m *mockLoader) LoadSpend(outpoint string) (*chainhash.Hash, error) {
-	if spend, ok := m.spends[outpoint]; ok {
-		return spend, nil
-	}
-	return nil, nil
-}
-
-var ErrNotFound = &notFoundError{}
-
-type notFoundError struct{}
-
-func (e *notFoundError) Error() string { return "not found" }
-
-func TestNewContentService(t *testing.T) {
-	loader := newMockLoader()
-	svc := NewContentService(loader, nil)
-
-	if svc == nil {
-		t.Fatal("expected non-nil content service")
-	}
-	if svc.loader != loader {
-		t.Error("loader not set correctly")
-	}
-	if svc.logger == nil {
-		t.Error("logger should default to slog.Default()")
-	}
-}
 
 func TestParseContentPath(t *testing.T) {
 	tests := []struct {
@@ -93,8 +27,14 @@ func TestParseContentPath(t *testing.T) {
 			expectTxid: true,
 		},
 		{
-			name:       "valid sequence format",
+			name:      "valid outpoint with sequence",
+			path:      "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef_0:5",
+			expectSeq: true,
+		},
+		{
+			name:       "valid txid with sequence",
 			path:       "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef:5",
+			expectTxid: true,
 			expectSeq:  true,
 		},
 		{
@@ -131,6 +71,136 @@ func TestParseContentPath(t *testing.T) {
 	}
 }
 
+func TestParsePointerPath(t *testing.T) {
+	tests := []struct {
+		name        string
+		path        string
+		expectSeq   *int
+		expectFile  string
+		expectError bool
+	}{
+		{
+			name:       "simple outpoint",
+			path:       "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef_0",
+			expectSeq:  nil,
+			expectFile: "",
+		},
+		{
+			name:       "outpoint with seq",
+			path:       "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef_0:5",
+			expectSeq:  intPtr(5),
+			expectFile: "",
+		},
+		{
+			name:       "outpoint with file path",
+			path:       "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef_0/style.css",
+			expectSeq:  nil,
+			expectFile: "style.css",
+		},
+		{
+			name:       "outpoint with seq and file path",
+			path:       "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef_0:-1/index.html",
+			expectSeq:  intPtr(-1),
+			expectFile: "index.html",
+		},
+		{
+			name:       "outpoint with nested file path",
+			path:       "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef_0/assets/js/app.js",
+			expectSeq:  nil,
+			expectFile: "assets/js/app.js",
+		},
+		{
+			name:        "empty path",
+			path:        "",
+			expectError: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			pp, err := parsePointerPath(tt.path)
+			if tt.expectError {
+				if err == nil {
+					t.Error("expected error, got nil")
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if tt.expectSeq == nil && pp.Seq != nil {
+				t.Errorf("expected nil Seq, got %d", *pp.Seq)
+			}
+			if tt.expectSeq != nil {
+				if pp.Seq == nil {
+					t.Error("expected Seq to be set")
+				} else if *pp.Seq != *tt.expectSeq {
+					t.Errorf("expected Seq=%d, got %d", *tt.expectSeq, *pp.Seq)
+				}
+			}
+			if pp.FilePath != tt.expectFile {
+				t.Errorf("expected FilePath=%s, got %s", tt.expectFile, pp.FilePath)
+			}
+		})
+	}
+}
+
+func TestResolvePointerToOutpoint(t *testing.T) {
+	tests := []struct {
+		name        string
+		pointer     string
+		expectTxid  bool
+		expectError bool
+	}{
+		{
+			name:       "valid outpoint with underscore",
+			pointer:    "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef_0",
+			expectTxid: false,
+		},
+		{
+			name:       "valid outpoint with dot",
+			pointer:    "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef.0",
+			expectTxid: false,
+		},
+		{
+			name:       "valid txid only",
+			pointer:    "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+			expectTxid: true,
+		},
+		{
+			name:        "invalid pointer",
+			pointer:     "invalid",
+			expectError: true,
+		},
+		{
+			name:        "too short",
+			pointer:     "0123456789abcdef",
+			expectError: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			outpoint, isTxid, err := resolvePointerToOutpoint(tt.pointer)
+			if tt.expectError {
+				if err == nil {
+					t.Error("expected error, got nil")
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if outpoint == nil {
+				t.Fatal("expected non-nil outpoint")
+			}
+			if isTxid != tt.expectTxid {
+				t.Errorf("expected isTxid=%v, got %v", tt.expectTxid, isTxid)
+			}
+		})
+	}
+}
+
 func TestParseOutputForContent(t *testing.T) {
 	// Test with empty output (no content)
 	emptyScript := &script.Script{}
@@ -160,19 +230,21 @@ func TestConfigSetDefaults(t *testing.T) {
 	cfg.SetDefaults(v, "ordfs")
 
 	// Verify defaults are set
-	if v.GetString("ordfs.mode") != ModeDisabled {
-		t.Errorf("expected mode=disabled, got %s", v.GetString("ordfs.mode"))
+	if v.GetBool("ordfs.enabled") != false {
+		t.Errorf("expected enabled=false, got %v", v.GetBool("ordfs.enabled"))
 	}
 	if !v.GetBool("ordfs.routes.enabled") {
 		t.Error("expected routes.enabled=true")
 	}
+	if v.GetString("ordfs.redis.addr") != "localhost:6379" {
+		t.Errorf("expected redis.addr=localhost:6379, got %s", v.GetString("ordfs.redis.addr"))
+	}
 }
 
 func TestConfigInitializeDisabled(t *testing.T) {
-	cfg := &Config{Mode: ModeDisabled}
-	ctx := context.Background()
+	cfg := &Config{Enabled: false}
 
-	svc, err := cfg.Initialize(ctx, nil, nil)
+	svc, err := cfg.Initialize(nil, nil, nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -181,105 +253,16 @@ func TestConfigInitializeDisabled(t *testing.T) {
 	}
 }
 
-func TestConfigInitializeEmbeddedNoLoader(t *testing.T) {
-	cfg := &Config{Mode: ModeEmbedded}
-	ctx := context.Background()
+func TestConfigInitializeNoJungleBus(t *testing.T) {
+	cfg := &Config{Enabled: true}
 
-	_, err := cfg.Initialize(ctx, nil, nil)
+	_, err := cfg.Initialize(nil, nil, nil)
 	if err == nil {
-		t.Fatal("expected error when loader is nil")
+		t.Fatal("expected error when junglebus client is nil")
 	}
 }
 
-func TestConfigInitializeEmbedded(t *testing.T) {
-	cfg := &Config{
-		Mode: ModeEmbedded,
-		Routes: RoutesConfig{
-			Enabled: true,
-			Prefix:  "/ordfs",
-		},
-	}
-	ctx := context.Background()
-	loader := newMockLoader()
-
-	svc, err := cfg.Initialize(ctx, nil, loader)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if svc == nil {
-		t.Fatal("expected non-nil services")
-	}
-	if svc.Content == nil {
-		t.Error("expected Content service")
-	}
-	if svc.Routes == nil {
-		t.Error("expected Routes when enabled")
-	}
-
-	// Test close
-	if err := svc.Close(); err != nil {
-		t.Errorf("unexpected close error: %v", err)
-	}
-}
-
-func TestBeefLoader(t *testing.T) {
-	// Create a mock tx storage
-	mockStorage := &mockTxStorage{
-		txs: make(map[string]*transaction.Transaction),
-	}
-
-	// Create a test transaction
-	txid, _ := chainhash.NewHashFromHex("0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef")
-	lockingScript := &script.Script{}
-	tx := &transaction.Transaction{
-		Outputs: []*transaction.TransactionOutput{
-			{LockingScript: lockingScript, Satoshis: 1000},
-		},
-	}
-	mockStorage.txs[txid.String()] = tx
-
-	loader := NewBeefLoader(context.Background(), mockStorage)
-
-	// Test LoadTx
-	loadedTx, err := loader.LoadTx(txid.String())
-	if err != nil {
-		t.Fatalf("LoadTx error: %v", err)
-	}
-	if loadedTx == nil {
-		t.Fatal("expected non-nil tx")
-	}
-
-	// Test LoadOutput
-	outpoint := &transaction.Outpoint{
-		Txid:  *txid,
-		Index: 0,
-	}
-	output, err := loader.LoadOutput(outpoint)
-	if err != nil {
-		t.Fatalf("LoadOutput error: %v", err)
-	}
-	if output == nil {
-		t.Fatal("expected non-nil output")
-	}
-
-	// Test LoadSpend (should return nil when not supported)
-	spend, err := loader.LoadSpend(outpoint.String())
-	if err != nil {
-		t.Fatalf("LoadSpend error: %v", err)
-	}
-	if spend != nil {
-		t.Error("expected nil spend when tracking not supported")
-	}
-}
-
-// mockTxStorage implements TxStorage for testing
-type mockTxStorage struct {
-	txs map[string]*transaction.Transaction
-}
-
-func (m *mockTxStorage) LoadTx(ctx context.Context, txid *chainhash.Hash) (*transaction.Transaction, error) {
-	if tx, ok := m.txs[txid.String()]; ok {
-		return tx, nil
-	}
-	return nil, ErrNotFound
+// Helper function
+func intPtr(i int) *int {
+	return &i
 }

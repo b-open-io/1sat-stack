@@ -10,9 +10,10 @@ import (
 	"github.com/bsv-blockchain/go-sdk/transaction"
 )
 
-// Bsv21DiscoveryTopicManager implements a global topic manager that admits ALL deploy+mint operations.
+// Bsv21DiscoveryTopicManager implements a global topic manager that admits ALL deploy operations.
 // This is used for token discovery - registered as topic "tm_bsv21".
-// When a new mint is discovered, it can trigger fee service notification.
+// Admits both deploy+mint and deploy+auth operations.
+// When a new token is discovered, it can trigger fee service notification and worker creation.
 type Bsv21DiscoveryTopicManager struct {
 	topic   string
 	storage engine.Storage
@@ -31,7 +32,7 @@ func NewBsv21DiscoveryTopicManager(topic string, storage engine.Storage, logger 
 	}
 }
 
-// IdentifyAdmissibleOutputs admits all deploy+mint outputs for token discovery
+// IdentifyAdmissibleOutputs admits all deploy outputs (deploy+mint and deploy+auth) for token discovery
 func (tm *Bsv21DiscoveryTopicManager) IdentifyAdmissibleOutputs(ctx context.Context, beefBytes []byte, previousCoins []uint32) (admit overlay.AdmittanceInstructions, err error) {
 	_, tx, txid, err := transaction.ParseBeef(beefBytes)
 	if err != nil {
@@ -40,16 +41,17 @@ func (tm *Bsv21DiscoveryTopicManager) IdentifyAdmissibleOutputs(ctx context.Cont
 		return admit, engine.ErrInvalidBeef
 	}
 
-	// Only admit deploy+mint operations
+	// Admit deploy+mint and deploy+auth operations
 	for vout, output := range tx.Outputs {
 		if b := bsv21.Decode(output.LockingScript); b != nil {
-			if b.Op == string(bsv21.OpMint) {
-				// This is a deploy+mint - admit it for discovery
+			if b.Op == string(bsv21.OpDeployMint) || b.Op == string(bsv21.OpDeployAuth) {
+				// This is a deploy operation - admit it for discovery
 				admit.OutputsToAdmit = append(admit.OutputsToAdmit, uint32(vout))
 				tm.logger.Debug("token discovered",
 					"topic", tm.topic,
 					"txid", txid.String(),
-					"vout", vout)
+					"vout", vout,
+					"op", b.Op)
 			}
 		}
 	}
@@ -57,14 +59,14 @@ func (tm *Bsv21DiscoveryTopicManager) IdentifyAdmissibleOutputs(ctx context.Cont
 	return
 }
 
-// IdentifyNeededInputs returns empty list since deploy+mint needs no inputs
+// IdentifyNeededInputs returns empty list since deploy operations need no inputs
 func (tm *Bsv21DiscoveryTopicManager) IdentifyNeededInputs(ctx context.Context, beefBytes []byte) ([]*transaction.Outpoint, error) {
 	return nil, nil
 }
 
 // GetDocumentation returns documentation for this topic manager
 func (tm *Bsv21DiscoveryTopicManager) GetDocumentation() string {
-	return "BSV21 Discovery Topic Manager - admits all deploy+mint operations for token discovery"
+	return "BSV21 Discovery Topic Manager - admits all deploy operations (deploy+mint, deploy+auth) for token discovery"
 }
 
 // GetMetaData returns metadata for this topic manager

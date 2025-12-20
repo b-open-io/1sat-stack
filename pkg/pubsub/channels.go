@@ -2,7 +2,7 @@ package pubsub
 
 import (
 	"context"
-	"log"
+	"log/slog"
 	"sync"
 )
 
@@ -19,14 +19,21 @@ type ChannelPubSub struct {
 	subscribers sync.Map // topic -> []*channelSubscription
 	ctx         context.Context
 	cancel      context.CancelFunc
+	logger      *slog.Logger
 }
 
-func NewChannelPubSub() *ChannelPubSub {
+func NewChannelPubSub(logger *slog.Logger) *ChannelPubSub {
 	ctx, cancel := context.WithCancel(context.Background())
+
+	if logger == nil {
+		logger = slog.Default()
+	}
+	logger = logger.With("component", "pubsub")
 
 	return &ChannelPubSub{
 		ctx:    ctx,
 		cancel: cancel,
+		logger: logger,
 	}
 }
 
@@ -51,7 +58,7 @@ func (cp *ChannelPubSub) Publish(ctx context.Context, topic string, data string,
 			case <-ctx.Done():
 				return ctx.Err()
 			default:
-				log.Printf("ChannelPubSub: Skipping full channel for topic %s", topic)
+				cp.logger.Warn("skipping full channel", "topic", topic)
 			}
 		}
 	}

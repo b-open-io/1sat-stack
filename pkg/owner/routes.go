@@ -38,9 +38,9 @@ func NewRoutes(ctx context.Context, sync *OwnerSync, outputStore *txo.OutputStor
 
 // Register registers all owner routes on the given router.
 func (r *Routes) Register(router fiber.Router) {
+	router.Get("/sync", r.OwnerSync) // Multi-owner sync via query params
 	router.Get("/:owner/txos", r.OwnerTxos)
 	router.Get("/:owner/balance", r.OwnerBalance)
-	router.Get("/:owner/sync", r.OwnerSync)
 }
 
 // OwnerTxos returns transaction outputs owned by a specific owner.
@@ -135,14 +135,17 @@ type SyncOutput struct {
 // OwnerSync streams owner sync via SSE.
 // @Summary Stream owner sync via SSE
 // @Description Stream paginated outputs for wallet synchronization via Server-Sent Events. Streams all outputs until exhausted, then triggers background sync and sends retry directive.
-// @Tags own
+// @Tags owner
 // @Produce text/event-stream
-// @Param owner path string true "Owner identifier (address, pubkey, or script hash)"
+// @Param owner query []string true "Owner identifier(s) (address, pubkey, or script hash)"
 // @Param from query number false "Starting score for pagination"
 // @Success 200 {string} string "SSE stream of SyncOutput events"
-// @Router /owner/{owner}/sync [get]
+// @Router /owner/sync [get]
 func (r *Routes) OwnerSync(c *fiber.Ctx) error {
-	owner := c.Params("owner")
+	owners := c.Context().QueryArgs().PeekMulti("owner")
+	if len(owners) == 0 {
+		return fiber.NewError(fiber.StatusBadRequest, "owner query parameter required")
+	}
 
 	// Check for Last-Event-ID header first (sent by browser on reconnect)
 	var from float64
@@ -164,8 +167,12 @@ func (r *Routes) OwnerSync(c *fiber.Ctx) error {
 	c.Set("Access-Control-Allow-Origin", "*")
 
 	c.Context().SetBodyStreamWriter(func(w *bufio.Writer) {
-		ownerKey := "own:" + owner
-		ownerSpentKey := ownerKey + ":spnd"
+		// Build keys for all owners
+		keys := make([][]byte, 0, len(owners)*2)
+		for _, owner := range owners {
+			ownerKey := "own:" + string(owner)
+			keys = append(keys, []byte(ownerKey), []byte(ownerKey+":spnd"))
+		}
 		currentFrom := from
 
 		for {
@@ -173,7 +180,7 @@ func (r *Routes) OwnerSync(c *fiber.Ctx) error {
 			queryLimit := batchSize + 1
 
 			cfg := &store.SearchCfg{
-				Keys:  [][]byte{[]byte(ownerKey), []byte(ownerSpentKey)},
+				Keys:  keys,
 				From:  &currentFrom,
 				Limit: queryLimit,
 			}
@@ -194,11 +201,14 @@ func (r *Routes) OwnerSync(c *fiber.Ctx) error {
 			if len(results) == 0 {
 				// Trigger sync in background so new items are ready when client returns
 				if r.sync != nil {
-					go func() {
-						if err := r.sync.Sync(r.ctx, owner); err != nil {
-							r.logger.Error("OwnerSync background sync error", "error", err)
-						}
-					}()
+					for _, owner := range owners {
+						ownerStr := string(owner)
+						go func() {
+							if err := r.sync.Sync(r.ctx, ownerStr); err != nil {
+								r.logger.Error("OwnerSync background sync error", "error", err)
+							}
+						}()
+					}
 				}
 				// No more results - tell client to retry in 60 seconds
 				fmt.Fprintf(w, "event: done\ndata: {}\nretry: 60000\n\n")
@@ -250,11 +260,14 @@ func (r *Routes) OwnerSync(c *fiber.Ctx) error {
 			if !hasMore {
 				// Trigger sync in background so new items are ready when client returns
 				if r.sync != nil {
-					go func() {
-						if err := r.sync.Sync(r.ctx, owner); err != nil {
-							r.logger.Error("OwnerSync background sync error", "error", err)
-						}
-					}()
+					for _, owner := range owners {
+						ownerStr := string(owner)
+						go func() {
+							if err := r.sync.Sync(r.ctx, ownerStr); err != nil {
+								r.logger.Error("OwnerSync background sync error", "error", err)
+							}
+						}()
+					}
 				}
 				// No more results - tell client to retry in 60 seconds
 				fmt.Fprintf(w, "event: done\ndata: {}\nretry: 60000\n\n")

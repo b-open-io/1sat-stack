@@ -92,7 +92,7 @@ func (c *Config) initializeEmbedded(ctx context.Context, logger *slog.Logger) (*
 
 	switch c.Provider {
 	case ProviderChannels, "": // Default to channels if empty
-		pubsub = NewChannelPubSub()
+		pubsub = NewChannelPubSub(logger)
 
 	// Future providers:
 	// case ProviderRedis:
@@ -104,7 +104,7 @@ func (c *Config) initializeEmbedded(ctx context.Context, logger *slog.Logger) (*
 
 	svc := &Services{
 		PubSub:     pubsub,
-		SSEManager: NewSSEManager(ctx, pubsub),
+		SSEManager: NewSSEManager(ctx, pubsub, logger),
 	}
 
 	if c.Routes.Enabled {
