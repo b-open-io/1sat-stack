@@ -25,7 +25,6 @@ func ParseP2PKH(ctx *ParseContext) *ParseResult {
 	return &ParseResult{
 		Tag:    TagP2PKH,
 		Data:   addr,
-		Events: []string{"own:" + addr.AddressString},
 		Owners: []*types.PKHash{pkHash},
 	}
 }

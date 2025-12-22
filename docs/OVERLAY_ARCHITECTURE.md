@@ -21,7 +21,7 @@ The external `go-overlay-services` package provides:
 Implements `engine.Storage` interface. Provides:
 - Topic membership tracking (`z:tp:{topic}`)
 - Applied transaction tracking (`z:tp:{topic}:tx`)
-- Event indexing (`z:{event}`)
+- Event indexing (`z:ev:{event}`)
 - Spend tracking (`h:spnd`)
 - Output data storage (`h:{outpoint}`)
 
@@ -76,7 +76,7 @@ Engine.Submit()
                └─→ OutputStore.SaveEvents()
                          │
                          ├─→ h:{outpoint}  ← ev, dt:{tag} (HSet)
-                         └─→ z:{event}     ← outpoint (ZAdd)
+                         └─→ z:ev:{event}  ← outpoint (ZAdd)
 ```
 
 ### Query Flow
@@ -90,7 +90,7 @@ LookupService.Lookup()
      │
      └─→ OutputStore.SearchOutputs()
                │
-               ├─→ z:{event}      ← Search by event keys
+               ├─→ z:ev:{event}   ← Search by event keys
                ├─→ h:spnd         ← Filter spent (optional)
                └─→ h:{outpoint}   ← Load output data
 ```
@@ -117,7 +117,7 @@ All keys are documented in `pkg/store/KEYS.md`. Summary:
 |-----|-----------|------|
 | `h:{outpoint}` `ev` | HSet | OutputAdmittedByTopic |
 | `h:{outpoint}` `dt:{tag}` | HSet | OutputAdmittedByTopic |
-| `z:{event}` | ZAdd outpoint | OutputAdmittedByTopic |
+| `z:ev:{event}` | ZAdd outpoint | OutputAdmittedByTopic |
 
 ---
 
