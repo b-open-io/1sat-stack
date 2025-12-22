@@ -10,7 +10,6 @@ import (
 	"github.com/b-open-io/1sat-stack/pkg/overlay"
 	topicpkg "github.com/b-open-io/1sat-stack/pkg/topic"
 	"github.com/b-open-io/1sat-stack/pkg/txo"
-	"github.com/b-open-io/1sat-stack/pkg/types"
 	"github.com/b-open-io/go-junglebus"
 	"github.com/bsv-blockchain/go-chaintracks/chaintracks"
 	"github.com/spf13/viper"
@@ -65,7 +64,6 @@ func (c *Config) SetDefaults(v *viper.Viper, prefix string) {
 
 // Services holds initialized BSV21 services
 type Services struct {
-	Indexer      *Indexer
 	Lookup       *lookuppkg.BSV21Lookup
 	TopicManager *topicpkg.Bsv21ValidatedTopicManager
 	Sync         *SyncServices
@@ -92,38 +90,6 @@ func (c *Config) Initialize(
 
 	switch c.Mode {
 	case ModeEmbedded:
-		// Determine network
-		network := types.Mainnet
-		if c.Network == "testnet" {
-			network = types.Testnet
-		}
-
-		// Create indexer
-		idx := NewIndexer(network)
-		idx.Logger = logger
-
-		// Set whitelist/blacklist functions if configured
-		if len(c.WhitelistTokens) > 0 {
-			whitelist := make(map[string]struct{}, len(c.WhitelistTokens))
-			for _, id := range c.WhitelistTokens {
-				whitelist[id] = struct{}{}
-			}
-			idx.WhitelistFn = func(tokenId string) bool {
-				_, ok := whitelist[tokenId]
-				return ok
-			}
-		}
-		if len(c.BlacklistTokens) > 0 {
-			blacklist := make(map[string]struct{}, len(c.BlacklistTokens))
-			for _, id := range c.BlacklistTokens {
-				blacklist[id] = struct{}{}
-			}
-			idx.BlacklistFn = func(tokenId string) bool {
-				_, ok := blacklist[tokenId]
-				return ok
-			}
-		}
-
 		// Create lookup service
 		bsv21Lookup := lookuppkg.NewBSV21Lookup(txoStorage)
 
@@ -131,7 +97,6 @@ func (c *Config) Initialize(
 		topicManager := topicpkg.NewBsv21ValidatedTopicManager("bsv21", txoStorage, c.WhitelistTokens)
 
 		svc := &Services{
-			Indexer:      idx,
 			Lookup:       bsv21Lookup,
 			TopicManager: topicManager,
 		}

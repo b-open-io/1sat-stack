@@ -621,7 +621,7 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/pkg_bsv21.TokenResponse"
+                            "$ref": "#/definitions/github_com_b-open-io_1sat-stack_pkg_bsv21.TokenResponse"
                         }
                     }
                 }
@@ -713,7 +713,7 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/pkg_bsv21.BalanceResponse"
+                            "$ref": "#/definitions/github_com_b-open-io_1sat-stack_pkg_bsv21.BalanceResponse"
                         }
                     }
                 }
@@ -861,7 +861,7 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/pkg_bsv21.BalanceResponse"
+                            "$ref": "#/definitions/github_com_b-open-io_1sat-stack_pkg_bsv21.BalanceResponse"
                         }
                     }
                 }
@@ -957,84 +957,6 @@ const docTemplate = `{
                 }
             }
         },
-        "/api/indexer/parse": {
-            "post": {
-                "description": "Parses a transaction from raw bytes and returns the indexed context without saving",
-                "consumes": [
-                    "application/octet-stream"
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "indexer"
-                ],
-                "summary": "Parse a transaction from raw bytes",
-                "parameters": [
-                    {
-                        "description": "Raw transaction bytes",
-                        "name": "tx",
-                        "in": "body",
-                        "required": true,
-                        "schema": {
-                            "type": "array",
-                            "items": {
-                                "type": "integer"
-                            }
-                        }
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "$ref": "#/definitions/pkg_indexer.IndexContext"
-                        }
-                    },
-                    "400": {
-                        "description": "Bad Request",
-                        "schema": {
-                            "type": "object",
-                            "additionalProperties": {
-                                "type": "string"
-                            }
-                        }
-                    },
-                    "500": {
-                        "description": "Internal Server Error",
-                        "schema": {
-                            "type": "object",
-                            "additionalProperties": {
-                                "type": "string"
-                            }
-                        }
-                    }
-                }
-            }
-        },
-        "/api/indexer/tags": {
-            "get": {
-                "description": "Returns the list of tags from all registered indexers",
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "indexer"
-                ],
-                "summary": "Get available indexer tags",
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "type": "array",
-                            "items": {
-                                "type": "string"
-                            }
-                        }
-                    }
-                }
-            }
-        },
         "/api/ordfs/metadata/{path}": {
             "get": {
                 "description": "Get metadata about inscription content without downloading the content",
@@ -1058,7 +980,7 @@ const docTemplate = `{
                     "200": {
                         "description": "Metadata",
                         "schema": {
-                            "$ref": "#/definitions/github_com_b-open-io_1sat-stack_pkg_ordfs.Response"
+                            "$ref": "#/definitions/pkg_ordfs.Response"
                         }
                     },
                     "400": {
@@ -1608,7 +1530,7 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/pkg_bsv21.BlockResponse"
+                            "$ref": "#/definitions/github_com_b-open-io_1sat-stack_pkg_bsv21.BlockResponse"
                         }
                     }
                 }
@@ -1921,124 +1843,6 @@ const docTemplate = `{
                         "description": "Service Unavailable",
                         "schema": {
                             "type": "string"
-                        }
-                    }
-                }
-            }
-        },
-        "/indexer/ingest/{txid}": {
-            "post": {
-                "description": "Ingests a transaction by txid, parsing and saving to the store",
-                "consumes": [
-                    "application/json"
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "indexer"
-                ],
-                "summary": "Ingest a transaction by txid",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "description": "Transaction ID",
-                        "name": "txid",
-                        "in": "path",
-                        "required": true
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "$ref": "#/definitions/pkg_indexer.IndexContext"
-                        }
-                    },
-                    "400": {
-                        "description": "Bad Request",
-                        "schema": {
-                            "type": "object",
-                            "additionalProperties": {
-                                "type": "string"
-                            }
-                        }
-                    },
-                    "404": {
-                        "description": "Not Found",
-                        "schema": {
-                            "type": "object",
-                            "additionalProperties": {
-                                "type": "string"
-                            }
-                        }
-                    },
-                    "500": {
-                        "description": "Internal Server Error",
-                        "schema": {
-                            "type": "object",
-                            "additionalProperties": {
-                                "type": "string"
-                            }
-                        }
-                    }
-                }
-            }
-        },
-        "/indexer/parse/{txid}": {
-            "get": {
-                "description": "Parses a transaction and returns the indexed context without saving",
-                "consumes": [
-                    "application/json"
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "indexer"
-                ],
-                "summary": "Parse a transaction by txid",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "description": "Transaction ID",
-                        "name": "txid",
-                        "in": "path",
-                        "required": true
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "$ref": "#/definitions/pkg_indexer.IndexContext"
-                        }
-                    },
-                    "400": {
-                        "description": "Bad Request",
-                        "schema": {
-                            "type": "object",
-                            "additionalProperties": {
-                                "type": "string"
-                            }
-                        }
-                    },
-                    "404": {
-                        "description": "Not Found",
-                        "schema": {
-                            "type": "object",
-                            "additionalProperties": {
-                                "type": "string"
-                            }
-                        }
-                    },
-                    "500": {
-                        "description": "Internal Server Error",
-                        "schema": {
-                            "type": "object",
-                            "additionalProperties": {
-                                "type": "string"
-                            }
                         }
                     }
                 }
@@ -2553,7 +2357,7 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/github_com_b-open-io_1sat-stack_pkg_owner.BalanceResponse"
+                            "$ref": "#/definitions/pkg_owner.BalanceResponse"
                         }
                     },
                     "500": {
@@ -3245,35 +3049,6 @@ const docTemplate = `{
                 }
             }
         },
-        "github_com_b-open-io_1sat-stack_pkg_indexer.IndexContext": {
-            "type": "object",
-            "properties": {
-                "height": {
-                    "type": "integer"
-                },
-                "idx": {
-                    "type": "integer"
-                },
-                "outputs": {
-                    "type": "array",
-                    "items": {
-                        "$ref": "#/definitions/github_com_b-open-io_1sat-stack_pkg_txo.IndexedOutput"
-                    }
-                },
-                "score": {
-                    "type": "number"
-                },
-                "spends": {
-                    "type": "array",
-                    "items": {
-                        "$ref": "#/definitions/github_com_b-open-io_1sat-stack_pkg_txo.IndexedOutput"
-                    }
-                },
-                "txid": {
-                    "type": "string"
-                }
-            }
-        },
         "github_com_b-open-io_1sat-stack_pkg_ordfs.Response": {
             "type": "object",
             "properties": {
@@ -3300,12 +3075,6 @@ const docTemplate = `{
                 },
                 "outpoint": {
                     "$ref": "#/definitions/transaction.Outpoint"
-                },
-                "output": {
-                    "type": "array",
-                    "items": {
-                        "type": "integer"
-                    }
                 },
                 "parent": {
                     "$ref": "#/definitions/transaction.Outpoint"
@@ -3654,35 +3423,6 @@ const docTemplate = `{
                 }
             }
         },
-        "pkg_indexer.IndexContext": {
-            "type": "object",
-            "properties": {
-                "height": {
-                    "type": "integer"
-                },
-                "idx": {
-                    "type": "integer"
-                },
-                "outputs": {
-                    "type": "array",
-                    "items": {
-                        "$ref": "#/definitions/github_com_b-open-io_1sat-stack_pkg_txo.IndexedOutput"
-                    }
-                },
-                "score": {
-                    "type": "number"
-                },
-                "spends": {
-                    "type": "array",
-                    "items": {
-                        "$ref": "#/definitions/github_com_b-open-io_1sat-stack_pkg_txo.IndexedOutput"
-                    }
-                },
-                "txid": {
-                    "type": "string"
-                }
-            }
-        },
         "pkg_ordfs.Response": {
             "type": "object",
             "properties": {
@@ -3709,12 +3449,6 @@ const docTemplate = `{
                 },
                 "outpoint": {
                     "$ref": "#/definitions/transaction.Outpoint"
-                },
-                "output": {
-                    "type": "array",
-                    "items": {
-                        "type": "integer"
-                    }
                 },
                 "parent": {
                     "$ref": "#/definitions/transaction.Outpoint"

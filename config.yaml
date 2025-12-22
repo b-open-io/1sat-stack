@@ -106,7 +106,7 @@ merkle:
 bsv21:
   mode: embedded
   sync:
-    enabled: true
+    enabled: false
     dispatch_workers: 8
     token_workers: 16
     fee_per_output: 1000

@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"strconv"
-	"time"
 
 	"github.com/b-open-io/1sat-stack/pkg/store"
 	"github.com/b-open-io/1sat-stack/pkg/types"
@@ -15,10 +14,10 @@ import (
 )
 
 // engine.Storage implementation for OutputStore
-// These methods handle overlay/topic operations using timestamp-based scoring
+// These methods handle overlay/topic operations
 
 // InsertOutputs inserts transaction outputs for a topic (overlay flow)
-// Uses UnixNano timestamp for scoring since these are not indexed by block position
+// Extracts block height/index from BEEF if available, otherwise uses timestamp
 func (s *OutputStore) InsertOutputs(ctx context.Context, topic string, txid *chainhash.Hash, outputVouts []uint32, outpointsConsumed []*transaction.Outpoint, beefData []byte, ancillaryTxids []*chainhash.Hash) error {
 	if len(outputVouts) == 0 {
 		return nil
@@ -31,8 +30,8 @@ func (s *OutputStore) InsertOutputs(ctx context.Context, topic string, txid *cha
 		}
 	}
 
-	// Use timestamp-based score for topic events (NOT HeightScore)
-	score := float64(time.Now().UnixNano())
+	// Extract score from BEEF (uses block height if confirmed, timestamp if not)
+	score := types.ScoreFromBeef(beefData)
 
 	// Process each output
 	for _, vout := range outputVouts {
@@ -53,13 +52,16 @@ func (s *OutputStore) InsertOutputs(ctx context.Context, topic string, txid *cha
 		}
 
 		// Add to topic's output set
-		if err := s.AddToTopic(ctx, op, topic, score); err != nil {
+		if err := s.Store.ZAdd(ctx, KeyTopicOutputs(topic), store.ScoredMember{
+			Member: op.Bytes(),
+			Score:  score,
+		}); err != nil {
 			return err
 		}
 	}
 
 	// Add txid to topic's applied transactions
-	return s.AddTxToTopic(ctx, txid, topic, score)
+	return nil
 }
 
 // FindOutput finds a single output by outpoint
@@ -193,14 +195,14 @@ func (s *OutputStore) FindOutputsForTransaction(ctx context.Context, txid *chain
 func (s *OutputStore) FindUTXOsForTopic(ctx context.Context, topic string, since float64, limit uint32, includeBEEF bool) ([]*engine.Output, error) {
 	cfg := &OutputSearchCfg{
 		SearchCfg: store.SearchCfg{
-			Keys:  [][]byte{keyTopicOut(topic)},
+			Keys:  [][]byte{KeyTopicOutputs(topic)},
 			From:  &since,
 			Limit: limit,
 		},
 		FilterSpent: true,
 	}
 
-	// Search directly on the topic key (already has z: prefix from keyTopicOut)
+	// Search directly on the topic key
 	results, err := s.Store.Search(ctx, &cfg.SearchCfg)
 	if err != nil {
 		return nil, err
@@ -244,13 +246,13 @@ func (s *OutputStore) FindUTXOsForTopic(ctx context.Context, topic string, since
 
 // DeleteOutput removes an output from a topic
 func (s *OutputStore) DeleteOutput(ctx context.Context, outpoint *transaction.Outpoint, topic string) error {
-	opBytes := outpointBytes(outpoint)
+	opBytes := outpoint.Bytes()
 
 	// Remove from topic sorted set
-	s.Store.ZRem(ctx, keyTopicOut(topic), opBytes)
+	s.Store.ZRem(ctx, KeyTopicOutputs(topic), opBytes)
 
 	// Remove topic-specific deps and inputs
-	hashKey := keyOutHash(outpoint)
+	hashKey := KeyOutHash(outpoint)
 	s.Store.HDel(ctx, hashKey, []byte(fldDeps+topic))
 	s.Store.HDel(ctx, hashKey, []byte(fldInputs+topic))
 
@@ -266,7 +268,8 @@ func (s *OutputStore) MarkUTXOsAsSpent(ctx context.Context, outpoints []*transac
 		return nil
 	}
 
-	score := float64(time.Now().UnixNano())
+	// Use timestamp-based score since we don't have the spend tx's block info here
+	score := types.HeightScore(0, 0)
 	for _, op := range outpoints {
 		if err := s.SaveSpend(ctx, op, spendTxid, score); err != nil {
 			return err
@@ -297,31 +300,42 @@ func (s *OutputStore) UpdateOutputBlockHeight(ctx context.Context, outpoint *tra
 	score := types.HeightScore(blockHeight, blockIndex)
 
 	// Update in topic sorted set
-	return s.Store.ZAdd(ctx, keyTopicOut(topic), store.ScoredMember{
-		Member: outpointBytes(outpoint),
+	return s.Store.ZAdd(ctx, KeyTopicOutputs(topic), store.ScoredMember{
+		Member: outpoint.Bytes(),
 		Score:  score,
 	})
 }
 
 // InsertAppliedTransaction records an applied transaction
 func (s *OutputStore) InsertAppliedTransaction(ctx context.Context, tx *overlay.AppliedTransaction) error {
-	score := float64(time.Now().UnixNano())
-	return s.AddTxToTopic(ctx, tx.Txid, tx.Topic, score)
+	// Use timestamp-based score since AppliedTransaction doesn't include block info
+	score := types.HeightScore(0, 0)
+	return s.Store.ZAdd(ctx, KeyTopicTxs(tx.Topic), store.ScoredMember{
+		Member: tx.Txid[:],
+		Score:  score,
+	})
 }
 
 // DoesAppliedTransactionExist checks if a transaction has been applied to a topic
 func (s *OutputStore) DoesAppliedTransactionExist(ctx context.Context, tx *overlay.AppliedTransaction) (bool, error) {
-	return s.IsTxInTopic(ctx, tx.Txid, tx.Topic)
+	_, err := s.Store.ZScore(ctx, KeyTopicTxs(tx.Topic), tx.Txid[:])
+	if err == store.ErrKeyNotFound {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	return true, nil
 }
 
 // UpdateLastInteraction updates the last interaction timestamp for a host/topic
 func (s *OutputStore) UpdateLastInteraction(ctx context.Context, host, topic string, since float64) error {
-	return s.Store.HSet(ctx, keyPeerInteraction(topic), []byte(host), []byte(fmt.Sprintf("%.0f", since)))
+	return s.Store.HSet(ctx, KeyProgress, PeerInteractionField(topic, host), []byte(fmt.Sprintf("%.0f", since)))
 }
 
 // GetLastInteraction retrieves the last interaction timestamp for a host/topic
 func (s *OutputStore) GetLastInteraction(ctx context.Context, host, topic string) (float64, error) {
-	scoreBytes, err := s.Store.HGet(ctx, keyPeerInteraction(topic), []byte(host))
+	scoreBytes, err := s.Store.HGet(ctx, KeyProgress, PeerInteractionField(topic, host))
 	if err == store.ErrKeyNotFound || len(scoreBytes) == 0 {
 		return 0, nil
 	}
@@ -334,9 +348,7 @@ func (s *OutputStore) GetLastInteraction(ctx context.Context, host, topic string
 // FindOutpointsByMerkleState finds outpoints by their merkle validation state
 func (s *OutputStore) FindOutpointsByMerkleState(ctx context.Context, topic string, state engine.MerkleState, limit uint32) ([]*transaction.Outpoint, error) {
 	// Query merkle state index
-	stateKey := []byte(fmt.Sprintf("%smerkle:%s:%d", pfxZSet, topic, state))
-
-	results, err := s.Store.ZRange(ctx, stateKey, store.ScoreRange{Count: int64(limit)})
+	results, err := s.Store.ZRange(ctx, KeyMerkleState(topic, uint32(state)), store.ScoreRange{Count: int64(limit)})
 	if err != nil {
 		return nil, err
 	}

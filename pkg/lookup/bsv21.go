@@ -5,9 +5,9 @@ import (
 	"fmt"
 	"strconv"
 	"sync"
-	"time"
 
 	"github.com/b-open-io/1sat-stack/pkg/txo"
+	"github.com/b-open-io/1sat-stack/pkg/types"
 	"github.com/bitcoin-sv/go-templates/template/bsv21"
 	"github.com/bitcoin-sv/go-templates/template/bsv21/ltm"
 	"github.com/bitcoin-sv/go-templates/template/bsv21/pow20"
@@ -129,8 +129,8 @@ func (l *BSV21Lookup) OutputAdmittedByTopic(ctx context.Context, payload *engine
 		"bsv21": bsv21Data,
 	}
 
-	// Save events with data using timestamp-based score (not HeightScore)
-	score := float64(time.Now().UnixNano())
+	// Extract score from transaction (block height if confirmed, timestamp if not)
+	score := types.ScoreFromTx(tx, txid)
 	return l.storage.SaveEvents(ctx, outpoint, events, dataToStore, score)
 }
 

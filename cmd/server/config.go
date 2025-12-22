@@ -11,13 +11,6 @@ import (
 	"github.com/b-open-io/1sat-stack/admin"
 	"github.com/b-open-io/1sat-stack/pkg/beef"
 	"github.com/b-open-io/1sat-stack/pkg/bsv21"
-	"github.com/b-open-io/1sat-stack/pkg/indexer"
-	"github.com/b-open-io/1sat-stack/pkg/indexer/parse/bitcom"
-	"github.com/b-open-io/1sat-stack/pkg/indexer/parse/cosign"
-	"github.com/b-open-io/1sat-stack/pkg/indexer/parse/lock"
-	idxonesat "github.com/b-open-io/1sat-stack/pkg/indexer/parse/onesat"
-	"github.com/b-open-io/1sat-stack/pkg/indexer/parse/p2pkh"
-	"github.com/b-open-io/1sat-stack/pkg/indexer/parse/shrug"
 	"github.com/b-open-io/1sat-stack/pkg/jbsync"
 	"github.com/b-open-io/1sat-stack/pkg/logging"
 	"github.com/b-open-io/1sat-stack/pkg/lookup"
@@ -66,8 +59,7 @@ type Config struct {
 	Arcade      arcadeconfig.Config      `mapstructure:"arcade"`
 
 	// Transaction services
-	Merkle  MerkleConfig   `mapstructure:"merkle"`
-	Indexer indexer.Config `mapstructure:"indexer"`
+	Merkle MerkleConfig `mapstructure:"merkle"`
 
 	// BSV21 token support
 	BSV21 bsv21.Config `mapstructure:"bsv21"`
@@ -144,7 +136,6 @@ type Services struct {
 	PubSub  *pubsub.Services
 	Beef    *beef.Services
 	TXO     *txo.Services
-	Indexer *indexer.Services
 	BSV21   *bsv21.Services
 	Overlay *overlay.Services
 	ORDFS   *ordfs.Services
@@ -207,7 +198,6 @@ func (c *Config) SetDefaults(v *viper.Viper) {
 	v.SetDefault("merkle.routes.prefix", "")
 
 	// Package configs
-	c.Indexer.SetDefaults(v, "indexer")
 	c.BSV21.SetDefaults(v, "bsv21")
 	c.Overlay.SetDefaults(v, "overlay")
 	c.ORDFS.SetDefaults(v, "ordfs")
@@ -312,32 +302,6 @@ func (c *Config) Initialize(ctx context.Context, logger *slog.Logger) (*Services
 			return nil, fmt.Errorf("failed to initialize txo: %w", err)
 		}
 		svc.TXO = txoSvc
-	}
-
-	// Initialize indexer with shared dependencies
-	if c.Indexer.Mode != indexer.ModeDisabled && svc.TXO != nil && svc.Beef != nil {
-		var ps pubsub.PubSub
-		if svc.PubSub != nil {
-			ps = svc.PubSub.PubSub
-		}
-		// Create protocol indexers - order matters as some indexers depend on others
-		indexers := []indexer.Indexer{
-			&p2pkh.P2PKHIndexer{},           // P2PKH address extraction
-			&lock.LockIndexer{},             // Lock protocol
-			&idxonesat.InscriptionIndexer{}, // 1Sat ordinals inscriptions
-			&idxonesat.OriginIndexer{},      // Origin tracking
-			&idxonesat.Bsv20Indexer{},       // BSV-20 fungible tokens
-			&idxonesat.Bsv21Indexer{},       // BSV-21 fungible tokens
-			&idxonesat.OrdLockIndexer{},     // Ordinal locks
-			&bitcom.BitcomIndexer{},         // Bitcom protocols (B, MAP, SIGMA)
-			&cosign.CosignIndexer{},         // Cosign protocol
-			&shrug.ShrugIndexer{},           // Shrug tokens
-		}
-		indexerSvc, err := c.Indexer.Initialize(ctx, logger, svc.TXO.OutputStore, svc.Beef.Storage, ps, indexers)
-		if err != nil {
-			return nil, fmt.Errorf("failed to initialize indexer: %w", err)
-		}
-		svc.Indexer = indexerSvc
 	}
 
 	// Initialize overlay engine FIRST (BSV21 needs it for topic/lookup registration)
@@ -502,16 +466,6 @@ func (c *Config) RegisterRoutes(app *fiber.App, svc *Services) {
 		slog.Debug("registered owner routes", "prefix", prefix)
 	} else {
 		slog.Debug("owner routes not registered", "ownNil", svc.Own == nil, "ownMode", c.Owner.Mode)
-	}
-
-	// Register indexer routes
-	if svc.Indexer != nil && svc.Indexer.Routes != nil {
-		prefix := c.Indexer.Routes.Prefix
-		if prefix == "" {
-			prefix = "/indexer"
-		}
-		svc.Indexer.Routes.Register(api, prefix)
-		capabilities = append(capabilities, "indexer")
 	}
 
 	// Register BSV21 routes
@@ -699,12 +653,6 @@ func (svc *Services) Close() error {
 	if svc.Overlay != nil {
 		if err := svc.Overlay.Close(); err != nil {
 			errs = append(errs, fmt.Errorf("overlay close: %w", err))
-		}
-	}
-
-	if svc.Indexer != nil {
-		if err := svc.Indexer.Close(); err != nil {
-			errs = append(errs, fmt.Errorf("indexer close: %w", err))
 		}
 	}
 
