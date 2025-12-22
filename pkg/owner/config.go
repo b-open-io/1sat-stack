@@ -5,6 +5,7 @@ import (
 	"log/slog"
 
 	"github.com/b-open-io/1sat-stack/pkg/beef"
+	"github.com/b-open-io/1sat-stack/pkg/logging"
 	"github.com/b-open-io/1sat-stack/pkg/overlay"
 	"github.com/b-open-io/1sat-stack/pkg/txo"
 	"github.com/b-open-io/go-junglebus"
@@ -19,7 +20,8 @@ const (
 
 // Config holds owner service configuration.
 type Config struct {
-	Mode string `mapstructure:"mode"` // disabled, embedded
+	Mode     string `mapstructure:"mode"`      // disabled, embedded
+	LogLevel string `mapstructure:"log_level"` // Log level for owner sync (debug, info, warn, error)
 
 	Routes RoutesConfig `mapstructure:"routes"`
 }
@@ -70,18 +72,21 @@ func (c *Config) Initialize(
 		logger = slog.Default()
 	}
 
+	// Create logger with optional level override
+	ownerLogger := logging.NewComponentLogger(logger, "owner", c.LogLevel)
+
 	svc := &Services{
 		Sync: NewOwnerSync(
 			deps.JungleBus,
 			deps.BeefStorage,
 			deps.Overlay,
 			deps.OutputStore,
-			logger,
+			ownerLogger,
 		),
 	}
 
 	if c.Routes.Enabled {
-		svc.Routes = NewRoutes(ctx, svc.Sync, deps.OutputStore, logger)
+		svc.Routes = NewRoutes(ctx, svc.Sync, deps.OutputStore, ownerLogger)
 	}
 
 	return svc, nil

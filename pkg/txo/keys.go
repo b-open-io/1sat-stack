@@ -14,6 +14,7 @@ const (
 	PfxSet   = "s:"  // Set keys
 	PfxQueue = "q:"  // Queue keys (sorted sets used as work queues)
 	PfxTopic = "tp:" // Topic prefix within ZSet
+	PfxEvent = "ev:" // Event prefix within ZSet
 )
 
 // Bulk lookup hash keys
@@ -24,15 +25,15 @@ var (
 	KeyProgress = []byte(PfxHash + "prog") // h:prog - field: subscription/owner/peer, value: height (uint32 BE) or timestamp
 )
 
-// KeyEvent builds ZSet key for an event: z:{event}
+// KeyEvent builds ZSet key for an event: z:ev:{event}
 // Use this for event-based lookups (owner addresses, token IDs, etc.)
 func KeyEvent(event string) []byte {
-	return []byte(PfxZSet + event)
+	return []byte(PfxZSet + PfxEvent + event)
 }
 
-// KeyEventSpent builds ZSet key for spent event: z:{event}:spnd
+// KeyEventSpent builds ZSet key for spent event: z:ev:{event}:spnd
 func KeyEventSpent(event string) []byte {
-	return []byte(PfxZSet + event + ":spnd")
+	return []byte(PfxZSet + PfxEvent + event + ":spnd")
 }
 
 // KeyTopicOutputs builds ZSet key for topic outputs: z:tp:{topic}

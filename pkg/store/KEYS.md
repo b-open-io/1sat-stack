@@ -34,8 +34,9 @@ All keys should be built using exported functions from `pkg/txo/keys.go`:
 const PfxHash  = "h:"   // Hash keys
 const PfxZSet  = "z:"   // Sorted set keys
 const PfxSet   = "s:"   // Set keys
-const PfxQueue = "q:"   // Queue keys
+const PfxQueue = "q:"   // Queue keys (sorted sets used as work queues)
 const PfxTopic = "tp:"  // Topic prefix within ZSet
+const PfxEvent = "ev:"  // Event prefix within ZSet
 
 // Bulk lookup hash keys ([]byte)
 var KeySatoshis = []byte("h:sats")  // field: outpoint, value: satoshis
@@ -43,8 +44,8 @@ var KeySpends   = []byte("h:spnd")  // field: outpoint, value: spend txid
 var KeyProgress = []byte("h:prog")  // field: subscription/owner, value: height
 
 // Key builders
-func KeyEvent(event string) []byte              // z:{event}
-func KeyEventSpent(event string) []byte         // z:{event}:spnd
+func KeyEvent(event string) []byte              // z:ev:{event}
+func KeyEventSpent(event string) []byte         // z:ev:{event}:spnd
 func KeyTopicOutputs(topic string) []byte       // z:tp:{topic}
 func KeyTopicTxs(topic string) []byte           // z:tp:{topic}:tx
 func KeyLog(logName string) []byte              // z:{logName}
@@ -108,28 +109,28 @@ Event keys index outputs by various criteria for efficient lookups.
 
 | Key Pattern | Member Type | Score | Purpose |
 |-------------|-------------|-------|---------|
-| `z:{event}` | **binary** outpoint (36 bytes) | HeightScore | Event index |
-| `z:{event}:spnd` | **binary** outpoint (36 bytes) | HeightScore | Spent event index |
+| `z:ev:{event}` | **binary** outpoint (36 bytes) | HeightScore | Event index |
+| `z:ev:{event}:spnd` | **binary** outpoint (36 bytes) | HeightScore | Spent event index |
 | `z:tp:{topic}` | **binary** outpoint (36 bytes) | HeightScore | Topic outputs |
 | `z:tp:{topic}:tx` | **binary** txid (32 bytes) | HeightScore | Applied transactions |
 | `z:merkle:{topic}:{state}` | **binary** outpoint (36 bytes) | HeightScore | Merkle state index |
 
 ### Common Event Patterns
 
-Events are stored within `z:{event}` keys:
+Events are stored within `z:ev:{event}` keys:
 
-| Event Pattern | Example | Purpose |
-|---------------|---------|---------|
-| `own:{address}` | `own:1A1zP1...` | Owner/address index |
-| `txid:{txidHex}` | `txid:abc123...` | Transaction outputs |
-| `id:{tokenId}` | `id:abc123...i0` | BSV21 token by ID |
-| `sym:{symbol}` | `sym:PEPE` | BSV21 token by symbol |
-| `p2pkh:{addr}:{tokenId}` | `p2pkh:1A1z...:abc...i0` | P2PKH token holder |
-| `cos:{addr}:{tokenId}` | `cos:1A1z...:abc...i0` | Cosigner token holder |
-| `ltm:{tokenId}` | `ltm:abc123...i0` | LTM tokens |
-| `pow20:{tokenId}` | `pow20:abc123...i0` | POW20 tokens |
-| `list:{tokenId}` | `list:abc123...i0` | Listed tokens |
-| `list:{addr}:{tokenId}` | `list:1A1z...:abc...i0` | Listed by seller |
+| Event Pattern | Full Key Example | Purpose |
+|---------------|------------------|---------|
+| `own:{address}` | `z:ev:own:1A1zP1...` | Owner/address index |
+| `txid:{txidHex}` | `z:ev:txid:abc123...` | Transaction outputs |
+| `id:{tokenId}` | `z:ev:id:abc123...i0` | BSV21 token by ID |
+| `sym:{symbol}` | `z:ev:sym:PEPE` | BSV21 token by symbol |
+| `p2pkh:{addr}:{tokenId}` | `z:ev:p2pkh:1A1z...:abc...i0` | P2PKH token holder |
+| `cos:{addr}:{tokenId}` | `z:ev:cos:1A1z...:abc...i0` | Cosigner token holder |
+| `ltm:{tokenId}` | `z:ev:ltm:abc123...i0` | LTM tokens |
+| `pow20:{tokenId}` | `z:ev:pow20:abc123...i0` | POW20 tokens |
+| `list:{tokenId}` | `z:ev:list:abc123...i0` | Listed tokens |
+| `list:{addr}:{tokenId}` | `z:ev:list:1A1z...:abc...i0` | Listed by seller |
 
 ---
 
