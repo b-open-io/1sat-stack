@@ -13,17 +13,10 @@ import (
 	"github.com/bsv-blockchain/go-sdk/transaction"
 )
 
-// Key prefixes
-const (
-	pfxHash = "h:"  // Hash keys
-	pfxZSet = "z:"  // Sorted set keys
-	pfxTopic = "tp:" // Topic prefix within ZSet
-)
-
 // Bulk lookup hash keys
 var (
-	hashSats = []byte(pfxHash + "sats") // h:sats → {outpoint:36} → satoshis (uint64)
-	hashSpnd = []byte(pfxHash + "spnd") // h:spnd → {outpoint:36} → spend txid (32 bytes)
+	hashSats = []byte(PfxHash + "sats") // h:sats → {outpoint:36} → satoshis (uint64)
+	hashSpnd = []byte(PfxHash + "spnd") // h:spnd → {outpoint:36} → spend txid (32 bytes)
 )
 
 // Hash field prefixes (within h:{outpoint})
@@ -34,54 +27,6 @@ const (
 	fldDeps   = "dp:" // prefix for dp:{topic} - ancillary txids
 	fldInputs = "in:" // prefix for in:{topic} - inputs consumed
 )
-
-// === Key Builders (binary) ===
-
-// outpointBytes converts an outpoint to 36 bytes
-func outpointBytes(op *transaction.Outpoint) []byte {
-	return op.Bytes()
-}
-
-// keyOutHash builds the hash key for an outpoint: h:{outpoint:36}
-func keyOutHash(op *transaction.Outpoint) []byte {
-	key := make([]byte, 2+36) // "h:" + 36 byte outpoint
-	copy(key, pfxHash)
-	copy(key[2:], outpointBytes(op))
-	return key
-}
-
-// keyTxidPrefix builds prefix for scanning all outputs of a txid: h:{txid:32}
-func keyTxidPrefix(txid *chainhash.Hash) []byte {
-	key := make([]byte, 2+32) // "h:" + 32 byte txid
-	copy(key, pfxHash)
-	copy(key[2:], txid[:])
-	return key
-}
-
-// keyEvent builds ZSet key for an event: z:{event}
-func keyEvent(event string) []byte {
-	return []byte(pfxZSet + event)
-}
-
-// keyEventSpnd builds ZSet key for spent event: z:{event}:spnd
-func keyEventSpnd(event string) []byte {
-	return []byte(pfxZSet + event + ":spnd")
-}
-
-// keyTopicOut builds ZSet key for topic outputs: z:tp:{topic}
-func keyTopicOut(topic string) []byte {
-	return []byte(pfxZSet + pfxTopic + topic)
-}
-
-// keyTopicTx builds ZSet key for topic applied txids: z:tp:{topic}:tx
-func keyTopicTx(topic string) []byte {
-	return []byte(pfxZSet + pfxTopic + topic + ":tx")
-}
-
-// keyPeerInteraction builds hash key for peer interactions: h:pi:{topic}
-func keyPeerInteraction(topic string) []byte {
-	return []byte(pfxHash + "pi:" + topic)
-}
 
 // === OutputStore ===
 
@@ -108,8 +53,8 @@ func NewOutputStore(s store.Store, ps pubsub.PubSub, beefStore *beef.Storage) *O
 // SaveOutput saves a single output with its events and data (indexer flow)
 func (s *OutputStore) SaveOutput(ctx context.Context, output *IndexedOutput, satoshis uint64, score float64) error {
 	op := &output.Outpoint
-	opBytes := outpointBytes(op)
-	hashKey := keyOutHash(op)
+	opBytes := op.Bytes()
+	hashKey := KeyOutHash(op)
 
 	// Build events list - include txid event and owner events
 	events := make([]string, 0, len(output.Events)+len(output.Owners)+1)
@@ -164,7 +109,7 @@ func (s *OutputStore) SaveOutput(ctx context.Context, output *IndexedOutput, sat
 
 	// Add to sorted sets for each event
 	for _, event := range events {
-		if err := s.Store.ZAdd(ctx, keyEvent(event), store.ScoredMember{
+		if err := s.Store.ZAdd(ctx, KeyEvent(event), store.ScoredMember{
 			Member: opBytes,
 			Score:  score,
 		}); err != nil {
@@ -186,8 +131,8 @@ func (s *OutputStore) SaveOutput(ctx context.Context, output *IndexedOutput, sat
 // SaveEvents saves events and data for an outpoint (lookup service flow)
 // Uses timestamp-based scoring (time.Now().UnixNano() passed as score)
 func (s *OutputStore) SaveEvents(ctx context.Context, op *transaction.Outpoint, events []string, data map[string]any, score float64) error {
-	opBytes := outpointBytes(op)
-	hashKey := keyOutHash(op)
+	opBytes := op.Bytes()
+	hashKey := KeyOutHash(op)
 
 	// Store events in hash
 	if len(events) > 0 {
@@ -215,7 +160,7 @@ func (s *OutputStore) SaveEvents(ctx context.Context, op *transaction.Outpoint, 
 
 	// Add to sorted sets for each event
 	for _, event := range events {
-		if err := s.Store.ZAdd(ctx, keyEvent(event), store.ScoredMember{
+		if err := s.Store.ZAdd(ctx, KeyEvent(event), store.ScoredMember{
 			Member: opBytes,
 			Score:  score,
 		}); err != nil {
@@ -246,7 +191,7 @@ func (s *OutputStore) SaveDeps(ctx context.Context, op *transaction.Outpoint, to
 		copy(data[i*32:], txid[:])
 	}
 
-	return s.Store.HSet(ctx, keyOutHash(op), []byte(fldDeps+topic), data)
+	return s.Store.HSet(ctx, KeyOutHash(op), []byte(fldDeps+topic), data)
 }
 
 // SaveInputsConsumed saves the inputs consumed by this output for a topic
@@ -258,17 +203,17 @@ func (s *OutputStore) SaveInputsConsumed(ctx context.Context, op *transaction.Ou
 	// Store as concatenated 36-byte outpoints
 	data := make([]byte, 36*len(inputs))
 	for i, input := range inputs {
-		copy(data[i*36:], outpointBytes(input))
+		copy(data[i*36:], input.Bytes())
 	}
 
-	return s.Store.HSet(ctx, keyOutHash(op), []byte(fldInputs+topic), data)
+	return s.Store.HSet(ctx, KeyOutHash(op), []byte(fldInputs+topic), data)
 }
 
 // === Spend Operations ===
 
 // SaveSpend marks an output as spent and updates spent indexes
 func (s *OutputStore) SaveSpend(ctx context.Context, op *transaction.Outpoint, spendTxid *chainhash.Hash, score float64) error {
-	opBytes := outpointBytes(op)
+	opBytes := op.Bytes()
 
 	// Store spend txid in bulk lookup hash
 	if err := s.Store.HSet(ctx, hashSpnd, opBytes, spendTxid[:]); err != nil {
@@ -276,7 +221,7 @@ func (s *OutputStore) SaveSpend(ctx context.Context, op *transaction.Outpoint, s
 	}
 
 	// Get events for this output to update spent indexes
-	eventsBytes, err := s.Store.HGet(ctx, keyOutHash(op), []byte(fldEvent))
+	eventsBytes, err := s.Store.HGet(ctx, KeyOutHash(op), []byte(fldEvent))
 	if err != nil && err != store.ErrKeyNotFound {
 		return err
 	}
@@ -287,7 +232,7 @@ func (s *OutputStore) SaveSpend(ctx context.Context, op *transaction.Outpoint, s
 			return fmt.Errorf("failed to unmarshal events for %s: %w", op.String(), err)
 		}
 		for _, event := range events {
-			if err := s.Store.ZAdd(ctx, keyEventSpnd(event), store.ScoredMember{
+			if err := s.Store.ZAdd(ctx, KeyEventSpent(event), store.ScoredMember{
 				Member: opBytes,
 				Score:  score,
 			}); err != nil {
@@ -301,7 +246,7 @@ func (s *OutputStore) SaveSpend(ctx context.Context, op *transaction.Outpoint, s
 
 // GetSpend returns the spending txid for an outpoint (nil if unspent)
 func (s *OutputStore) GetSpend(ctx context.Context, op *transaction.Outpoint) (*chainhash.Hash, error) {
-	spendBytes, err := s.Store.HGet(ctx, hashSpnd, outpointBytes(op))
+	spendBytes, err := s.Store.HGet(ctx, hashSpnd, op.Bytes())
 	if err == store.ErrKeyNotFound {
 		return nil, nil
 	}
@@ -328,7 +273,7 @@ func (s *OutputStore) GetSpends(ctx context.Context, ops []*transaction.Outpoint
 		if op == nil {
 			continue
 		}
-		fields[i] = outpointBytes(op)
+		fields[i] = op.Bytes()
 	}
 
 	values, err := s.Store.HMGet(ctx, hashSpnd, fields...)
@@ -356,7 +301,7 @@ func (s *OutputStore) IsSpent(ctx context.Context, op *transaction.Outpoint) (bo
 
 // GetSats returns satoshi value for an outpoint
 func (s *OutputStore) GetSats(ctx context.Context, op *transaction.Outpoint) (uint64, error) {
-	value, err := s.Store.HGet(ctx, hashSats, outpointBytes(op))
+	value, err := s.Store.HGet(ctx, hashSats, op.Bytes())
 	if err == store.ErrKeyNotFound {
 		return 0, nil
 	}
@@ -377,7 +322,7 @@ func (s *OutputStore) GetSatsBulk(ctx context.Context, ops []*transaction.Outpoi
 
 	fields := make([][]byte, len(ops))
 	for i, op := range ops {
-		fields[i] = outpointBytes(op)
+		fields[i] = op.Bytes()
 	}
 
 	values, err := s.Store.HMGet(ctx, hashSats, fields...)
@@ -402,7 +347,7 @@ func (s *OutputStore) Search(ctx context.Context, cfg *OutputSearchCfg) ([]store
 	prefixedCfg := cfg.SearchCfg
 	prefixedCfg.Keys = make([][]byte, len(cfg.Keys))
 	for i, k := range cfg.Keys {
-		prefixedCfg.Keys[i] = keyEvent(string(k))
+		prefixedCfg.Keys[i] = KeyEvent(string(k))
 	}
 
 	results, err := s.Store.Search(ctx, &prefixedCfg)
@@ -493,7 +438,7 @@ func (s *OutputStore) LoadOutput(ctx context.Context, op *transaction.Outpoint, 
 // LoadOutputsByTxid loads all outputs for a transaction using prefix scan
 func (s *OutputStore) LoadOutputsByTxid(ctx context.Context, txid *chainhash.Hash, cfg *OutputSearchCfg) ([]*IndexedOutput, error) {
 	// Scan for all h:{txid}* keys
-	results, err := s.Store.Scan(ctx, keyTxidPrefix(txid), 0)
+	results, err := s.Store.Scan(ctx, KeyTxidPrefix(txid), 0)
 	if err != nil {
 		return nil, err
 	}
@@ -535,7 +480,7 @@ func (s *OutputStore) loadOutputs(ctx context.Context, ops []*transaction.Outpoi
 			continue
 		}
 
-		hashKey := keyOutHash(op)
+		hashKey := KeyOutHash(op)
 
 		// Get all hash fields for this output
 		fields, err := s.Store.HGetAll(ctx, hashKey)
@@ -599,7 +544,7 @@ func (s *OutputStore) loadOutputs(ctx context.Context, ops []*transaction.Outpoi
 
 // GetEvents returns all events for an outpoint
 func (s *OutputStore) GetEvents(ctx context.Context, op *transaction.Outpoint) ([]string, error) {
-	eventsBytes, err := s.Store.HGet(ctx, keyOutHash(op), []byte(fldEvent))
+	eventsBytes, err := s.Store.HGet(ctx, KeyOutHash(op), []byte(fldEvent))
 	if err == store.ErrKeyNotFound {
 		return nil, nil
 	}
@@ -616,7 +561,7 @@ func (s *OutputStore) GetEvents(ctx context.Context, op *transaction.Outpoint) (
 
 // GetDeps returns dependency txids for an output in a specific topic
 func (s *OutputStore) GetDeps(ctx context.Context, op *transaction.Outpoint, topic string) ([]*chainhash.Hash, error) {
-	data, err := s.Store.HGet(ctx, keyOutHash(op), []byte(fldDeps+topic))
+	data, err := s.Store.HGet(ctx, KeyOutHash(op), []byte(fldDeps+topic))
 	if err == store.ErrKeyNotFound {
 		return nil, nil
 	}
@@ -638,7 +583,7 @@ func (s *OutputStore) GetDeps(ctx context.Context, op *transaction.Outpoint, top
 
 // GetInputsConsumed returns the inputs consumed by this output for a topic
 func (s *OutputStore) GetInputsConsumed(ctx context.Context, op *transaction.Outpoint, topic string) ([]*transaction.Outpoint, error) {
-	data, err := s.Store.HGet(ctx, keyOutHash(op), []byte(fldInputs+topic))
+	data, err := s.Store.HGet(ctx, KeyOutHash(op), []byte(fldInputs+topic))
 	if err == store.ErrKeyNotFound {
 		return nil, nil
 	}
@@ -655,36 +600,6 @@ func (s *OutputStore) GetInputsConsumed(ctx context.Context, op *transaction.Out
 		inputs[i] = transaction.NewOutpointFromBytes(data[i*36 : (i+1)*36])
 	}
 	return inputs, nil
-}
-
-// === Topic Operations ===
-
-// AddToTopic adds an output to a topic sorted set
-func (s *OutputStore) AddToTopic(ctx context.Context, op *transaction.Outpoint, topic string, score float64) error {
-	return s.Store.ZAdd(ctx, keyTopicOut(topic), store.ScoredMember{
-		Member: outpointBytes(op),
-		Score:  score,
-	})
-}
-
-// AddTxToTopic adds a txid to a topic's applied transactions
-func (s *OutputStore) AddTxToTopic(ctx context.Context, txid *chainhash.Hash, topic string, score float64) error {
-	return s.Store.ZAdd(ctx, keyTopicTx(topic), store.ScoredMember{
-		Member: txid[:],
-		Score:  score,
-	})
-}
-
-// IsTxInTopic checks if a txid is in a topic's applied transactions
-func (s *OutputStore) IsTxInTopic(ctx context.Context, txid *chainhash.Hash, topic string) (bool, error) {
-	_, err := s.Store.ZScore(ctx, keyTopicTx(topic), txid[:])
-	if err == store.ErrKeyNotFound {
-		return false, nil
-	}
-	if err != nil {
-		return false, err
-	}
-	return true, nil
 }
 
 // === Rollback ===
@@ -709,7 +624,7 @@ func (s *OutputStore) Rollback(ctx context.Context, txid *chainhash.Hash) error 
 		if output == nil {
 			continue
 		}
-		hashKey := keyOutHash(&output.Outpoint)
+		hashKey := KeyOutHash(&output.Outpoint)
 		fields, err := s.Store.HGetAll(ctx, hashKey)
 		if err != nil {
 			return fmt.Errorf("failed to get fields for %s: %w", output.Outpoint.String(), err)
@@ -745,7 +660,7 @@ func (s *OutputStore) Rollback(ctx context.Context, txid *chainhash.Hash) error 
 	// 2. Un-spend the inputs this transaction consumed
 	for _, input := range inputsToUnspend {
 		// Remove spend marker
-		if err := s.Store.HDel(ctx, hashSpnd, outpointBytes(input)); err != nil {
+		if err := s.Store.HDel(ctx, hashSpnd, input.Bytes()); err != nil {
 			return fmt.Errorf("failed to un-spend %s: %w", input.String(), err)
 		}
 		// Remove from spent event indices
@@ -754,7 +669,7 @@ func (s *OutputStore) Rollback(ctx context.Context, txid *chainhash.Hash) error 
 			return fmt.Errorf("failed to get events for input %s: %w", input.String(), err)
 		}
 		for _, event := range events {
-			if err := s.Store.ZRem(ctx, keyEventSpnd(event), outpointBytes(input)); err != nil {
+			if err := s.Store.ZRem(ctx, KeyEventSpent(event), input.Bytes()); err != nil {
 				return fmt.Errorf("failed to remove from spent index %s: %w", event, err)
 			}
 		}
@@ -767,8 +682,8 @@ func (s *OutputStore) Rollback(ctx context.Context, txid *chainhash.Hash) error 
 		}
 
 		op := &output.Outpoint
-		opBytes := outpointBytes(op)
-		hashKey := keyOutHash(op)
+		opBytes := op.Bytes()
+		hashKey := KeyOutHash(op)
 
 		// 3. Delete event index entries
 		events, err := s.GetEvents(ctx, op)
@@ -776,10 +691,10 @@ func (s *OutputStore) Rollback(ctx context.Context, txid *chainhash.Hash) error 
 			return fmt.Errorf("failed to get events for %s: %w", op.String(), err)
 		}
 		for _, event := range events {
-			if err := s.Store.ZRem(ctx, keyEvent(event), opBytes); err != nil {
+			if err := s.Store.ZRem(ctx, KeyEvent(event), opBytes); err != nil {
 				return fmt.Errorf("failed to remove event %s: %w", event, err)
 			}
-			if err := s.Store.ZRem(ctx, keyEventSpnd(event), opBytes); err != nil {
+			if err := s.Store.ZRem(ctx, KeyEventSpent(event), opBytes); err != nil {
 				return fmt.Errorf("failed to remove event spend %s: %w", event, err)
 			}
 		}
@@ -811,7 +726,7 @@ func (s *OutputStore) Rollback(ctx context.Context, txid *chainhash.Hash) error 
 
 // Log adds a member to a sorted set with score
 func (s *OutputStore) Log(ctx context.Context, key string, member []byte, score float64) error {
-	return s.Store.ZAdd(ctx, keyEvent(key), store.ScoredMember{
+	return s.Store.ZAdd(ctx, KeyEvent(key), store.ScoredMember{
 		Member: member,
 		Score:  score,
 	})
@@ -819,5 +734,5 @@ func (s *OutputStore) Log(ctx context.Context, key string, member []byte, score 
 
 // LogScore returns the score for a member in a sorted set
 func (s *OutputStore) LogScore(ctx context.Context, key string, member []byte) (float64, error) {
-	return s.Store.ZScore(ctx, keyEvent(key), member)
+	return s.Store.ZScore(ctx, KeyEvent(key), member)
 }

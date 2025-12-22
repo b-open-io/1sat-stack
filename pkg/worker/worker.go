@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/b-open-io/1sat-stack/pkg/store"
+	"github.com/b-open-io/1sat-stack/pkg/types"
 )
 
 // Handler processes a single work item. Returns error if processing fails.
@@ -133,8 +134,8 @@ func (w *Worker) Start(ctx context.Context) error {
 			)
 
 		default:
-			// Fetch items up to current time
-			to := float64(time.Now().UnixNano())
+			// Fetch items up to current time using HeightScore scale
+			to := types.HeightScore(0, 0)
 			items, err := w.store.Search(ctx, &store.SearchCfg{
 				Keys:  [][]byte{[]byte(w.key)},
 				Limit: w.pageSize,
@@ -216,7 +217,8 @@ func (w *Worker) ProcessOnce(ctx context.Context) error {
 	var wg sync.WaitGroup
 
 	for {
-		to := float64(time.Now().UnixNano())
+		// Fetch items up to current time using HeightScore scale
+		to := types.HeightScore(0, 0)
 		items, err := w.store.Search(ctx, &store.SearchCfg{
 			Keys:  [][]byte{[]byte(w.key)},
 			Limit: w.pageSize,

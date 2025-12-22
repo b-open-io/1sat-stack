@@ -3,10 +3,10 @@ package lookup
 import (
 	"context"
 	"log/slog"
-	"time"
 
 	"github.com/b-open-io/1sat-stack/pkg/parse"
 	"github.com/b-open-io/1sat-stack/pkg/txo"
+	"github.com/b-open-io/1sat-stack/pkg/types"
 	"github.com/bsv-blockchain/go-overlay-services/pkg/core/engine"
 	"github.com/bsv-blockchain/go-sdk/chainhash"
 	"github.com/bsv-blockchain/go-sdk/overlay"
@@ -100,24 +100,8 @@ func (l *OneSatLookup) OutputAdmittedByTopic(ctx context.Context, payload *engin
 		}
 	}
 
-	// Calculate score from block height + block index if available, otherwise use timestamp
-	var score float64
-	if tx.MerklePath != nil && len(tx.MerklePath.Path) > 0 {
-		// Find the tx's position (offset) in the block from the merkle path leaf
-		var blockIdx uint64
-		for _, leaf := range tx.MerklePath.Path[0] {
-			if leaf.Hash != nil && leaf.Hash.Equal(*txid) {
-				blockIdx = leaf.Offset
-				break
-			}
-		}
-		// Score = blockHeight.blockIdx (block index as decimal fraction)
-		// This ensures proper ordering: by block first, then by position within block
-		score = float64(tx.MerklePath.BlockHeight) + float64(blockIdx)/1e9
-	} else {
-		// Fallback to timestamp for unconfirmed transactions
-		score = float64(time.Now().UnixNano())
-	}
+	// Extract score from transaction (block height if confirmed, timestamp if not)
+	score := types.ScoreFromTx(tx, txid)
 
 	if err := l.storage.SaveEvents(ctx, outpoint, allEvents, data, score); err != nil {
 		l.logger.Error("failed to save events",

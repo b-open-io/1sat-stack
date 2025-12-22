@@ -1,20 +1,20 @@
 package jbsync
 
-const (
-	// PfxQueue is the prefix for queue sorted sets
-	PfxQueue = "q:"
+import "github.com/b-open-io/1sat-stack/pkg/txo"
 
-	// KeyProgress is the hash key for sync progress tracking
-	// Fields are subscription IDs or addresses, values are last synced block heights
-	KeyProgress = "sync:progress"
+// Re-export key builders from txo for convenience
+var (
+	KeyProgress   = txo.KeyProgress
+	KeyQueue      = txo.KeyQueue
+	KeyTokenQueue = txo.KeyTokenQueue
 )
 
-// QueueKey returns the queue key for a subscription or queue name
+// QueueKey returns the queue key for a subscription or queue name (string version)
 func QueueKey(queueName string) string {
-	return PfxQueue + queueName
+	return string(txo.KeyQueue(queueName))
 }
 
-// TokenQueueKey returns the queue key for a token-specific queue
+// TokenQueueKey returns the queue key for a token-specific queue (string version)
 func TokenQueueKey(tokenId string) string {
-	return PfxQueue + "tok:" + tokenId
+	return string(txo.KeyTokenQueue(tokenId))
 }

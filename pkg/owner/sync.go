@@ -2,7 +2,7 @@ package owner
 
 import (
 	"context"
-	"errors"
+	"encoding/binary"
 	"fmt"
 	"log/slog"
 	"sync"
@@ -15,11 +15,6 @@ import (
 	"github.com/bsv-blockchain/go-overlay-services/pkg/core/engine"
 	"github.com/bsv-blockchain/go-sdk/chainhash"
 	sdkoverlay "github.com/bsv-blockchain/go-sdk/overlay"
-)
-
-const (
-	// OwnerSyncKey is the key used to track owner sync progress
-	OwnerSyncKey = "own:sync"
 )
 
 // OwnerSync handles syncing transactions for owners from JungleBus
@@ -65,8 +60,10 @@ func (s *OwnerSync) Sync(ctx context.Context, owner string) error {
 	s.logger.Debug("OwnerSync starting", "owner", owner)
 
 	// Get last synced height (0 if not found)
-	lastHeight, err := s.outputStore.LogScore(ctx, OwnerSyncKey, []byte(owner))
-	if err != nil && !errors.Is(err, store.ErrKeyNotFound) {
+	var lastHeight float64
+	if progressBytes, err := s.outputStore.Store.HGet(ctx, txo.KeyProgress, []byte(owner)); err == nil && len(progressBytes) == 4 {
+		lastHeight = float64(binary.BigEndian.Uint32(progressBytes))
+	} else if err != nil && err != store.ErrKeyNotFound {
 		s.logger.Error("OwnerSync: failed to get last height", "owner", owner, "error", err)
 		return err
 	}
@@ -144,7 +141,9 @@ func (s *OwnerSync) Sync(ctx context.Context, owner string) error {
 	}
 
 	// Update sync progress
-	if err := s.outputStore.Log(ctx, OwnerSyncKey, []byte(owner), newMaxHeight); err != nil {
+	progressBytes := make([]byte, 4)
+	binary.BigEndian.PutUint32(progressBytes, uint32(newMaxHeight))
+	if err := s.outputStore.Store.HSet(ctx, txo.KeyProgress, []byte(owner), progressBytes); err != nil {
 		return err
 	}
 

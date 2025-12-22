@@ -162,25 +162,6 @@ definitions:
       token_id:
         type: string
     type: object
-  github_com_b-open-io_1sat-stack_pkg_indexer.IndexContext:
-    properties:
-      height:
-        type: integer
-      idx:
-        type: integer
-      outputs:
-        items:
-          $ref: '#/definitions/github_com_b-open-io_1sat-stack_pkg_txo.IndexedOutput'
-        type: array
-      score:
-        type: number
-      spends:
-        items:
-          $ref: '#/definitions/github_com_b-open-io_1sat-stack_pkg_txo.IndexedOutput'
-        type: array
-      txid:
-        type: string
-    type: object
   github_com_b-open-io_1sat-stack_pkg_ordfs.Response:
     properties:
       content:
@@ -199,10 +180,6 @@ definitions:
         $ref: '#/definitions/transaction.Outpoint'
       outpoint:
         $ref: '#/definitions/transaction.Outpoint'
-      output:
-        items:
-          type: integer
-        type: array
       parent:
         $ref: '#/definitions/transaction.Outpoint'
       sequence:
@@ -437,25 +414,6 @@ definitions:
       txid:
         type: string
     type: object
-  pkg_indexer.IndexContext:
-    properties:
-      height:
-        type: integer
-      idx:
-        type: integer
-      outputs:
-        items:
-          $ref: '#/definitions/github_com_b-open-io_1sat-stack_pkg_txo.IndexedOutput'
-        type: array
-      score:
-        type: number
-      spends:
-        items:
-          $ref: '#/definitions/github_com_b-open-io_1sat-stack_pkg_txo.IndexedOutput'
-        type: array
-      txid:
-        type: string
-    type: object
   pkg_ordfs.Response:
     properties:
       content:
@@ -474,10 +432,6 @@ definitions:
         $ref: '#/definitions/transaction.Outpoint'
       outpoint:
         $ref: '#/definitions/transaction.Outpoint'
-      output:
-        items:
-          type: integer
-        type: array
       parent:
         $ref: '#/definitions/transaction.Outpoint'
       sequence:
@@ -997,7 +951,7 @@ paths:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/pkg_bsv21.TokenResponse'
+            $ref: '#/definitions/github_com_b-open-io_1sat-stack_pkg_bsv21.TokenResponse'
       summary: Get BSV21 token details
       tags:
       - bsv21
@@ -1025,7 +979,7 @@ paths:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/pkg_bsv21.BalanceResponse'
+            $ref: '#/definitions/github_com_b-open-io_1sat-stack_pkg_bsv21.BalanceResponse'
       summary: Get address token balance
       tags:
       - bsv21
@@ -1118,7 +1072,7 @@ paths:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/pkg_bsv21.BalanceResponse'
+            $ref: '#/definitions/github_com_b-open-io_1sat-stack_pkg_bsv21.BalanceResponse'
       summary: Get multi-address token balance
       tags:
       - bsv21
@@ -1220,58 +1174,6 @@ paths:
       summary: Get transaction details
       tags:
       - bsv21
-  /api/indexer/parse:
-    post:
-      consumes:
-      - application/octet-stream
-      description: Parses a transaction from raw bytes and returns the indexed context
-        without saving
-      parameters:
-      - description: Raw transaction bytes
-        in: body
-        name: tx
-        required: true
-        schema:
-          items:
-            type: integer
-          type: array
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            $ref: '#/definitions/pkg_indexer.IndexContext'
-        "400":
-          description: Bad Request
-          schema:
-            additionalProperties:
-              type: string
-            type: object
-        "500":
-          description: Internal Server Error
-          schema:
-            additionalProperties:
-              type: string
-            type: object
-      summary: Parse a transaction from raw bytes
-      tags:
-      - indexer
-  /api/indexer/tags:
-    get:
-      description: Returns the list of tags from all registered indexers
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            items:
-              type: string
-            type: array
-      summary: Get available indexer tags
-      tags:
-      - indexer
   /api/ordfs/metadata/{path}:
     get:
       description: Get metadata about inscription content without downloading the
@@ -1288,7 +1190,7 @@ paths:
         "200":
           description: Metadata
           schema:
-            $ref: '#/definitions/github_com_b-open-io_1sat-stack_pkg_ordfs.Response'
+            $ref: '#/definitions/pkg_ordfs.Response'
         "400":
           description: Bad request
           schema:
@@ -1653,7 +1555,7 @@ paths:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/pkg_bsv21.BlockResponse'
+            $ref: '#/definitions/github_com_b-open-io_1sat-stack_pkg_bsv21.BlockResponse'
       summary: Get block data for a token
       tags:
       - bsv21
@@ -1865,84 +1767,6 @@ paths:
       summary: Health check
       tags:
       - arcade
-  /indexer/ingest/{txid}:
-    post:
-      consumes:
-      - application/json
-      description: Ingests a transaction by txid, parsing and saving to the store
-      parameters:
-      - description: Transaction ID
-        in: path
-        name: txid
-        required: true
-        type: string
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            $ref: '#/definitions/pkg_indexer.IndexContext'
-        "400":
-          description: Bad Request
-          schema:
-            additionalProperties:
-              type: string
-            type: object
-        "404":
-          description: Not Found
-          schema:
-            additionalProperties:
-              type: string
-            type: object
-        "500":
-          description: Internal Server Error
-          schema:
-            additionalProperties:
-              type: string
-            type: object
-      summary: Ingest a transaction by txid
-      tags:
-      - indexer
-  /indexer/parse/{txid}:
-    get:
-      consumes:
-      - application/json
-      description: Parses a transaction and returns the indexed context without saving
-      parameters:
-      - description: Transaction ID
-        in: path
-        name: txid
-        required: true
-        type: string
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            $ref: '#/definitions/pkg_indexer.IndexContext'
-        "400":
-          description: Bad Request
-          schema:
-            additionalProperties:
-              type: string
-            type: object
-        "404":
-          description: Not Found
-          schema:
-            additionalProperties:
-              type: string
-            type: object
-        "500":
-          description: Internal Server Error
-          schema:
-            additionalProperties:
-              type: string
-            type: object
-      summary: Parse a transaction by txid
-      tags:
-      - indexer
   /overlay/admin/startGASPSync:
     post:
       description: Start GASP synchronization (requires admin bearer token)
@@ -2253,7 +2077,7 @@ paths:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/github_com_b-open-io_1sat-stack_pkg_owner.BalanceResponse'
+            $ref: '#/definitions/pkg_owner.BalanceResponse'
         "500":
           description: Internal server error
           schema:

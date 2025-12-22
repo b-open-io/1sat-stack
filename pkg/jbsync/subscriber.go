@@ -2,13 +2,16 @@ package jbsync
 
 import (
 	"context"
+	"encoding/binary"
 	"log/slog"
 
 	"github.com/b-open-io/1sat-stack/pkg/store"
+	"github.com/b-open-io/1sat-stack/pkg/txo"
 	"github.com/b-open-io/1sat-stack/pkg/types"
 	"github.com/b-open-io/go-junglebus"
 	"github.com/b-open-io/go-junglebus/models"
 	"github.com/bsv-blockchain/go-chaintracks/chaintracks"
+	"github.com/bsv-blockchain/go-sdk/chainhash"
 )
 
 // Subscriber manages a JungleBus subscription and writes transactions to a queue
@@ -49,8 +52,8 @@ func (s *Subscriber) Start(ctx context.Context) error {
 
 	// Check for existing progress
 	startBlock := s.config.FromBlock
-	if progress, err := s.store.ZScore(ctx, []byte(KeyProgress), []byte(s.config.SubscriptionID)); err == nil && progress > 0 {
-		startBlock = uint64(progress)
+	if progressBytes, err := s.store.HGet(ctx, txo.KeyProgress, []byte(s.config.SubscriptionID)); err == nil && len(progressBytes) == 4 {
+		startBlock = uint64(binary.BigEndian.Uint32(progressBytes))
 		s.logger.Info("resuming subscription", "from_block", startBlock)
 	}
 
@@ -88,12 +91,19 @@ func (s *Subscriber) Start(ctx context.Context) error {
 				"block_index", txn.BlockIndex,
 				"txid", txn.Id)
 
+			// Parse txid to binary hash
+			txid, err := chainhash.NewHashFromHex(txn.Id)
+			if err != nil {
+				s.logger.Error("failed to parse txid", "error", err, "txid", txn.Id)
+				return
+			}
+
 			// Calculate score using unified HeightScore
 			score := types.HeightScore(txn.BlockHeight, txn.BlockIndex)
 
-			// Add to batch
+			// Add to batch (binary 32-byte txid)
 			batchMembers = append(batchMembers, store.ScoredMember{
-				Member: []byte(txn.Id),
+				Member: txid[:],
 				Score:  score,
 			})
 
@@ -155,10 +165,9 @@ func (s *Subscriber) Start(ctx context.Context) error {
 				}
 
 				// Update progress
-				if err := s.store.ZAdd(ctx, []byte(KeyProgress), store.ScoredMember{
-					Member: []byte(s.config.SubscriptionID),
-					Score:  float64(finalSafeHeight),
-				}); err != nil {
+				progressBytes := make([]byte, 4)
+				binary.BigEndian.PutUint32(progressBytes, finalSafeHeight)
+				if err := s.store.HSet(ctx, txo.KeyProgress, []byte(s.config.SubscriptionID), progressBytes); err != nil {
 					if ctx.Err() == nil {
 						s.logger.Error("failed to update progress", "error", err)
 						select {
@@ -187,11 +196,18 @@ func (s *Subscriber) Start(ctx context.Context) error {
 	// Add mempool handler if enabled
 	if s.config.EnableMempool {
 		handler.OnMempool = func(txn *models.TransactionResponse) {
+			// Parse txid to binary hash
+			txid, err := chainhash.NewHashFromHex(txn.Id)
+			if err != nil {
+				s.logger.Error("failed to parse mempool txid", "error", err, "txid", txn.Id)
+				return
+			}
+
 			// Mempool transactions use timestamp-based score via HeightScore(0, 0)
 			score := types.HeightScore(0, 0)
 
 			if err := s.store.ZAdd(ctx, queueKey, store.ScoredMember{
-				Member: []byte(txn.Id),
+				Member: txid[:],
 				Score:  score,
 			}); err != nil {
 				s.logger.Error("failed to add mempool tx to queue", "error", err, "txid", txn.Id)
@@ -231,9 +247,9 @@ func (s *Subscriber) Start(ctx context.Context) error {
 
 // GetProgress returns the current sync progress for this subscription
 func (s *Subscriber) GetProgress(ctx context.Context) (uint64, error) {
-	progress, err := s.store.ZScore(ctx, []byte(KeyProgress), []byte(s.config.SubscriptionID))
-	if err != nil {
+	progressBytes, err := s.store.HGet(ctx, txo.KeyProgress, []byte(s.config.SubscriptionID))
+	if err != nil || len(progressBytes) != 4 {
 		return s.config.FromBlock, nil
 	}
-	return uint64(progress), nil
+	return uint64(binary.BigEndian.Uint32(progressBytes)), nil
 }

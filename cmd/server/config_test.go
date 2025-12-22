@@ -8,7 +8,6 @@ import (
 
 	"github.com/b-open-io/1sat-stack/pkg/beef"
 	"github.com/b-open-io/1sat-stack/pkg/bsv21"
-	"github.com/b-open-io/1sat-stack/pkg/indexer"
 	"github.com/b-open-io/1sat-stack/pkg/ordfs"
 	"github.com/b-open-io/1sat-stack/pkg/overlay"
 	"github.com/b-open-io/1sat-stack/pkg/pubsub"
@@ -46,9 +45,6 @@ func TestConfigSetDefaults(t *testing.T) {
 	if v.GetString("txo.mode") != txo.ModeDisabled {
 		t.Errorf("expected txo.mode=disabled, got %s", v.GetString("txo.mode"))
 	}
-	if v.GetString("indexer.mode") != indexer.ModeDisabled {
-		t.Errorf("expected indexer.mode=disabled, got %s", v.GetString("indexer.mode"))
-	}
 	if v.GetString("bsv21.mode") != bsv21.ModeDisabled {
 		t.Errorf("expected bsv21.mode=disabled, got %s", v.GetString("bsv21.mode"))
 	}
@@ -72,7 +68,6 @@ func TestConfigInitializeDisabled(t *testing.T) {
 		PubSub:  pubsub.Config{Mode: pubsub.ModeDisabled},
 		Beef:    beef.Config{Mode: beef.ModeDisabled},
 		TXO:     txo.Config{Mode: txo.ModeDisabled},
-		Indexer: indexer.Config{Mode: indexer.ModeDisabled},
 		BSV21:   bsv21.Config{Mode: bsv21.ModeDisabled},
 		Overlay: overlay.Config{Mode: overlay.ModeDisabled},
 		ORDFS:   ordfs.Config{Enabled: false},
@@ -98,9 +93,6 @@ func TestConfigInitializeDisabled(t *testing.T) {
 	}
 	if svc.TXO != nil {
 		t.Error("expected txo to be nil when disabled")
-	}
-	if svc.Indexer != nil {
-		t.Error("expected indexer to be nil when disabled")
 	}
 	if svc.BSV21 != nil {
 		t.Error("expected bsv21 to be nil when disabled")
