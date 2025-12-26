@@ -3,25 +3,21 @@ package owner
 import (
 	"context"
 	"encoding/binary"
-	"fmt"
 	"log/slog"
 	"sync"
 
 	"github.com/b-open-io/1sat-stack/pkg/beef"
-	"github.com/b-open-io/1sat-stack/pkg/overlay"
+	"github.com/b-open-io/1sat-stack/pkg/indexer"
 	"github.com/b-open-io/1sat-stack/pkg/store"
 	"github.com/b-open-io/1sat-stack/pkg/txo"
 	"github.com/b-open-io/go-junglebus"
-	"github.com/bsv-blockchain/go-overlay-services/pkg/core/engine"
-	"github.com/bsv-blockchain/go-sdk/chainhash"
-	sdkoverlay "github.com/bsv-blockchain/go-sdk/overlay"
 )
 
 // OwnerSync handles syncing transactions for owners from JungleBus
 type OwnerSync struct {
 	jb          *junglebus.Client
 	beefStorage *beef.Storage
-	overlay     *overlay.Services
+	indexer     *indexer.IngestCtx
 	outputStore *txo.OutputStore
 	concurrency int
 	logger      *slog.Logger
@@ -31,7 +27,7 @@ type OwnerSync struct {
 func NewOwnerSync(
 	jb *junglebus.Client,
 	beefStorage *beef.Storage,
-	overlay *overlay.Services,
+	idx *indexer.IngestCtx,
 	outputStore *txo.OutputStore,
 	logger *slog.Logger,
 ) *OwnerSync {
@@ -41,7 +37,7 @@ func NewOwnerSync(
 	return &OwnerSync{
 		jb:          jb,
 		beefStorage: beefStorage,
-		overlay:     overlay,
+		indexer:     idx,
 		outputStore: outputStore,
 		concurrency: 8,
 		logger:      logger,
@@ -55,7 +51,7 @@ func (s *OwnerSync) WithConcurrency(n int) *OwnerSync {
 }
 
 // Sync syncs all transactions for an owner from JungleBus.
-// It fetches transactions starting from the last synced height and submits them to the overlay.
+// It fetches transactions starting from the last synced height and indexes them directly.
 func (s *OwnerSync) Sync(ctx context.Context, owner string) error {
 	s.logger.Debug("OwnerSync starting", "owner", owner)
 
@@ -115,8 +111,8 @@ func (s *OwnerSync) Sync(ctx context.Context, owner string) error {
 				wg.Done()
 			}()
 
-			if err := s.submitToOverlay(ctx, txid); err != nil {
-				s.logger.Error("OwnerSync: error submitting txid", "txid", txid, "error", err)
+			if _, err := s.indexer.IngestTxid(ctx, txid); err != nil {
+				s.logger.Error("OwnerSync: error ingesting txid", "txid", txid, "error", err)
 				mu.Lock()
 				if firstErr == nil {
 					firstErr = err
@@ -148,45 +144,5 @@ func (s *OwnerSync) Sync(ctx context.Context, owner string) error {
 	}
 
 	s.logger.Debug("OwnerSync complete", "owner", owner, "processed", processed, "skipped", skipped)
-	return nil
-}
-
-// submitToOverlay builds BEEF with inputs and submits to overlay
-func (s *OwnerSync) submitToOverlay(ctx context.Context, txidStr string) error {
-	if s.overlay == nil {
-		return fmt.Errorf("overlay service not configured")
-	}
-
-	txid, err := chainhash.NewHashFromHex(txidStr)
-	if err != nil {
-		return fmt.Errorf("invalid txid %s: %w", txidStr, err)
-	}
-
-	// Load transaction with all inputs populated (needed for overlay validation)
-	beefBytes, err := s.beefStorage.BuildFullBeef(ctx, txid)
-	if err != nil {
-		return fmt.Errorf("failed to build beef: %w", err)
-	}
-
-	// Submit to overlay with tm_1sat topic
-	steak, err := s.overlay.Submit(ctx, sdkoverlay.TaggedBEEF{
-		Beef:   beefBytes,
-		Topics: []string{"tm_1sat"},
-	}, engine.SubmitModeHistorical)
-	if err != nil {
-		return fmt.Errorf("failed to submit to overlay: %w", err)
-	}
-
-	// Log what was admitted
-	if steak != nil {
-		for topic, admit := range steak {
-			s.logger.Debug("overlay submit result",
-				"txid", txidStr,
-				"topic", topic,
-				"outputsAdmitted", len(admit.OutputsToAdmit),
-				"coinsRetained", len(admit.CoinsToRetain))
-		}
-	}
-
 	return nil
 }

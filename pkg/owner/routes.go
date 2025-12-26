@@ -157,7 +157,7 @@ func (r *Routes) OwnerSync(c *fiber.Ctx) error {
 		from = c.QueryFloat("from", 0)
 	}
 
-	const batchSize uint32 = 100
+	const batchSize uint32 = 10000
 
 	c.Set("Content-Type", "text/event-stream")
 	c.Set("Cache-Control", "no-cache")

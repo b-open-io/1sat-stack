@@ -5,8 +5,8 @@ import (
 	"log/slog"
 
 	"github.com/b-open-io/1sat-stack/pkg/beef"
+	"github.com/b-open-io/1sat-stack/pkg/indexer"
 	"github.com/b-open-io/1sat-stack/pkg/logging"
-	"github.com/b-open-io/1sat-stack/pkg/overlay"
 	"github.com/b-open-io/1sat-stack/pkg/txo"
 	"github.com/b-open-io/go-junglebus"
 	"github.com/spf13/viper"
@@ -54,7 +54,7 @@ type Services struct {
 type InitializeDeps struct {
 	JungleBus   *junglebus.Client
 	BeefStorage *beef.Storage
-	Overlay     *overlay.Services
+	Indexer     *indexer.IngestCtx
 	OutputStore *txo.OutputStore
 }
 
@@ -79,7 +79,7 @@ func (c *Config) Initialize(
 		Sync: NewOwnerSync(
 			deps.JungleBus,
 			deps.BeefStorage,
-			deps.Overlay,
+			deps.Indexer,
 			deps.OutputStore,
 			ownerLogger,
 		),

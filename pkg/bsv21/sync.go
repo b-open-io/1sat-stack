@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/b-open-io/1sat-stack/pkg/beef"
+	"github.com/b-open-io/1sat-stack/pkg/indexer"
 	"github.com/b-open-io/1sat-stack/pkg/jbsync"
 	"github.com/b-open-io/1sat-stack/pkg/logging"
 	"github.com/b-open-io/1sat-stack/pkg/overlay"
@@ -85,11 +86,14 @@ func NewSyncServices(
 	// Create logger with optional level override
 	syncLogger := logging.NewComponentLogger(logger, "bsv21-sync", cfg.LogLevel)
 
+	// Create indexer for owner sync
+	idx := indexer.NewIngestCtx(outputStore, beefStorage, logger)
+
 	// Create owner sync for fee address syncing
 	ownerSync := owner.NewOwnerSync(
 		jbClient,
 		beefStorage,
-		overlaySvc,
+		idx,
 		outputStore,
 		logger,
 	)
