@@ -3,6 +3,7 @@ package logging
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"os"
 	"strings"
@@ -100,5 +101,35 @@ func (h *LeveledHandler) WithGroup(name string) slog.Handler {
 	return &LeveledHandler{
 		handler: h.handler.WithGroup(name),
 		level:   h.level,
+	}
+}
+
+// BadgerLogger adapts slog.Logger to badger.Logger interface with level filtering.
+type BadgerLogger struct {
+	Logger *slog.Logger
+	Level  slog.Level
+}
+
+func (b *BadgerLogger) Errorf(format string, args ...any) {
+	if b.Level <= slog.LevelError {
+		b.Logger.Error(fmt.Sprintf(format, args...))
+	}
+}
+
+func (b *BadgerLogger) Warningf(format string, args ...any) {
+	if b.Level <= slog.LevelWarn {
+		b.Logger.Warn(fmt.Sprintf(format, args...))
+	}
+}
+
+func (b *BadgerLogger) Infof(format string, args ...any) {
+	if b.Level <= slog.LevelInfo {
+		b.Logger.Info(fmt.Sprintf(format, args...))
+	}
+}
+
+func (b *BadgerLogger) Debugf(format string, args ...any) {
+	if b.Level <= slog.LevelDebug {
+		b.Logger.Debug(fmt.Sprintf(format, args...))
 	}
 }

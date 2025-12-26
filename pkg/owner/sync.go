@@ -163,13 +163,7 @@ func (s *OwnerSync) submitToOverlay(ctx context.Context, txidStr string) error {
 	}
 
 	// Load transaction with all inputs populated (needed for overlay validation)
-	tx, err := s.beefStorage.BuildFullBeefTx(ctx, txid)
-	if err != nil {
-		return fmt.Errorf("failed to load tx %s: %w", txidStr, err)
-	}
-
-	// Build BEEF with all input transactions
-	beefBytes, err := tx.AtomicBEEF(false)
+	beefBytes, err := s.beefStorage.BuildFullBeef(ctx, txid)
 	if err != nil {
 		return fmt.Errorf("failed to build beef: %w", err)
 	}

@@ -21,12 +21,6 @@ import (
 //go:embed ui/*
 var uiFS embed.FS
 
-// Storage keys for BSV21 token management
-const (
-	KeyBSV21Whitelist = "bsv21:whitelist"
-	KeyBSV21Blacklist = "bsv21:blacklist"
-)
-
 // Routes handles admin HTTP routes
 type Routes struct {
 	overlay   *overlay.Services
@@ -112,7 +106,7 @@ func (r *Routes) Register(group fiber.Router) {
 // @Failure 500 {object} map[string]string "Internal server error"
 // @Router /admin/api/whitelist [get]
 func (r *Routes) handleGetWhitelist(c *fiber.Ctx) error {
-	members, err := r.store.SMembers(c.Context(), []byte(KeyBSV21Whitelist))
+	members, err := r.store.SMembers(c.Context(), bsv21.KeyWhitelist)
 	if err != nil {
 		r.logger.Error("failed to get whitelist", "error", err)
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
@@ -153,7 +147,7 @@ func (r *Routes) handleAddToWhitelist(c *fiber.Ctx) error {
 		})
 	}
 
-	if err := r.store.SAdd(c.Context(), []byte(KeyBSV21Whitelist), []byte(req.Topic)); err != nil {
+	if err := r.store.SAdd(c.Context(), bsv21.KeyWhitelist, []byte(req.Topic)); err != nil {
 		r.logger.Error("failed to add to whitelist", "error", err, "token", req.Topic)
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
 			"error": "failed to add to whitelist",
@@ -184,7 +178,7 @@ func (r *Routes) handleRemoveFromWhitelist(c *fiber.Ctx) error {
 		})
 	}
 
-	if err := r.store.SRem(c.Context(), []byte(KeyBSV21Whitelist), []byte(token)); err != nil {
+	if err := r.store.SRem(c.Context(), bsv21.KeyWhitelist, []byte(token)); err != nil {
 		r.logger.Error("failed to remove from whitelist", "error", err, "token", token)
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
 			"error": "failed to remove from whitelist",
@@ -207,7 +201,7 @@ func (r *Routes) handleRemoveFromWhitelist(c *fiber.Ctx) error {
 // @Failure 500 {object} map[string]string "Internal server error"
 // @Router /admin/api/blacklist [get]
 func (r *Routes) handleGetBlacklist(c *fiber.Ctx) error {
-	members, err := r.store.SMembers(c.Context(), []byte(KeyBSV21Blacklist))
+	members, err := r.store.SMembers(c.Context(), bsv21.KeyBlacklist)
 	if err != nil {
 		r.logger.Error("failed to get blacklist", "error", err)
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
@@ -248,7 +242,7 @@ func (r *Routes) handleAddToBlacklist(c *fiber.Ctx) error {
 		})
 	}
 
-	if err := r.store.SAdd(c.Context(), []byte(KeyBSV21Blacklist), []byte(req.Topic)); err != nil {
+	if err := r.store.SAdd(c.Context(), bsv21.KeyBlacklist, []byte(req.Topic)); err != nil {
 		r.logger.Error("failed to add to blacklist", "error", err, "topic", req.Topic)
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
 			"error": "failed to add to blacklist",
@@ -279,7 +273,7 @@ func (r *Routes) handleRemoveFromBlacklist(c *fiber.Ctx) error {
 		})
 	}
 
-	if err := r.store.SRem(c.Context(), []byte(KeyBSV21Blacklist), []byte(topic)); err != nil {
+	if err := r.store.SRem(c.Context(), bsv21.KeyBlacklist, []byte(topic)); err != nil {
 		r.logger.Error("failed to remove from blacklist", "error", err, "topic", topic)
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
 			"error": "failed to remove from blacklist",

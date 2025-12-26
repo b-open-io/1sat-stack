@@ -132,9 +132,53 @@ func (l *OneSatLookup) GetMetaData() *overlay.MetaData {
 
 // OutputSpent is called when a previously-admitted UTXO is spent
 func (l *OneSatLookup) OutputSpent(ctx context.Context, payload *engine.OutputSpent) error {
-	// Mark the output as spent in storage
-	// The OutputStore handles this via its spend tracking
-	return nil
+	_, tx, txid, err := transaction.ParseBeef(payload.SpendingAtomicBEEF)
+	if err != nil {
+		l.logger.Error("failed to parse spending BEEF", "error", err)
+		return err
+	}
+
+	if int(payload.InputIndex) >= len(tx.Inputs) {
+		l.logger.Debug("input index out of range", "vin", payload.InputIndex, "inputs", len(tx.Inputs))
+		return nil
+	}
+
+	input := tx.Inputs[payload.InputIndex]
+	if input.SourceTransaction == nil {
+		l.logger.Debug("source transaction not populated", "vin", payload.InputIndex)
+		return nil
+	}
+
+	if int(payload.Outpoint.Index) >= len(input.SourceTransaction.Outputs) {
+		l.logger.Debug("output index out of range in source tx", "vout", payload.Outpoint.Index)
+		return nil
+	}
+
+	spentOutput := input.SourceTransaction.Outputs[payload.Outpoint.Index]
+
+	// Parse the spent output to derive events
+	results := parse.Parse(payload.Outpoint, spentOutput.LockingScript.Bytes(), spentOutput.Satoshis, l.tags)
+
+	if len(results) == 0 {
+		return nil
+	}
+
+	// Collect all events with tag prefixes (same as OutputAdmittedByTopic)
+	var allEvents []string
+	for tag, result := range results {
+		for _, event := range result.Events {
+			allEvents = append(allEvents, tag+":"+event)
+		}
+		for _, owner := range result.Owners {
+			allEvents = append(allEvents, "own:"+owner.Address())
+		}
+	}
+
+	// Extract score from the spending transaction
+	score := types.ScoreFromTx(tx, txid)
+
+	// Update spent event indexes
+	return l.storage.IndexSpentEvents(ctx, payload.Outpoint, allEvents, score)
 }
 
 // OutputNoLongerRetainedInHistory is called when historical retention is no longer required

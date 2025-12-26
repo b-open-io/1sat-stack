@@ -6,6 +6,7 @@ import (
 	"strconv"
 	"sync"
 
+	"github.com/b-open-io/1sat-stack/pkg/parse"
 	"github.com/b-open-io/1sat-stack/pkg/txo"
 	"github.com/b-open-io/1sat-stack/pkg/types"
 	"github.com/bitcoin-sv/go-templates/template/bsv21"
@@ -148,7 +149,48 @@ func (l *BSV21Lookup) GetMetaData() *overlay.MetaData {
 
 // OutputSpent is called when a previously-admitted UTXO is spent
 func (l *BSV21Lookup) OutputSpent(ctx context.Context, payload *engine.OutputSpent) error {
-	return nil
+	_, tx, txid, err := transaction.ParseBeef(payload.SpendingAtomicBEEF)
+	if err != nil {
+		return err
+	}
+
+	if int(payload.InputIndex) >= len(tx.Inputs) {
+		return nil
+	}
+
+	input := tx.Inputs[payload.InputIndex]
+	if input.SourceTransaction == nil {
+		return nil
+	}
+
+	if int(payload.Outpoint.Index) >= len(input.SourceTransaction.Outputs) {
+		return nil
+	}
+
+	spentOutput := input.SourceTransaction.Outputs[payload.Outpoint.Index]
+
+	// Parse the spent output using BSV21 parser
+	results := parse.Parse(payload.Outpoint, spentOutput.LockingScript.Bytes(), spentOutput.Satoshis, []string{parse.TagBSV21})
+
+	if len(results) == 0 {
+		return nil
+	}
+
+	// Collect events with tag prefixes
+	var allEvents []string
+	for tag, result := range results {
+		for _, event := range result.Events {
+			allEvents = append(allEvents, tag+":"+event)
+		}
+		for _, owner := range result.Owners {
+			allEvents = append(allEvents, "own:"+owner.Address())
+		}
+	}
+
+	// Extract score from the spending transaction
+	score := types.ScoreFromTx(tx, txid)
+
+	return l.storage.IndexSpentEvents(ctx, payload.Outpoint, allEvents, score)
 }
 
 // OutputNoLongerRetainedInHistory is called when historical retention is no longer required
