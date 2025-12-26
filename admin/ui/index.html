@@ -444,7 +444,7 @@
     <div class="toast" id="toast"></div>
 
     <script>
-        const API_BASE = window.location.pathname.replace(/\/$/, '') + '/api';
+        const API_BASE = window.location.pathname.replace(/\/$/, '');
 
         // Toast notification
         function showToast(message, type = 'success') {

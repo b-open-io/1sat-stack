@@ -11,9 +11,9 @@ import (
 	"github.com/b-open-io/1sat-stack/admin"
 	"github.com/b-open-io/1sat-stack/pkg/beef"
 	"github.com/b-open-io/1sat-stack/pkg/bsv21"
+	"github.com/b-open-io/1sat-stack/pkg/indexer"
 	"github.com/b-open-io/1sat-stack/pkg/jbsync"
 	"github.com/b-open-io/1sat-stack/pkg/logging"
-	"github.com/b-open-io/1sat-stack/pkg/lookup"
 	"github.com/b-open-io/1sat-stack/pkg/ordfs"
 	"github.com/b-open-io/1sat-stack/pkg/overlay"
 	"github.com/b-open-io/1sat-stack/pkg/owner"
@@ -319,16 +319,6 @@ func (c *Config) Initialize(ctx context.Context, logger *slog.Logger) (*Services
 		// Set topic whitelist/blacklist from config
 		svc.Overlay.SetTopicWhitelist(c.Overlay.TopicWhitelist)
 		svc.Overlay.SetTopicBlacklist(c.Overlay.TopicBlacklist)
-
-		// Register 1Sat lookup service (comprehensive indexer for all outputs)
-		onesatLookup := lookup.NewOneSatLookup(svc.TXO.OutputStore, logger)
-		svc.Overlay.RegisterLookupService("1sat", onesatLookup)
-		logger.Info("1Sat lookup service registered with overlay engine")
-
-		// Register tm_1sat topic factory
-		svc.Overlay.RegisterTopic("tm_1sat", func(topicName string) (engine.TopicManager, error) {
-			return topic.NewOneSatTopicManager(), nil
-		})
 	}
 
 	// Initialize BSV21 AFTER overlay so we can wire them together
@@ -367,12 +357,15 @@ func (c *Config) Initialize(ctx context.Context, logger *slog.Logger) (*Services
 		svc.ORDFS = ordfsSvc
 	}
 
-	// Initialize owner services (depends on TXO, Beef, Overlay)
-	if c.Owner.Mode != owner.ModeDisabled && svc.TXO != nil && svc.Overlay != nil {
+	// Initialize owner services (depends on TXO, Beef, Indexer)
+	if c.Owner.Mode != owner.ModeDisabled && svc.TXO != nil && svc.Beef != nil {
+		// Create indexer for owner sync
+		idx := indexer.NewIngestCtx(svc.TXO.OutputStore, svc.Beef.Storage, logger)
+
 		ownSvc, err := c.Owner.Initialize(ctx, logger, &owner.InitializeDeps{
 			JungleBus:   svc.JungleBus,
 			BeefStorage: svc.Beef.Storage,
-			Overlay:     svc.Overlay,
+			Indexer:     idx,
 			OutputStore: svc.TXO.OutputStore,
 		})
 		if err != nil {

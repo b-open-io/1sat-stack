@@ -119,7 +119,6 @@ bsv21:
 overlay:
   mode: embedded
   topic_whitelist:
-    - tm_1sat
     - tm_bsv21
   # topic_blacklist: []  # Topics to disable even if whitelisted
   routes:
@@ -148,5 +147,5 @@ jbsync:
       from_block: 783968  # BSV21 genesis block
       batch_size: 1000
       reorg_depth: 6
-      enable_mempool: true
+      enable_mempool: false
       autostart: false
