@@ -24,6 +24,7 @@ const (
 	ProviderLRU        = "lru"
 	ProviderFilesystem = "filesystem"
 	ProviderJungleBus  = "junglebus"
+	ProviderBadger     = "badger"
 )
 
 // Config holds BEEF storage configuration.
@@ -36,10 +37,16 @@ type Config struct {
 
 // ChainConfig represents a single storage provider in the chain
 type ChainConfig struct {
-	Provider   string           `mapstructure:"provider"` // lru, filesystem, junglebus
+	Provider   string           `mapstructure:"provider"` // lru, filesystem, junglebus, badger
 	LRU        LRUConfig        `mapstructure:"lru"`
 	Filesystem FilesystemConfig `mapstructure:"filesystem"`
+	Badger     BadgerConfig     `mapstructure:"badger"`
 	// JungleBus uses the system client, no config needed here
+}
+
+// BadgerConfig holds badger storage configuration
+type BadgerConfig struct {
+	Path string `mapstructure:"path"`
 }
 
 // LRUConfig holds LRU cache configuration
@@ -181,6 +188,13 @@ func (c *Config) createStorageFromConfig(
 			return nil, fmt.Errorf("junglebus provider requires a junglebus client to be passed to Initialize()")
 		}
 		return NewJunglebusBeefStorageWithClient(jbClient), nil
+
+	case ProviderBadger:
+		path := cfg.Badger.Path
+		if path == "" {
+			path = DefaultBadgerPath()
+		}
+		return NewBadgerBeefStorageFromPath(expandPath(path), logger)
 
 	default:
 		return nil, fmt.Errorf("unknown beef provider: %s", cfg.Provider)

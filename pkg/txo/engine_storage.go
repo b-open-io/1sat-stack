@@ -260,18 +260,16 @@ func (s *OutputStore) DeleteOutput(ctx context.Context, outpoint *transaction.Ou
 	return nil
 }
 
-// MarkUTXOsAsSpent marks multiple outputs as spent
-// Note: In the unified model, spend tracking is primarily handled by the indexer via SaveSpend
-// This method is kept for engine.Storage compatibility
+// MarkUTXOsAsSpent marks multiple outputs as spent by storing the spend txid.
+// Event index updates are handled separately by the lookup service's OutputSpent,
+// which has access to the spending transaction's BEEF for proper score calculation.
 func (s *OutputStore) MarkUTXOsAsSpent(ctx context.Context, outpoints []*transaction.Outpoint, topic string, spendTxid *chainhash.Hash) error {
 	if spendTxid == nil {
 		return nil
 	}
 
-	// Use timestamp-based score since we don't have the spend tx's block info here
-	score := types.HeightScore(0, 0)
 	for _, op := range outpoints {
-		if err := s.SaveSpend(ctx, op, spendTxid, score); err != nil {
+		if err := s.Store.HSet(ctx, hashSpnd, op.Bytes(), spendTxid[:]); err != nil {
 			return err
 		}
 	}

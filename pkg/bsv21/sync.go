@@ -190,12 +190,7 @@ func (s *SyncServices) dispatch(ctx context.Context, member string, score float6
 			tokenId = outpoint.OrdinalString()
 
 			if beefBytes == nil {
-				fullTx, err := s.beefStorage.BuildFullBeefTx(ctx, txid)
-				if err != nil {
-					s.logger.Error("failed to build beef for discovery", "error", err, "txid", txid.String())
-					continue
-				}
-				beefBytes, err = fullTx.AtomicBEEF(false)
+				beefBytes, err = s.beefStorage.BuildFullBeef(ctx, txid)
 				if err != nil {
 					s.logger.Error("failed to serialize beef for discovery", "error", err, "txid", txid.String())
 					continue

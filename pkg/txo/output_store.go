@@ -211,33 +211,27 @@ func (s *OutputStore) SaveInputsConsumed(ctx context.Context, op *transaction.Ou
 
 // === Spend Operations ===
 
-// SaveSpend marks an output as spent and updates spent indexes
-func (s *OutputStore) SaveSpend(ctx context.Context, op *transaction.Outpoint, spendTxid *chainhash.Hash, score float64) error {
+// SaveSpend marks an output as spent and updates spent indexes.
+func (s *OutputStore) SaveSpend(ctx context.Context, op *transaction.Outpoint, spendTxid *chainhash.Hash, events []string, score float64) error {
+	// Store spend txid in bulk lookup hash
+	if err := s.Store.HSet(ctx, hashSpnd, op.Bytes(), spendTxid[:]); err != nil {
+		return err
+	}
+
+	return s.IndexSpentEvents(ctx, op, events, score)
+}
+
+// IndexSpentEvents adds the outpoint to spent event sorted sets with the given score.
+// Events are derived by the lookup service from the spent output's script.
+func (s *OutputStore) IndexSpentEvents(ctx context.Context, op *transaction.Outpoint, events []string, score float64) error {
 	opBytes := op.Bytes()
 
-	// Store spend txid in bulk lookup hash
-	if err := s.Store.HSet(ctx, hashSpnd, opBytes, spendTxid[:]); err != nil {
-		return err
-	}
-
-	// Get events for this output to update spent indexes
-	eventsBytes, err := s.Store.HGet(ctx, KeyOutHash(op), []byte(fldEvent))
-	if err != nil && err != store.ErrKeyNotFound {
-		return err
-	}
-
-	if len(eventsBytes) > 0 {
-		var events []string
-		if err := json.Unmarshal(eventsBytes, &events); err != nil {
-			return fmt.Errorf("failed to unmarshal events for %s: %w", op.String(), err)
-		}
-		for _, event := range events {
-			if err := s.Store.ZAdd(ctx, KeyEventSpent(event), store.ScoredMember{
-				Member: opBytes,
-				Score:  score,
-			}); err != nil {
-				return fmt.Errorf("failed to add to spent index %s: %w", event, err)
-			}
+	for _, event := range events {
+		if err := s.Store.ZAdd(ctx, KeyEventSpent(event), store.ScoredMember{
+			Member: opBytes,
+			Score:  score,
+		}); err != nil {
+			return fmt.Errorf("failed to add to spent index %s: %w", event, err)
 		}
 	}
 

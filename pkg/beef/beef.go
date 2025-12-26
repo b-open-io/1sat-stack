@@ -300,7 +300,7 @@ func (s *Storage) UpdateMerklePath(ctx context.Context, txid *chainhash.Hash, ct
 		if err != nil {
 			continue
 		}
-		if updatedBeef != nil && len(updatedBeef) > 0 {
+		if len(updatedBeef) > 0 {
 			if ct != nil {
 				_, tx, _, parseErr := transaction.ParseBeef(updatedBeef)
 				if parseErr == nil && tx != nil && tx.MerklePath != nil {
@@ -373,11 +373,6 @@ func (s *Storage) LoadTxFromBeef(ctx context.Context, beefBytes []byte, txid *ch
 		return nil, errors.New("transaction " + txid.String() + " not found in BEEF")
 	}
 
-	loadedTxid := tx.TxID()
-	if !loadedTxid.IsEqual(txid) {
-		return nil, errors.New("loaded transaction txid mismatch")
-	}
-
 	return tx, nil
 }
 
@@ -416,6 +411,32 @@ func (s *Storage) BuildFullBeefTx(ctx context.Context, txid *chainhash.Hash) (*t
 	}
 
 	return tx, nil
+}
+
+func (s *Storage) BuildFullBeef(ctx context.Context, txid *chainhash.Hash) ([]byte, error) {
+	beefBytes, err := s.LoadBeef(ctx, txid)
+	if err != nil {
+		return nil, err
+	}
+	beef, tx, txid, err := transaction.ParseBeef(beefBytes)
+	if err != nil {
+		return nil, err
+	}
+	for _, input := range tx.Inputs {
+		if input.SourceTransaction != nil {
+			continue
+		}
+		input.SourceTransaction, err = s.BuildBeefTx(ctx, input.SourceTXID)
+		if err != nil {
+			return nil, err
+		}
+		_, err = beef.MergeTransaction(input.SourceTransaction)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	return beef.AtomicBytes(txid)
 }
 
 // LoadRawTx loads just the raw transaction bytes

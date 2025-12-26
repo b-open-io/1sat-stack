@@ -40,15 +40,15 @@ pubsub:
   routes:
     enabled: true
 
-# BEEF storage chain: LRU cache -> local file -> JungleBus fallback
+# BEEF storage chain: LRU cache -> badger -> JungleBus fallback
 beef:
   mode: embedded
   chain:
     - provider: lru
       lru:
         size: 100mb
-    - provider: filesystem
-      filesystem:
+    - provider: badger
+      badger:
         path: ~/.1sat/beef
     - provider: junglebus
   routes:

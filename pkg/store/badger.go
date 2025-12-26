@@ -13,6 +13,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/b-open-io/1sat-stack/pkg/logging"
 	"github.com/dgraph-io/badger/v4"
 )
 
@@ -65,36 +66,6 @@ func (s *BadgerStore) update(fn func(txn *badger.Txn) error) error {
 	return badger.ErrConflict
 }
 
-// slogAdapter adapts slog.Logger to badger.Logger interface with level filtering
-type slogAdapter struct {
-	logger *slog.Logger
-	level  slog.Level
-}
-
-func (s *slogAdapter) Errorf(format string, args ...any) {
-	if s.level <= slog.LevelError {
-		s.logger.Error(fmt.Sprintf(format, args...))
-	}
-}
-
-func (s *slogAdapter) Warningf(format string, args ...any) {
-	if s.level <= slog.LevelWarn {
-		s.logger.Warn(fmt.Sprintf(format, args...))
-	}
-}
-
-func (s *slogAdapter) Infof(format string, args ...any) {
-	if s.level <= slog.LevelInfo {
-		s.logger.Info(fmt.Sprintf(format, args...))
-	}
-}
-
-func (s *slogAdapter) Debugf(format string, args ...any) {
-	if s.level <= slog.LevelDebug {
-		s.logger.Debug(fmt.Sprintf(format, args...))
-	}
-}
-
 // parseLogLevel converts a string to slog.Level
 func parseLogLevel(level string) slog.Level {
 	switch strings.ToLower(level) {
@@ -131,9 +102,9 @@ func NewBadgerStoreFromConfig(cfg *BadgerConfig, logger *slog.Logger) (*BadgerSt
 
 	// Create adapter with level filtering for BadgerDB logs
 	badgerLevel := parseLogLevel(cfg.LogLevel)
-	opts = opts.WithLogger(&slogAdapter{
-		logger: logger.With("component", "badger"),
-		level:  badgerLevel,
+	opts = opts.WithLogger(&logging.BadgerLogger{
+		Logger: logger.With("component", "badger"),
+		Level:  badgerLevel,
 	})
 
 	logger.Info("opening BadgerDB", "path", path, "inMemory", cfg.InMemory, "logLevel", cfg.LogLevel)
@@ -189,7 +160,7 @@ func NewBadgerStore(connString string, logger *slog.Logger) (*BadgerStore, error
 		opts = badger.DefaultOptions(path)
 	}
 
-	opts = opts.WithLogger(&slogAdapter{logger: logger})
+	opts = opts.WithLogger(&logging.BadgerLogger{Logger: logger, Level: slog.LevelWarn})
 
 	logger.Info("opening BadgerDB", "path", path, "inMemory", inMemory)
 
