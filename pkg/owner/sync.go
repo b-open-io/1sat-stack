@@ -39,7 +39,7 @@ func NewOwnerSync(
 		beefStorage: beefStorage,
 		indexer:     idx,
 		outputStore: outputStore,
-		concurrency: 8,
+		concurrency: 1,
 		logger:      logger,
 	}
 }

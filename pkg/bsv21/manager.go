@@ -193,8 +193,60 @@ func (m *TokenManager) manageWorkerLifecycle(ctx context.Context) {
 	// Track which tokens are currently active
 	activeTokens := make(map[string]struct{})
 
-	// Evaluate each known token
+	// Separate whitelisted tokens from others for priority processing
+	var whitelistedOutpoints []*transaction.Outpoint
+	var otherMembers []store.ScoredMember
 	for _, member := range members {
+		outpoint := transaction.NewOutpointFromBytes(member.Member)
+		if outpoint == nil {
+			continue
+		}
+		tokenId := outpoint.OrdinalString()
+		if _, isWhitelisted := whitelist[tokenId]; isWhitelisted {
+			whitelistedOutpoints = append(whitelistedOutpoints, outpoint)
+		} else {
+			otherMembers = append(otherMembers, member)
+		}
+	}
+
+	// Phase 1: Process whitelisted tokens first (priority)
+	for _, outpoint := range whitelistedOutpoints {
+		tokenId := outpoint.OrdinalString()
+
+		feeAddress, err := GenerateFeeAddress(outpoint)
+		if err != nil {
+			m.logger.Error("failed to generate fee address", "error", err, "tokenId", tokenId)
+			continue
+		}
+
+		// Sync fee address to ingest any new payment transactions
+		if m.ownerSync != nil {
+			if err := m.ownerSync.Sync(ctx, feeAddress); err != nil {
+				m.logger.Debug("failed to sync fee address", "error", err, "address", feeAddress, "tokenId", tokenId)
+			}
+		}
+
+		activeTokens[tokenId] = struct{}{}
+
+		// Create worker if not exists
+		if _, exists := m.workers.Load(tokenId); !exists {
+			topicName := "tm_" + tokenId
+			if m.overlay != nil {
+				tm := topicpkg.NewBsv21ValidatedTopicManager(topicName, m.outputStore, nil)
+				m.overlay.Engine.RegisterTopicManager(topicName, tm)
+			}
+
+			if err := m.createWorker(ctx, tokenId, feeAddress); err != nil {
+				m.logger.Error("failed to create worker", "error", err, "tokenId", tokenId)
+			}
+		}
+	}
+	if len(whitelistedOutpoints) > 0 {
+		m.logger.Info("whitelisted tokens activated", "count", len(whitelistedOutpoints))
+	}
+
+	// Phase 2: Process remaining tokens (balance-based activation)
+	for _, member := range otherMembers {
 		outpoint := transaction.NewOutpointFromBytes(member.Member)
 		if outpoint == nil {
 			continue
@@ -206,11 +258,8 @@ func (m *TokenManager) manageWorkerLifecycle(ctx context.Context) {
 			continue
 		}
 
-		// Check if whitelisted (always active)
-		_, isWhitelisted := whitelist[tokenId]
-
 		// Derive fee address
-		feeAddress, err := GenerateFeeAddress(tokenId)
+		feeAddress, err := GenerateFeeAddress(outpoint)
 		if err != nil {
 			m.logger.Error("failed to generate fee address", "error", err, "tokenId", tokenId)
 			continue
@@ -227,14 +276,11 @@ func (m *TokenManager) manageWorkerLifecycle(ctx context.Context) {
 		balance, err := m.calculateBalance(ctx, tokenId, feeAddress)
 		if err != nil {
 			m.logger.Debug("failed to calculate balance", "error", err, "tokenId", tokenId)
-			// If whitelisted, continue even if balance check fails
-			if !isWhitelisted {
-				continue
-			}
+			continue
 		}
 
-		// Token is active if whitelisted OR balance > 0
-		if isWhitelisted || balance > 0 {
+		// Token is active if balance > 0
+		if balance > 0 {
 			activeTokens[tokenId] = struct{}{}
 
 			// Create worker if not exists

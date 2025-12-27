@@ -222,9 +222,9 @@ func zsetScoreKey(key []byte, score float64, member []byte) []byte {
 	buf := make([]byte, 0, len(prefixZSetScore)+len(key)+1+8+1+len(member))
 	buf = append(buf, prefixZSetScore...)
 	buf = append(buf, key...)
-	buf = append(buf, ':')
+	buf = append(buf, 0) // null byte delimiter - keys are strings, won't contain \x00
 	buf = append(buf, encodeFloat64(score)...)
-	buf = append(buf, ':')
+	buf = append(buf, 0) // null byte delimiter
 	buf = append(buf, member...)
 	return buf
 }
@@ -233,7 +233,7 @@ func zsetScorePrefix(key []byte) []byte {
 	buf := make([]byte, 0, len(prefixZSetScore)+len(key)+1)
 	buf = append(buf, prefixZSetScore...)
 	buf = append(buf, key...)
-	buf = append(buf, ':')
+	buf = append(buf, 0) // null byte delimiter
 	return buf
 }
 
@@ -241,7 +241,7 @@ func zsetMemberKey(key, member []byte) []byte {
 	buf := make([]byte, 0, len(prefixZSetMember)+len(key)+1+len(member))
 	buf = append(buf, prefixZSetMember...)
 	buf = append(buf, key...)
-	buf = append(buf, ':')
+	buf = append(buf, 0) // null byte delimiter - keys are strings, won't contain \x00
 	buf = append(buf, member...)
 	return buf
 }
@@ -250,7 +250,7 @@ func zsetMemberPrefix(key []byte) []byte {
 	buf := make([]byte, 0, len(prefixZSetMember)+len(key)+1)
 	buf = append(buf, prefixZSetMember...)
 	buf = append(buf, key...)
-	buf = append(buf, ':')
+	buf = append(buf, 0) // null byte delimiter
 	return buf
 }
 
@@ -757,34 +757,14 @@ func (s *BadgerStore) ZKeys(ctx context.Context, prefix []byte) ([]string, error
 
 		for it.Rewind(); it.Valid(); it.Next() {
 			k := it.Item().Key()
-			// Key format: zset:member:<key>:<member>
+			// Key format: zset:member:<key>\x00<member>
 			// Strip prefix "zset:member:"
 			afterPrefix := k[len(prefixZSetMember):]
 
-			// Members are binary (32 or 36 bytes typically)
-			// Find the key by looking for the last colon before binary data
-			// We try common member sizes: 32 (hash) and 36 (outpoint)
-			var key string
-			for _, memberLen := range []int{32, 36} {
-				if len(afterPrefix) > memberLen+1 {
-					// Check if there's a colon separator at the right position
-					sepIdx := len(afterPrefix) - memberLen - 1
-					if afterPrefix[sepIdx] == ':' {
-						key = string(afterPrefix[:sepIdx])
-						break
-					}
-				}
-			}
-
-			// Fallback: find last colon (for other member sizes)
-			if key == "" {
-				lastColon := bytes.LastIndexByte(afterPrefix, ':')
-				if lastColon > 0 {
-					key = string(afterPrefix[:lastColon])
-				}
-			}
-
-			if key != "" {
+			// Find the null byte delimiter between key and member
+			nullIdx := bytes.IndexByte(afterPrefix, 0)
+			if nullIdx > 0 {
+				key := string(afterPrefix[:nullIdx])
 				seen[key] = struct{}{}
 			}
 		}

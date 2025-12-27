@@ -106,14 +106,17 @@ func (w *Worker) Start(ctx context.Context) error {
 			return ctx.Err()
 
 		case <-ticker.C:
-			duration := time.Since(statusTime)
-			rate := float64(processedCount) / duration.Seconds()
-			w.logger.Info("worker status",
-				"key", w.key,
-				"processed", processedCount,
-				"rate", rate,
-				"lastScore", lastScore,
-			)
+			// Only log status if items were processed
+			if processedCount > 0 {
+				duration := time.Since(statusTime)
+				rate := float64(processedCount) / duration.Seconds()
+				w.logger.Info("worker status",
+					"key", w.key,
+					"processed", processedCount,
+					"rate", rate,
+					"lastScore", lastScore,
+				)
+			}
 			processedCount = 0
 			statusTime = time.Now()
 

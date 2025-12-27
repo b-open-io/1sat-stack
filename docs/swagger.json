@@ -614,7 +614,7 @@
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/github_com_b-open-io_1sat-stack_pkg_bsv21.TokenResponse"
+                            "$ref": "#/definitions/pkg_bsv21.TokenResponse"
                         }
                     }
                 }
@@ -706,7 +706,7 @@
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/github_com_b-open-io_1sat-stack_pkg_bsv21.BalanceResponse"
+                            "$ref": "#/definitions/pkg_bsv21.BalanceResponse"
                         }
                     }
                 }
@@ -854,7 +854,7 @@
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/github_com_b-open-io_1sat-stack_pkg_bsv21.BalanceResponse"
+                            "$ref": "#/definitions/pkg_bsv21.BalanceResponse"
                         }
                     }
                 }
@@ -973,7 +973,7 @@
                     "200": {
                         "description": "Metadata",
                         "schema": {
-                            "$ref": "#/definitions/pkg_ordfs.Response"
+                            "$ref": "#/definitions/github_com_b-open-io_1sat-stack_pkg_ordfs.Response"
                         }
                     },
                     "400": {
@@ -1523,7 +1523,7 @@
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/github_com_b-open-io_1sat-stack_pkg_bsv21.BlockResponse"
+                            "$ref": "#/definitions/pkg_bsv21.BlockResponse"
                         }
                     }
                 }
@@ -2350,7 +2350,7 @@
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/pkg_owner.BalanceResponse"
+                            "$ref": "#/definitions/github_com_b-open-io_1sat-stack_pkg_owner.BalanceResponse"
                         }
                     },
                     "500": {
@@ -2439,100 +2439,6 @@
                 }
             }
         },
-        "/txo/outpoint/{outpoint}": {
-            "get": {
-                "description": "Get a transaction output by its outpoint",
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "txos"
-                ],
-                "summary": "Get TXO by outpoint",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "description": "Outpoint in format txid_vout or txid:vout",
-                        "name": "outpoint",
-                        "in": "path",
-                        "required": true
-                    },
-                    {
-                        "type": "string",
-                        "description": "Comma-separated list of tags to include",
-                        "name": "tags",
-                        "in": "query"
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "$ref": "#/definitions/pkg_txo.IndexedOutput"
-                        }
-                    },
-                    "400": {
-                        "description": "Invalid outpoint format",
-                        "schema": {
-                            "type": "string"
-                        }
-                    },
-                    "404": {
-                        "description": "TXO not found",
-                        "schema": {
-                            "type": "string"
-                        }
-                    },
-                    "500": {
-                        "description": "Internal server error",
-                        "schema": {
-                            "type": "string"
-                        }
-                    }
-                }
-            }
-        },
-        "/txo/outpoint/{outpoint}/spend": {
-            "get": {
-                "description": "Get the spending transaction for an outpoint",
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "txos"
-                ],
-                "summary": "Get spend info for outpoint",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "description": "Outpoint in format txid_vout or txid:vout",
-                        "name": "outpoint",
-                        "in": "path",
-                        "required": true
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "$ref": "#/definitions/pkg_txo.SpendResponse"
-                        }
-                    },
-                    "400": {
-                        "description": "Invalid outpoint format",
-                        "schema": {
-                            "type": "string"
-                        }
-                    },
-                    "500": {
-                        "description": "Internal server error",
-                        "schema": {
-                            "type": "string"
-                        }
-                    }
-                }
-            }
-        },
         "/txo/outpoints": {
             "post": {
                 "description": "Get multiple transaction outputs by their outpoints",
@@ -2564,6 +2470,13 @@
                         "description": "Comma-separated list of tags to include",
                         "name": "tags",
                         "in": "query"
+                    },
+                    {
+                        "type": "boolean",
+                        "default": true,
+                        "description": "Include spend txid",
+                        "name": "spend",
+                        "in": "query"
                     }
                 ],
                 "responses": {
@@ -2572,7 +2485,7 @@
                         "schema": {
                             "type": "array",
                             "items": {
-                                "$ref": "#/definitions/pkg_txo.IndexedOutput"
+                                "$ref": "#/definitions/pkg_txo.IndexedOutputResponse"
                             }
                         }
                     },
@@ -2585,7 +2498,110 @@
                 }
             }
         },
-        "/txo/outpoints/spends": {
+        "/txo/search": {
+            "get": {
+                "description": "Search transaction outputs by indexed keys. Keys use type prefixes: \"ev:\" for events, \"tp:\" for topics. Without prefix, \"ev:\" is assumed.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "search"
+                ],
+                "summary": "Search outputs by key(s)",
+                "parameters": [
+                    {
+                        "type": "array",
+                        "items": {
+                            "type": "string"
+                        },
+                        "collectionFormat": "csv",
+                        "description": "Search key(s) (e.g., ev:own:address, tp:tm_bsv21, own:address)",
+                        "name": "key",
+                        "in": "query",
+                        "required": true
+                    },
+                    {
+                        "type": "number",
+                        "description": "Starting score for pagination",
+                        "name": "from",
+                        "in": "query"
+                    },
+                    {
+                        "type": "boolean",
+                        "description": "Reverse order",
+                        "name": "rev",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "default": 100,
+                        "description": "Maximum number of results",
+                        "name": "limit",
+                        "in": "query"
+                    },
+                    {
+                        "type": "boolean",
+                        "description": "Filter for unspent outputs only",
+                        "name": "unspent",
+                        "in": "query"
+                    },
+                    {
+                        "type": "boolean",
+                        "description": "Include satoshis",
+                        "name": "sats",
+                        "in": "query"
+                    },
+                    {
+                        "type": "boolean",
+                        "description": "Include spend txid",
+                        "name": "spend",
+                        "in": "query"
+                    },
+                    {
+                        "type": "boolean",
+                        "description": "Include events array",
+                        "name": "events",
+                        "in": "query"
+                    },
+                    {
+                        "type": "boolean",
+                        "description": "Include blockHeight and blockIdx",
+                        "name": "block",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Comma-separated list of data tags to include",
+                        "name": "tags",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/pkg_txo.IndexedOutputResponse"
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "At least one key is required",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
+        "/txo/spends": {
             "post": {
                 "description": "Get spending transactions for multiple outpoints",
                 "consumes": [
@@ -2631,124 +2647,6 @@
                 }
             }
         },
-        "/txo/search": {
-            "post": {
-                "description": "Search transaction outputs by multiple indexed keys",
-                "consumes": [
-                    "application/json"
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "search"
-                ],
-                "summary": "Search outputs by multiple keys",
-                "parameters": [
-                    {
-                        "description": "Search parameters",
-                        "name": "request",
-                        "in": "body",
-                        "required": true,
-                        "schema": {
-                            "$ref": "#/definitions/pkg_txo.SearchRequest"
-                        }
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "type": "array",
-                            "items": {
-                                "$ref": "#/definitions/pkg_txo.IndexedOutput"
-                            }
-                        }
-                    },
-                    "400": {
-                        "description": "Invalid request",
-                        "schema": {
-                            "type": "string"
-                        }
-                    },
-                    "500": {
-                        "description": "Internal server error",
-                        "schema": {
-                            "type": "string"
-                        }
-                    }
-                }
-            }
-        },
-        "/txo/search/{key}": {
-            "get": {
-                "description": "Search transaction outputs by an indexed key",
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "search"
-                ],
-                "summary": "Search outputs by key",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "description": "Search key (e.g., own:address, txid:hash)",
-                        "name": "key",
-                        "in": "path",
-                        "required": true
-                    },
-                    {
-                        "type": "number",
-                        "description": "Starting score for pagination",
-                        "name": "from",
-                        "in": "query"
-                    },
-                    {
-                        "type": "boolean",
-                        "description": "Reverse order",
-                        "name": "rev",
-                        "in": "query"
-                    },
-                    {
-                        "type": "integer",
-                        "default": 100,
-                        "description": "Maximum number of results",
-                        "name": "limit",
-                        "in": "query"
-                    },
-                    {
-                        "type": "boolean",
-                        "description": "Filter for unspent outputs only",
-                        "name": "unspent",
-                        "in": "query"
-                    },
-                    {
-                        "type": "string",
-                        "description": "Comma-separated list of tags to include",
-                        "name": "tags",
-                        "in": "query"
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "type": "array",
-                            "items": {
-                                "$ref": "#/definitions/pkg_txo.IndexedOutput"
-                            }
-                        }
-                    },
-                    "500": {
-                        "description": "Internal server error",
-                        "schema": {
-                            "type": "string"
-                        }
-                    }
-                }
-            }
-        },
         "/txo/tx/{txid}": {
             "get": {
                 "description": "Get all transaction outputs for a specific transaction",
@@ -2772,6 +2670,13 @@
                         "description": "Comma-separated list of tags to include",
                         "name": "tags",
                         "in": "query"
+                    },
+                    {
+                        "type": "boolean",
+                        "default": true,
+                        "description": "Include spend txid",
+                        "name": "spend",
+                        "in": "query"
                     }
                 ],
                 "responses": {
@@ -2780,12 +2685,113 @@
                         "schema": {
                             "type": "array",
                             "items": {
-                                "$ref": "#/definitions/pkg_txo.IndexedOutput"
+                                "$ref": "#/definitions/pkg_txo.IndexedOutputResponse"
                             }
                         }
                     },
                     "400": {
                         "description": "Invalid txid",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
+        "/txo/{outpoint}": {
+            "get": {
+                "description": "Get a transaction output by its outpoint",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "txos"
+                ],
+                "summary": "Get TXO by outpoint",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Outpoint in format txid_vout or txid:vout",
+                        "name": "outpoint",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Comma-separated list of tags to include",
+                        "name": "tags",
+                        "in": "query"
+                    },
+                    {
+                        "type": "boolean",
+                        "default": true,
+                        "description": "Include spend txid",
+                        "name": "spend",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/pkg_txo.IndexedOutputResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid outpoint format",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "404": {
+                        "description": "TXO not found",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
+        "/txo/{outpoint}/spend": {
+            "get": {
+                "description": "Get the spending transaction for an outpoint",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "txos"
+                ],
+                "summary": "Get spend info for outpoint",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Outpoint in format txid_vout or txid:vout",
+                        "name": "outpoint",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/pkg_txo.SpendResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid outpoint format",
                         "schema": {
                             "type": "string"
                         }
@@ -2878,22 +2884,6 @@
                     "type": "integer"
                 }
             }
-        },
-        "engine.MerkleState": {
-            "type": "integer",
-            "format": "int32",
-            "enum": [
-                0,
-                1,
-                2,
-                3
-            ],
-            "x-enum-varnames": [
-                "MerkleStateUnmined",
-                "MerkleStateValidated",
-                "MerkleStateInvalidated",
-                "MerkleStateImmutable"
-            ]
         },
         "fiber.ErrorResponse": {
             "type": "object",
@@ -3089,131 +3079,47 @@
             }
         },
         "github_com_b-open-io_1sat-stack_pkg_txo.IndexedOutput": {
+            "type": "object"
+        },
+        "github_com_b-open-io_1sat-stack_pkg_txo.IndexedOutputResponse": {
+            "description": "Transaction output with indexing metadata",
             "type": "object",
             "properties": {
-                "ancillaryTxids": {
-                    "type": "array",
-                    "items": {
-                        "type": "array",
-                        "items": {
-                            "type": "integer"
-                        }
-                    }
-                },
-                "beef": {
-                    "type": "array",
-                    "items": {
-                        "type": "integer",
-                        "format": "int32"
-                    }
-                },
                 "blockHeight": {
-                    "type": "integer",
-                    "format": "int32"
+                    "description": "Present if IncludeBlock",
+                    "type": "integer"
                 },
                 "blockIdx": {
-                    "type": "integer",
-                    "format": "int64"
-                },
-                "consumedBy": {
-                    "type": "array",
-                    "items": {
-                        "$ref": "#/definitions/transaction.Outpoint"
-                    }
+                    "description": "Present if IncludeBlock",
+                    "type": "integer"
                 },
                 "data": {
+                    "description": "Present if IncludeTags has entries",
                     "type": "object",
                     "additionalProperties": {}
                 },
                 "events": {
+                    "description": "Present if IncludeEvents",
                     "type": "array",
                     "items": {
                         "type": "string"
                     }
                 },
-                "merkleRoot": {
-                    "description": "Merkle root extracted from the merkle path",
-                    "type": "array",
-                    "items": {
-                        "type": "integer"
-                    }
-                },
-                "merkleState": {
-                    "description": "Validation state of the merkle proof",
-                    "allOf": [
-                        {
-                            "$ref": "#/definitions/engine.MerkleState"
-                        }
-                    ]
-                },
                 "outpoint": {
-                    "$ref": "#/definitions/transaction.Outpoint"
-                },
-                "outputsConsumed": {
-                    "type": "array",
-                    "items": {
-                        "$ref": "#/definitions/transaction.Outpoint"
-                    }
-                },
-                "owners": {
-                    "type": "array",
-                    "items": {
-                        "type": "array",
-                        "items": {
-                            "type": "integer",
-                            "format": "int32"
-                        }
-                    }
+                    "description": "Always present: \"txid_vout\" format",
+                    "type": "string"
                 },
                 "satoshis": {
-                    "description": "Extended fields for indexing",
+                    "description": "Present if IncludeSats",
                     "type": "integer"
                 },
                 "score": {
-                    "description": "sort score for outputs. Usage is up to Storage implementation.",
-                    "type": "number",
-                    "format": "float64"
-                },
-                "spend": {
-                    "type": "array",
-                    "items": {
-                        "type": "integer"
-                    }
-                },
-                "spent": {
-                    "type": "boolean"
-                },
-                "topic": {
-                    "type": "string"
-                }
-            }
-        },
-        "github_com_b-open-io_1sat-stack_pkg_txo.SearchRequest": {
-            "type": "object",
-            "properties": {
-                "from": {
+                    "description": "Always present",
                     "type": "number"
                 },
-                "keys": {
-                    "type": "array",
-                    "items": {
-                        "type": "string"
-                    }
-                },
-                "limit": {
-                    "type": "integer"
-                },
-                "reverse": {
-                    "type": "boolean"
-                },
-                "tags": {
-                    "type": "array",
-                    "items": {
-                        "type": "string"
-                    }
-                },
-                "unspent": {
-                    "type": "boolean"
+                "spend": {
+                    "description": "Present if IncludeSpend (nil = unspent, string = spend txid)",
+                    "type": "string"
                 }
             }
         },
@@ -3462,132 +3368,45 @@
                 }
             }
         },
-        "pkg_txo.IndexedOutput": {
+        "pkg_txo.IndexedOutputResponse": {
+            "description": "Transaction output with indexing metadata",
             "type": "object",
             "properties": {
-                "ancillaryTxids": {
-                    "type": "array",
-                    "items": {
-                        "type": "array",
-                        "items": {
-                            "type": "integer"
-                        }
-                    }
-                },
-                "beef": {
-                    "type": "array",
-                    "items": {
-                        "type": "integer",
-                        "format": "int32"
-                    }
-                },
                 "blockHeight": {
-                    "type": "integer",
-                    "format": "int32"
+                    "description": "Present if IncludeBlock",
+                    "type": "integer"
                 },
                 "blockIdx": {
-                    "type": "integer",
-                    "format": "int64"
-                },
-                "consumedBy": {
-                    "type": "array",
-                    "items": {
-                        "$ref": "#/definitions/transaction.Outpoint"
-                    }
+                    "description": "Present if IncludeBlock",
+                    "type": "integer"
                 },
                 "data": {
+                    "description": "Present if IncludeTags has entries",
                     "type": "object",
                     "additionalProperties": {}
                 },
                 "events": {
+                    "description": "Present if IncludeEvents",
                     "type": "array",
                     "items": {
                         "type": "string"
                     }
                 },
-                "merkleRoot": {
-                    "description": "Merkle root extracted from the merkle path",
-                    "type": "array",
-                    "items": {
-                        "type": "integer"
-                    }
-                },
-                "merkleState": {
-                    "description": "Validation state of the merkle proof",
-                    "allOf": [
-                        {
-                            "$ref": "#/definitions/engine.MerkleState"
-                        }
-                    ]
-                },
                 "outpoint": {
-                    "$ref": "#/definitions/transaction.Outpoint"
-                },
-                "outputsConsumed": {
-                    "type": "array",
-                    "items": {
-                        "$ref": "#/definitions/transaction.Outpoint"
-                    }
-                },
-                "owners": {
-                    "type": "array",
-                    "items": {
-                        "type": "array",
-                        "items": {
-                            "type": "integer",
-                            "format": "int32"
-                        }
-                    }
+                    "description": "Always present: \"txid_vout\" format",
+                    "type": "string"
                 },
                 "satoshis": {
-                    "description": "Extended fields for indexing",
+                    "description": "Present if IncludeSats",
                     "type": "integer"
                 },
                 "score": {
-                    "description": "sort score for outputs. Usage is up to Storage implementation.",
-                    "type": "number",
-                    "format": "float64"
-                },
-                "spend": {
-                    "type": "array",
-                    "items": {
-                        "type": "integer"
-                    }
-                },
-                "spent": {
-                    "type": "boolean"
-                },
-                "topic": {
-                    "type": "string"
-                }
-            }
-        },
-        "pkg_txo.SearchRequest": {
-            "type": "object",
-            "properties": {
-                "from": {
+                    "description": "Always present",
                     "type": "number"
                 },
-                "keys": {
-                    "type": "array",
-                    "items": {
-                        "type": "string"
-                    }
-                },
-                "limit": {
-                    "type": "integer"
-                },
-                "reverse": {
-                    "type": "boolean"
-                },
-                "tags": {
-                    "type": "array",
-                    "items": {
-                        "type": "string"
-                    }
-                },
-                "unspent": {
-                    "type": "boolean"
+                "spend": {
+                    "description": "Present if IncludeSpend (nil = unspent, string = spend txid)",
+                    "type": "string"
                 }
             }
         },

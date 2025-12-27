@@ -61,6 +61,9 @@ type Config struct {
 	// Transaction services
 	Merkle MerkleConfig `mapstructure:"merkle"`
 
+	// Indexer service
+	Indexer indexer.Config `mapstructure:"indexer"`
+
 	// BSV21 token support
 	BSV21 bsv21.Config `mapstructure:"bsv21"`
 
@@ -136,6 +139,7 @@ type Services struct {
 	PubSub  *pubsub.Services
 	Beef    *beef.Services
 	TXO     *txo.Services
+	Indexer *indexer.Services
 	BSV21   *bsv21.Services
 	Overlay *overlay.Services
 	ORDFS   *ordfs.Services
@@ -198,6 +202,7 @@ func (c *Config) SetDefaults(v *viper.Viper) {
 	v.SetDefault("merkle.routes.prefix", "")
 
 	// Package configs
+	c.Indexer.SetDefaults(v, "indexer")
 	c.BSV21.SetDefaults(v, "bsv21")
 	c.Overlay.SetDefaults(v, "overlay")
 	c.ORDFS.SetDefaults(v, "ordfs")
@@ -357,15 +362,26 @@ func (c *Config) Initialize(ctx context.Context, logger *slog.Logger) (*Services
 		svc.ORDFS = ordfsSvc
 	}
 
-	// Initialize owner services (depends on TXO, Beef, Indexer)
-	if c.Owner.Mode != owner.ModeDisabled && svc.TXO != nil && svc.Beef != nil {
-		// Create indexer for owner sync
-		idx := indexer.NewIngestCtx(svc.TXO.OutputStore, svc.Beef.Storage, logger)
+	// Initialize indexer services (shared IngestCtx used by owner sync and ingest sync)
+	if c.Indexer.Mode != indexer.ModeDisabled && svc.TXO != nil && svc.Beef != nil {
+		indexerSvc, err := c.Indexer.Initialize(ctx, logger, &indexer.InitializeDeps{
+			Store:       svc.Store.Store,
+			BeefStorage: svc.Beef.Storage,
+			OutputStore: svc.TXO.OutputStore,
+		})
+		if err != nil {
+			return nil, fmt.Errorf("failed to initialize indexer: %w", err)
+		}
+		svc.Indexer = indexerSvc
+		logger.Debug("indexer service initialized", "mode", c.Indexer.Mode, "syncEnabled", c.Indexer.Sync.Enabled)
+	}
 
+	// Initialize owner services (depends on TXO, Beef, Indexer)
+	if c.Owner.Mode != owner.ModeDisabled && svc.TXO != nil && svc.Beef != nil && svc.Indexer != nil {
 		ownSvc, err := c.Owner.Initialize(ctx, logger, &owner.InitializeDeps{
 			JungleBus:   svc.JungleBus,
 			BeefStorage: svc.Beef.Storage,
-			Indexer:     idx,
+			Indexer:     svc.Indexer.Indexer, // Use shared IngestCtx from indexer services
 			OutputStore: svc.TXO.OutputStore,
 		})
 		if err != nil {
@@ -374,7 +390,7 @@ func (c *Config) Initialize(ctx context.Context, logger *slog.Logger) (*Services
 		svc.Own = ownSvc
 		logger.Debug("own service initialized", "mode", c.Owner.Mode)
 	} else {
-		logger.Debug("own service not initialized", "mode", c.Owner.Mode, "txoNil", svc.TXO == nil)
+		logger.Debug("own service not initialized", "mode", c.Owner.Mode, "txoNil", svc.TXO == nil, "indexerNil", svc.Indexer == nil)
 	}
 
 	// Initialize admin UI
@@ -631,6 +647,12 @@ func (svc *Services) Close() error {
 		}
 	}
 
+	if svc.Indexer != nil {
+		if err := svc.Indexer.Close(); err != nil {
+			errs = append(errs, fmt.Errorf("indexer close: %w", err))
+		}
+	}
+
 	if svc.ORDFS != nil {
 		if err := svc.ORDFS.Close(); err != nil {
 			errs = append(errs, fmt.Errorf("ordfs close: %w", err))
@@ -715,6 +737,16 @@ func (svc *Services) StartSubscribers(ctx context.Context, logger *slog.Logger) 
 			}
 		}()
 		logger.Info("started BSV21 sync services")
+	}
+
+	// Start indexer sync services
+	if svc.Indexer != nil && svc.Indexer.Sync != nil {
+		go func() {
+			if err := svc.Indexer.Start(ctx); err != nil {
+				logger.Error("Indexer sync error", "error", err)
+			}
+		}()
+		logger.Info("started indexer sync services")
 	}
 }
 

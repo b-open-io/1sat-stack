@@ -1,22 +1,45 @@
 package txo
 
 import (
+	"encoding/json"
+
 	"github.com/b-open-io/1sat-stack/pkg/types"
 	"github.com/bsv-blockchain/go-overlay-services/pkg/core/engine"
 	"github.com/bsv-blockchain/go-sdk/chainhash"
+	"github.com/bsv-blockchain/go-sdk/transaction"
 )
 
-// IndexedOutput embeds engine.Output and adds indexing-specific fields.
-// This is the shared output type used by both 1sat-indexer and overlay.
-type IndexedOutput struct {
-	engine.Output // Embed canonical type
+// IndexedOutputResponse is the JSON response format for IndexedOutput.
+// @Description Transaction output with indexing metadata
+type IndexedOutputResponse struct {
+	Outpoint    string         `json:"outpoint"`              // Always present: "txid_vout" format
+	Score       float64        `json:"score"`                 // Always present
+	Satoshis    *uint64        `json:"satoshis,omitempty"`    // Present if IncludeSats
+	BlockHeight *uint32        `json:"blockHeight,omitempty"` // Present if IncludeBlock
+	BlockIdx    *uint64        `json:"blockIdx,omitempty"`    // Present if IncludeBlock
+	Spend       *string        `json:"spend,omitempty"`       // Present if IncludeSpend (nil = unspent, string = spend txid)
+	Events      []string       `json:"events,omitempty"`      // Present if IncludeEvents
+	Data        map[string]any `json:"data,omitempty"`        // Present if IncludeTags has entries
+}
 
-	// Extended fields for indexing
-	Satoshis  uint64          `json:"satoshis,omitempty"`
-	Owners    []types.PKHash  `json:"owners,omitempty"`
-	Events    []string        `json:"events,omitempty"`
-	Data      map[string]any  `json:"data,omitempty"`
-	SpendTxid *chainhash.Hash `json:"spend,omitempty"`
+// IndexedOutput represents a transaction output with optional indexed data.
+// Fields are populated based on OutputSearchCfg flags.
+// Base fields (Outpoint, Score) are always populated.
+type IndexedOutput struct {
+	// Always populated
+	Outpoint transaction.Outpoint `json:"-"` // Custom JSON marshalling via MarshalJSON
+	Score    float64              `json:"-"`
+
+	// Optional fields - nil means not requested
+	Satoshis    *uint64         `json:"-"`
+	BlockHeight *uint32         `json:"-"`
+	BlockIdx    *uint64         `json:"-"`
+	SpendTxid   *chainhash.Hash `json:"-"`
+	Events      []string        `json:"-"` // nil = not requested, [] = no events
+	Data        map[string]any  `json:"-"` // nil = not requested
+
+	// Internal only - not serialized
+	Owners []types.PKHash `json:"-"`
 }
 
 // AddOwner adds an owner to the output if not already present
@@ -79,4 +102,44 @@ func (o *IndexedOutput) GetData(tag string) (interface{}, bool) {
 	}
 	data, ok := o.Data[tag]
 	return data, ok
+}
+
+// MarshalJSON implements custom JSON marshaling using IndexedOutputResponse
+func (o *IndexedOutput) MarshalJSON() ([]byte, error) {
+	resp := IndexedOutputResponse{
+		Outpoint:    o.Outpoint.OrdinalString(),
+		Score:       o.Score,
+		Satoshis:    o.Satoshis,
+		BlockHeight: o.BlockHeight,
+		BlockIdx:    o.BlockIdx,
+		Events:      o.Events,
+		Data:        o.Data,
+	}
+
+	if o.SpendTxid != nil {
+		spendStr := o.SpendTxid.String()
+		resp.Spend = &spendStr
+	}
+
+	return json.Marshal(resp)
+}
+
+// ToEngineOutput converts IndexedOutput to engine.Output for overlay compatibility
+func (o *IndexedOutput) ToEngineOutput() *engine.Output {
+	out := &engine.Output{
+		Outpoint: o.Outpoint,
+		Score:    o.Score,
+	}
+
+	if o.BlockHeight != nil {
+		out.BlockHeight = *o.BlockHeight
+	}
+	if o.BlockIdx != nil {
+		out.BlockIdx = *o.BlockIdx
+	}
+	if o.SpendTxid != nil {
+		out.Spent = true
+	}
+
+	return out
 }

@@ -68,21 +68,25 @@ func (r *Routes) OwnerTxos(c *fiber.Ctx) error {
 		}
 	}
 
-	cfg := txo.NewOutputSearchCfg().
-		WithStringKeys("own:" + owner).
-		WithLimit(uint32(c.QueryInt("limit", 100))).
-		WithReverse(c.QueryBool("rev", false)).
-		WithFilterSpent(c.QueryBool("unspent", true))
-
-	// Parse tags
-	if tagsQuery := c.Query("tags", ""); tagsQuery != "" {
-		tags := strings.Split(tagsQuery, ",")
-		cfg.WithTags(tags...)
+	var from *float64
+	if f := c.QueryFloat("from", 0); f != 0 {
+		from = &f
 	}
 
-	// Parse from score
-	if from := c.QueryFloat("from", 0); from != 0 {
-		cfg.From = &from
+	var tags []string
+	if tagsQuery := c.Query("tags", ""); tagsQuery != "" {
+		tags = strings.Split(tagsQuery, ",")
+	}
+
+	cfg := &txo.OutputSearchCfg{
+		SearchCfg: store.SearchCfg{
+			Keys:    [][]byte{[]byte("own:" + owner)},
+			Limit:   uint32(c.QueryInt("limit", 100)),
+			Reverse: c.QueryBool("rev", false),
+			From:    from,
+		},
+		FilterSpent: c.QueryBool("unspent", true),
+		IncludeTags: tags,
 	}
 
 	outputs, err := r.outputStore.SearchOutputs(c.Context(), cfg)
@@ -105,8 +109,11 @@ func (r *Routes) OwnerTxos(c *fiber.Ctx) error {
 func (r *Routes) OwnerBalance(c *fiber.Ctx) error {
 	owner := c.Params("owner")
 
-	cfg := txo.NewOutputSearchCfg().
-		WithStringKeys("own:" + owner)
+	cfg := &txo.OutputSearchCfg{
+		SearchCfg: store.SearchCfg{
+			Keys: [][]byte{[]byte("own:" + owner)},
+		},
+	}
 
 	balance, count, err := r.outputStore.SearchBalance(c.Context(), cfg)
 	if err != nil {
@@ -179,13 +186,15 @@ func (r *Routes) OwnerSync(c *fiber.Ctx) error {
 			// Query batchSize+1 to detect if there are more results
 			queryLimit := batchSize + 1
 
-			cfg := &store.SearchCfg{
-				Keys:  keys,
-				From:  &currentFrom,
-				Limit: queryLimit,
+			cfg := &txo.OutputSearchCfg{
+				SearchCfg: store.SearchCfg{
+					Keys:  keys,
+					From:  &currentFrom,
+					Limit: queryLimit,
+				},
 			}
 
-			results, err := r.outputStore.Search(c.Context(), &txo.OutputSearchCfg{SearchCfg: *cfg})
+			results, err := r.outputStore.Search(c.Context(), cfg)
 			if err != nil {
 				r.logger.Error("OwnerSync search error", "error", err)
 				fmt.Fprintf(w, "event: error\ndata: %s\n\n", err.Error())

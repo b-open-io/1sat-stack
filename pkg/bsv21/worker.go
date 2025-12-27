@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/b-open-io/1sat-stack/pkg/jbsync"
+	"github.com/b-open-io/1sat-stack/pkg/store"
 	"github.com/b-open-io/1sat-stack/pkg/txo"
 	"github.com/b-open-io/1sat-stack/pkg/worker"
 )
@@ -60,9 +61,12 @@ func (m *TokenManager) ListWorkers(ctx context.Context) []WorkerStatus {
 // calculateBalance calculates credits - debits for a token
 func (m *TokenManager) calculateBalance(ctx context.Context, tokenId, feeAddress string) (int64, error) {
 	// Credits: unspent satoshis at fee address
-	cfg := txo.NewOutputSearchCfg().
-		WithStringKeys("own:" + feeAddress).
-		WithFilterSpent(true)
+	cfg := &txo.OutputSearchCfg{
+		SearchCfg: store.SearchCfg{
+			Keys: [][]byte{[]byte("own:" + feeAddress)},
+		},
+		FilterSpent: true,
+	}
 	credits, _, err := m.outputStore.SearchBalance(ctx, cfg)
 	if err != nil {
 		return 0, fmt.Errorf("failed to query balance: %w", err)

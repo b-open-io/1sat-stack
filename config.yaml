@@ -63,14 +63,20 @@ txo:
 # Indexer service
 indexer:
   mode: embedded
-  tag: IngestTag
-  concurrency: 1
   verbose: false
-  indexers:
+  tags:
     - p2pkh
     - lock
     - inscription
     - ordlock
+    - cosign
+  sync:
+    enabled: true
+    queue_name: "ingest"    # Queue to consume from (q:ingest)
+    concurrency: 24          # Worker concurrency
+    page_size: 100          # Batch fetch size
+    poll_delay: 1s          # Sleep when queue empty
+  log_level: info
   routes:
     enabled: true
 
@@ -106,12 +112,12 @@ merkle:
 bsv21:
   mode: embedded
   sync:
-    enabled: false
-    dispatch_workers: 8
+    enabled: true
+    dispatch_workers: 16
     token_workers: 16
     fee_per_output: 1000
     lifecycle_interval: 5m  # How often to check token balances and manage workers (default: 5m)
-    log_level: debug  # Highlight BSV21 sync1 (debug, info, warn, error)
+    log_level: info  # Highlight BSV21 sync1 (debug, info, warn, error)
   routes:
     enabled: true
 
@@ -127,7 +133,7 @@ overlay:
 # Owner sync services
 owner:
   mode: embedded
-  log_level: debug  # Per-module log level (debug, info, warn, error)
+  log_level: info  # Per-module log level (debug, info, warn, error)
   routes:
     enabled: true
 
@@ -148,4 +154,11 @@ jbsync:
       batch_size: 1000
       reorg_depth: 6
       enable_mempool: false
-      autostart: false
+      autostart: true
+    - subscription_id: "9efa781363dcdd470fdd2664c9ad75ff2195694429c88d638e6dd9631e78fa17"
+      queue_name: "ingest"
+      from_block: 783968
+      batch_size: 500
+      reorg_depth: 6
+      enable_mempool: false
+      autostart: true

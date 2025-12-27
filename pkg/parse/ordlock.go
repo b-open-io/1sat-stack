@@ -33,7 +33,6 @@ func ParseOrdLock(ctx *ParseContext) *ParseResult {
 		pkHash := types.PKHashFromBytes(ol.Seller.PublicKeyHash)
 		if pkHash != nil {
 			result.Owners = append(result.Owners, pkHash)
-			result.Events = append(result.Events, "seller:"+ol.Seller.AddressString)
 		}
 	}
 

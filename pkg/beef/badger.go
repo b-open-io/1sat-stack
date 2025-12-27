@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"time"
 
 	"github.com/b-open-io/1sat-stack/pkg/logging"
 	"github.com/bsv-blockchain/go-sdk/chainhash"
@@ -39,6 +40,12 @@ func NewBadgerBeefStorageFromPath(path string, logger *slog.Logger) (*BadgerBeef
 		return nil, fmt.Errorf("failed to create directory: %w", err)
 	}
 
+	if logger != nil {
+		logger.Info("opening BEEF badger database", "path", path)
+	}
+
+	start := time.Now()
+
 	opts := badger.DefaultOptions(path)
 	if logger != nil {
 		opts = opts.WithLogger(&logging.BadgerLogger{
@@ -50,6 +57,17 @@ func NewBadgerBeefStorageFromPath(path string, logger *slog.Logger) (*BadgerBeef
 	db, err := badger.Open(opts)
 	if err != nil {
 		return nil, fmt.Errorf("failed to open badger db: %w", err)
+	}
+
+	if logger != nil {
+		// Get LSM and vlog sizes from Badger
+		lsmSize, vlogSize := db.Size()
+		totalSize := lsmSize + vlogSize
+		logger.Info("BEEF badger database opened",
+			"path", path,
+			"duration", time.Since(start).Round(time.Millisecond),
+			"size_gb", fmt.Sprintf("%.2f", float64(totalSize)/(1024*1024*1024)),
+		)
 	}
 
 	return &BadgerBeefStorage{db: db, ownsDB: true}, nil

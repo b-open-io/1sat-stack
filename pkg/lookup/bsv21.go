@@ -7,6 +7,7 @@ import (
 	"sync"
 
 	"github.com/b-open-io/1sat-stack/pkg/parse"
+	"github.com/b-open-io/1sat-stack/pkg/store"
 	"github.com/b-open-io/1sat-stack/pkg/txo"
 	"github.com/b-open-io/1sat-stack/pkg/types"
 	"github.com/bitcoin-sv/go-templates/template/bsv21"
@@ -222,10 +223,13 @@ func (l *BSV21Lookup) GetBalance(ctx context.Context, events []string) (uint64, 
 		keys[i] = []byte(event)
 	}
 
-	cfg := txo.NewOutputSearchCfg().
-		WithKeys(keys...).
-		WithFilterSpent(true).
-		WithTags("bsv21")
+	cfg := &txo.OutputSearchCfg{
+		SearchCfg: store.SearchCfg{
+			Keys: keys,
+		},
+		FilterSpent: true,
+		IncludeTags: []string{"bsv21"},
+	}
 
 	// Search for unspent outputs only
 	outputs, err := l.storage.SearchOutputs(ctx, cfg)
@@ -278,7 +282,9 @@ func (l *BSV21Lookup) GetToken(ctx context.Context, outpoint *transaction.Outpoi
 	}
 
 	// Load output data for this outpoint
-	cfg := txo.NewOutputSearchCfg().WithTags("bsv21")
+	cfg := &txo.OutputSearchCfg{
+		IncludeTags: []string{"bsv21"},
+	}
 	output, err := l.storage.LoadOutput(ctx, outpoint, cfg)
 	if err != nil {
 		return nil, err

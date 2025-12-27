@@ -78,10 +78,14 @@ func (s *OutputStore) SaveOutput(ctx context.Context, output *IndexedOutput, sat
 	}
 
 	// Store merkle state if we have block info
-	if output.BlockHeight > 0 {
+	if output.BlockHeight != nil && *output.BlockHeight > 0 {
 		ms := make([]byte, 12) // height(4) + idx(8)
-		binary.BigEndian.PutUint32(ms[0:4], output.BlockHeight)
-		binary.BigEndian.PutUint64(ms[4:12], output.BlockIdx)
+		binary.BigEndian.PutUint32(ms[0:4], *output.BlockHeight)
+		blockIdx := uint64(0)
+		if output.BlockIdx != nil {
+			blockIdx = *output.BlockIdx
+		}
+		binary.BigEndian.PutUint64(ms[4:12], blockIdx)
 		if err := s.Store.HSet(ctx, hashKey, []byte(fldMerkle), ms); err != nil {
 			return err
 		}
@@ -335,13 +339,20 @@ func (s *OutputStore) GetSatsBulk(ctx context.Context, ops []*transaction.Outpoi
 
 // === Search Operations ===
 
-// Search performs a multi-key search with optional spent filtering
+// Search performs a multi-key search with optional spent filtering.
+// Keys are expected to have a type prefix:
+//   - "ev:{event}" → events (have hash data)
+//   - "tp:{topic}" → topic membership (no hash data)
+//
+// If no prefix is provided, "ev:" is assumed for backwards compatibility.
+// The "z:" storage prefix is added automatically.
 func (s *OutputStore) Search(ctx context.Context, cfg *OutputSearchCfg) ([]store.ScoredMember, error) {
-	// Prefix all keys with z:
 	prefixedCfg := cfg.SearchCfg
 	prefixedCfg.Keys = make([][]byte, len(cfg.Keys))
+
 	for i, k := range cfg.Keys {
-		prefixedCfg.Keys[i] = KeyEvent(string(k))
+		key := string(k)
+		prefixedCfg.Keys[i] = prefixKey(key)
 	}
 
 	results, err := s.Store.Search(ctx, &prefixedCfg)
@@ -355,18 +366,37 @@ func (s *OutputStore) Search(ctx context.Context, cfg *OutputSearchCfg) ([]store
 	return results, nil
 }
 
-// SearchOutputs searches and loads full output data
+// prefixKey adds the appropriate z: prefix based on key type.
+// Keys starting with "ev:", "tp:", or "z:" are handled specially.
+// All other keys default to "ev:" prefix.
+func prefixKey(key string) []byte {
+	// Already has full prefix
+	if len(key) >= 2 && key[:2] == PfxZSet {
+		return []byte(key)
+	}
+
+	// Has type prefix, add z:
+	if len(key) >= 3 {
+		switch key[:3] {
+		case PfxEvent: // "ev:"
+			return []byte(PfxZSet + key)
+		case PfxTopic: // "tp:"
+			return []byte(PfxZSet + key)
+		}
+	}
+
+	// Default to event prefix for backwards compatibility
+	return KeyEvent(key)
+}
+
+// SearchOutputs searches and loads output data based on cfg flags
 func (s *OutputStore) SearchOutputs(ctx context.Context, cfg *OutputSearchCfg) ([]*IndexedOutput, error) {
 	results, err := s.Search(ctx, cfg)
 	if err != nil {
 		return nil, err
 	}
 
-	ops := make([]*transaction.Outpoint, len(results))
-	for i, r := range results {
-		ops[i] = transaction.NewOutpointFromBytes(r.Member)
-	}
-	return s.loadOutputs(ctx, ops, cfg)
+	return s.loadOutputsFromResults(ctx, results, cfg)
 }
 
 // SearchBalance calculates total satoshi balance (excludes spent)
@@ -461,69 +491,135 @@ func (s *OutputStore) LoadOutputsByTxid(ctx context.Context, txid *chainhash.Has
 	return s.loadOutputs(ctx, ops, cfg)
 }
 
-// loadOutputs loads multiple outputs with their data based on cfg
+// loadOutputsFromResults loads outputs from search results, including scores
+func (s *OutputStore) loadOutputsFromResults(ctx context.Context, results []store.ScoredMember, cfg *OutputSearchCfg) ([]*IndexedOutput, error) {
+	if len(results) == 0 {
+		return nil, nil
+	}
+
+	// Extract outpoints and scores
+	ops := make([]*transaction.Outpoint, len(results))
+	scores := make([]float64, len(results))
+	for i, r := range results {
+		ops[i] = transaction.NewOutpointFromBytes(r.Member)
+		scores[i] = r.Score
+	}
+
+	return s.loadOutputsWithScores(ctx, ops, scores, cfg)
+}
+
+// loadOutputs loads multiple outputs with their data based on cfg (no scores)
 func (s *OutputStore) loadOutputs(ctx context.Context, ops []*transaction.Outpoint, cfg *OutputSearchCfg) ([]*IndexedOutput, error) {
+	// No scores available - pass nil
+	return s.loadOutputsWithScores(ctx, ops, nil, cfg)
+}
+
+// loadOutputsWithScores loads multiple outputs with optional scores based on cfg flags
+func (s *OutputStore) loadOutputsWithScores(ctx context.Context, ops []*transaction.Outpoint, scores []float64, cfg *OutputSearchCfg) ([]*IndexedOutput, error) {
 	if len(ops) == 0 {
 		return nil, nil
 	}
 
 	outputs := make([]*IndexedOutput, len(ops))
 
+	// Bulk load satoshis if requested
+	var sats []uint64
+	var err error
+	if cfg == nil || cfg.IncludeSats {
+		sats, err = s.GetSatsBulk(ctx, ops)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	// Bulk load spends if requested
+	var spends []*chainhash.Hash
+	if cfg != nil && cfg.IncludeSpend {
+		spends, err = s.GetSpends(ctx, ops)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	// Determine if we need to load hash data
+	needHashData := cfg == nil || cfg.IncludeBlock || cfg.IncludeEvents || len(cfg.IncludeTags) > 0
+
 	for i, op := range ops {
 		if op == nil {
 			continue
 		}
 
-		hashKey := KeyOutHash(op)
-
-		// Get all hash fields for this output
-		fields, err := s.Store.HGetAll(ctx, hashKey)
-		if err != nil {
-			return nil, err
-		}
-		if len(fields) == 0 {
-			continue
-		}
-
-		output := &IndexedOutput{
-			Data: make(map[string]any),
-		}
+		output := &IndexedOutput{}
 		output.Outpoint = *op
 
-		// Parse merkle state
-		if ms, ok := fields[fldMerkle]; ok && len(ms) >= 12 {
-			output.BlockHeight = binary.BigEndian.Uint32(ms[0:4])
-			output.BlockIdx = binary.BigEndian.Uint64(ms[4:12])
+		// Set score if available
+		if scores != nil && i < len(scores) {
+			output.Score = scores[i]
 		}
 
-		// Parse events
-		if ev, ok := fields[fldEvent]; ok {
-			if err := json.Unmarshal(ev, &output.Events); err != nil {
-				return nil, fmt.Errorf("failed to unmarshal events for %s: %w", op.String(), err)
+		// Set satoshis if loaded
+		if sats != nil {
+			output.Satoshis = &sats[i]
+		}
+
+		// Set spend if loaded
+		if spends != nil {
+			output.SpendTxid = spends[i]
+		}
+
+		// Load hash data if needed
+		if needHashData {
+			hashKey := KeyOutHash(op)
+			fields, err := s.Store.HGetAll(ctx, hashKey)
+			if err != nil {
+				return nil, err
 			}
-		}
 
-		// Parse tag data based on cfg.IncludeTags
-		if cfg != nil && len(cfg.IncludeTags) > 0 {
-			for _, tag := range cfg.IncludeTags {
-				if data, ok := fields[fldData+tag]; ok {
-					var tagData any
-					if err := json.Unmarshal(data, &tagData); err != nil {
-						return nil, fmt.Errorf("failed to unmarshal tag %s for %s: %w", tag, op.String(), err)
-					}
-					output.Data[tag] = tagData
+			// Parse merkle state if requested
+			if (cfg == nil || cfg.IncludeBlock) && len(fields) > 0 {
+				if ms, ok := fields[fldMerkle]; ok && len(ms) >= 12 {
+					blockHeight := binary.BigEndian.Uint32(ms[0:4])
+					blockIdx := binary.BigEndian.Uint64(ms[4:12])
+					output.BlockHeight = &blockHeight
+					output.BlockIdx = &blockIdx
 				}
 			}
-		} else if cfg == nil {
-			// Load all tag data if no cfg provided
-			for field, data := range fields {
-				if len(field) > len(fldData) && field[:len(fldData)] == fldData {
-					tag := field[len(fldData):]
-					var tagData any
-					if err := json.Unmarshal(data, &tagData); err != nil {
-						return nil, fmt.Errorf("failed to unmarshal tag %s for %s: %w", tag, op.String(), err)
+
+			// Parse events if requested
+			if (cfg == nil || cfg.IncludeEvents) && len(fields) > 0 {
+				if ev, ok := fields[fldEvent]; ok {
+					if err := json.Unmarshal(ev, &output.Events); err != nil {
+						return nil, fmt.Errorf("failed to unmarshal events for %s: %w", op.String(), err)
 					}
-					output.Data[tag] = tagData
+				}
+			}
+
+			// Parse tag data based on cfg.IncludeTags
+			if len(fields) > 0 {
+				if cfg != nil && len(cfg.IncludeTags) > 0 {
+					output.Data = make(map[string]any)
+					for _, tag := range cfg.IncludeTags {
+						if data, ok := fields[fldData+tag]; ok {
+							var tagData any
+							if err := json.Unmarshal(data, &tagData); err != nil {
+								return nil, fmt.Errorf("failed to unmarshal tag %s for %s: %w", tag, op.String(), err)
+							}
+							output.Data[tag] = tagData
+						}
+					}
+				} else if cfg == nil {
+					// Load all tag data if no cfg provided
+					output.Data = make(map[string]any)
+					for field, data := range fields {
+						if len(field) > len(fldData) && field[:len(fldData)] == fldData {
+							tag := field[len(fldData):]
+							var tagData any
+							if err := json.Unmarshal(data, &tagData); err != nil {
+								return nil, fmt.Errorf("failed to unmarshal tag %s for %s: %w", tag, op.String(), err)
+							}
+							output.Data[tag] = tagData
+						}
+					}
 				}
 			}
 		}
