@@ -523,633 +523,6 @@ const docTemplate = `{
                 }
             }
         },
-        "/api/beef/{txid}": {
-            "get": {
-                "description": "Retrieves the BEEF (BSV Envelope Format) for a specific transaction",
-                "produces": [
-                    "application/octet-stream"
-                ],
-                "tags": [
-                    "beef"
-                ],
-                "summary": "Get BEEF for a transaction",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "description": "Transaction ID",
-                        "name": "txid",
-                        "in": "path",
-                        "required": true
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "BEEF bytes",
-                        "schema": {
-                            "type": "file"
-                        }
-                    },
-                    "404": {
-                        "description": "Transaction not found",
-                        "schema": {
-                            "type": "object",
-                            "additionalProperties": {
-                                "type": "string"
-                            }
-                        }
-                    }
-                }
-            }
-        },
-        "/api/beef/{txid}/proof": {
-            "get": {
-                "description": "Retrieves just the merkle proof bytes for a transaction",
-                "produces": [
-                    "application/octet-stream"
-                ],
-                "tags": [
-                    "beef"
-                ],
-                "summary": "Get merkle proof",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "description": "Transaction ID",
-                        "name": "txid",
-                        "in": "path",
-                        "required": true
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "Merkle proof bytes",
-                        "schema": {
-                            "type": "file"
-                        }
-                    },
-                    "404": {
-                        "description": "Proof not found",
-                        "schema": {
-                            "type": "object",
-                            "additionalProperties": {
-                                "type": "string"
-                            }
-                        }
-                    }
-                }
-            }
-        },
-        "/api/bsv21/{tokenId}": {
-            "get": {
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "bsv21"
-                ],
-                "summary": "Get BSV21 token details",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "description": "Token ID (outpoint format: txid_vout)",
-                        "name": "tokenId",
-                        "in": "path",
-                        "required": true
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "$ref": "#/definitions/pkg_bsv21.TokenResponse"
-                        }
-                    }
-                }
-            }
-        },
-        "/api/bsv21/{tokenId}/tx/{txid}": {
-            "get": {
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "bsv21"
-                ],
-                "summary": "Get transaction details",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "description": "Token ID",
-                        "name": "tokenId",
-                        "in": "path",
-                        "required": true
-                    },
-                    {
-                        "type": "string",
-                        "description": "Transaction ID",
-                        "name": "txid",
-                        "in": "path",
-                        "required": true
-                    },
-                    {
-                        "type": "boolean",
-                        "description": "Include BEEF data",
-                        "name": "beef",
-                        "in": "query"
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "type": "object",
-                            "additionalProperties": true
-                        }
-                    }
-                }
-            }
-        },
-        "/api/bsv21/{tokenId}/{lockType}/balance": {
-            "post": {
-                "consumes": [
-                    "application/json"
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "bsv21"
-                ],
-                "summary": "Get multi-address token balance",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "description": "Token ID",
-                        "name": "tokenId",
-                        "in": "path",
-                        "required": true
-                    },
-                    {
-                        "type": "string",
-                        "description": "Lock type",
-                        "name": "lockType",
-                        "in": "path",
-                        "required": true
-                    },
-                    {
-                        "description": "Array of addresses (max 100)",
-                        "name": "addresses",
-                        "in": "body",
-                        "required": true,
-                        "schema": {
-                            "type": "array",
-                            "items": {
-                                "type": "string"
-                            }
-                        }
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "$ref": "#/definitions/pkg_bsv21.BalanceResponse"
-                        }
-                    }
-                }
-            }
-        },
-        "/api/bsv21/{tokenId}/{lockType}/history": {
-            "post": {
-                "consumes": [
-                    "application/json"
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "bsv21"
-                ],
-                "summary": "Get multi-address transaction history",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "description": "Token ID",
-                        "name": "tokenId",
-                        "in": "path",
-                        "required": true
-                    },
-                    {
-                        "type": "string",
-                        "description": "Lock type",
-                        "name": "lockType",
-                        "in": "path",
-                        "required": true
-                    },
-                    {
-                        "description": "Array of addresses (max 100)",
-                        "name": "addresses",
-                        "in": "body",
-                        "required": true,
-                        "schema": {
-                            "type": "array",
-                            "items": {
-                                "type": "string"
-                            }
-                        }
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "type": "array",
-                            "items": {
-                                "$ref": "#/definitions/github_com_b-open-io_1sat-stack_pkg_txo.IndexedOutput"
-                            }
-                        }
-                    }
-                }
-            }
-        },
-        "/api/bsv21/{tokenId}/{lockType}/unspent": {
-            "post": {
-                "consumes": [
-                    "application/json"
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "bsv21"
-                ],
-                "summary": "Get multi-address unspent outputs",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "description": "Token ID",
-                        "name": "tokenId",
-                        "in": "path",
-                        "required": true
-                    },
-                    {
-                        "type": "string",
-                        "description": "Lock type",
-                        "name": "lockType",
-                        "in": "path",
-                        "required": true
-                    },
-                    {
-                        "description": "Array of addresses (max 100)",
-                        "name": "addresses",
-                        "in": "body",
-                        "required": true,
-                        "schema": {
-                            "type": "array",
-                            "items": {
-                                "type": "string"
-                            }
-                        }
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "type": "array",
-                            "items": {
-                                "$ref": "#/definitions/github_com_b-open-io_1sat-stack_pkg_txo.IndexedOutput"
-                            }
-                        }
-                    }
-                }
-            }
-        },
-        "/api/bsv21/{tokenId}/{lockType}/{address}/balance": {
-            "get": {
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "bsv21"
-                ],
-                "summary": "Get address token balance",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "description": "Token ID",
-                        "name": "tokenId",
-                        "in": "path",
-                        "required": true
-                    },
-                    {
-                        "type": "string",
-                        "description": "Lock type (p2pkh, cos, list, etc.)",
-                        "name": "lockType",
-                        "in": "path",
-                        "required": true
-                    },
-                    {
-                        "type": "string",
-                        "description": "Address",
-                        "name": "address",
-                        "in": "path",
-                        "required": true
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "$ref": "#/definitions/pkg_bsv21.BalanceResponse"
-                        }
-                    }
-                }
-            }
-        },
-        "/api/bsv21/{tokenId}/{lockType}/{address}/history": {
-            "get": {
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "bsv21"
-                ],
-                "summary": "Get address transaction history",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "description": "Token ID",
-                        "name": "tokenId",
-                        "in": "path",
-                        "required": true
-                    },
-                    {
-                        "type": "string",
-                        "description": "Lock type",
-                        "name": "lockType",
-                        "in": "path",
-                        "required": true
-                    },
-                    {
-                        "type": "string",
-                        "description": "Address",
-                        "name": "address",
-                        "in": "path",
-                        "required": true
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "type": "array",
-                            "items": {
-                                "$ref": "#/definitions/github_com_b-open-io_1sat-stack_pkg_txo.IndexedOutput"
-                            }
-                        }
-                    }
-                }
-            }
-        },
-        "/api/bsv21/{tokenId}/{lockType}/{address}/unspent": {
-            "get": {
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "bsv21"
-                ],
-                "summary": "Get address unspent outputs",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "description": "Token ID",
-                        "name": "tokenId",
-                        "in": "path",
-                        "required": true
-                    },
-                    {
-                        "type": "string",
-                        "description": "Lock type",
-                        "name": "lockType",
-                        "in": "path",
-                        "required": true
-                    },
-                    {
-                        "type": "string",
-                        "description": "Address",
-                        "name": "address",
-                        "in": "path",
-                        "required": true
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "type": "array",
-                            "items": {
-                                "$ref": "#/definitions/github_com_b-open-io_1sat-stack_pkg_txo.IndexedOutput"
-                            }
-                        }
-                    }
-                }
-            }
-        },
-        "/api/ordfs/metadata/{path}": {
-            "get": {
-                "description": "Get metadata about inscription content without downloading the content",
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "ordfs"
-                ],
-                "summary": "Get content metadata",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "description": "Outpoint (txid_vout) or txid",
-                        "name": "path",
-                        "in": "path",
-                        "required": true
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "Metadata",
-                        "schema": {
-                            "$ref": "#/definitions/github_com_b-open-io_1sat-stack_pkg_ordfs.Response"
-                        }
-                    },
-                    "400": {
-                        "description": "Bad request",
-                        "schema": {
-                            "type": "object",
-                            "additionalProperties": {
-                                "type": "string"
-                            }
-                        }
-                    },
-                    "404": {
-                        "description": "Not found",
-                        "schema": {
-                            "type": "object",
-                            "additionalProperties": {
-                                "type": "string"
-                            }
-                        }
-                    }
-                }
-            }
-        },
-        "/api/ordfs/preview": {
-            "post": {
-                "description": "Echo back the request body for preview rendering",
-                "consumes": [
-                    "*/*"
-                ],
-                "produces": [
-                    "*/*"
-                ],
-                "tags": [
-                    "ordfs"
-                ],
-                "summary": "Preview posted content",
-                "responses": {
-                    "200": {
-                        "description": "Content",
-                        "schema": {
-                            "type": "string"
-                        }
-                    },
-                    "400": {
-                        "description": "Bad request",
-                        "schema": {
-                            "type": "object",
-                            "additionalProperties": {
-                                "type": "string"
-                            }
-                        }
-                    }
-                }
-            }
-        },
-        "/api/ordfs/preview/{b64HtmlData}": {
-            "get": {
-                "description": "Decode and render base64-encoded HTML",
-                "produces": [
-                    "text/html"
-                ],
-                "tags": [
-                    "ordfs"
-                ],
-                "summary": "Preview HTML content",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "description": "Base64-encoded HTML content",
-                        "name": "b64HtmlData",
-                        "in": "path",
-                        "required": true
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "HTML content",
-                        "schema": {
-                            "type": "string"
-                        }
-                    },
-                    "400": {
-                        "description": "Bad request",
-                        "schema": {
-                            "type": "object",
-                            "additionalProperties": {
-                                "type": "string"
-                            }
-                        }
-                    }
-                }
-            }
-        },
-        "/api/ordfs/stream/{outpoint}": {
-            "get": {
-                "description": "Stream content from an ordinal chain",
-                "produces": [
-                    "application/octet-stream"
-                ],
-                "tags": [
-                    "ordfs"
-                ],
-                "summary": "Stream content",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "description": "Outpoint (txid_vout)",
-                        "name": "outpoint",
-                        "in": "path",
-                        "required": true
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "Streamed content",
-                        "schema": {
-                            "type": "file"
-                        }
-                    },
-                    "400": {
-                        "description": "Bad request",
-                        "schema": {
-                            "type": "object",
-                            "additionalProperties": {
-                                "type": "string"
-                            }
-                        }
-                    },
-                    "404": {
-                        "description": "Not found",
-                        "schema": {
-                            "type": "object",
-                            "additionalProperties": {
-                                "type": "string"
-                            }
-                        }
-                    }
-                }
-            }
-        },
-        "/api/sse/{topics}": {
-            "get": {
-                "description": "Establishes an SSE connection for real-time event streaming",
-                "produces": [
-                    "text/event-stream"
-                ],
-                "tags": [
-                    "sse"
-                ],
-                "summary": "Subscribe to Server-Sent Events",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "description": "Comma-separated list of topics to subscribe to",
-                        "name": "topics",
-                        "in": "path",
-                        "required": true
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "SSE stream",
-                        "schema": {
-                            "type": "string"
-                        }
-                    }
-                }
-            }
-        },
         "/arc/callback": {
             "post": {
                 "description": "Receives transaction status updates from Arc broadcaster",
@@ -1463,6 +836,82 @@ const docTemplate = `{
                 }
             }
         },
+        "/beef/{txid}": {
+            "get": {
+                "description": "Retrieves the BEEF (BSV Envelope Format) for a specific transaction",
+                "produces": [
+                    "application/octet-stream"
+                ],
+                "tags": [
+                    "beef"
+                ],
+                "summary": "Get BEEF for a transaction",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Transaction ID",
+                        "name": "txid",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "BEEF bytes",
+                        "schema": {
+                            "type": "file"
+                        }
+                    },
+                    "404": {
+                        "description": "Transaction not found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/beef/{txid}/proof": {
+            "get": {
+                "description": "Retrieves just the merkle proof bytes for a transaction",
+                "produces": [
+                    "application/octet-stream"
+                ],
+                "tags": [
+                    "beef"
+                ],
+                "summary": "Get merkle proof",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Transaction ID",
+                        "name": "txid",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Merkle proof bytes",
+                        "schema": {
+                            "type": "file"
+                        }
+                    },
+                    "404": {
+                        "description": "Proof not found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
         "/beef/{txid}/tx": {
             "get": {
                 "description": "Retrieves just the raw transaction bytes (without proof)",
@@ -1501,6 +950,34 @@ const docTemplate = `{
                 }
             }
         },
+        "/bsv21/{tokenId}": {
+            "get": {
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "bsv21"
+                ],
+                "summary": "Get BSV21 token details",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Token ID (outpoint format: txid_vout)",
+                        "name": "tokenId",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_b-open-io_1sat-stack_pkg_bsv21.TokenResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/bsv21/{tokenId}/blk/{height}": {
             "get": {
                 "produces": [
@@ -1530,7 +1007,337 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/pkg_bsv21.BlockResponse"
+                            "$ref": "#/definitions/github_com_b-open-io_1sat-stack_pkg_bsv21.BlockResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/bsv21/{tokenId}/tx/{txid}": {
+            "get": {
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "bsv21"
+                ],
+                "summary": "Get transaction details",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Token ID",
+                        "name": "tokenId",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Transaction ID",
+                        "name": "txid",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "boolean",
+                        "description": "Include BEEF data",
+                        "name": "beef",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    }
+                }
+            }
+        },
+        "/bsv21/{tokenId}/{lockType}/balance": {
+            "post": {
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "bsv21"
+                ],
+                "summary": "Get multi-address token balance",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Token ID",
+                        "name": "tokenId",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Lock type",
+                        "name": "lockType",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Array of addresses (max 100)",
+                        "name": "addresses",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_b-open-io_1sat-stack_pkg_bsv21.BalanceResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/bsv21/{tokenId}/{lockType}/history": {
+            "post": {
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "bsv21"
+                ],
+                "summary": "Get multi-address transaction history",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Token ID",
+                        "name": "tokenId",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Lock type",
+                        "name": "lockType",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Array of addresses (max 100)",
+                        "name": "addresses",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/github_com_b-open-io_1sat-stack_pkg_txo.IndexedOutput"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/bsv21/{tokenId}/{lockType}/unspent": {
+            "post": {
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "bsv21"
+                ],
+                "summary": "Get multi-address unspent outputs",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Token ID",
+                        "name": "tokenId",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Lock type",
+                        "name": "lockType",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Array of addresses (max 100)",
+                        "name": "addresses",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/github_com_b-open-io_1sat-stack_pkg_txo.IndexedOutput"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/bsv21/{tokenId}/{lockType}/{address}/balance": {
+            "get": {
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "bsv21"
+                ],
+                "summary": "Get address token balance",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Token ID",
+                        "name": "tokenId",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Lock type (p2pkh, cos, list, etc.)",
+                        "name": "lockType",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Address",
+                        "name": "address",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_b-open-io_1sat-stack_pkg_bsv21.BalanceResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/bsv21/{tokenId}/{lockType}/{address}/history": {
+            "get": {
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "bsv21"
+                ],
+                "summary": "Get address transaction history",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Token ID",
+                        "name": "tokenId",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Lock type",
+                        "name": "lockType",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Address",
+                        "name": "address",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/github_com_b-open-io_1sat-stack_pkg_txo.IndexedOutput"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/bsv21/{tokenId}/{lockType}/{address}/unspent": {
+            "get": {
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "bsv21"
+                ],
+                "summary": "Get address unspent outputs",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Token ID",
+                        "name": "tokenId",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Lock type",
+                        "name": "lockType",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Address",
+                        "name": "address",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/github_com_b-open-io_1sat-stack_pkg_txo.IndexedOutput"
+                            }
                         }
                     }
                 }
@@ -1843,6 +1650,170 @@ const docTemplate = `{
                         "description": "Service Unavailable",
                         "schema": {
                             "type": "string"
+                        }
+                    }
+                }
+            }
+        },
+        "/ordfs/metadata/{path}": {
+            "get": {
+                "description": "Get metadata about inscription content without downloading the content",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "ordfs"
+                ],
+                "summary": "Get content metadata",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Outpoint (txid_vout) or txid",
+                        "name": "path",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Metadata",
+                        "schema": {
+                            "$ref": "#/definitions/pkg_ordfs.Response"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Not found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/ordfs/preview": {
+            "post": {
+                "description": "Echo back the request body for preview rendering",
+                "consumes": [
+                    "*/*"
+                ],
+                "produces": [
+                    "*/*"
+                ],
+                "tags": [
+                    "ordfs"
+                ],
+                "summary": "Preview posted content",
+                "responses": {
+                    "200": {
+                        "description": "Content",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/ordfs/preview/{b64HtmlData}": {
+            "get": {
+                "description": "Decode and render base64-encoded HTML",
+                "produces": [
+                    "text/html"
+                ],
+                "tags": [
+                    "ordfs"
+                ],
+                "summary": "Preview HTML content",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Base64-encoded HTML content",
+                        "name": "b64HtmlData",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "HTML content",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/ordfs/stream/{outpoint}": {
+            "get": {
+                "description": "Stream content from an ordinal chain",
+                "produces": [
+                    "application/octet-stream"
+                ],
+                "tags": [
+                    "ordfs"
+                ],
+                "summary": "Stream content",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Outpoint (txid_vout)",
+                        "name": "outpoint",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Streamed content",
+                        "schema": {
+                            "type": "file"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Not found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
                         }
                     }
                 }
@@ -2341,7 +2312,7 @@ const docTemplate = `{
                     "application/json"
                 ],
                 "tags": [
-                    "own"
+                    "owner"
                 ],
                 "summary": "Get owner balance",
                 "parameters": [
@@ -2357,7 +2328,7 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/github_com_b-open-io_1sat-stack_pkg_owner.BalanceResponse"
+                            "$ref": "#/definitions/pkg_owner.BalanceResponse"
                         }
                     },
                     "500": {
@@ -2376,7 +2347,7 @@ const docTemplate = `{
                     "application/json"
                 ],
                 "tags": [
-                    "own"
+                    "owner"
                 ],
                 "summary": "Get owner TXOs",
                 "parameters": [
@@ -2446,6 +2417,35 @@ const docTemplate = `{
                 }
             }
         },
+        "/sse/{topics}": {
+            "get": {
+                "description": "Establishes an SSE connection for real-time event streaming",
+                "produces": [
+                    "text/event-stream"
+                ],
+                "tags": [
+                    "sse"
+                ],
+                "summary": "Subscribe to Server-Sent Events",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Comma-separated list of topics to subscribe to",
+                        "name": "topics",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "SSE stream",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
         "/txo/outpoints": {
             "post": {
                 "description": "Get multiple transaction outputs by their outpoints",
@@ -2492,7 +2492,7 @@ const docTemplate = `{
                         "schema": {
                             "type": "array",
                             "items": {
-                                "$ref": "#/definitions/pkg_txo.IndexedOutputResponse"
+                                "$ref": "#/definitions/github_com_b-open-io_1sat-stack_pkg_txo.IndexedOutputResponse"
                             }
                         }
                     },
@@ -2512,7 +2512,7 @@ const docTemplate = `{
                     "application/json"
                 ],
                 "tags": [
-                    "search"
+                    "txos"
                 ],
                 "summary": "Search outputs by key(s)",
                 "parameters": [
@@ -2589,7 +2589,7 @@ const docTemplate = `{
                         "schema": {
                             "type": "array",
                             "items": {
-                                "$ref": "#/definitions/pkg_txo.IndexedOutputResponse"
+                                "$ref": "#/definitions/github_com_b-open-io_1sat-stack_pkg_txo.IndexedOutputResponse"
                             }
                         }
                     },
@@ -2641,7 +2641,7 @@ const docTemplate = `{
                         "schema": {
                             "type": "array",
                             "items": {
-                                "$ref": "#/definitions/pkg_txo.SpendResponse"
+                                "$ref": "#/definitions/github_com_b-open-io_1sat-stack_pkg_txo.SpendResponse"
                             }
                         }
                     },
@@ -2692,7 +2692,7 @@ const docTemplate = `{
                         "schema": {
                             "type": "array",
                             "items": {
-                                "$ref": "#/definitions/pkg_txo.IndexedOutputResponse"
+                                "$ref": "#/definitions/github_com_b-open-io_1sat-stack_pkg_txo.IndexedOutputResponse"
                             }
                         }
                     },
@@ -2747,7 +2747,7 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/pkg_txo.IndexedOutputResponse"
+                            "$ref": "#/definitions/github_com_b-open-io_1sat-stack_pkg_txo.IndexedOutputResponse"
                         }
                     },
                     "400": {
@@ -2794,7 +2794,7 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/pkg_txo.SpendResponse"
+                            "$ref": "#/definitions/github_com_b-open-io_1sat-stack_pkg_txo.SpendResponse"
                         }
                     },
                     "400": {

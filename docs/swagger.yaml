@@ -764,421 +764,6 @@ paths:
       summary: Remove from whitelist
       tags:
       - admin
-  /api/beef/{txid}:
-    get:
-      description: Retrieves the BEEF (BSV Envelope Format) for a specific transaction
-      parameters:
-      - description: Transaction ID
-        in: path
-        name: txid
-        required: true
-        type: string
-      produces:
-      - application/octet-stream
-      responses:
-        "200":
-          description: BEEF bytes
-          schema:
-            type: file
-        "404":
-          description: Transaction not found
-          schema:
-            additionalProperties:
-              type: string
-            type: object
-      summary: Get BEEF for a transaction
-      tags:
-      - beef
-  /api/beef/{txid}/proof:
-    get:
-      description: Retrieves just the merkle proof bytes for a transaction
-      parameters:
-      - description: Transaction ID
-        in: path
-        name: txid
-        required: true
-        type: string
-      produces:
-      - application/octet-stream
-      responses:
-        "200":
-          description: Merkle proof bytes
-          schema:
-            type: file
-        "404":
-          description: Proof not found
-          schema:
-            additionalProperties:
-              type: string
-            type: object
-      summary: Get merkle proof
-      tags:
-      - beef
-  /api/bsv21/{tokenId}:
-    get:
-      parameters:
-      - description: 'Token ID (outpoint format: txid_vout)'
-        in: path
-        name: tokenId
-        required: true
-        type: string
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            $ref: '#/definitions/pkg_bsv21.TokenResponse'
-      summary: Get BSV21 token details
-      tags:
-      - bsv21
-  /api/bsv21/{tokenId}/{lockType}/{address}/balance:
-    get:
-      parameters:
-      - description: Token ID
-        in: path
-        name: tokenId
-        required: true
-        type: string
-      - description: Lock type (p2pkh, cos, list, etc.)
-        in: path
-        name: lockType
-        required: true
-        type: string
-      - description: Address
-        in: path
-        name: address
-        required: true
-        type: string
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            $ref: '#/definitions/pkg_bsv21.BalanceResponse'
-      summary: Get address token balance
-      tags:
-      - bsv21
-  /api/bsv21/{tokenId}/{lockType}/{address}/history:
-    get:
-      parameters:
-      - description: Token ID
-        in: path
-        name: tokenId
-        required: true
-        type: string
-      - description: Lock type
-        in: path
-        name: lockType
-        required: true
-        type: string
-      - description: Address
-        in: path
-        name: address
-        required: true
-        type: string
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            items:
-              $ref: '#/definitions/github_com_b-open-io_1sat-stack_pkg_txo.IndexedOutput'
-            type: array
-      summary: Get address transaction history
-      tags:
-      - bsv21
-  /api/bsv21/{tokenId}/{lockType}/{address}/unspent:
-    get:
-      parameters:
-      - description: Token ID
-        in: path
-        name: tokenId
-        required: true
-        type: string
-      - description: Lock type
-        in: path
-        name: lockType
-        required: true
-        type: string
-      - description: Address
-        in: path
-        name: address
-        required: true
-        type: string
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            items:
-              $ref: '#/definitions/github_com_b-open-io_1sat-stack_pkg_txo.IndexedOutput'
-            type: array
-      summary: Get address unspent outputs
-      tags:
-      - bsv21
-  /api/bsv21/{tokenId}/{lockType}/balance:
-    post:
-      consumes:
-      - application/json
-      parameters:
-      - description: Token ID
-        in: path
-        name: tokenId
-        required: true
-        type: string
-      - description: Lock type
-        in: path
-        name: lockType
-        required: true
-        type: string
-      - description: Array of addresses (max 100)
-        in: body
-        name: addresses
-        required: true
-        schema:
-          items:
-            type: string
-          type: array
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            $ref: '#/definitions/pkg_bsv21.BalanceResponse'
-      summary: Get multi-address token balance
-      tags:
-      - bsv21
-  /api/bsv21/{tokenId}/{lockType}/history:
-    post:
-      consumes:
-      - application/json
-      parameters:
-      - description: Token ID
-        in: path
-        name: tokenId
-        required: true
-        type: string
-      - description: Lock type
-        in: path
-        name: lockType
-        required: true
-        type: string
-      - description: Array of addresses (max 100)
-        in: body
-        name: addresses
-        required: true
-        schema:
-          items:
-            type: string
-          type: array
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            items:
-              $ref: '#/definitions/github_com_b-open-io_1sat-stack_pkg_txo.IndexedOutput'
-            type: array
-      summary: Get multi-address transaction history
-      tags:
-      - bsv21
-  /api/bsv21/{tokenId}/{lockType}/unspent:
-    post:
-      consumes:
-      - application/json
-      parameters:
-      - description: Token ID
-        in: path
-        name: tokenId
-        required: true
-        type: string
-      - description: Lock type
-        in: path
-        name: lockType
-        required: true
-        type: string
-      - description: Array of addresses (max 100)
-        in: body
-        name: addresses
-        required: true
-        schema:
-          items:
-            type: string
-          type: array
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            items:
-              $ref: '#/definitions/github_com_b-open-io_1sat-stack_pkg_txo.IndexedOutput'
-            type: array
-      summary: Get multi-address unspent outputs
-      tags:
-      - bsv21
-  /api/bsv21/{tokenId}/tx/{txid}:
-    get:
-      parameters:
-      - description: Token ID
-        in: path
-        name: tokenId
-        required: true
-        type: string
-      - description: Transaction ID
-        in: path
-        name: txid
-        required: true
-        type: string
-      - description: Include BEEF data
-        in: query
-        name: beef
-        type: boolean
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            additionalProperties: true
-            type: object
-      summary: Get transaction details
-      tags:
-      - bsv21
-  /api/ordfs/metadata/{path}:
-    get:
-      description: Get metadata about inscription content without downloading the
-        content
-      parameters:
-      - description: Outpoint (txid_vout) or txid
-        in: path
-        name: path
-        required: true
-        type: string
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: Metadata
-          schema:
-            $ref: '#/definitions/github_com_b-open-io_1sat-stack_pkg_ordfs.Response'
-        "400":
-          description: Bad request
-          schema:
-            additionalProperties:
-              type: string
-            type: object
-        "404":
-          description: Not found
-          schema:
-            additionalProperties:
-              type: string
-            type: object
-      summary: Get content metadata
-      tags:
-      - ordfs
-  /api/ordfs/preview:
-    post:
-      consumes:
-      - '*/*'
-      description: Echo back the request body for preview rendering
-      produces:
-      - '*/*'
-      responses:
-        "200":
-          description: Content
-          schema:
-            type: string
-        "400":
-          description: Bad request
-          schema:
-            additionalProperties:
-              type: string
-            type: object
-      summary: Preview posted content
-      tags:
-      - ordfs
-  /api/ordfs/preview/{b64HtmlData}:
-    get:
-      description: Decode and render base64-encoded HTML
-      parameters:
-      - description: Base64-encoded HTML content
-        in: path
-        name: b64HtmlData
-        required: true
-        type: string
-      produces:
-      - text/html
-      responses:
-        "200":
-          description: HTML content
-          schema:
-            type: string
-        "400":
-          description: Bad request
-          schema:
-            additionalProperties:
-              type: string
-            type: object
-      summary: Preview HTML content
-      tags:
-      - ordfs
-  /api/ordfs/stream/{outpoint}:
-    get:
-      description: Stream content from an ordinal chain
-      parameters:
-      - description: Outpoint (txid_vout)
-        in: path
-        name: outpoint
-        required: true
-        type: string
-      produces:
-      - application/octet-stream
-      responses:
-        "200":
-          description: Streamed content
-          schema:
-            type: file
-        "400":
-          description: Bad request
-          schema:
-            additionalProperties:
-              type: string
-            type: object
-        "404":
-          description: Not found
-          schema:
-            additionalProperties:
-              type: string
-            type: object
-      summary: Stream content
-      tags:
-      - ordfs
-  /api/sse/{topics}:
-    get:
-      description: Establishes an SSE connection for real-time event streaming
-      parameters:
-      - description: Comma-separated list of topics to subscribe to
-        in: path
-        name: topics
-        required: true
-        type: string
-      produces:
-      - text/event-stream
-      responses:
-        "200":
-          description: SSE stream
-          schema:
-            type: string
-      summary: Subscribe to Server-Sent Events
-      tags:
-      - sse
   /arc/callback:
     post:
       consumes:
@@ -1388,6 +973,56 @@ paths:
       summary: Submit multiple transactions
       tags:
       - arcade
+  /beef/{txid}:
+    get:
+      description: Retrieves the BEEF (BSV Envelope Format) for a specific transaction
+      parameters:
+      - description: Transaction ID
+        in: path
+        name: txid
+        required: true
+        type: string
+      produces:
+      - application/octet-stream
+      responses:
+        "200":
+          description: BEEF bytes
+          schema:
+            type: file
+        "404":
+          description: Transaction not found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Get BEEF for a transaction
+      tags:
+      - beef
+  /beef/{txid}/proof:
+    get:
+      description: Retrieves just the merkle proof bytes for a transaction
+      parameters:
+      - description: Transaction ID
+        in: path
+        name: txid
+        required: true
+        type: string
+      produces:
+      - application/octet-stream
+      responses:
+        "200":
+          description: Merkle proof bytes
+          schema:
+            type: file
+        "404":
+          description: Proof not found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Get merkle proof
+      tags:
+      - beef
   /beef/{txid}/tx:
     get:
       description: Retrieves just the raw transaction bytes (without proof)
@@ -1413,6 +1048,215 @@ paths:
       summary: Get transaction
       tags:
       - beef
+  /bsv21/{tokenId}:
+    get:
+      parameters:
+      - description: 'Token ID (outpoint format: txid_vout)'
+        in: path
+        name: tokenId
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/github_com_b-open-io_1sat-stack_pkg_bsv21.TokenResponse'
+      summary: Get BSV21 token details
+      tags:
+      - bsv21
+  /bsv21/{tokenId}/{lockType}/{address}/balance:
+    get:
+      parameters:
+      - description: Token ID
+        in: path
+        name: tokenId
+        required: true
+        type: string
+      - description: Lock type (p2pkh, cos, list, etc.)
+        in: path
+        name: lockType
+        required: true
+        type: string
+      - description: Address
+        in: path
+        name: address
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/github_com_b-open-io_1sat-stack_pkg_bsv21.BalanceResponse'
+      summary: Get address token balance
+      tags:
+      - bsv21
+  /bsv21/{tokenId}/{lockType}/{address}/history:
+    get:
+      parameters:
+      - description: Token ID
+        in: path
+        name: tokenId
+        required: true
+        type: string
+      - description: Lock type
+        in: path
+        name: lockType
+        required: true
+        type: string
+      - description: Address
+        in: path
+        name: address
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/github_com_b-open-io_1sat-stack_pkg_txo.IndexedOutput'
+            type: array
+      summary: Get address transaction history
+      tags:
+      - bsv21
+  /bsv21/{tokenId}/{lockType}/{address}/unspent:
+    get:
+      parameters:
+      - description: Token ID
+        in: path
+        name: tokenId
+        required: true
+        type: string
+      - description: Lock type
+        in: path
+        name: lockType
+        required: true
+        type: string
+      - description: Address
+        in: path
+        name: address
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/github_com_b-open-io_1sat-stack_pkg_txo.IndexedOutput'
+            type: array
+      summary: Get address unspent outputs
+      tags:
+      - bsv21
+  /bsv21/{tokenId}/{lockType}/balance:
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: Token ID
+        in: path
+        name: tokenId
+        required: true
+        type: string
+      - description: Lock type
+        in: path
+        name: lockType
+        required: true
+        type: string
+      - description: Array of addresses (max 100)
+        in: body
+        name: addresses
+        required: true
+        schema:
+          items:
+            type: string
+          type: array
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/github_com_b-open-io_1sat-stack_pkg_bsv21.BalanceResponse'
+      summary: Get multi-address token balance
+      tags:
+      - bsv21
+  /bsv21/{tokenId}/{lockType}/history:
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: Token ID
+        in: path
+        name: tokenId
+        required: true
+        type: string
+      - description: Lock type
+        in: path
+        name: lockType
+        required: true
+        type: string
+      - description: Array of addresses (max 100)
+        in: body
+        name: addresses
+        required: true
+        schema:
+          items:
+            type: string
+          type: array
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/github_com_b-open-io_1sat-stack_pkg_txo.IndexedOutput'
+            type: array
+      summary: Get multi-address transaction history
+      tags:
+      - bsv21
+  /bsv21/{tokenId}/{lockType}/unspent:
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: Token ID
+        in: path
+        name: tokenId
+        required: true
+        type: string
+      - description: Lock type
+        in: path
+        name: lockType
+        required: true
+        type: string
+      - description: Array of addresses (max 100)
+        in: body
+        name: addresses
+        required: true
+        schema:
+          items:
+            type: string
+          type: array
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/github_com_b-open-io_1sat-stack_pkg_txo.IndexedOutput'
+            type: array
+      summary: Get multi-address unspent outputs
+      tags:
+      - bsv21
   /bsv21/{tokenId}/blk/{height}:
     get:
       parameters:
@@ -1432,8 +1276,36 @@ paths:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/pkg_bsv21.BlockResponse'
+            $ref: '#/definitions/github_com_b-open-io_1sat-stack_pkg_bsv21.BlockResponse'
       summary: Get block data for a token
+      tags:
+      - bsv21
+  /bsv21/{tokenId}/tx/{txid}:
+    get:
+      parameters:
+      - description: Token ID
+        in: path
+        name: tokenId
+        required: true
+        type: string
+      - description: Transaction ID
+        in: path
+        name: txid
+        required: true
+        type: string
+      - description: Include BEEF data
+        in: query
+        name: beef
+        type: boolean
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+      summary: Get transaction details
       tags:
       - bsv21
   /capabilities:
@@ -1644,6 +1516,115 @@ paths:
       summary: Health check
       tags:
       - arcade
+  /ordfs/metadata/{path}:
+    get:
+      description: Get metadata about inscription content without downloading the
+        content
+      parameters:
+      - description: Outpoint (txid_vout) or txid
+        in: path
+        name: path
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Metadata
+          schema:
+            $ref: '#/definitions/pkg_ordfs.Response'
+        "400":
+          description: Bad request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Not found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Get content metadata
+      tags:
+      - ordfs
+  /ordfs/preview:
+    post:
+      consumes:
+      - '*/*'
+      description: Echo back the request body for preview rendering
+      produces:
+      - '*/*'
+      responses:
+        "200":
+          description: Content
+          schema:
+            type: string
+        "400":
+          description: Bad request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Preview posted content
+      tags:
+      - ordfs
+  /ordfs/preview/{b64HtmlData}:
+    get:
+      description: Decode and render base64-encoded HTML
+      parameters:
+      - description: Base64-encoded HTML content
+        in: path
+        name: b64HtmlData
+        required: true
+        type: string
+      produces:
+      - text/html
+      responses:
+        "200":
+          description: HTML content
+          schema:
+            type: string
+        "400":
+          description: Bad request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Preview HTML content
+      tags:
+      - ordfs
+  /ordfs/stream/{outpoint}:
+    get:
+      description: Stream content from an ordinal chain
+      parameters:
+      - description: Outpoint (txid_vout)
+        in: path
+        name: outpoint
+        required: true
+        type: string
+      produces:
+      - application/octet-stream
+      responses:
+        "200":
+          description: Streamed content
+          schema:
+            type: file
+        "400":
+          description: Bad request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Not found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Stream content
+      tags:
+      - ordfs
   /overlay/admin/startGASPSync:
     post:
       description: Start GASP synchronization (requires admin bearer token)
@@ -1954,14 +1935,14 @@ paths:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/github_com_b-open-io_1sat-stack_pkg_owner.BalanceResponse'
+            $ref: '#/definitions/pkg_owner.BalanceResponse'
         "500":
           description: Internal server error
           schema:
             type: string
       summary: Get owner balance
       tags:
-      - own
+      - owner
   /owner/{owner}/txos:
     get:
       description: Get transaction outputs owned by a specific owner (address/pubkey/script
@@ -2014,7 +1995,7 @@ paths:
             type: string
       summary: Get owner TXOs
       tags:
-      - own
+      - owner
   /owner/sync:
     get:
       description: Stream paginated outputs for wallet synchronization via Server-Sent
@@ -2043,6 +2024,25 @@ paths:
       summary: Stream owner sync via SSE
       tags:
       - owner
+  /sse/{topics}:
+    get:
+      description: Establishes an SSE connection for real-time event streaming
+      parameters:
+      - description: Comma-separated list of topics to subscribe to
+        in: path
+        name: topics
+        required: true
+        type: string
+      produces:
+      - text/event-stream
+      responses:
+        "200":
+          description: SSE stream
+          schema:
+            type: string
+      summary: Subscribe to Server-Sent Events
+      tags:
+      - sse
   /txo/{outpoint}:
     get:
       description: Get a transaction output by its outpoint
@@ -2067,7 +2067,7 @@ paths:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/pkg_txo.IndexedOutputResponse'
+            $ref: '#/definitions/github_com_b-open-io_1sat-stack_pkg_txo.IndexedOutputResponse'
         "400":
           description: Invalid outpoint format
           schema:
@@ -2098,7 +2098,7 @@ paths:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/pkg_txo.SpendResponse'
+            $ref: '#/definitions/github_com_b-open-io_1sat-stack_pkg_txo.SpendResponse'
         "400":
           description: Invalid outpoint format
           schema:
@@ -2140,7 +2140,7 @@ paths:
           description: OK
           schema:
             items:
-              $ref: '#/definitions/pkg_txo.IndexedOutputResponse'
+              $ref: '#/definitions/github_com_b-open-io_1sat-stack_pkg_txo.IndexedOutputResponse'
             type: array
         "500":
           description: Internal server error
@@ -2206,7 +2206,7 @@ paths:
           description: OK
           schema:
             items:
-              $ref: '#/definitions/pkg_txo.IndexedOutputResponse'
+              $ref: '#/definitions/github_com_b-open-io_1sat-stack_pkg_txo.IndexedOutputResponse'
             type: array
         "400":
           description: At least one key is required
@@ -2218,7 +2218,7 @@ paths:
             type: string
       summary: Search outputs by key(s)
       tags:
-      - search
+      - txos
   /txo/spends:
     post:
       consumes:
@@ -2240,7 +2240,7 @@ paths:
           description: OK
           schema:
             items:
-              $ref: '#/definitions/pkg_txo.SpendResponse'
+              $ref: '#/definitions/github_com_b-open-io_1sat-stack_pkg_txo.SpendResponse'
             type: array
         "500":
           description: Internal server error
@@ -2274,7 +2274,7 @@ paths:
           description: OK
           schema:
             items:
-              $ref: '#/definitions/pkg_txo.IndexedOutputResponse'
+              $ref: '#/definitions/github_com_b-open-io_1sat-stack_pkg_txo.IndexedOutputResponse'
             type: array
         "400":
           description: Invalid txid

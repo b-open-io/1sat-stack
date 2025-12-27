@@ -258,7 +258,7 @@ func (r *Routes) sendContentResponse(c *fiber.Ctx, resp *Response, seq *int) err
 // @Success 200 {object} Response "Metadata"
 // @Failure 400 {object} map[string]string "Bad request"
 // @Failure 404 {object} map[string]string "Not found"
-// @Router /api/ordfs/metadata/{path} [get]
+// @Router /ordfs/metadata/{path} [get]
 func (r *Routes) HandleMetadata(c *fiber.Ctx) error {
 	path := c.Params("*")
 	if path == "" {
@@ -312,7 +312,7 @@ func (r *Routes) HandleMetadata(c *fiber.Ctx) error {
 // @Param b64HtmlData path string true "Base64-encoded HTML content"
 // @Success 200 {string} string "HTML content"
 // @Failure 400 {object} map[string]string "Bad request"
-// @Router /api/ordfs/preview/{b64HtmlData} [get]
+// @Router /ordfs/preview/{b64HtmlData} [get]
 func (r *Routes) HandlePreview(c *fiber.Ctx) error {
 	b64Html := c.Params("b64HtmlData")
 	if b64Html == "" {
@@ -340,7 +340,7 @@ func (r *Routes) HandlePreview(c *fiber.Ctx) error {
 // @Produce */*
 // @Success 200 {string} string "Content"
 // @Failure 400 {object} map[string]string "Bad request"
-// @Router /api/ordfs/preview [post]
+// @Router /ordfs/preview [post]
 func (r *Routes) HandlePreviewPost(c *fiber.Ctx) error {
 	body := c.Body()
 	if len(body) == 0 {
@@ -365,7 +365,7 @@ func (r *Routes) HandlePreviewPost(c *fiber.Ctx) error {
 // @Success 200 {file} binary "Streamed content"
 // @Failure 400 {object} map[string]string "Bad request"
 // @Failure 404 {object} map[string]string "Not found"
-// @Router /api/ordfs/stream/{outpoint} [get]
+// @Router /ordfs/stream/{outpoint} [get]
 func (r *Routes) HandleStream(c *fiber.Ctx) error {
 	outpointStr := c.Params("outpoint")
 	if outpointStr == "" {

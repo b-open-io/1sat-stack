@@ -233,7 +233,7 @@ func (r *Routes) TxosByTxid(c *fiber.Ctx) error {
 // Search searches outputs by one or more keys.
 // @Summary Search outputs by key(s)
 // @Description Search transaction outputs by indexed keys. Keys use type prefixes: "ev:" for events, "tp:" for topics. Without prefix, "ev:" is assumed.
-// @Tags search
+// @Tags txos
 // @Produce json
 // @Param key query []string true "Search key(s) (e.g., ev:own:address, tp:tm_bsv21, own:address)"
 // @Param from query number false "Starting score for pagination"
