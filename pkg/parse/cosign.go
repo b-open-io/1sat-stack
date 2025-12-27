@@ -18,12 +18,9 @@ func ParseCosign(ctx *ParseContext) *ParseResult {
 	}
 
 	result := &ParseResult{
-		Tag:  TagCosign,
-		Data: c,
-		Events: []string{
-			"own:" + c.Address,
-			"cosigner:" + c.Cosigner,
-		},
+		Tag:    TagCosign,
+		Data:   c,
+		Events: []string{},
 	}
 
 	// Add owner

@@ -11,7 +11,7 @@ const TagBSV21 = "bsv21"
 
 // BSV21 holds parsed BSV21 token data
 type BSV21 struct {
-	Id       string  `json:"id,omitempty"`
+	Id       string  `json:"id"`
 	Op       string  `json:"op"`
 	Symbol   *string `json:"sym,omitempty"`
 	Decimals *uint8  `json:"dec,omitempty"`

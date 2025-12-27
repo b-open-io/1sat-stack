@@ -404,6 +404,9 @@ func (s *Storage) BuildFullBeefTx(ctx context.Context, txid *chainhash.Hash) (*t
 	}
 
 	for _, input := range tx.Inputs {
+		if input.SourceTransaction != nil {
+			continue
+		}
 		input.SourceTransaction, err = s.BuildBeefTx(ctx, input.SourceTXID)
 		if err != nil {
 			return nil, err

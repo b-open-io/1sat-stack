@@ -51,7 +51,6 @@ func ParseInscription(ctx *ParseContext) *ParseResult {
 			pkHash := types.PKHashFromBytes(addr.PublicKeyHash)
 			if pkHash != nil {
 				result.Owners = append(result.Owners, pkHash)
-				result.Events = append(result.Events, "own:"+addr.AddressString)
 			}
 		}
 	}

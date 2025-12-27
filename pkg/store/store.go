@@ -23,7 +23,7 @@ type SearchCfg struct {
 	Keys     [][]byte // Keys to search across (required)
 	From     *float64 // Start score (nil = -inf)
 	To       *float64 // End score (nil = +inf)
-	Limit    uint32   // Max results (0 = 1000 default)
+	Limit    uint32   // Max results (0 = unlimited)
 	JoinType JoinType // How to combine results from multiple keys
 	Reverse  bool     // true = descending order
 }

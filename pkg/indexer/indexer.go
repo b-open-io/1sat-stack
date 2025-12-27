@@ -7,7 +7,6 @@ import (
 	"github.com/b-open-io/1sat-stack/pkg/parse"
 	"github.com/b-open-io/1sat-stack/pkg/txo"
 	"github.com/b-open-io/1sat-stack/pkg/types"
-	"github.com/bsv-blockchain/go-overlay-services/pkg/core/engine"
 	"github.com/bsv-blockchain/go-sdk/chainhash"
 	"github.com/bsv-blockchain/go-sdk/transaction"
 )
@@ -74,14 +73,13 @@ func (idxCtx *IndexContext) ParseOutputs() error {
 			Index: uint32(vout),
 		}
 
+		sats := txout.Satoshis
 		output := &txo.IndexedOutput{
-			Output: engine.Output{
-				Outpoint:    *outpoint,
-				BlockHeight: idxCtx.Height,
-				BlockIdx:    idxCtx.Idx,
-			},
-			Satoshis: txout.Satoshis,
-			Data:     make(map[string]any),
+			Outpoint:    *outpoint,
+			BlockHeight: &idxCtx.Height,
+			BlockIdx:    &idxCtx.Idx,
+			Satoshis:    &sats,
+			Data:        make(map[string]any),
 		}
 
 		// Call parse.Parse directly
@@ -91,7 +89,7 @@ func (idxCtx *IndexContext) ParseOutputs() error {
 		for tag, result := range results {
 			// Add prefixed events
 			for _, event := range result.Events {
-				output.AddEvent(tag + ":" + event)
+				output.AddEvent(event)
 			}
 
 			// Add owners
@@ -138,11 +136,10 @@ func (idxCtx *IndexContext) ParseSpends() error {
 		// Parse the spent output to derive events
 		results := parse.Parse(outpoint, spentOutput.LockingScript.Bytes(), spentOutput.Satoshis, idxCtx.Tags)
 
+		sats := spentOutput.Satoshis
 		spend := &txo.IndexedOutput{
-			Output: engine.Output{
-				Outpoint: *outpoint,
-			},
-			Satoshis:  spentOutput.Satoshis,
+			Outpoint:  *outpoint,
+			Satoshis:  &sats,
 			Data:      make(map[string]any),
 			SpendTxid: idxCtx.Txid,
 		}
@@ -150,7 +147,7 @@ func (idxCtx *IndexContext) ParseSpends() error {
 		// Collect events and owners from parse results
 		for tag, result := range results {
 			for _, event := range result.Events {
-				spend.AddEvent(tag + ":" + event)
+				spend.AddEvent(event)
 			}
 			for _, owner := range result.Owners {
 				spend.AddOwner(*owner)

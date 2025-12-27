@@ -12,7 +12,7 @@ replace github.com/bsv-blockchain/go-teranode-p2p-client => github.com/shruggr/g
 
 replace github.com/bsv-blockchain/teranode => github.com/bsv-blockchain/teranode v0.13.0-beta-3.0.20251211185306-7879a2f59199
 
-replace github.com/bsv-blockchain/go-overlay-services => github.com/bsv-blockchain/go-overlay-services v1.2.3-0.20251219055303-ddb3df30d6bd
+replace github.com/bsv-blockchain/go-overlay-services => /home/shruggr/Code/go-overlay-services
 
 replace github.com/bitcoin-sv/go-templates => ../go-templates
 

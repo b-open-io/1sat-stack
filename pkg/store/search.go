@@ -23,10 +23,7 @@ func Search(ctx context.Context, s Store, cfg *SearchCfg) ([]ScoredMember, error
 		return nil, nil
 	}
 
-	limit := int(cfg.Limit)
-	if limit == 0 {
-		limit = 1000
-	}
+	limit := int(cfg.Limit) // 0 = unlimited
 
 	cursors := make([]*cursor, len(cfg.Keys))
 	for i, key := range cfg.Keys {
@@ -37,9 +34,12 @@ func Search(ctx context.Context, s Store, cfg *SearchCfg) ([]ScoredMember, error
 	}
 
 	seen := make(map[string]float64)
-	records := make([]ScoredMember, 0, limit)
+	var records []ScoredMember
+	if limit > 0 {
+		records = make([]ScoredMember, 0, limit)
+	}
 
-	for len(records) < limit {
+	for limit == 0 || len(records) < limit {
 		member, score, key, ok, err := nextResult(ctx, s, cursors, cfg, seen)
 		if err != nil {
 			return nil, err

@@ -84,7 +84,7 @@ func (s *OutputStore) FindOutput(ctx context.Context, outpoint *transaction.Outp
 		return nil, err
 	}
 
-	output := &indexed.Output
+	output := indexed.ToEngineOutput()
 	output.Spent = isSpent
 	if topic != nil {
 		output.Topic = *topic
@@ -135,7 +135,7 @@ func (s *OutputStore) FindOutputs(ctx context.Context, outpoints []*transaction.
 	outputs := make([]*engine.Output, len(indexed))
 	for i, idx := range indexed {
 		if idx != nil {
-			output := &idx.Output
+			output := idx.ToEngineOutput()
 			output.Topic = topic
 			output.Spent = isSpent[toLoadIdx[i]]
 			if includeBEEF && s.BeefStore != nil && len(output.Beef) == 0 {
@@ -176,7 +176,7 @@ func (s *OutputStore) FindOutputsForTransaction(ctx context.Context, txid *chain
 
 	outputs := make([]*engine.Output, len(validIndexed))
 	for i, idx := range validIndexed {
-		output := &idx.Output
+		output := idx.ToEngineOutput()
 		output.Spent = spends[i] != nil
 		if includeBEEF && s.BeefStore != nil && len(output.Beef) == 0 {
 			beef, err := s.BeefStore.LoadBeef(ctx, txid)
@@ -227,7 +227,7 @@ func (s *OutputStore) FindUTXOsForTopic(ctx context.Context, topic string, since
 	outputs := make([]*engine.Output, 0, len(indexed))
 	for _, idx := range indexed {
 		if idx != nil {
-			output := &idx.Output
+			output := idx.ToEngineOutput()
 			output.Topic = topic
 			output.Spent = false
 			if includeBEEF && s.BeefStore != nil && len(output.Beef) == 0 {

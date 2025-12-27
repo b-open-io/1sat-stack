@@ -54,8 +54,9 @@ func (r *Routes) Register(router fiber.Router, prefix string) {
 	g.Get("/stream/:outpoint", r.HandleStream)
 }
 
-// RegisterContent registers just the content endpoint at the given prefix
-// This allows serving content at a root-level path like /content
+// RegisterContent registers the wildcard content endpoint at the given prefix.
+// This is for standalone content servers (e.g., /content/*).
+// Separate from Register() because wildcard routes should be registered last.
 func (r *Routes) RegisterContent(router fiber.Router, prefix string) {
 	g := router.Group(prefix)
 	g.Get("/*", r.HandleContent)

@@ -53,19 +53,6 @@ definitions:
         description: 4 bytes - Block version
         type: integer
     type: object
-  engine.MerkleState:
-    enum:
-    - 0
-    - 1
-    - 2
-    - 3
-    format: int32
-    type: integer
-    x-enum-varnames:
-    - MerkleStateUnmined
-    - MerkleStateValidated
-    - MerkleStateInvalidated
-    - MerkleStateImmutable
   fiber.ErrorResponse:
     properties:
       error:
@@ -193,91 +180,37 @@ definitions:
         type: integer
     type: object
   github_com_b-open-io_1sat-stack_pkg_txo.IndexedOutput:
+    type: object
+  github_com_b-open-io_1sat-stack_pkg_txo.IndexedOutputResponse:
+    description: Transaction output with indexing metadata
     properties:
-      ancillaryTxids:
-        items:
-          items:
-            type: integer
-          type: array
-        type: array
-      beef:
-        items:
-          format: int32
-          type: integer
-        type: array
       blockHeight:
-        format: int32
+        description: Present if IncludeBlock
         type: integer
       blockIdx:
-        format: int64
+        description: Present if IncludeBlock
         type: integer
-      consumedBy:
-        items:
-          $ref: '#/definitions/transaction.Outpoint'
-        type: array
       data:
         additionalProperties: {}
+        description: Present if IncludeTags has entries
         type: object
       events:
+        description: Present if IncludeEvents
         items:
           type: string
         type: array
-      merkleRoot:
-        description: Merkle root extracted from the merkle path
-        items:
-          type: integer
-        type: array
-      merkleState:
-        allOf:
-        - $ref: '#/definitions/engine.MerkleState'
-        description: Validation state of the merkle proof
       outpoint:
-        $ref: '#/definitions/transaction.Outpoint'
-      outputsConsumed:
-        items:
-          $ref: '#/definitions/transaction.Outpoint'
-        type: array
-      owners:
-        items:
-          items:
-            format: int32
-            type: integer
-          type: array
-        type: array
+        description: 'Always present: "txid_vout" format'
+        type: string
       satoshis:
-        description: Extended fields for indexing
+        description: Present if IncludeSats
         type: integer
       score:
-        description: sort score for outputs. Usage is up to Storage implementation.
-        format: float64
+        description: Always present
         type: number
       spend:
-        items:
-          type: integer
-        type: array
-      spent:
-        type: boolean
-      topic:
+        description: Present if IncludeSpend (nil = unspent, string = spend txid)
         type: string
-    type: object
-  github_com_b-open-io_1sat-stack_pkg_txo.SearchRequest:
-    properties:
-      from:
-        type: number
-      keys:
-        items:
-          type: string
-        type: array
-      limit:
-        type: integer
-      reverse:
-        type: boolean
-      tags:
-        items:
-          type: string
-        type: array
-      unspent:
-        type: boolean
     type: object
   github_com_b-open-io_1sat-stack_pkg_txo.SpendResponse:
     properties:
@@ -444,92 +377,36 @@ definitions:
       count:
         type: integer
     type: object
-  pkg_txo.IndexedOutput:
+  pkg_txo.IndexedOutputResponse:
+    description: Transaction output with indexing metadata
     properties:
-      ancillaryTxids:
-        items:
-          items:
-            type: integer
-          type: array
-        type: array
-      beef:
-        items:
-          format: int32
-          type: integer
-        type: array
       blockHeight:
-        format: int32
+        description: Present if IncludeBlock
         type: integer
       blockIdx:
-        format: int64
+        description: Present if IncludeBlock
         type: integer
-      consumedBy:
-        items:
-          $ref: '#/definitions/transaction.Outpoint'
-        type: array
       data:
         additionalProperties: {}
+        description: Present if IncludeTags has entries
         type: object
       events:
+        description: Present if IncludeEvents
         items:
           type: string
         type: array
-      merkleRoot:
-        description: Merkle root extracted from the merkle path
-        items:
-          type: integer
-        type: array
-      merkleState:
-        allOf:
-        - $ref: '#/definitions/engine.MerkleState'
-        description: Validation state of the merkle proof
       outpoint:
-        $ref: '#/definitions/transaction.Outpoint'
-      outputsConsumed:
-        items:
-          $ref: '#/definitions/transaction.Outpoint'
-        type: array
-      owners:
-        items:
-          items:
-            format: int32
-            type: integer
-          type: array
-        type: array
+        description: 'Always present: "txid_vout" format'
+        type: string
       satoshis:
-        description: Extended fields for indexing
+        description: Present if IncludeSats
         type: integer
       score:
-        description: sort score for outputs. Usage is up to Storage implementation.
-        format: float64
+        description: Always present
         type: number
       spend:
-        items:
-          type: integer
-        type: array
-      spent:
-        type: boolean
-      topic:
+        description: Present if IncludeSpend (nil = unspent, string = spend txid)
         type: string
-    type: object
-  pkg_txo.SearchRequest:
-    properties:
-      from:
-        type: number
-      keys:
-        items:
-          type: string
-        type: array
-      limit:
-        type: integer
-      reverse:
-        type: boolean
-      tags:
-        items:
-          type: string
-        type: array
-      unspent:
-        type: boolean
     type: object
   pkg_txo.SpendResponse:
     properties:
@@ -951,7 +828,7 @@ paths:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/github_com_b-open-io_1sat-stack_pkg_bsv21.TokenResponse'
+            $ref: '#/definitions/pkg_bsv21.TokenResponse'
       summary: Get BSV21 token details
       tags:
       - bsv21
@@ -979,7 +856,7 @@ paths:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/github_com_b-open-io_1sat-stack_pkg_bsv21.BalanceResponse'
+            $ref: '#/definitions/pkg_bsv21.BalanceResponse'
       summary: Get address token balance
       tags:
       - bsv21
@@ -1072,7 +949,7 @@ paths:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/github_com_b-open-io_1sat-stack_pkg_bsv21.BalanceResponse'
+            $ref: '#/definitions/pkg_bsv21.BalanceResponse'
       summary: Get multi-address token balance
       tags:
       - bsv21
@@ -1190,7 +1067,7 @@ paths:
         "200":
           description: Metadata
           schema:
-            $ref: '#/definitions/pkg_ordfs.Response'
+            $ref: '#/definitions/github_com_b-open-io_1sat-stack_pkg_ordfs.Response'
         "400":
           description: Bad request
           schema:
@@ -1555,7 +1432,7 @@ paths:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/github_com_b-open-io_1sat-stack_pkg_bsv21.BlockResponse'
+            $ref: '#/definitions/pkg_bsv21.BlockResponse'
       summary: Get block data for a token
       tags:
       - bsv21
@@ -2077,7 +1954,7 @@ paths:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/pkg_owner.BalanceResponse'
+            $ref: '#/definitions/github_com_b-open-io_1sat-stack_pkg_owner.BalanceResponse'
         "500":
           description: Internal server error
           schema:
@@ -2166,7 +2043,7 @@ paths:
       summary: Stream owner sync via SSE
       tags:
       - owner
-  /txo/outpoint/{outpoint}:
+  /txo/{outpoint}:
     get:
       description: Get a transaction output by its outpoint
       parameters:
@@ -2179,13 +2056,18 @@ paths:
         in: query
         name: tags
         type: string
+      - default: true
+        description: Include spend txid
+        in: query
+        name: spend
+        type: boolean
       produces:
       - application/json
       responses:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/pkg_txo.IndexedOutput'
+            $ref: '#/definitions/pkg_txo.IndexedOutputResponse'
         "400":
           description: Invalid outpoint format
           schema:
@@ -2201,7 +2083,7 @@ paths:
       summary: Get TXO by outpoint
       tags:
       - txos
-  /txo/outpoint/{outpoint}/spend:
+  /txo/{outpoint}/spend:
     get:
       description: Get the spending transaction for an outpoint
       parameters:
@@ -2246,6 +2128,11 @@ paths:
         in: query
         name: tags
         type: string
+      - default: true
+        description: Include spend txid
+        in: query
+        name: spend
+        type: boolean
       produces:
       - application/json
       responses:
@@ -2253,7 +2140,7 @@ paths:
           description: OK
           schema:
             items:
-              $ref: '#/definitions/pkg_txo.IndexedOutput'
+              $ref: '#/definitions/pkg_txo.IndexedOutputResponse'
             type: array
         "500":
           description: Internal server error
@@ -2262,7 +2149,77 @@ paths:
       summary: Get multiple TXOs
       tags:
       - txos
-  /txo/outpoints/spends:
+  /txo/search:
+    get:
+      description: 'Search transaction outputs by indexed keys. Keys use type prefixes:
+        "ev:" for events, "tp:" for topics. Without prefix, "ev:" is assumed.'
+      parameters:
+      - collectionFormat: csv
+        description: Search key(s) (e.g., ev:own:address, tp:tm_bsv21, own:address)
+        in: query
+        items:
+          type: string
+        name: key
+        required: true
+        type: array
+      - description: Starting score for pagination
+        in: query
+        name: from
+        type: number
+      - description: Reverse order
+        in: query
+        name: rev
+        type: boolean
+      - default: 100
+        description: Maximum number of results
+        in: query
+        name: limit
+        type: integer
+      - description: Filter for unspent outputs only
+        in: query
+        name: unspent
+        type: boolean
+      - description: Include satoshis
+        in: query
+        name: sats
+        type: boolean
+      - description: Include spend txid
+        in: query
+        name: spend
+        type: boolean
+      - description: Include events array
+        in: query
+        name: events
+        type: boolean
+      - description: Include blockHeight and blockIdx
+        in: query
+        name: block
+        type: boolean
+      - description: Comma-separated list of data tags to include
+        in: query
+        name: tags
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/pkg_txo.IndexedOutputResponse'
+            type: array
+        "400":
+          description: At least one key is required
+          schema:
+            type: string
+        "500":
+          description: Internal server error
+          schema:
+            type: string
+      summary: Search outputs by key(s)
+      tags:
+      - search
+  /txo/spends:
     post:
       consumes:
       - application/json
@@ -2292,84 +2249,6 @@ paths:
       summary: Get spends for multiple outpoints
       tags:
       - txos
-  /txo/search:
-    post:
-      consumes:
-      - application/json
-      description: Search transaction outputs by multiple indexed keys
-      parameters:
-      - description: Search parameters
-        in: body
-        name: request
-        required: true
-        schema:
-          $ref: '#/definitions/pkg_txo.SearchRequest'
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            items:
-              $ref: '#/definitions/pkg_txo.IndexedOutput'
-            type: array
-        "400":
-          description: Invalid request
-          schema:
-            type: string
-        "500":
-          description: Internal server error
-          schema:
-            type: string
-      summary: Search outputs by multiple keys
-      tags:
-      - search
-  /txo/search/{key}:
-    get:
-      description: Search transaction outputs by an indexed key
-      parameters:
-      - description: Search key (e.g., own:address, txid:hash)
-        in: path
-        name: key
-        required: true
-        type: string
-      - description: Starting score for pagination
-        in: query
-        name: from
-        type: number
-      - description: Reverse order
-        in: query
-        name: rev
-        type: boolean
-      - default: 100
-        description: Maximum number of results
-        in: query
-        name: limit
-        type: integer
-      - description: Filter for unspent outputs only
-        in: query
-        name: unspent
-        type: boolean
-      - description: Comma-separated list of tags to include
-        in: query
-        name: tags
-        type: string
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            items:
-              $ref: '#/definitions/pkg_txo.IndexedOutput'
-            type: array
-        "500":
-          description: Internal server error
-          schema:
-            type: string
-      summary: Search outputs by key
-      tags:
-      - search
   /txo/tx/{txid}:
     get:
       description: Get all transaction outputs for a specific transaction
@@ -2383,6 +2262,11 @@ paths:
         in: query
         name: tags
         type: string
+      - default: true
+        description: Include spend txid
+        in: query
+        name: spend
+        type: boolean
       produces:
       - application/json
       responses:
@@ -2390,7 +2274,7 @@ paths:
           description: OK
           schema:
             items:
-              $ref: '#/definitions/pkg_txo.IndexedOutput'
+              $ref: '#/definitions/pkg_txo.IndexedOutputResponse'
             type: array
         "400":
           description: Invalid txid

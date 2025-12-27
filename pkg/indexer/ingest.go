@@ -52,9 +52,10 @@ func (cfg *IngestCtx) IngestTxid(ctx context.Context, txidStr string) (*IndexCon
 		return nil, fmt.Errorf("invalid txid %s: %w", txidStr, err)
 	}
 
-	tx, err := cfg.BeefStorage.LoadTx(ctx, hash)
+	// Use BuildFullBeefTx to load transaction with all input source transactions populated
+	tx, err := cfg.BeefStorage.BuildFullBeefTx(ctx, hash)
 	if err != nil {
-		cfg.Logger.Error("LoadTx error", "txid", txidStr, "error", err)
+		cfg.Logger.Error("BuildFullBeefTx error", "txid", txidStr, "error", err)
 		return nil, err
 	}
 	if tx == nil {
@@ -90,20 +91,9 @@ func (cfg *IngestCtx) IngestTx(ctx context.Context, tx *transaction.Transaction)
 	return idxCtx, nil
 }
 
-// ParseTx parses a transaction and its inputs without saving
+// ParseTx parses a transaction and its inputs without saving.
+// Note: Expects tx.Inputs[].SourceTransaction to be pre-populated (e.g., via BuildFullBeefTx).
 func (cfg *IngestCtx) ParseTx(ctx context.Context, tx *transaction.Transaction) (*IndexContext, error) {
-	// Load source transactions for inputs if not already populated
-	for _, input := range tx.Inputs {
-		if input.SourceTransaction == nil && input.SourceTXID != nil {
-			sourceTx, err := cfg.BeefStorage.LoadTx(ctx, input.SourceTXID)
-			if err != nil {
-				cfg.Logger.Error("LoadTx error for input", "txid", input.SourceTXID.String(), "error", err)
-				return nil, err
-			}
-			input.SourceTransaction = sourceTx
-		}
-	}
-
 	idxCtx := NewIndexContext(ctx, cfg.Store, tx, cfg.Tags)
 	if err := idxCtx.ParseTxn(); err != nil {
 		return nil, err

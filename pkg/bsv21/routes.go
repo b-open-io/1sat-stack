@@ -6,6 +6,7 @@ import (
 	"strconv"
 
 	lookuppkg "github.com/b-open-io/1sat-stack/pkg/lookup"
+	"github.com/b-open-io/1sat-stack/pkg/store"
 	"github.com/b-open-io/1sat-stack/pkg/txo"
 	"github.com/b-open-io/1sat-stack/pkg/types"
 	"github.com/bsv-blockchain/go-chaintracks/chaintracks"
@@ -160,9 +161,13 @@ func (r *Routes) GetBlockData(c *fiber.Ctx) error {
 	score := types.HeightScore(height, 0)
 	scoreEnd := types.HeightScore(height+1, 0)
 
-	cfg := txo.NewOutputSearchCfg().
-		WithStringKeys("tp:tm_"+tokenId).
-		WithRange(&score, &scoreEnd)
+	cfg := &txo.OutputSearchCfg{
+		SearchCfg: store.SearchCfg{
+			Keys: [][]byte{[]byte("tp:tm_" + tokenId)},
+			From: &score,
+			To:   &scoreEnd,
+		},
+	}
 
 	outputs, err := r.storage.SearchOutputs(c.Context(), cfg)
 	if err != nil {
@@ -254,8 +259,8 @@ func (r *Routes) GetTransaction(c *fiber.Ctx) error {
 		Outputs: outputs,
 	}
 
-	if len(outputs) > 0 && outputs[0] != nil {
-		tx.BlockHeight = outputs[0].BlockHeight
+	if len(outputs) > 0 && outputs[0] != nil && outputs[0].BlockHeight != nil {
+		tx.BlockHeight = *outputs[0].BlockHeight
 	}
 
 	if includeBeef && r.storage.BeefStore != nil {
@@ -346,9 +351,12 @@ func (r *Routes) GetAddressUnspent(c *fiber.Ctx) error {
 	address := c.Params("address")
 
 	event := fmt.Sprintf("%s:%s:%s", lockType, address, tokenId)
-	cfg := txo.NewOutputSearchCfg().
-		WithStringKeys(event).
-		WithFilterSpent(true)
+	cfg := &txo.OutputSearchCfg{
+		SearchCfg: store.SearchCfg{
+			Keys: [][]byte{[]byte(event)},
+		},
+		FilterSpent: true,
+	}
 
 	outputs, err := r.storage.SearchOutputs(c.Context(), cfg)
 	if err != nil {
@@ -446,16 +454,13 @@ func (r *Routes) GetMultiAddressHistory(c *fiber.Ctx) error {
 		})
 	}
 
-	events := make([]string, len(addresses))
+	keys := make([][]byte, len(addresses))
 	for i, address := range addresses {
-		events[i] = fmt.Sprintf("%s:%s:%s", lockType, address, tokenId)
+		keys[i] = []byte(fmt.Sprintf("%s:%s:%s", lockType, address, tokenId))
 	}
 
 	cfg := parseOutputSearchConfig(c)
-	cfg.Keys = make([][]byte, len(events))
-	for i, e := range events {
-		cfg.Keys[i] = []byte(e)
-	}
+	cfg.Keys = keys
 
 	outputs, err := r.storage.SearchOutputs(c.Context(), cfg)
 	if err != nil {
@@ -501,14 +506,17 @@ func (r *Routes) GetMultiAddressUnspent(c *fiber.Ctx) error {
 		})
 	}
 
-	events := make([]string, len(addresses))
+	keys := make([][]byte, len(addresses))
 	for i, address := range addresses {
-		events[i] = fmt.Sprintf("%s:%s:%s", lockType, address, tokenId)
+		keys[i] = []byte(fmt.Sprintf("%s:%s:%s", lockType, address, tokenId))
 	}
 
-	cfg := txo.NewOutputSearchCfg().
-		WithStringKeys(events...).
-		WithFilterSpent(true)
+	cfg := &txo.OutputSearchCfg{
+		SearchCfg: store.SearchCfg{
+			Keys: keys,
+		},
+		FilterSpent: true,
+	}
 
 	outputs, err := r.storage.SearchOutputs(c.Context(), cfg)
 	if err != nil {
@@ -523,7 +531,7 @@ func (r *Routes) GetMultiAddressUnspent(c *fiber.Ctx) error {
 
 // parseOutputSearchConfig extracts search parameters from the request
 func parseOutputSearchConfig(c *fiber.Ctx) *txo.OutputSearchCfg {
-	cfg := txo.NewOutputSearchCfg()
+	cfg := &txo.OutputSearchCfg{}
 
 	if fromStr := c.Query("from"); fromStr != "" {
 		if from, err := strconv.ParseFloat(fromStr, 64); err == nil {

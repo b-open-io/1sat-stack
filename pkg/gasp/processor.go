@@ -43,7 +43,7 @@ func NewProcessor(topic string, beefStorage *beef.Storage, eng *engine.Engine) *
 		Remote:         remote,
 		Unidirectional: true,
 		Topic:          topic,
-		Concurrency:    1, // Dependencies processed sequentially within a graph
+		Concurrency:    8,
 		LogPrefix:      &logPrefix,
 	})
 

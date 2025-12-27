@@ -8,6 +8,8 @@ import (
 	bip32 "github.com/bsv-blockchain/go-sdk/compat/bip32"
 	bsvhash "github.com/bsv-blockchain/go-sdk/primitives/hash"
 	"github.com/bsv-blockchain/go-sdk/script"
+	"github.com/bsv-blockchain/go-sdk/transaction"
+	"github.com/bsv-blockchain/go-sdk/util"
 )
 
 // HD key for fee address generation (matches 1sat-indexer and bsv21-overlay-1sat-sync)
@@ -24,9 +26,12 @@ func init() {
 }
 
 // GenerateFeeAddress generates a deterministic Bitcoin address for a token's fee payments.
-// The address is derived from the token ID using a deterministic HD key derivation path.
-func GenerateFeeAddress(tokenId string) (string, error) {
-	hash := sha256.Sum256([]byte(tokenId))
+// The address is derived from the token outpoint using a deterministic HD key derivation path.
+// This matches the 1sat-indexer v4 format: big-endian txid hex bytes + big-endian vout.
+func GenerateFeeAddress(outpoint *transaction.Outpoint) (string, error) {
+	// Build outpoint bytes in v4 format: txid as hex-order bytes (reversed from chainhash) + big-endian vout
+	outpointBytes := binary.BigEndian.AppendUint32(util.ReverseBytes(outpoint.Txid[:]), outpoint.Index)
+	hash := sha256.Sum256(outpointBytes)
 
 	path := fmt.Sprintf("21/%d/%d",
 		binary.BigEndian.Uint32(hash[:8])>>1,

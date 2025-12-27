@@ -21,20 +21,24 @@ func NewRoutes(outputStore *OutputStore) *Routes {
 	return &Routes{outputStore: outputStore}
 }
 
+// Outpoint pattern: 64 hex chars + separator (. or _) + decimal digits
+const outpointPattern = `[a-fA-F0-9]{64}[._][0-9]+`
+
 // Register registers all TXO routes on the given router.
 func (r *Routes) Register(router fiber.Router) {
-	// Direct outpoint lookups
-	router.Get("/outpoint/:outpoint", r.GetTxo)
-	router.Get("/outpoint/:outpoint/spend", r.GetSpend)
+	// Batch operations
 	router.Post("/outpoints", r.GetTxos)
-	router.Post("/outpoints/spends", r.GetSpends)
+	router.Post("/spends", r.GetSpends)
 
 	// By transaction
 	router.Get("/tx/:txid", r.TxosByTxid)
 
 	// Generic search
-	router.Get("/search/:key", r.SearchByKey)
-	router.Post("/search", r.SearchByKeys)
+	router.Get("/search", r.Search)
+
+	// Direct outpoint lookups (pattern-matched)
+	router.Get("/:outpoint<regex("+outpointPattern+")>", r.GetTxo)
+	router.Get("/:outpoint<regex("+outpointPattern+")>/spend", r.GetSpend)
 }
 
 // GetTxo returns a single TXO by outpoint.
@@ -44,20 +48,23 @@ func (r *Routes) Register(router fiber.Router) {
 // @Produce json
 // @Param outpoint path string true "Outpoint in format txid_vout or txid:vout"
 // @Param tags query string false "Comma-separated list of tags to include"
-// @Success 200 {object} IndexedOutput
+// @Param spend query bool false "Include spend txid" default(true)
+// @Success 200 {object} IndexedOutputResponse
 // @Failure 400 {string} string "Invalid outpoint format"
 // @Failure 404 {string} string "TXO not found"
 // @Failure 500 {string} string "Internal server error"
-// @Router /txo/outpoint/{outpoint} [get]
+// @Router /txo/{outpoint} [get]
 func (r *Routes) GetTxo(c *fiber.Ctx) error {
 	op, err := ParseOutpoint(c.Params("outpoint"))
 	if err != nil {
 		return c.Status(fiber.StatusBadRequest).SendString("Invalid outpoint format")
 	}
 
-	cfg := NewOutputSearchCfg()
+	cfg := &OutputSearchCfg{
+		IncludeSpend: c.QueryBool("spend", true),
+	}
 	if tagsQuery := c.Query("tags", ""); tagsQuery != "" {
-		cfg.WithTags(strings.Split(tagsQuery, ",")...)
+		cfg.IncludeTags = strings.Split(tagsQuery, ",")
 	}
 
 	output, err := r.outputStore.LoadOutput(c.Context(), op, cfg)
@@ -80,7 +87,7 @@ func (r *Routes) GetTxo(c *fiber.Ctx) error {
 // @Success 200 {object} SpendResponse
 // @Failure 400 {string} string "Invalid outpoint format"
 // @Failure 500 {string} string "Internal server error"
-// @Router /txo/outpoint/{outpoint}/spend [get]
+// @Router /txo/{outpoint}/spend [get]
 func (r *Routes) GetSpend(c *fiber.Ctx) error {
 	op, err := ParseOutpoint(c.Params("outpoint"))
 	if err != nil {
@@ -114,7 +121,8 @@ type SpendResponse struct {
 // @Produce json
 // @Param outpoints body []string true "Array of outpoints"
 // @Param tags query string false "Comma-separated list of tags to include"
-// @Success 200 {array} IndexedOutput
+// @Param spend query bool false "Include spend txid" default(true)
+// @Success 200 {array} IndexedOutputResponse
 // @Failure 500 {string} string "Internal server error"
 // @Router /txo/outpoints [post]
 func (r *Routes) GetTxos(c *fiber.Ctx) error {
@@ -123,9 +131,11 @@ func (r *Routes) GetTxos(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusBadRequest).SendString("Invalid request body")
 	}
 
-	cfg := NewOutputSearchCfg()
+	cfg := &OutputSearchCfg{
+		IncludeSpend: c.QueryBool("spend", true),
+	}
 	if tagsQuery := c.Query("tags", ""); tagsQuery != "" {
-		cfg.WithTags(strings.Split(tagsQuery, ",")...)
+		cfg.IncludeTags = strings.Split(tagsQuery, ",")
 	}
 
 	outputs := make([]*IndexedOutput, len(outpoints))
@@ -153,7 +163,7 @@ func (r *Routes) GetTxos(c *fiber.Ctx) error {
 // @Param outpoints body []string true "Array of outpoints"
 // @Success 200 {array} SpendResponse
 // @Failure 500 {string} string "Internal server error"
-// @Router /txo/outpoints/spends [post]
+// @Router /txo/spends [post]
 func (r *Routes) GetSpends(c *fiber.Ctx) error {
 	var outpoints []string
 	if err := c.BodyParser(&outpoints); err != nil {
@@ -192,7 +202,8 @@ func (r *Routes) GetSpends(c *fiber.Ctx) error {
 // @Produce json
 // @Param txid path string true "Transaction ID"
 // @Param tags query string false "Comma-separated list of tags to include"
-// @Success 200 {array} IndexedOutput
+// @Param spend query bool false "Include spend txid" default(true)
+// @Success 200 {array} IndexedOutputResponse
 // @Failure 400 {string} string "Invalid txid"
 // @Failure 500 {string} string "Internal server error"
 // @Router /txo/tx/{txid} [get]
@@ -204,9 +215,11 @@ func (r *Routes) TxosByTxid(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusBadRequest).SendString("Invalid txid")
 	}
 
-	cfg := NewOutputSearchCfg()
+	cfg := &OutputSearchCfg{
+		IncludeSpend: c.QueryBool("spend", true),
+	}
 	if tagsQuery := c.Query("tags", ""); tagsQuery != "" {
-		cfg.WithTags(strings.Split(tagsQuery, ",")...)
+		cfg.IncludeTags = strings.Split(tagsQuery, ",")
 	}
 
 	outputs, err := r.outputStore.LoadOutputsByTxid(c.Context(), txid, cfg)
@@ -217,93 +230,52 @@ func (r *Routes) TxosByTxid(c *fiber.Ctx) error {
 	return c.JSON(outputs)
 }
 
-// SearchByKey searches outputs by a single key.
-// @Summary Search outputs by key
-// @Description Search transaction outputs by an indexed key
+// Search searches outputs by one or more keys.
+// @Summary Search outputs by key(s)
+// @Description Search transaction outputs by indexed keys. Keys use type prefixes: "ev:" for events, "tp:" for topics. Without prefix, "ev:" is assumed.
 // @Tags search
 // @Produce json
-// @Param key path string true "Search key (e.g., own:address, txid:hash)"
+// @Param key query []string true "Search key(s) (e.g., ev:own:address, tp:tm_bsv21, own:address)"
 // @Param from query number false "Starting score for pagination"
 // @Param rev query bool false "Reverse order"
 // @Param limit query int false "Maximum number of results" default(100)
 // @Param unspent query bool false "Filter for unspent outputs only"
-// @Param tags query string false "Comma-separated list of tags to include"
-// @Success 200 {array} IndexedOutput
+// @Param sats query bool false "Include satoshis"
+// @Param spend query bool false "Include spend txid"
+// @Param events query bool false "Include events array"
+// @Param block query bool false "Include blockHeight and blockIdx"
+// @Param tags query string false "Comma-separated list of data tags to include"
+// @Success 200 {array} IndexedOutputResponse
+// @Failure 400 {string} string "At least one key is required"
 // @Failure 500 {string} string "Internal server error"
-// @Router /txo/search/{key} [get]
-func (r *Routes) SearchByKey(c *fiber.Ctx) error {
-	key := c.Params("key")
+// @Router /txo/search [get]
+func (r *Routes) Search(c *fiber.Ctx) error {
+	keys := c.Context().QueryArgs().PeekMulti("key")
+	if len(keys) == 0 {
+		return c.Status(fiber.StatusBadRequest).SendString("At least one key is required")
+	}
 
-	cfg := NewOutputSearchCfg().
-		WithStringKeys(key).
-		WithLimit(uint32(c.QueryInt("limit", 100))).
-		WithReverse(c.QueryBool("rev", false)).
-		WithFilterSpent(c.QueryBool("unspent", false))
+	cfg := &OutputSearchCfg{
+		FilterSpent:   c.QueryBool("unspent", false),
+		IncludeSats:   c.QueryBool("sats", false),
+		IncludeSpend:  c.QueryBool("spend", false),
+		IncludeEvents: c.QueryBool("events", false),
+		IncludeBlock:  c.QueryBool("block", false),
+	}
+
+	cfg.Keys = make([][]byte, len(keys))
+	for i, k := range keys {
+		cfg.Keys[i] = k
+	}
+	cfg.Limit = uint32(c.QueryInt("limit", 100))
+	cfg.Reverse = c.QueryBool("rev", false)
 
 	if tagsQuery := c.Query("tags", ""); tagsQuery != "" {
-		cfg.WithTags(strings.Split(tagsQuery, ",")...)
+		cfg.IncludeTags = strings.Split(tagsQuery, ",")
 	}
 
 	if from := c.QueryFloat("from", 0); from != 0 {
 		cfg.From = &from
-	}
-
-	outputs, err := r.outputStore.SearchOutputs(c.Context(), cfg)
-	if err != nil {
-		return err
-	}
-
-	return c.JSON(outputs)
-}
-
-// SearchRequest is the request body for multi-key searches.
-type SearchRequest struct {
-	Keys    []string `json:"keys"`
-	Limit   uint32   `json:"limit,omitempty"`
-	From    *float64 `json:"from,omitempty"`
-	Reverse bool     `json:"reverse,omitempty"`
-	Unspent bool     `json:"unspent,omitempty"`
-	Tags    []string `json:"tags,omitempty"`
-}
-
-// SearchByKeys searches outputs by multiple keys.
-// @Summary Search outputs by multiple keys
-// @Description Search transaction outputs by multiple indexed keys
-// @Tags search
-// @Accept json
-// @Produce json
-// @Param request body SearchRequest true "Search parameters"
-// @Success 200 {array} IndexedOutput
-// @Failure 400 {string} string "Invalid request"
-// @Failure 500 {string} string "Internal server error"
-// @Router /txo/search [post]
-func (r *Routes) SearchByKeys(c *fiber.Ctx) error {
-	var req SearchRequest
-	if err := c.BodyParser(&req); err != nil {
-		return c.Status(fiber.StatusBadRequest).SendString("Invalid request body")
-	}
-
-	if len(req.Keys) == 0 {
-		return c.Status(fiber.StatusBadRequest).SendString("At least one key is required")
-	}
-
-	limit := req.Limit
-	if limit == 0 {
-		limit = 100
-	}
-
-	cfg := NewOutputSearchCfg().
-		WithStringKeys(req.Keys...).
-		WithLimit(limit).
-		WithReverse(req.Reverse).
-		WithFilterSpent(req.Unspent)
-
-	if len(req.Tags) > 0 {
-		cfg.WithTags(req.Tags...)
-	}
-
-	if req.From != nil {
-		cfg.From = req.From
 	}
 
 	outputs, err := r.outputStore.SearchOutputs(c.Context(), cfg)
