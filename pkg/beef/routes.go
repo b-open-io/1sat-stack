@@ -30,7 +30,7 @@ func (r *Routes) Register(router fiber.Router) {
 // @Param txid path string true "Transaction ID"
 // @Success 200 {file} binary "BEEF bytes"
 // @Failure 404 {object} map[string]string "Transaction not found"
-// @Router /api/beef/{txid} [get]
+// @Router /beef/{txid} [get]
 func (r *Routes) getBeef(c *fiber.Ctx) error {
 	txidStr := c.Params("txid")
 	txid, err := chainhash.NewHashFromHex(txidStr)
@@ -86,7 +86,7 @@ func (r *Routes) getRawTx(c *fiber.Ctx) error {
 // @Param txid path string true "Transaction ID"
 // @Success 200 {file} binary "Merkle proof bytes"
 // @Failure 404 {object} map[string]string "Proof not found"
-// @Router /api/beef/{txid}/proof [get]
+// @Router /beef/{txid}/proof [get]
 func (r *Routes) getProof(c *fiber.Ctx) error {
 	txidStr := c.Params("txid")
 	txid, err := chainhash.NewHashFromHex(txidStr)
