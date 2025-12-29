@@ -18,20 +18,20 @@ import (
 
 // InsertOutputs inserts transaction outputs for a topic (overlay flow)
 // Extracts block height/index from BEEF if available, otherwise uses timestamp
-func (s *OutputStore) InsertOutputs(ctx context.Context, topic string, txid *chainhash.Hash, outputVouts []uint32, outpointsConsumed []*transaction.Outpoint, beefData []byte, ancillaryTxids []*chainhash.Hash) error {
+func (s *OutputStore) InsertOutputs(ctx context.Context, topic string, txid *chainhash.Hash, outputVouts []uint32, outpointsConsumed []*transaction.Outpoint, beef *transaction.Beef, ancillaryTxids []*chainhash.Hash) error {
 	if len(outputVouts) == 0 {
 		return nil
 	}
 
 	// Store BEEF in shared storage
-	if s.BeefStore != nil && len(beefData) > 0 {
-		if err := s.BeefStore.SaveBeef(ctx, txid, beefData); err != nil {
+	if s.BeefStore != nil && beef != nil {
+		if err := s.BeefStore.SaveBeef(ctx, txid, beef); err != nil {
 			return err
 		}
 	}
 
 	// Extract score from BEEF (uses block height if confirmed, timestamp if not)
-	score := types.ScoreFromBeef(beefData)
+	score := types.ScoreFromBeef(beef, txid)
 
 	// Process each output
 	for _, vout := range outputVouts {
@@ -91,7 +91,7 @@ func (s *OutputStore) FindOutput(ctx context.Context, outpoint *transaction.Outp
 	}
 
 	// Load BEEF if requested
-	if includeBEEF && s.BeefStore != nil && len(output.Beef) == 0 {
+	if includeBEEF && s.BeefStore != nil && output.Beef == nil {
 		beef, err := s.BeefStore.LoadBeef(ctx, &outpoint.Txid)
 		if err != nil {
 			return nil, fmt.Errorf("failed to load BEEF for %s: %w", outpoint.Txid.String(), err)
@@ -138,7 +138,7 @@ func (s *OutputStore) FindOutputs(ctx context.Context, outpoints []*transaction.
 			output := idx.ToEngineOutput()
 			output.Topic = topic
 			output.Spent = isSpent[toLoadIdx[i]]
-			if includeBEEF && s.BeefStore != nil && len(output.Beef) == 0 {
+			if includeBEEF && s.BeefStore != nil && output.Beef == nil {
 				beef, err := s.BeefStore.LoadBeef(ctx, &outpoints[toLoadIdx[i]].Txid)
 				if err != nil {
 					return nil, fmt.Errorf("failed to load BEEF for %s: %w", outpoints[toLoadIdx[i]].Txid.String(), err)
@@ -178,7 +178,7 @@ func (s *OutputStore) FindOutputsForTransaction(ctx context.Context, txid *chain
 	for i, idx := range validIndexed {
 		output := idx.ToEngineOutput()
 		output.Spent = spends[i] != nil
-		if includeBEEF && s.BeefStore != nil && len(output.Beef) == 0 {
+		if includeBEEF && s.BeefStore != nil && output.Beef == nil {
 			beef, err := s.BeefStore.LoadBeef(ctx, txid)
 			if err != nil {
 				return nil, fmt.Errorf("failed to load BEEF for %s: %w", txid.String(), err)
@@ -230,7 +230,7 @@ func (s *OutputStore) FindUTXOsForTopic(ctx context.Context, topic string, since
 			output := idx.ToEngineOutput()
 			output.Topic = topic
 			output.Spent = false
-			if includeBEEF && s.BeefStore != nil && len(output.Beef) == 0 {
+			if includeBEEF && s.BeefStore != nil && output.Beef == nil {
 				beef, err := s.BeefStore.LoadBeef(ctx, &idx.Outpoint.Txid)
 				if err != nil {
 					return nil, fmt.Errorf("failed to load BEEF for %s: %w", idx.Outpoint.Txid.String(), err)
@@ -286,9 +286,9 @@ func (s *OutputStore) UpdateConsumedBy(ctx context.Context, outpoint *transactio
 }
 
 // UpdateTransactionBEEF updates the BEEF for a transaction
-func (s *OutputStore) UpdateTransactionBEEF(ctx context.Context, txid *chainhash.Hash, beefData []byte) error {
-	if s.BeefStore != nil {
-		return s.BeefStore.SaveBeef(ctx, txid, beefData)
+func (s *OutputStore) UpdateTransactionBEEF(ctx context.Context, txid *chainhash.Hash, beef *transaction.Beef) error {
+	if s.BeefStore != nil && beef != nil {
+		return s.BeefStore.SaveBeef(ctx, txid, beef)
 	}
 	return nil
 }
@@ -375,16 +375,15 @@ func (s *OutputStore) LoadAncillaryBeef(ctx context.Context, output *engine.Outp
 		return nil
 	}
 
-	beefParsed, _, _, err := transaction.ParseBeef(output.Beef)
-	if err != nil {
-		return fmt.Errorf("failed to parse beef: %w", err)
+	if output.Beef == nil {
+		return fmt.Errorf("output has no BEEF to merge into")
 	}
 
-	mergedBeef, err := s.BeefStore.MergeBeef(ctx, beefParsed, output.AncillaryTxids)
+	mergedBeef, err := s.BeefStore.MergeBeef(ctx, output.Beef, output.AncillaryTxids)
 	if err != nil {
 		return err
 	}
 
-	output.Beef, err = mergedBeef.Bytes()
-	return err
+	output.Beef = mergedBeef
+	return nil
 }

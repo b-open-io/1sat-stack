@@ -281,13 +281,13 @@ func (h *StatusHandler) handleMined(event ArcEvent) {
 
 	if tx != nil {
 		tx.MerklePath = merklePath
-		beefBytes, err := assembleBEEF(tx)
-		if err == nil && len(beefBytes) > 0 {
-			h.beefStorage.SaveBeef(h.ctx, txid, beefBytes)
+		beef := assembleBEEF(tx)
+		if beef != nil {
+			h.beefStorage.SaveBeef(h.ctx, txid, beef)
 
 			// Also update TXO storage if available
 			if h.outputStore != nil {
-				h.outputStore.UpdateTransactionBEEF(h.ctx, txid, beefBytes)
+				h.outputStore.UpdateTransactionBEEF(h.ctx, txid, beef)
 			}
 		}
 	}
@@ -389,13 +389,13 @@ func (h *StatusHandler) GetImmutableThreshold() float64 {
 	return h.immutableScore
 }
 
-// assembleBEEF creates BEEF bytes from a transaction with merkle path.
-func assembleBEEF(tx *transaction.Transaction) ([]byte, error) {
+// assembleBEEF creates a BEEF object from a transaction with merkle path.
+func assembleBEEF(tx *transaction.Transaction) *transaction.Beef {
 	if tx.MerklePath == nil {
-		return nil, nil
+		return nil
 	}
 	beef := transaction.NewBeef()
 	beef.BUMPs = []*transaction.MerklePath{tx.MerklePath}
 	beef.Transactions[*tx.TxID()] = &transaction.BeefTx{Transaction: tx}
-	return beef.Bytes()
+	return beef
 }

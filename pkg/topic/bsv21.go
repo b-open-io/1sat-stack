@@ -80,11 +80,9 @@ type tokenSummary struct {
 }
 
 // IdentifyAdmissibleOutputs determines which outputs should be admitted
-func (tm *Bsv21ValidatedTopicManager) IdentifyAdmissibleOutputs(ctx context.Context, beefBytes []byte, previousCoins []uint32) (admit overlay.AdmittanceInstructions, err error) {
-	_, tx, txid, err := transaction.ParseBeef(beefBytes)
-	if err != nil {
-		return admit, err
-	} else if tx == nil {
+func (tm *Bsv21ValidatedTopicManager) IdentifyAdmissibleOutputs(ctx context.Context, beef *transaction.Beef, txid *chainhash.Hash, previousCoins []uint32) (admit overlay.AdmittanceInstructions, err error) {
+	tx := beef.FindTransactionForSigningByHash(txid)
+	if tx == nil {
 		return admit, engine.ErrInvalidBeef
 	}
 
@@ -180,11 +178,9 @@ func (tm *Bsv21ValidatedTopicManager) IdentifyAdmissibleOutputs(ctx context.Cont
 }
 
 // IdentifyNeededInputs returns the inputs needed for processing
-func (tm *Bsv21ValidatedTopicManager) IdentifyNeededInputs(ctx context.Context, beefBytes []byte) ([]*transaction.Outpoint, error) {
-	_, tx, _, err := transaction.ParseBeef(beefBytes)
-	if err != nil {
-		return nil, err
-	} else if tx == nil {
+func (tm *Bsv21ValidatedTopicManager) IdentifyNeededInputs(ctx context.Context, beef *transaction.Beef, txid *chainhash.Hash) ([]*transaction.Outpoint, error) {
+	tx := beef.FindTransactionForSigningByHash(txid)
+	if tx == nil {
 		return nil, engine.ErrInvalidBeef
 	}
 

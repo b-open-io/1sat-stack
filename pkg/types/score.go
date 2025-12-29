@@ -47,17 +47,13 @@ func ScoreFromTx(tx *transaction.Transaction, txid *chainhash.Hash) float64 {
 	return HeightScore(tx.MerklePath.BlockHeight, blockIdx)
 }
 
-// ScoreFromBeef parses BEEF data and extracts the score.
-// If parsing fails or tx is unconfirmed, returns a timestamp-based score.
-func ScoreFromBeef(beefData []byte) float64 {
-	if len(beefData) == 0 {
+// ScoreFromBeef extracts the score from a parsed BEEF object.
+// If beef is nil or tx is unconfirmed, returns a timestamp-based score.
+func ScoreFromBeef(beef *transaction.Beef, txid *chainhash.Hash) float64 {
+	if beef == nil || txid == nil {
 		return HeightScore(0, 0)
 	}
 
-	_, tx, txid, err := transaction.ParseBeef(beefData)
-	if err != nil {
-		return HeightScore(0, 0)
-	}
-
+	tx := beef.FindTransactionForSigningByHash(txid)
 	return ScoreFromTx(tx, txid)
 }

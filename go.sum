@@ -78,8 +78,6 @@ github.com/bsm/ginkgo/v2 v2.12.0 h1:Ny8MWAHyOepLGlLKYmXG4IEkioBysk6GpaRTLC8zwWs=
 github.com/bsm/ginkgo/v2 v2.12.0/go.mod h1:SwYbGRRDovPVboqFv0tPTcG1sN61LM1Z4ARdbAV9g4c=
 github.com/bsm/gomega v1.27.10 h1:yeMWxP2pV2fG3FgAODIY8EiRE3dy0aeFYt4l7wh6yKA=
 github.com/bsm/gomega v1.27.10/go.mod h1:JyEr/xRbxbtgWNi8tIEVPUYZ5Dzef52k01W3YH0H+O0=
-github.com/bsv-blockchain/arcade v0.0.0-20251219053638-534221a38a91 h1:jzAAVYegKb3GpD1hxfkn9DqLicum33+OkICS7LGjhcM=
-github.com/bsv-blockchain/arcade v0.0.0-20251219053638-534221a38a91/go.mod h1:YlE4++RCDKlPvKra0HZ4yKeROuMBQuX0wEEu2SF6pCE=
 github.com/bsv-blockchain/go-batcher v1.2.5 h1:zaGQgUV9Pl8nY2pduEsiic7CTOhDDni7S5ZgWK6tRBc=
 github.com/bsv-blockchain/go-batcher v1.2.5/go.mod h1:P98X4sdCGGSeBEDfpQE/YzD5tn/nyDXwhyTfcqLpg3w=
 github.com/bsv-blockchain/go-bt/v2 v2.5.1 h1:FM5JfBwzmBSlgrlR2vJPMZqbZ21uzQE3mT0irCZiOds=
@@ -94,8 +92,6 @@ github.com/bsv-blockchain/go-p2p-message-bus v0.1.7 h1:+5Gi6oD5mKq6NfpqmdhaM/zMA
 github.com/bsv-blockchain/go-p2p-message-bus v0.1.7/go.mod h1:jFJ9Fl7BOfkXlB5CfgZoWSrP613GoCA6TBW726rxTUE=
 github.com/bsv-blockchain/go-safe-conversion v1.1.0 h1:EjyF+fDsmSK0AwbN2NnIzel/z0dIJcT64KvIwTbWHFg=
 github.com/bsv-blockchain/go-safe-conversion v1.1.0/go.mod h1:KwO5HkH9S11kppAm7SedJhgaJnZbUMYRZalSq9fxLHQ=
-github.com/bsv-blockchain/go-sdk v1.2.14-0.20251219052215-a2751960a5f0 h1:wi0nQvPYnFbKrNg99H4h2IXc8Rm/8Q7kcOToAk9eM40=
-github.com/bsv-blockchain/go-sdk v1.2.14-0.20251219052215-a2751960a5f0/go.mod h1:HugEqK6K46nUAN0Xr9xq0HW8QHtpJmAg05NmcxPc1Lk=
 github.com/bsv-blockchain/go-subtree v1.1.2 h1:evQ961Cku9wIrKA5qjvn2t0nfUL/7rBPqHth2eZRso4=
 github.com/bsv-blockchain/go-subtree v1.1.2/go.mod h1:e+VXWba1DoKZ05LiBU0N6FKZl6cD12yUNE0SrjtJup8=
 github.com/bsv-blockchain/go-tx-map v1.2.1 h1:uzKryYn4uMCR3ko6N71TyUrKfAnRvwG5Mdm1ufCStyo=

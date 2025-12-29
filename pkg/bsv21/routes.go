@@ -269,7 +269,15 @@ func (r *Routes) GetTransaction(c *fiber.Ctx) error {
 				Message: "Failed to load BEEF data",
 			})
 		}
-		tx.Beef = beef
+		if beef != nil {
+			tx.Beef, err = beef.AtomicBytes(txid)
+			if err != nil {
+				r.logger.Error("Failed to serialize BEEF", "txid", txid.String(), "error", err)
+				return c.Status(fiber.StatusInternalServerError).JSON(ErrorResponse{
+					Message: "Failed to serialize BEEF data",
+				})
+			}
+		}
 	}
 
 	return c.JSON(tx)

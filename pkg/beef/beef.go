@@ -90,8 +90,8 @@ type BaseBeefStorage interface {
 // Storage is the main implementation that handles all high-level BEEF operations
 type Storage struct {
 	storages     []BaseBeefStorage
-	loader       *dedup.Loader[chainhash.Hash, []byte]
-	saver        *dedup.Saver[chainhash.Hash, []byte]
+	loader       *dedup.Loader[chainhash.Hash, *transaction.Beef]
+	saver        *dedup.Saver[chainhash.Hash, *transaction.Beef]
 	chainTracker chaintracker.ChainTracker
 }
 
@@ -102,12 +102,12 @@ func NewStorageFromProviders(storages []BaseBeefStorage, chainTracker chaintrack
 		chainTracker: chainTracker,
 	}
 
-	s.loader = dedup.NewLoader(func(txid chainhash.Hash) ([]byte, error) {
+	s.loader = dedup.NewLoader(func(txid chainhash.Hash) (*transaction.Beef, error) {
 		return s.loadBeefInternal(context.Background(), &txid)
 	})
 
-	s.saver = dedup.NewSaver(func(txid chainhash.Hash, beefBytes []byte) error {
-		return s.saveBeefInternal(context.Background(), &txid, beefBytes)
+	s.saver = dedup.NewSaver(func(txid chainhash.Hash, beef *transaction.Beef) error {
+		return s.saveBeefInternal(context.Background(), &txid, beef)
 	})
 
 	return s
@@ -125,7 +125,7 @@ func NewStorage(connectionString string, chainTracker chaintracker.ChainTracker)
 }
 
 // LoadBeef loads a BEEF from storage.
-func (s *Storage) LoadBeef(ctx context.Context, txid *chainhash.Hash) ([]byte, error) {
+func (s *Storage) LoadBeef(ctx context.Context, txid *chainhash.Hash) (*transaction.Beef, error) {
 	return s.loader.Load(*txid)
 }
 
@@ -140,7 +140,7 @@ func (s *Storage) MergeBeef(ctx context.Context, beef *transaction.Beef, txids [
 		if err != nil {
 			return nil, errors.New("failed to load tx for merge " + txid.String() + ": " + err.Error())
 		}
-		if err := beef.MergeBeefBytes(additionalBeef); err != nil {
+		if err := beef.MergeBeef(additionalBeef); err != nil {
 			return nil, err
 		}
 	}
@@ -148,7 +148,7 @@ func (s *Storage) MergeBeef(ctx context.Context, beef *transaction.Beef, txids [
 	return beef, nil
 }
 
-func (s *Storage) loadBeefInternal(ctx context.Context, txid *chainhash.Hash) ([]byte, error) {
+func (s *Storage) loadBeefInternal(ctx context.Context, txid *chainhash.Hash) (*transaction.Beef, error) {
 	var beefBytes []byte
 	var err error
 
@@ -184,7 +184,7 @@ func (s *Storage) loadBeefInternal(ctx context.Context, txid *chainhash.Hash) ([
 			if err != nil {
 				return nil, errors.New(ErrMissingInputs.Error() + ": " + input.SourceTXID.String())
 			}
-			if err := beef.MergeBeefBytes(inputBeef); err != nil {
+			if err := beef.MergeBeef(inputBeef); err != nil {
 				return nil, err
 			}
 		}
@@ -203,63 +203,59 @@ func (s *Storage) loadBeefInternal(ctx context.Context, txid *chainhash.Hash) ([
 		}
 
 		if needsUpdate {
-			updatedBeef, err := s.UpdateMerklePath(ctx, txid, s.chainTracker)
+			updatedBeefBytes, err := s.UpdateMerklePath(ctx, txid, s.chainTracker)
 			if err != nil {
 				return nil, err
 			}
-			if err := beef.MergeBeefBytes(updatedBeef); err != nil {
+			updatedBeef, _, _, err := transaction.ParseBeef(updatedBeefBytes)
+			if err != nil {
+				return nil, err
+			}
+			if err := beef.MergeBeef(updatedBeef); err != nil {
 				return nil, err
 			}
 		}
 	}
 
-	return beef.AtomicBytes(txid)
+	return beef, nil
 }
 
 // SaveBeef saves a BEEF by decomposing it into individual transactions
-func (s *Storage) SaveBeef(ctx context.Context, txid *chainhash.Hash, beefBytes []byte) error {
-	return s.saver.Save(*txid, beefBytes)
+func (s *Storage) SaveBeef(ctx context.Context, txid *chainhash.Hash, beef *transaction.Beef) error {
+	return s.saver.Save(*txid, beef)
 }
 
-func (s *Storage) saveBeefInternal(ctx context.Context, txid *chainhash.Hash, beefBytes []byte) error {
-	beef, tx, parsedTxid, err := transaction.ParseBeef(beefBytes)
+// SaveBeefBytes saves BEEF from raw bytes (convenience method for external callers)
+func (s *Storage) SaveBeefBytes(ctx context.Context, txid *chainhash.Hash, beefBytes []byte) error {
+	beef, _, _, err := transaction.ParseBeef(beefBytes)
 	if err != nil {
 		return errors.New("failed to parse BEEF: " + err.Error())
 	}
+	return s.SaveBeef(ctx, txid, beef)
+}
 
-	var mainTx *transaction.Transaction
-	if tx != nil {
-		mainTx = tx
-	} else if beef != nil && parsedTxid != nil {
-		mainTx = beef.FindTransactionByHash(parsedTxid)
-	} else if beef != nil && txid != nil {
-		mainTx = beef.FindTransactionByHash(txid)
+func (s *Storage) saveBeefInternal(ctx context.Context, txid *chainhash.Hash, beef *transaction.Beef) error {
+	if beef == nil {
+		return errors.New("beef is nil")
 	}
 
+	mainTx := beef.FindTransactionByHash(txid)
 	if mainTx == nil {
 		return errors.New("could not find transaction in BEEF")
 	}
 
-	if beef != nil {
-		for txHash, beefTx := range beef.Transactions {
-			if beefTx.Transaction == nil {
-				continue
-			}
-
-			individualBeef, err := s.createIndividualBEEF(&txHash, beefTx.Transaction)
-			if err != nil {
-				return errors.New("failed to create individual BEEF for " + txHash.String() + ": " + err.Error())
-			}
-
-			for _, storage := range s.storages {
-				if err := storage.Put(ctx, &txHash, individualBeef); err != nil {
-					return errors.New("failed to save to storage: " + err.Error())
-				}
-			}
+	for txHash, beefTx := range beef.Transactions {
+		if beefTx.Transaction == nil {
+			continue
 		}
-	} else {
+
+		individualBeef, err := s.createIndividualBEEF(&txHash, beefTx.Transaction)
+		if err != nil {
+			return errors.New("failed to create individual BEEF for " + txHash.String() + ": " + err.Error())
+		}
+
 		for _, storage := range s.storages {
-			if err := storage.Put(ctx, txid, beefBytes); err != nil {
+			if err := storage.Put(ctx, &txHash, individualBeef); err != nil {
 				return errors.New("failed to save to storage: " + err.Error())
 			}
 		}
@@ -296,27 +292,30 @@ func (s *Storage) createIndividualBEEF(txid *chainhash.Hash, tx *transaction.Tra
 // UpdateMerklePath attempts to fetch an updated BEEF with merkle proof
 func (s *Storage) UpdateMerklePath(ctx context.Context, txid *chainhash.Hash, ct chaintracker.ChainTracker) ([]byte, error) {
 	for _, storage := range s.storages {
-		updatedBeef, err := storage.UpdateMerklePath(ctx, txid)
+		updatedBeefBytes, err := storage.UpdateMerklePath(ctx, txid)
 		if err != nil {
 			continue
 		}
-		if len(updatedBeef) > 0 {
+		if len(updatedBeefBytes) > 0 {
+			updatedBeef, tx, _, parseErr := transaction.ParseBeef(updatedBeefBytes)
+			if parseErr != nil {
+				continue
+			}
 			if ct != nil {
-				_, tx, _, parseErr := transaction.ParseBeef(updatedBeef)
-				if parseErr == nil && tx != nil && tx.MerklePath != nil {
+				if tx != nil && tx.MerklePath != nil {
 					valid, verifyErr := tx.MerklePath.Verify(ctx, txid, ct)
 					if verifyErr == nil && valid {
 						if err := s.saveBeefInternal(ctx, txid, updatedBeef); err != nil {
 							return nil, fmt.Errorf("failed to save updated BEEF: %w", err)
 						}
-						return updatedBeef, nil
+						return updatedBeefBytes, nil
 					}
 				}
 			} else {
 				if err := s.saveBeefInternal(ctx, txid, updatedBeef); err != nil {
 					return nil, fmt.Errorf("failed to save updated BEEF: %w", err)
 				}
-				return updatedBeef, nil
+				return updatedBeefBytes, nil
 			}
 		}
 	}
@@ -346,12 +345,16 @@ func (s *Storage) Close() error {
 
 // LoadTx loads a transaction from the storage
 func (s *Storage) LoadTx(ctx context.Context, txid *chainhash.Hash) (*transaction.Transaction, error) {
-	beefBytes, err := s.LoadBeef(ctx, txid)
+	beef, err := s.LoadBeef(ctx, txid)
 	if err != nil {
 		return nil, err
 	}
 
-	return s.LoadTxFromBeef(ctx, beefBytes, txid)
+	tx := beef.FindTransactionForSigningByHash(txid)
+	if tx == nil {
+		return nil, errors.New("transaction " + txid.String() + " not found in BEEF")
+	}
+	return tx, nil
 }
 
 // LoadTxFromBeef loads a transaction from BEEF bytes
@@ -417,13 +420,13 @@ func (s *Storage) BuildFullBeefTx(ctx context.Context, txid *chainhash.Hash) (*t
 }
 
 func (s *Storage) BuildFullBeef(ctx context.Context, txid *chainhash.Hash) ([]byte, error) {
-	beefBytes, err := s.LoadBeef(ctx, txid)
+	beef, err := s.LoadBeef(ctx, txid)
 	if err != nil {
 		return nil, err
 	}
-	beef, tx, txid, err := transaction.ParseBeef(beefBytes)
-	if err != nil {
-		return nil, err
+	tx := beef.FindTransactionForSigningByHash(txid)
+	if tx == nil {
+		return nil, errors.New("transaction " + txid.String() + " not found in BEEF")
 	}
 	for _, input := range tx.Inputs {
 		if input.SourceTransaction != nil {

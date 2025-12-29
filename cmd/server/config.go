@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/b-open-io/1sat-stack/admin"
 	"github.com/b-open-io/1sat-stack/pkg/beef"
@@ -227,23 +228,29 @@ func (c *Config) Initialize(ctx context.Context, logger *slog.Logger) (*Services
 		logger = slog.Default()
 	}
 
+	initStart := time.Now()
 	svc := &Services{}
 
 	// Initialize store (foundational - other services may depend on it)
+	start := time.Now()
 	storeSvc, err := c.Store.Initialize(ctx, logger)
 	if err != nil {
 		return nil, fmt.Errorf("failed to initialize store: %w", err)
 	}
 	svc.Store = storeSvc
+	logger.Info("store initialized", "duration", time.Since(start).Round(time.Millisecond))
 
 	// Initialize pubsub
+	start = time.Now()
 	pubsubSvc, err := c.PubSub.Initialize(ctx, logger)
 	if err != nil {
 		return nil, fmt.Errorf("failed to initialize pubsub: %w", err)
 	}
 	svc.PubSub = pubsubSvc
+	logger.Info("pubsub initialized", "duration", time.Since(start).Round(time.Millisecond))
 
 	// Initialize JungleBus client (shared by multiple services)
+	start = time.Now()
 	jbOpts := []junglebus.ClientOps{
 		junglebus.WithHTTP(c.JungleBus.URL),
 		junglebus.WithSSL(c.JungleBus.SSL),
@@ -258,17 +265,20 @@ func (c *Config) Initialize(ctx context.Context, logger *slog.Logger) (*Services
 		return nil, fmt.Errorf("failed to initialize junglebus client: %w", err)
 	}
 	svc.JungleBus = jbClient
-	logger.Info("junglebus client initialized", "url", c.JungleBus.URL)
+	logger.Info("junglebus client initialized", "url", c.JungleBus.URL, "duration", time.Since(start).Round(time.Millisecond))
 
 	// Initialize beef storage (pass JungleBus client for fallback lookups)
+	start = time.Now()
 	beefSvc, err := c.Beef.Initialize(ctx, logger, nil, svc.JungleBus)
 	if err != nil {
 		return nil, fmt.Errorf("failed to initialize beef: %w", err)
 	}
 	svc.Beef = beefSvc
+	logger.Info("beef initialized", "duration", time.Since(start).Round(time.Millisecond))
 
 	// Initialize P2P client (shared by chaintracks and arcade)
 	if c.Chaintracks.Mode == chaintracksconfig.ModeEmbedded || c.Arcade.Mode == arcadeconfig.ModeEmbedded {
+		start = time.Now()
 		// Set network on P2P config
 		c.P2P.Network = c.Network
 		p2pClient, err := c.P2P.Initialize(ctx, "1sat-stack")
@@ -276,23 +286,24 @@ func (c *Config) Initialize(ctx context.Context, logger *slog.Logger) (*Services
 			return nil, fmt.Errorf("failed to initialize p2p client: %w", err)
 		}
 		svc.P2PClient = p2pClient
-		logger.Info("p2p client initialized", "network", c.P2P.Network)
+		logger.Info("p2p client initialized", "network", c.P2P.Network, "duration", time.Since(start).Round(time.Millisecond))
 	}
 
 	// Initialize Chaintracks
 	if c.Chaintracks.Mode != "" && c.Chaintracks.Mode != "disabled" {
+		start = time.Now()
 		chaintracker, err := c.Chaintracks.Initialize(ctx, "1sat-stack", svc.P2PClient)
 		if err != nil {
 			return nil, fmt.Errorf("failed to initialize chaintracks: %w", err)
 		}
 		svc.Chaintracks = chaintracker
 		svc.ChaintracksRoutes = chaintracksroutes.NewRoutes(ctx, chaintracker)
-
-		logger.Info("chaintracks initialized", "mode", c.Chaintracks.Mode)
+		logger.Info("chaintracks initialized", "mode", c.Chaintracks.Mode, "duration", time.Since(start).Round(time.Millisecond))
 	}
 
 	// Initialize Arcade
 	if c.Arcade.Mode != "" && c.Arcade.Mode != "disabled" {
+		start = time.Now()
 		// Set network from main config
 		c.Arcade.Network = c.Network
 		arcadeSvc, err := c.Arcade.Initialize(ctx, logger, svc.Chaintracks, svc.P2PClient)
@@ -308,20 +319,23 @@ func (c *Config) Initialize(ctx context.Context, logger *slog.Logger) (*Services
 			Arcade:         arcadeSvc.Arcade,
 			Logger:         logger,
 		})
-		logger.Info("arcade initialized", "mode", c.Arcade.Mode)
+		logger.Info("arcade initialized", "mode", c.Arcade.Mode, "duration", time.Since(start).Round(time.Millisecond))
 	}
 
 	// Initialize TXO storage with shared dependencies
 	if c.TXO.Mode != txo.ModeDisabled {
+		start = time.Now()
 		txoSvc, err := c.TXO.Initialize(ctx, logger, storeSvc, pubsubSvc, beefSvc)
 		if err != nil {
 			return nil, fmt.Errorf("failed to initialize txo: %w", err)
 		}
 		svc.TXO = txoSvc
+		logger.Info("txo initialized", "duration", time.Since(start).Round(time.Millisecond))
 	}
 
 	// Initialize overlay engine FIRST (BSV21 needs it for topic/lookup registration)
 	if c.Overlay.Mode != overlay.ModeDisabled && svc.TXO != nil {
+		start = time.Now()
 		overlaySvc, err := c.Overlay.Initialize(ctx, logger, &overlay.InitializeDeps{
 			OutputStore:  svc.TXO.OutputStore,
 			ChainTracker: svc.Chaintracks,
@@ -335,10 +349,12 @@ func (c *Config) Initialize(ctx context.Context, logger *slog.Logger) (*Services
 		// Set topic whitelist/blacklist from config
 		svc.Overlay.SetTopicWhitelist(c.Overlay.TopicWhitelist)
 		svc.Overlay.SetTopicBlacklist(c.Overlay.TopicBlacklist)
+		logger.Info("overlay initialized", "duration", time.Since(start).Round(time.Millisecond))
 	}
 
 	// Initialize BSV21 AFTER overlay so we can wire them together
 	if c.BSV21.Mode != bsv21.ModeDisabled && svc.TXO != nil {
+		start = time.Now()
 		bsv21Svc, err := c.BSV21.Initialize(ctx, logger, svc.TXO.OutputStore, svc.Chaintracks, svc.Beef.Storage, svc.Overlay, svc.JungleBus)
 		if err != nil {
 			return nil, fmt.Errorf("failed to initialize bsv21: %w", err)
@@ -357,6 +373,7 @@ func (c *Config) Initialize(ctx context.Context, logger *slog.Logger) (*Services
 			})
 			logger.Info("BSV21 discovery topic (tm_bsv21) registered with overlay engine")
 		}
+		logger.Info("bsv21 initialized", "duration", time.Since(start).Round(time.Millisecond))
 	}
 
 	// Activate whitelisted topics after all factories are registered
@@ -366,15 +383,18 @@ func (c *Config) Initialize(ctx context.Context, logger *slog.Logger) (*Services
 
 	// Initialize ORDFS content serving
 	if c.ORDFS.Enabled {
+		start = time.Now()
 		ordfsSvc, err := c.ORDFS.Initialize(ctx, logger, svc.JungleBus)
 		if err != nil {
 			return nil, fmt.Errorf("failed to initialize ordfs: %w", err)
 		}
 		svc.ORDFS = ordfsSvc
+		logger.Info("ordfs initialized", "duration", time.Since(start).Round(time.Millisecond))
 	}
 
 	// Initialize indexer services (shared IngestCtx used by owner sync and ingest sync)
 	if c.Indexer.Mode != indexer.ModeDisabled && svc.TXO != nil && svc.Beef != nil {
+		start = time.Now()
 		indexerSvc, err := c.Indexer.Initialize(ctx, logger, &indexer.InitializeDeps{
 			Store:       svc.Store.Store,
 			BeefStorage: svc.Beef.Storage,
@@ -384,7 +404,6 @@ func (c *Config) Initialize(ctx context.Context, logger *slog.Logger) (*Services
 			return nil, fmt.Errorf("failed to initialize indexer: %w", err)
 		}
 		svc.Indexer = indexerSvc
-		logger.Debug("indexer service initialized", "mode", c.Indexer.Mode, "syncEnabled", c.Indexer.Sync.Enabled)
 
 		// Setup arcade listener to bridge arcade events to pubsub
 		if svc.Arcade != nil && svc.PubSub != nil {
@@ -406,10 +425,12 @@ func (c *Config) Initialize(ctx context.Context, logger *slog.Logger) (*Services
 		if svc.PubSub != nil {
 			svc.Indexer.SetupRoutes(svc.PubSub.PubSub)
 		}
+		logger.Info("indexer initialized", "mode", c.Indexer.Mode, "duration", time.Since(start).Round(time.Millisecond))
 	}
 
 	// Initialize owner services (depends on TXO, Beef, Indexer)
 	if c.Owner.Mode != owner.ModeDisabled && svc.TXO != nil && svc.Beef != nil && svc.Indexer != nil {
+		start = time.Now()
 		ownSvc, err := c.Owner.Initialize(ctx, logger, &owner.InitializeDeps{
 			JungleBus:   svc.JungleBus,
 			BeefStorage: svc.Beef.Storage,
@@ -420,13 +441,14 @@ func (c *Config) Initialize(ctx context.Context, logger *slog.Logger) (*Services
 			return nil, fmt.Errorf("failed to initialize own: %w", err)
 		}
 		svc.Own = ownSvc
-		logger.Debug("own service initialized", "mode", c.Owner.Mode)
+		logger.Info("owner initialized", "mode", c.Owner.Mode, "duration", time.Since(start).Round(time.Millisecond))
 	} else {
 		logger.Debug("own service not initialized", "mode", c.Owner.Mode, "txoNil", svc.TXO == nil, "indexerNil", svc.Indexer == nil)
 	}
 
 	// Initialize admin UI
 	if c.Admin.Mode != admin.ModeDisabled && svc.Store != nil {
+		start = time.Now()
 		adminDeps := &admin.InitializeDeps{
 			Overlay: svc.Overlay,
 			Store:   svc.Store.Store,
@@ -440,10 +462,12 @@ func (c *Config) Initialize(ctx context.Context, logger *slog.Logger) (*Services
 			return nil, fmt.Errorf("failed to initialize admin: %w", err)
 		}
 		svc.Admin = adminSvc
+		logger.Info("admin initialized", "mode", c.Admin.Mode, "duration", time.Since(start).Round(time.Millisecond))
 	}
 
 	// Initialize JungleBus subscriptions from config (only those with autostart enabled)
 	if svc.Store != nil && svc.JungleBus != nil && len(c.JBSync.Subscribers) > 0 {
+		start = time.Now()
 		for i := range c.JBSync.Subscribers {
 			subCfg := &c.JBSync.Subscribers[i]
 			if !subCfg.AutoStart {
@@ -459,8 +483,10 @@ func (c *Config) Initialize(ctx context.Context, logger *slog.Logger) (*Services
 				"queue", subCfg.GetQueueName(),
 				"from_block", subCfg.FromBlock)
 		}
+		logger.Info("jbsync subscribers initialized", "count", len(svc.JBSubscribers), "duration", time.Since(start).Round(time.Millisecond))
 	}
 
+	logger.Info("all services initialized", "total_duration", time.Since(initStart).Round(time.Millisecond))
 	return svc, nil
 }
 

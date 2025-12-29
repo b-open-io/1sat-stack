@@ -2,7 +2,7 @@ module github.com/b-open-io/1sat-stack
 
 go 1.25.4
 
-replace github.com/bsv-blockchain/go-sdk => github.com/bsv-blockchain/go-sdk v1.2.14-0.20251219052215-a2751960a5f0
+replace github.com/bsv-blockchain/go-sdk => ../go-sdk
 
 replace github.com/bsv-blockchain/arcade => ../arcade
 
