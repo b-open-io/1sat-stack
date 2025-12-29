@@ -44,16 +44,17 @@ pubsub:
   routes:
     enabled: true
 
-# BEEF storage chain: LRU cache -> badger -> JungleBus fallback
+# BEEF storage chain: LRU cache -> Redis (volatile) -> JungleBus fallback
 beef:
   mode: embedded
   chain:
     - provider: lru
       lru:
         size: 100mb
-    - provider: badger
-      badger:
-        path: ~/.1sat/beef
+    - provider: redis
+      redis:
+        url: redis://localhost:6380/1
+        ttl: 8760h  # 1 year - marks keys as volatile for LRU eviction
     - provider: junglebus
   routes:
     enabled: true
@@ -151,7 +152,7 @@ owner:
 ordfs:
   enabled: true
   redis:
-    addr: localhost:6380
+    url: redis://localhost:6380/0
   routes:
     enabled: true
 

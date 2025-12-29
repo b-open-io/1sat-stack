@@ -18,14 +18,16 @@ type TokenWorker struct {
 	address   string
 	worker    *worker.Worker
 	startedAt time.Time
+	cancel    context.CancelFunc
 }
 
 // WorkerStatus represents the status of a token worker for monitoring
 type WorkerStatus struct {
-	TokenID    string    `json:"token_id"`
-	FeeAddress string    `json:"fee_address"`
-	QueueDepth int64     `json:"queue_depth"`
-	StartedAt  time.Time `json:"started_at"`
+	TokenID    string       `json:"token_id"`
+	FeeAddress string       `json:"fee_address"`
+	QueueDepth int64        `json:"queue_depth"`
+	StartedAt  time.Time    `json:"started_at"`
+	Status     *TokenStatus `json:"status,omitempty"`
 }
 
 // ListWorkers returns the status of all active token workers
@@ -47,34 +49,27 @@ func (m *TokenManager) ListWorkers(ctx context.Context) []WorkerStatus {
 			queueDepth = 0
 		}
 
-		workers = append(workers, WorkerStatus{
+		ws := WorkerStatus{
 			TokenID:    tokenId,
 			FeeAddress: w.address,
 			QueueDepth: queueDepth,
 			StartedAt:  w.startedAt,
-		})
+		}
+
+		// Include cached status if available
+		if statusVal, ok := m.statuses.Load(tokenId); ok {
+			ws.Status = statusVal.(*TokenStatus)
+		}
+
+		workers = append(workers, ws)
 		return true
 	})
 
 	return workers
 }
 
-// FundingStatus represents the funding status of a token
-type FundingStatus struct {
-	TokenID       string `json:"token_id"`
-	FeeAddress    string `json:"fee_address"`
-	Credits       uint64 `json:"credits"`
-	OutputCount   int64  `json:"output_count"`
-	FeePerOutput  int64  `json:"fee_per_output"`
-	Debits        int64  `json:"debits"`
-	Balance       int64  `json:"balance"`
-	IsActive      bool   `json:"is_active"`
-	IsWhitelisted bool   `json:"is_whitelisted"`
-	IsBlacklisted bool   `json:"is_blacklisted"`
-}
-
-// GetFundingStatus returns the funding status for a specific token
-func (m *TokenManager) GetFundingStatus(ctx context.Context, tokenId string) (*FundingStatus, error) {
+// GetTokenStatus returns the status for a specific token
+func (m *TokenManager) GetTokenStatus(ctx context.Context, tokenId string) (*TokenStatus, error) {
 	// Parse outpoint from tokenId
 	outpoint, err := transaction.OutpointFromString(tokenId)
 	if err != nil {
@@ -89,24 +84,14 @@ func (m *TokenManager) GetFundingStatus(ctx context.Context, tokenId string) (*F
 
 	// Check whitelist/blacklist status
 	isWhitelisted, _ := m.store.SIsMember(ctx, KeyWhitelist, []byte(tokenId))
-
-	// If whitelisted or blacklisted, we don't need balance info
-	if isWhitelisted {
-		return &FundingStatus{
-			TokenID:       tokenId,
-			FeeAddress:    feeAddress,
-			IsActive:      true,
-			IsWhitelisted: true,
-		}, nil
-	}
 	isBlacklisted, _ := m.store.SIsMember(ctx, KeyBlacklist, []byte(tokenId))
+
+	// If whitelisted or blacklisted, return early with minimal info
+	if isWhitelisted {
+		return NewTokenStatus(tokenId, feeAddress, 0, 0, m.feePerOutput, true, false), nil
+	}
 	if isBlacklisted {
-		return &FundingStatus{
-			TokenID:       tokenId,
-			FeeAddress:    feeAddress,
-			IsActive:      false,
-			IsBlacklisted: true,
-		}, nil
+		return NewTokenStatus(tokenId, feeAddress, 0, 0, m.feePerOutput, false, true), nil
 	}
 
 	// Credits: unspent satoshis at fee address
@@ -121,24 +106,12 @@ func (m *TokenManager) GetFundingStatus(ctx context.Context, tokenId string) (*F
 		return nil, fmt.Errorf("failed to query balance: %w", err)
 	}
 
-	// Debits: output count * fee per output
+	// Output count in topic
 	topicKey := []byte("z:tp:tm_" + tokenId)
 	outputCount, err := m.store.ZCard(ctx, topicKey)
 	if err != nil {
 		return nil, fmt.Errorf("failed to count outputs: %w", err)
 	}
 
-	debits := outputCount * m.feePerOutput
-	balance := int64(credits) - debits
-
-	return &FundingStatus{
-		TokenID:      tokenId,
-		FeeAddress:   feeAddress,
-		Credits:      credits,
-		OutputCount:  outputCount,
-		FeePerOutput: m.feePerOutput,
-		Debits:       debits,
-		Balance:      balance,
-		IsActive:     balance > 0,
-	}, nil
+	return NewTokenStatus(tokenId, feeAddress, credits, outputCount, m.feePerOutput, false, false), nil
 }

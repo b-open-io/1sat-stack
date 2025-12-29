@@ -1005,6 +1005,34 @@ const docTemplate = `{
                 }
             }
         },
+        "/bsv21/{tokenId}/funding": {
+            "get": {
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "bsv21"
+                ],
+                "summary": "Get token funding status",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Token ID (outpoint format: txid_vout)",
+                        "name": "tokenId",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/pkg_bsv21.TokenStatus"
+                        }
+                    }
+                }
+            }
+        },
         "/bsv21/{tokenId}/tx/{txid}": {
             "get": {
                 "produces": [
@@ -1670,7 +1698,7 @@ const docTemplate = `{
                     "200": {
                         "description": "Metadata",
                         "schema": {
-                            "$ref": "#/definitions/pkg_ordfs.Response"
+                            "$ref": "#/definitions/github_com_b-open-io_1sat-stack_pkg_ordfs.Response"
                         }
                     },
                     "400": {
@@ -2320,7 +2348,7 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/github_com_b-open-io_1sat-stack_pkg_owner.BalanceResponse"
+                            "$ref": "#/definitions/pkg_owner.BalanceResponse"
                         }
                     },
                     "500": {
@@ -2484,7 +2512,7 @@ const docTemplate = `{
                         "schema": {
                             "type": "array",
                             "items": {
-                                "$ref": "#/definitions/pkg_txo.IndexedOutputResponse"
+                                "$ref": "#/definitions/github_com_b-open-io_1sat-stack_pkg_txo.IndexedOutputResponse"
                             }
                         }
                     },
@@ -2581,7 +2609,7 @@ const docTemplate = `{
                         "schema": {
                             "type": "array",
                             "items": {
-                                "$ref": "#/definitions/pkg_txo.IndexedOutputResponse"
+                                "$ref": "#/definitions/github_com_b-open-io_1sat-stack_pkg_txo.IndexedOutputResponse"
                             }
                         }
                     },
@@ -2633,7 +2661,7 @@ const docTemplate = `{
                         "schema": {
                             "type": "array",
                             "items": {
-                                "$ref": "#/definitions/pkg_txo.SpendResponse"
+                                "$ref": "#/definitions/github_com_b-open-io_1sat-stack_pkg_txo.SpendResponse"
                             }
                         }
                     },
@@ -2684,7 +2712,7 @@ const docTemplate = `{
                         "schema": {
                             "type": "array",
                             "items": {
-                                "$ref": "#/definitions/pkg_txo.IndexedOutputResponse"
+                                "$ref": "#/definitions/github_com_b-open-io_1sat-stack_pkg_txo.IndexedOutputResponse"
                             }
                         }
                     },
@@ -2739,7 +2767,7 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/pkg_txo.IndexedOutputResponse"
+                            "$ref": "#/definitions/github_com_b-open-io_1sat-stack_pkg_txo.IndexedOutputResponse"
                         }
                     },
                     "400": {
@@ -2786,7 +2814,7 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/pkg_txo.SpendResponse"
+                            "$ref": "#/definitions/github_com_b-open-io_1sat-stack_pkg_txo.SpendResponse"
                         }
                     },
                     "400": {
@@ -2997,6 +3025,38 @@ const docTemplate = `{
                 }
             }
         },
+        "github_com_b-open-io_1sat-stack_pkg_bsv21.TokenStatus": {
+            "type": "object",
+            "properties": {
+                "credits": {
+                    "description": "Funding metrics (from DB on creation/recalc)",
+                    "type": "integer"
+                },
+                "debits": {
+                    "type": "integer"
+                },
+                "fee_address": {
+                    "type": "string"
+                },
+                "fee_per_output": {
+                    "type": "integer"
+                },
+                "is_blacklisted": {
+                    "type": "boolean"
+                },
+                "is_whitelisted": {
+                    "description": "List status",
+                    "type": "boolean"
+                },
+                "output_count": {
+                    "type": "integer"
+                },
+                "token_id": {
+                    "description": "Identity",
+                    "type": "string"
+                }
+            }
+        },
         "github_com_b-open-io_1sat-stack_pkg_bsv21.TransactionData": {
             "type": "object",
             "properties": {
@@ -3032,7 +3092,34 @@ const docTemplate = `{
                 "started_at": {
                     "type": "string"
                 },
+                "status": {
+                    "$ref": "#/definitions/github_com_b-open-io_1sat-stack_pkg_bsv21.TokenStatus"
+                },
                 "token_id": {
+                    "type": "string"
+                }
+            }
+        },
+        "github_com_b-open-io_1sat-stack_pkg_indexer.ArcEvent": {
+            "type": "object",
+            "properties": {
+                "extraInfo": {
+                    "type": "string"
+                },
+                "merklePath": {
+                    "type": "array",
+                    "items": {
+                        "type": "integer"
+                    }
+                },
+                "rawTx": {
+                    "description": "Hex-encoded raw tx (non-EF format)",
+                    "type": "string"
+                },
+                "txId": {
+                    "type": "string"
+                },
+                "txStatus": {
                     "type": "string"
                 }
             }
@@ -3304,6 +3391,38 @@ const docTemplate = `{
                 }
             }
         },
+        "pkg_bsv21.TokenStatus": {
+            "type": "object",
+            "properties": {
+                "credits": {
+                    "description": "Funding metrics (from DB on creation/recalc)",
+                    "type": "integer"
+                },
+                "debits": {
+                    "type": "integer"
+                },
+                "fee_address": {
+                    "type": "string"
+                },
+                "fee_per_output": {
+                    "type": "integer"
+                },
+                "is_blacklisted": {
+                    "type": "boolean"
+                },
+                "is_whitelisted": {
+                    "description": "List status",
+                    "type": "boolean"
+                },
+                "output_count": {
+                    "type": "integer"
+                },
+                "token_id": {
+                    "description": "Identity",
+                    "type": "string"
+                }
+            }
+        },
         "pkg_bsv21.TransactionData": {
             "type": "object",
             "properties": {
@@ -3323,6 +3442,30 @@ const docTemplate = `{
                     }
                 },
                 "txid": {
+                    "type": "string"
+                }
+            }
+        },
+        "pkg_indexer.ArcEvent": {
+            "type": "object",
+            "properties": {
+                "extraInfo": {
+                    "type": "string"
+                },
+                "merklePath": {
+                    "type": "array",
+                    "items": {
+                        "type": "integer"
+                    }
+                },
+                "rawTx": {
+                    "description": "Hex-encoded raw tx (non-EF format)",
+                    "type": "string"
+                },
+                "txId": {
+                    "type": "string"
+                },
+                "txStatus": {
                     "type": "string"
                 }
             }

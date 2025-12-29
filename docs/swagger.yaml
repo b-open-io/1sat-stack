@@ -127,6 +127,28 @@ definitions:
       vout:
         type: integer
     type: object
+  github_com_b-open-io_1sat-stack_pkg_bsv21.TokenStatus:
+    properties:
+      credits:
+        description: Funding metrics (from DB on creation/recalc)
+        type: integer
+      debits:
+        type: integer
+      fee_address:
+        type: string
+      fee_per_output:
+        type: integer
+      is_blacklisted:
+        type: boolean
+      is_whitelisted:
+        description: List status
+        type: boolean
+      output_count:
+        type: integer
+      token_id:
+        description: Identity
+        type: string
+    type: object
   github_com_b-open-io_1sat-stack_pkg_bsv21.TransactionData:
     properties:
       beef:
@@ -150,7 +172,25 @@ definitions:
         type: integer
       started_at:
         type: string
+      status:
+        $ref: '#/definitions/github_com_b-open-io_1sat-stack_pkg_bsv21.TokenStatus'
       token_id:
+        type: string
+    type: object
+  github_com_b-open-io_1sat-stack_pkg_indexer.ArcEvent:
+    properties:
+      extraInfo:
+        type: string
+      merklePath:
+        items:
+          type: integer
+        type: array
+      rawTx:
+        description: Hex-encoded raw tx (non-EF format)
+        type: string
+      txId:
+        type: string
+      txStatus:
         type: string
     type: object
   github_com_b-open-io_1sat-stack_pkg_ordfs.Response:
@@ -336,6 +376,28 @@ definitions:
       vout:
         type: integer
     type: object
+  pkg_bsv21.TokenStatus:
+    properties:
+      credits:
+        description: Funding metrics (from DB on creation/recalc)
+        type: integer
+      debits:
+        type: integer
+      fee_address:
+        type: string
+      fee_per_output:
+        type: integer
+      is_blacklisted:
+        type: boolean
+      is_whitelisted:
+        description: List status
+        type: boolean
+      output_count:
+        type: integer
+      token_id:
+        description: Identity
+        type: string
+    type: object
   pkg_bsv21.TransactionData:
     properties:
       beef:
@@ -349,6 +411,22 @@ definitions:
           $ref: '#/definitions/github_com_b-open-io_1sat-stack_pkg_txo.IndexedOutput'
         type: array
       txid:
+        type: string
+    type: object
+  pkg_indexer.ArcEvent:
+    properties:
+      extraInfo:
+        type: string
+      merklePath:
+        items:
+          type: integer
+        type: array
+      rawTx:
+        description: Hex-encoded raw tx (non-EF format)
+        type: string
+      txId:
+        type: string
+      txStatus:
         type: string
     type: object
   pkg_ordfs.Response:
@@ -1279,6 +1357,24 @@ paths:
       summary: Get block data for a token
       tags:
       - bsv21
+  /bsv21/{tokenId}/funding:
+    get:
+      parameters:
+      - description: 'Token ID (outpoint format: txid_vout)'
+        in: path
+        name: tokenId
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/pkg_bsv21.TokenStatus'
+      summary: Get token funding status
+      tags:
+      - bsv21
   /bsv21/{tokenId}/tx/{txid}:
     get:
       parameters:
@@ -1531,7 +1627,7 @@ paths:
         "200":
           description: Metadata
           schema:
-            $ref: '#/definitions/pkg_ordfs.Response'
+            $ref: '#/definitions/github_com_b-open-io_1sat-stack_pkg_ordfs.Response'
         "400":
           description: Bad request
           schema:
@@ -1934,7 +2030,7 @@ paths:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/github_com_b-open-io_1sat-stack_pkg_owner.BalanceResponse'
+            $ref: '#/definitions/pkg_owner.BalanceResponse'
         "500":
           description: Internal server error
           schema:
@@ -2066,7 +2162,7 @@ paths:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/pkg_txo.IndexedOutputResponse'
+            $ref: '#/definitions/github_com_b-open-io_1sat-stack_pkg_txo.IndexedOutputResponse'
         "400":
           description: Invalid outpoint format
           schema:
@@ -2097,7 +2193,7 @@ paths:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/pkg_txo.SpendResponse'
+            $ref: '#/definitions/github_com_b-open-io_1sat-stack_pkg_txo.SpendResponse'
         "400":
           description: Invalid outpoint format
           schema:
@@ -2139,7 +2235,7 @@ paths:
           description: OK
           schema:
             items:
-              $ref: '#/definitions/pkg_txo.IndexedOutputResponse'
+              $ref: '#/definitions/github_com_b-open-io_1sat-stack_pkg_txo.IndexedOutputResponse'
             type: array
         "500":
           description: Internal server error
@@ -2205,7 +2301,7 @@ paths:
           description: OK
           schema:
             items:
-              $ref: '#/definitions/pkg_txo.IndexedOutputResponse'
+              $ref: '#/definitions/github_com_b-open-io_1sat-stack_pkg_txo.IndexedOutputResponse'
             type: array
         "400":
           description: At least one key is required
@@ -2239,7 +2335,7 @@ paths:
           description: OK
           schema:
             items:
-              $ref: '#/definitions/pkg_txo.SpendResponse'
+              $ref: '#/definitions/github_com_b-open-io_1sat-stack_pkg_txo.SpendResponse'
             type: array
         "500":
           description: Internal server error
@@ -2273,7 +2369,7 @@ paths:
           description: OK
           schema:
             items:
-              $ref: '#/definitions/pkg_txo.IndexedOutputResponse'
+              $ref: '#/definitions/github_com_b-open-io_1sat-stack_pkg_txo.IndexedOutputResponse'
             type: array
         "400":
           description: Invalid txid

@@ -18,9 +18,7 @@ type RedisStore struct {
 
 // RedisConfig holds Redis-specific configuration
 type RedisConfig struct {
-	Addr     string `mapstructure:"addr"`
-	Password string `mapstructure:"password"`
-	DB       int    `mapstructure:"db"`
+	URL string `mapstructure:"url"` // e.g., "redis://user:pass@localhost:6379/0"
 }
 
 // NewRedisStore creates a new Redis-backed Store
@@ -29,18 +27,18 @@ func NewRedisStore(cfg *RedisConfig, logger *slog.Logger) (*RedisStore, error) {
 		logger = slog.Default()
 	}
 
-	client := redis.NewClient(&redis.Options{
-		Addr:     cfg.Addr,
-		Password: cfg.Password,
-		DB:       cfg.DB,
-	})
+	opts, err := redis.ParseURL(cfg.URL)
+	if err != nil {
+		return nil, err
+	}
+	client := redis.NewClient(opts)
 
 	// Test connection
 	if err := client.Ping(context.Background()).Err(); err != nil {
 		return nil, err
 	}
 
-	logger.Info("connected to Redis", "addr", cfg.Addr, "db", cfg.DB)
+	logger.Info("connected to Redis", "url", cfg.URL)
 
 	return &RedisStore{
 		client: client,

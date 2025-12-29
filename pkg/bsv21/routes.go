@@ -592,14 +592,14 @@ func (r *FundingRoutes) Register(router fiber.Router) {
 // @Tags bsv21
 // @Produce json
 // @Param tokenId path string true "Token ID (outpoint format: txid_vout)"
-// @Success 200 {object} FundingStatus
+// @Success 200 {object} TokenStatus
 // @Router /bsv21/{tokenId}/funding [get]
 func (r *FundingRoutes) GetFundingStatus(c *fiber.Ctx) error {
 	tokenId := c.Params("tokenId")
 
-	status, err := r.manager.GetFundingStatus(c.Context(), tokenId)
+	status, err := r.manager.GetTokenStatus(c.Context(), tokenId)
 	if err != nil {
-		r.logger.Error("failed to get funding status", "tokenId", tokenId, "error", err)
+		r.logger.Error("failed to get token status", "tokenId", tokenId, "error", err)
 		return c.Status(fiber.StatusBadRequest).JSON(ErrorResponse{
 			Message: err.Error(),
 		})
