@@ -41,11 +41,12 @@ func NewIngestSync(
 
 // Start begins processing the ingest queue. Blocks until context is cancelled.
 func (s *IngestSync) Start(ctx context.Context) error {
+	limiter := make(chan struct{}, s.config.Concurrency)
 	s.worker = worker.New(&worker.Config{
-		Store:       s.store,
-		Key:         jbsync.QueueKey(s.config.QueueName),
-		Concurrency: s.config.Concurrency,
-		Handler:     s.ingest,
+		Store:   s.store,
+		Key:     jbsync.QueueKey(s.config.QueueName),
+		Limiter: limiter,
+		Handler: s.ingest,
 		OnError: func(ctx context.Context, id string, score float64, err error) {
 			s.logger.Error("ingest error", "txid", id, "score", score, "error", err)
 		},

@@ -360,7 +360,7 @@ TokenWorker.Run():
 |----|------|-------|--------|
 | VIS-1 | Lifecycle | No log when `manageWorkerLifecycle` starts running | Can't tell if lifecycle is executing |
 | VIS-2 | Lifecycle | No log of how many tokens found in topic | Can't tell if topic has data |
-| VIS-3 | Topic search | `/api/txo/search/tp:tm_bsv21` returns nulls | Unclear if storage or loading issue |
+| VIS-3 | Topic search | `/1sat/txo/search/tp:tm_bsv21` returns nulls | Unclear if storage or loading issue |
 | VIS-4 | Worker creation | No log when worker already exists | Can't tell if duplicate creation attempted |
 
 ### Configuration Issues
@@ -422,7 +422,7 @@ The complication: even with batch `ZRem`, the handler still does `ZAdd` inside i
 
 #### VIS-3: SearchOutpoints Implementation
 
-**Problem**: `/api/txo/search/tp:tm_bsv21` returns nulls because `SearchOutputs` calls `loadOutputs`, which requires hash data at `h:{outpoint}`. Overlay's `InsertOutputs` only writes to sorted sets, not hash data.
+**Problem**: `/1sat/txo/search/tp:tm_bsv21` returns nulls because `SearchOutputs` calls `loadOutputs`, which requires hash data at `h:{outpoint}`. Overlay's `InsertOutputs` only writes to sorted sets, not hash data.
 
 **Solution**: Add `SearchOutpoints` function that returns outpoints + scores without loading full output data.
 

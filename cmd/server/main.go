@@ -5,6 +5,8 @@ import (
 	"flag"
 	"fmt"
 	"log/slog"
+	"net/http"
+	_ "net/http/pprof"
 	"os"
 	"os/signal"
 	"syscall"
@@ -12,7 +14,6 @@ import (
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/middleware/cors"
-	"github.com/gofiber/fiber/v2/middleware/logger"
 	"github.com/gofiber/fiber/v2/middleware/recover"
 
 	_ "github.com/b-open-io/1sat-stack/docs"
@@ -29,7 +30,7 @@ import (
 // @license.name MIT
 // @license.url https://opensource.org/licenses/MIT
 
-// @BasePath /api
+// @BasePath /1sat
 
 func main() {
 	// Parse command line flags
@@ -64,6 +65,17 @@ func main() {
 		}
 	}()
 
+	// Start pprof server if enabled
+	if cfg.Server.Pprof.Enabled {
+		pprofAddr := fmt.Sprintf("%s:%d", cfg.Server.Pprof.Host, cfg.Server.Pprof.Port)
+		go func() {
+			log.Info("starting pprof server", "address", pprofAddr)
+			if err := http.ListenAndServe(pprofAddr, nil); err != nil {
+				log.Error("pprof server error", "error", err)
+			}
+		}()
+	}
+
 	// Start JungleBus subscribers in background
 	svc.StartSubscribers(ctx, log)
 
@@ -75,7 +87,18 @@ func main() {
 
 	// Middleware
 	app.Use(recover.New())
-	app.Use(logger.New())
+	app.Use(func(c *fiber.Ctx) error {
+		start := time.Now()
+		err := c.Next()
+		slog.Info("request",
+			"status", c.Response().StatusCode(),
+			"latency", time.Since(start).String(),
+			"ip", c.IP(),
+			"method", c.Method(),
+			"path", c.Path(),
+		)
+		return err
+	})
 	app.Use(cors.New())
 
 	// Register routes

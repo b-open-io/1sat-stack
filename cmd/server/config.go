@@ -115,6 +115,14 @@ type ServerConfig struct {
 	Port     int    `mapstructure:"port"`
 	Host     string `mapstructure:"host"`
 	BasePath string `mapstructure:"base_path"`
+	Pprof    PprofConfig `mapstructure:"pprof"`
+}
+
+// PprofConfig holds pprof profiling server settings
+type PprofConfig struct {
+	Enabled bool   `mapstructure:"enabled"`
+	Port    int    `mapstructure:"port"`
+	Host    string `mapstructure:"host"`
 }
 
 // CreateLogger creates a logger from the logging configuration.
@@ -177,7 +185,10 @@ func (c *Config) SetDefaults(v *viper.Viper) {
 	// Server defaults
 	v.SetDefault("server.port", 8080)
 	v.SetDefault("server.host", "0.0.0.0")
-	v.SetDefault("server.base_path", "/api")
+	v.SetDefault("server.base_path", "/1sat")
+	v.SetDefault("server.pprof.enabled", false)
+	v.SetDefault("server.pprof.port", 6060)
+	v.SetDefault("server.pprof.host", "localhost")
 
 	// Cascade to package configs
 	c.Store.SetDefaults(v, "store")
@@ -374,6 +385,27 @@ func (c *Config) Initialize(ctx context.Context, logger *slog.Logger) (*Services
 		}
 		svc.Indexer = indexerSvc
 		logger.Debug("indexer service initialized", "mode", c.Indexer.Mode, "syncEnabled", c.Indexer.Sync.Enabled)
+
+		// Setup arcade listener to bridge arcade events to pubsub
+		if svc.Arcade != nil && svc.PubSub != nil {
+			svc.Indexer.SetupArcadeListener(&indexer.ArcadeListenerDeps{
+				EventPublisher: svc.Arcade.EventPublisher,
+				PubSub:         svc.PubSub.PubSub,
+			})
+		}
+
+		// Setup status handler to process all arc events (from arcade or webhooks)
+		if svc.PubSub != nil {
+			svc.Indexer.SetupStatusHandler(&indexer.StatusHandlerDeps{
+				PubSub:       svc.PubSub.PubSub,
+				ChainTracker: svc.Chaintracks,
+			})
+		}
+
+		// Setup routes for webhook callbacks
+		if svc.PubSub != nil {
+			svc.Indexer.SetupRoutes(svc.PubSub.PubSub)
+		}
 	}
 
 	// Initialize owner services (depends on TXO, Beef, Indexer)
@@ -483,7 +515,8 @@ func (c *Config) RegisterRoutes(app *fiber.App, svc *Services) {
 		if prefix == "" {
 			prefix = "/bsv21"
 		}
-		svc.BSV21.Routes.Register(api, prefix)
+		bsv21Group := api.Group(prefix)
+		svc.BSV21.Routes.Register(bsv21Group)
 		capabilities = append(capabilities, "bsv21")
 	}
 
@@ -504,11 +537,13 @@ func (c *Config) RegisterRoutes(app *fiber.App, svc *Services) {
 		if prefix == "" {
 			prefix = "/ordfs"
 		}
-		svc.ORDFS.Routes.Register(api, prefix)
+		ordfsGroup := api.Group(prefix)
+		svc.ORDFS.Routes.Register(ordfsGroup)
 		capabilities = append(capabilities, "ordfs")
 
 		// Also register content at root level for compatibility with ordfs protocol
-		svc.ORDFS.Routes.RegisterContent(app, "/content")
+		contentGroup := app.Group("/content")
+		svc.ORDFS.Routes.RegisterContent(contentGroup)
 	}
 
 	// Register Chaintracks routes (block headers, chain tip, etc.)
@@ -525,6 +560,13 @@ func (c *Config) RegisterRoutes(app *fiber.App, svc *Services) {
 		svc.ArcadeRoutes.Register(arcGroup)
 		capabilities = append(capabilities, "arcade")
 		slog.Debug("registered arcade routes", "prefix", "/arcade")
+	}
+
+	// Register Arc callback route (for webhook callbacks from broadcasters)
+	if svc.Indexer != nil && svc.Indexer.Routes != nil {
+		arcGroup := api.Group("/arc")
+		svc.Indexer.Routes.RegisterCallback(arcGroup)
+		slog.Debug("registered arc callback routes", "prefix", "/arc")
 	}
 
 	// Register Admin routes

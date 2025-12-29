@@ -135,11 +135,12 @@ func (s *SyncServices) Start(ctx context.Context) error {
 	g, ctx := errgroup.WithContext(ctx)
 
 	// Start dispatcher - reads from q:bsv21 and routes to per-token queues
+	dispatchLimiter := make(chan struct{}, s.config.DispatchWorkers)
 	s.dispatcher = worker.New(&worker.Config{
-		Store:       s.store,
-		Key:         jbsync.QueueKey("bsv21"),
-		Concurrency: s.config.DispatchWorkers,
-		Handler:     s.dispatch,
+		Store:   s.store,
+		Key:     jbsync.QueueKey("bsv21"),
+		Limiter: dispatchLimiter,
+		Handler: s.dispatch,
 		OnError: func(ctx context.Context, id string, score float64, err error) {
 			s.logger.Error("dispatcher error", "txid", id, "score", score, "error", err)
 		},

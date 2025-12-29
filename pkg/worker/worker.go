@@ -20,7 +20,7 @@ type ErrorHandler func(ctx context.Context, id string, score float64, err error)
 type Worker struct {
 	store       store.Store
 	key         string
-	concurrency int
+	limiter     chan struct{}
 	handler     Handler
 	onError     ErrorHandler
 	logger      *slog.Logger
@@ -36,20 +36,20 @@ type Worker struct {
 // Config holds worker configuration.
 type Config struct {
 	Store       store.Store
-	Key         string        // Sorted set key to consume from
-	Concurrency int           // Number of concurrent workers
-	Handler     Handler       // Called for each item
-	OnError     ErrorHandler  // Called on handler error (optional)
-	Logger      *slog.Logger  // Logger (optional)
-	PageSize    uint32        // Items to fetch per batch (default: 100)
-	PollDelay   time.Duration // Delay when queue is empty (default: 1s)
-	StatusDelay time.Duration // Status log interval (default: 15s)
+	Key         string           // Sorted set key to consume from
+	Limiter     chan struct{}    // Controls concurrency - required
+	Handler     Handler          // Called for each item
+	OnError     ErrorHandler     // Called on handler error (optional)
+	Logger      *slog.Logger     // Logger (optional)
+	PageSize    uint32           // Items to fetch per batch (default: 100)
+	PollDelay   time.Duration    // Delay when queue is empty (default: 1s)
+	StatusDelay time.Duration    // Status log interval (default: 15s)
 }
 
 // New creates a new Worker.
 func New(cfg *Config) *Worker {
-	if cfg.Concurrency < 1 {
-		cfg.Concurrency = 1
+	if cfg.Limiter == nil {
+		panic("worker: Limiter is required")
 	}
 	if cfg.PageSize == 0 {
 		cfg.PageSize = 100
@@ -70,7 +70,7 @@ func New(cfg *Config) *Worker {
 	return &Worker{
 		store:       cfg.Store,
 		key:         cfg.Key,
-		concurrency: cfg.Concurrency,
+		limiter:     cfg.Limiter,
 		handler:     cfg.Handler,
 		onError:     cfg.OnError,
 		logger:      logger,
@@ -84,12 +84,12 @@ func New(cfg *Config) *Worker {
 func (w *Worker) Start(ctx context.Context) error {
 	ctx, w.cancel = context.WithCancel(ctx)
 
-	limiter := make(chan struct{}, w.concurrency)
 	inflight := make(map[string]struct{})
 	var inflightMu sync.Mutex
 
-	done := make(chan string, w.concurrency)
-	errChan := make(chan workerError, w.concurrency)
+	concurrency := cap(w.limiter)
+	done := make(chan string, concurrency)
+	errChan := make(chan workerError, concurrency)
 
 	ticker := time.NewTicker(w.statusDelay)
 	defer ticker.Stop()
@@ -167,7 +167,7 @@ func (w *Worker) Start(ctx context.Context) error {
 				inflight[id] = struct{}{}
 				inflightMu.Unlock()
 
-				limiter <- struct{}{}
+				w.limiter <- struct{}{}
 				w.wg.Add(1)
 
 				go func(id string, score float64) {
@@ -179,7 +179,7 @@ func (w *Worker) Start(ctx context.Context) error {
 								"panic", r,
 							)
 						}
-						<-limiter
+						<-w.limiter
 						w.wg.Done()
 						done <- id
 					}()
@@ -216,7 +216,6 @@ type workerError struct {
 // ProcessOnce processes all items once and returns.
 // Useful for one-time catchup or batch processing.
 func (w *Worker) ProcessOnce(ctx context.Context) error {
-	limiter := make(chan struct{}, w.concurrency)
 	var wg sync.WaitGroup
 
 	for {
@@ -239,12 +238,12 @@ func (w *Worker) ProcessOnce(ctx context.Context) error {
 			id := string(item.Member)
 			score := item.Score
 
-			limiter <- struct{}{}
+			w.limiter <- struct{}{}
 			wg.Add(1)
 
 			go func(id string, score float64) {
 				defer func() {
-					<-limiter
+					<-w.limiter
 					wg.Done()
 				}()
 

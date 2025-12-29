@@ -1,24 +1,28 @@
-basePath: /api
+basePath: /1sat
 definitions:
   admin.ProgressItem:
     properties:
       block:
-        type: number
+        type: integer
       id:
         type: string
     type: object
-  admin.QueueInfo:
-    properties:
-      count:
-        type: integer
-      name:
-        type: string
-    type: object
-  admin.QueueItem:
+  admin.ZSetItem:
     properties:
       score:
         type: number
       value:
+        type: string
+    type: object
+  admin.ZSetResponse:
+    properties:
+      count:
+        type: integer
+      items:
+        items:
+          $ref: '#/definitions/admin.ZSetItem'
+        type: array
+      key:
         type: string
     type: object
   chaintracks.BlockHeader:
@@ -434,7 +438,7 @@ info:
   title: 1Sat Stack API
   version: "1.0"
 paths:
-  /admin/api/blacklist:
+  /admin/blacklist:
     get:
       description: Returns the list of blacklisted topics
       produces:
@@ -490,7 +494,7 @@ paths:
       summary: Add to blacklist
       tags:
       - admin
-  /admin/api/blacklist/{topic}:
+  /admin/blacklist/{topic}:
     delete:
       description: Removes a topic from the blacklist
       parameters:
@@ -517,7 +521,7 @@ paths:
       summary: Remove from blacklist
       tags:
       - admin
-  /admin/api/bsv21/workers:
+  /admin/bsv21/workers:
     get:
       description: Returns the status of all active BSV21 token workers
       produces:
@@ -532,7 +536,7 @@ paths:
       summary: Get BSV21 workers
       tags:
       - admin
-  /admin/api/lookups/active:
+  /admin/lookups/active:
     get:
       description: Returns the list of currently active lookup services from the overlay
         engine
@@ -548,9 +552,9 @@ paths:
       summary: Get active lookup services
       tags:
       - admin
-  /admin/api/progress:
+  /admin/progress:
     get:
-      description: Returns all sync progress entries
+      description: Returns all sync progress entries (subscriptions, owners, peers)
       produces:
       - application/json
       responses:
@@ -563,7 +567,7 @@ paths:
       summary: Get progress
       tags:
       - admin
-  /admin/api/progress/{id}:
+  /admin/progress/{id}:
     delete:
       description: Deletes a sync progress entry
       parameters:
@@ -630,43 +634,7 @@ paths:
       summary: Update progress
       tags:
       - admin
-  /admin/api/queues:
-    get:
-      description: 'Returns the list of queues (sorted sets with q: prefix)'
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: List of queues with counts
-          schema:
-            items:
-              $ref: '#/definitions/admin.QueueInfo'
-            type: array
-      summary: Get queues
-      tags:
-      - admin
-  /admin/api/queues/{name}:
-    get:
-      description: Returns the first 25 items from a queue
-      parameters:
-      - description: Queue name
-        in: path
-        name: name
-        required: true
-        type: string
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: List of queue items
-          schema:
-            items:
-              $ref: '#/definitions/admin.QueueItem'
-            type: array
-      summary: Get queue items
-      tags:
-      - admin
-  /admin/api/topics/active:
+  /admin/topics/active:
     get:
       description: Returns the list of currently active topics from the overlay engine
       produces:
@@ -681,7 +649,7 @@ paths:
       summary: Get active topics
       tags:
       - admin
-  /admin/api/whitelist:
+  /admin/whitelist:
     get:
       description: Returns the list of whitelisted BSV21 tokens (always active)
       produces:
@@ -737,7 +705,7 @@ paths:
       summary: Add to whitelist
       tags:
       - admin
-  /admin/api/whitelist/{token}:
+  /admin/whitelist/{token}:
     delete:
       description: Removes a BSV21 token from the whitelist
       parameters:
@@ -762,6 +730,37 @@ paths:
               type: string
             type: object
       summary: Remove from whitelist
+      tags:
+      - admin
+  /admin/zset/{key}:
+    get:
+      description: Returns the first 25 items from any sorted set by key
+      parameters:
+      - description: Sorted set key (e.g., q:tok:abc123, z:ev:own:address)
+        in: path
+        name: key
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Sorted set info and items
+          schema:
+            $ref: '#/definitions/admin.ZSetResponse'
+        "400":
+          description: Bad request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Get sorted set items
       tags:
       - admin
   /arc/callback:
@@ -1062,7 +1061,7 @@ paths:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/github_com_b-open-io_1sat-stack_pkg_bsv21.TokenResponse'
+            $ref: '#/definitions/pkg_bsv21.TokenResponse'
       summary: Get BSV21 token details
       tags:
       - bsv21
@@ -1090,7 +1089,7 @@ paths:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/github_com_b-open-io_1sat-stack_pkg_bsv21.BalanceResponse'
+            $ref: '#/definitions/pkg_bsv21.BalanceResponse'
       summary: Get address token balance
       tags:
       - bsv21
@@ -1183,7 +1182,7 @@ paths:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/github_com_b-open-io_1sat-stack_pkg_bsv21.BalanceResponse'
+            $ref: '#/definitions/pkg_bsv21.BalanceResponse'
       summary: Get multi-address token balance
       tags:
       - bsv21
@@ -1276,7 +1275,7 @@ paths:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/github_com_b-open-io_1sat-stack_pkg_bsv21.BlockResponse'
+            $ref: '#/definitions/pkg_bsv21.BlockResponse'
       summary: Get block data for a token
       tags:
       - bsv21
@@ -1935,7 +1934,7 @@ paths:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/pkg_owner.BalanceResponse'
+            $ref: '#/definitions/github_com_b-open-io_1sat-stack_pkg_owner.BalanceResponse'
         "500":
           description: Internal server error
           schema:
@@ -2067,7 +2066,7 @@ paths:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/github_com_b-open-io_1sat-stack_pkg_txo.IndexedOutputResponse'
+            $ref: '#/definitions/pkg_txo.IndexedOutputResponse'
         "400":
           description: Invalid outpoint format
           schema:
@@ -2098,7 +2097,7 @@ paths:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/github_com_b-open-io_1sat-stack_pkg_txo.SpendResponse'
+            $ref: '#/definitions/pkg_txo.SpendResponse'
         "400":
           description: Invalid outpoint format
           schema:
@@ -2140,7 +2139,7 @@ paths:
           description: OK
           schema:
             items:
-              $ref: '#/definitions/github_com_b-open-io_1sat-stack_pkg_txo.IndexedOutputResponse'
+              $ref: '#/definitions/pkg_txo.IndexedOutputResponse'
             type: array
         "500":
           description: Internal server error
@@ -2206,7 +2205,7 @@ paths:
           description: OK
           schema:
             items:
-              $ref: '#/definitions/github_com_b-open-io_1sat-stack_pkg_txo.IndexedOutputResponse'
+              $ref: '#/definitions/pkg_txo.IndexedOutputResponse'
             type: array
         "400":
           description: At least one key is required
@@ -2240,7 +2239,7 @@ paths:
           description: OK
           schema:
             items:
-              $ref: '#/definitions/github_com_b-open-io_1sat-stack_pkg_txo.SpendResponse'
+              $ref: '#/definitions/pkg_txo.SpendResponse'
             type: array
         "500":
           description: Internal server error
@@ -2274,7 +2273,7 @@ paths:
           description: OK
           schema:
             items:
-              $ref: '#/definitions/github_com_b-open-io_1sat-stack_pkg_txo.IndexedOutputResponse'
+              $ref: '#/definitions/pkg_txo.IndexedOutputResponse'
             type: array
         "400":
           description: Invalid txid

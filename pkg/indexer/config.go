@@ -7,8 +7,11 @@ import (
 
 	"github.com/b-open-io/1sat-stack/pkg/beef"
 	"github.com/b-open-io/1sat-stack/pkg/logging"
+	"github.com/b-open-io/1sat-stack/pkg/pubsub"
 	"github.com/b-open-io/1sat-stack/pkg/store"
 	"github.com/b-open-io/1sat-stack/pkg/txo"
+	"github.com/bsv-blockchain/arcade/events"
+	"github.com/bsv-blockchain/go-sdk/transaction/chaintracker"
 	"github.com/spf13/viper"
 )
 
@@ -26,7 +29,14 @@ type Config struct {
 	LogLevel string   `mapstructure:"log_level"` // Log level (debug, info, warn, error)
 
 	Sync   SyncConfig   `mapstructure:"sync"`
+	Arcade ArcadeConfig `mapstructure:"arcade"`
 	Routes RoutesConfig `mapstructure:"routes"`
+}
+
+// ArcadeConfig holds configuration for arcade event listener.
+type ArcadeConfig struct {
+	Enabled bool `mapstructure:"enabled"` // Enable arcade event listener
+	Ingest  bool `mapstructure:"ingest"`  // Ingest transactions on ACCEPTED status
 }
 
 // SyncConfig holds configuration for the ingest sync worker.
@@ -65,6 +75,10 @@ func (c *Config) SetDefaults(v *viper.Viper, prefix string) {
 	v.SetDefault(p+"sync.poll_delay", "1s")
 	v.SetDefault(p+"sync.status_delay", "15s")
 
+	// Arcade listener defaults
+	v.SetDefault(p+"arcade.enabled", false)
+	v.SetDefault(p+"arcade.ingest", true)
+
 	// Routes defaults
 	v.SetDefault(p+"routes.enabled", true)
 	v.SetDefault(p+"routes.prefix", "")
@@ -72,12 +86,15 @@ func (c *Config) SetDefaults(v *viper.Viper, prefix string) {
 
 // Services holds initialized indexer services.
 type Services struct {
-	Indexer *IngestCtx
-	Sync    *IngestSync
-	// Routes  *Routes // TODO: Add if indexer routes are needed
+	Indexer        *IngestCtx
+	Sync           *IngestSync
+	ArcadeListener *ArcadeListener
+	StatusHandler  *StatusHandler
+	Routes         *Routes
 
-	config *Config
-	logger *slog.Logger
+	config   *Config
+	logger   *slog.Logger
+	initDeps *InitializeDeps // stored for SetupStatusHandler
 }
 
 // InitializeDeps holds dependencies for indexer service initialization.
@@ -85,6 +102,19 @@ type InitializeDeps struct {
 	Store       store.Store
 	BeefStorage *beef.Storage
 	OutputStore *txo.OutputStore
+}
+
+// ArcadeListenerDeps holds dependencies for arcade listener initialization.
+// These are set separately since arcade is initialized after indexer.
+type ArcadeListenerDeps struct {
+	EventPublisher events.Publisher
+	PubSub         pubsub.PubSub
+}
+
+// StatusHandlerDeps holds dependencies for status handler initialization.
+type StatusHandlerDeps struct {
+	PubSub       pubsub.PubSub
+	ChainTracker chaintracker.ChainTracker
 }
 
 // Initialize creates indexer services from the configuration.
@@ -105,8 +135,9 @@ func (c *Config) Initialize(
 	indexerLogger := logging.NewComponentLogger(logger, "indexer", c.LogLevel)
 
 	svc := &Services{
-		config: c,
-		logger: indexerLogger,
+		config:   c,
+		logger:   indexerLogger,
+		initDeps: deps,
 	}
 
 	// Create the IngestCtx with configured tags
@@ -127,16 +158,75 @@ func (c *Config) Initialize(
 	return svc, nil
 }
 
-// Start starts background services (sync worker).
+// SetupArcadeListener initializes the arcade listener with its dependencies.
+// This must be called after arcade is initialized since arcade depends on indexer.
+func (s *Services) SetupArcadeListener(deps *ArcadeListenerDeps) {
+	if !s.config.Arcade.Enabled || deps.EventPublisher == nil || deps.PubSub == nil {
+		return
+	}
+
+	s.ArcadeListener = NewArcadeListener(
+		deps.EventPublisher,
+		deps.PubSub,
+		s.logger,
+	)
+}
+
+// SetupStatusHandler initializes the status handler with its dependencies.
+// This subscribes to the "arc" pubsub topic and handles all transaction status updates.
+func (s *Services) SetupStatusHandler(deps *StatusHandlerDeps) {
+	if deps.PubSub == nil {
+		return
+	}
+
+	s.StatusHandler = NewStatusHandler(
+		deps.PubSub,
+		s.initDeps.Store,
+		s.initDeps.BeefStorage,
+		s.initDeps.OutputStore,
+		deps.ChainTracker,
+		s.Indexer,
+		&StatusHandlerConfig{IngestEnabled: s.config.Arcade.Ingest},
+		s.logger,
+	)
+}
+
+// SetupRoutes initializes the routes with pubsub for webhook callbacks.
+func (s *Services) SetupRoutes(ps pubsub.PubSub) {
+	if !s.config.Routes.Enabled || ps == nil {
+		return
+	}
+	s.Routes = NewRoutes(ps)
+}
+
+// Start starts background services (sync worker, arcade listener, status handler).
 func (s *Services) Start(ctx context.Context) error {
 	if s.Sync != nil {
-		return s.Sync.Start(ctx)
+		if err := s.Sync.Start(ctx); err != nil {
+			return err
+		}
+	}
+	if s.ArcadeListener != nil {
+		if err := s.ArcadeListener.Start(ctx); err != nil {
+			return err
+		}
+	}
+	if s.StatusHandler != nil {
+		if err := s.StatusHandler.Start(ctx); err != nil {
+			return err
+		}
 	}
 	return nil
 }
 
 // Close closes the indexer services.
 func (s *Services) Close() error {
+	if s.StatusHandler != nil {
+		s.StatusHandler.Stop()
+	}
+	if s.ArcadeListener != nil {
+		s.ArcadeListener.Stop()
+	}
 	if s.Sync != nil {
 		s.Sync.Stop()
 	}

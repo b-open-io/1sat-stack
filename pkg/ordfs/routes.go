@@ -40,26 +40,23 @@ func NewRoutes(deps *RoutesDeps) *Routes {
 }
 
 // Register registers the routes on a Fiber router
-func (r *Routes) Register(router fiber.Router, prefix string) {
-	g := router.Group(prefix)
-
+func (r *Routes) Register(router fiber.Router) {
 	// Metadata endpoint - returns metadata without content bytes
-	g.Get("/metadata/*", r.HandleMetadata)
+	router.Get("/metadata/*", r.HandleMetadata)
 
 	// Preview endpoints - render HTML content
-	g.Get("/preview/:b64HtmlData", r.HandlePreview)
-	g.Post("/preview", r.HandlePreviewPost)
+	router.Get("/preview/:b64HtmlData", r.HandlePreview)
+	router.Post("/preview", r.HandlePreviewPost)
 
 	// Stream endpoint
-	g.Get("/stream/:outpoint", r.HandleStream)
+	router.Get("/stream/:outpoint", r.HandleStream)
 }
 
-// RegisterContent registers the wildcard content endpoint at the given prefix.
+// RegisterContent registers the wildcard content endpoint.
 // This is for standalone content servers (e.g., /content/*).
 // Separate from Register() because wildcard routes should be registered last.
-func (r *Routes) RegisterContent(router fiber.Router, prefix string) {
-	g := router.Group(prefix)
-	g.Get("/*", r.HandleContent)
+func (r *Routes) RegisterContent(router fiber.Router) {
+	router.Get("/*", r.HandleContent)
 }
 
 // HandleContent serves inscription content with directory resolution

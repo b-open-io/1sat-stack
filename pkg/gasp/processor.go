@@ -24,7 +24,11 @@ type Processor struct {
 }
 
 // NewProcessor creates a new GASP processor for the given topic.
-func NewProcessor(topic string, beefStorage *beef.Storage, eng *engine.Engine) *Processor {
+func NewProcessor(topic string, beefStorage *beef.Storage, eng *engine.Engine, concurrency int) *Processor {
+	if concurrency < 1 {
+		concurrency = 8
+	}
+
 	p := &Processor{
 		topic:       topic,
 		beefStorage: beefStorage,
@@ -43,7 +47,7 @@ func NewProcessor(topic string, beefStorage *beef.Storage, eng *engine.Engine) *
 		Remote:         remote,
 		Unidirectional: true,
 		Topic:          topic,
-		Concurrency:    8,
+		Concurrency:    concurrency,
 		LogPrefix:      &logPrefix,
 	})
 

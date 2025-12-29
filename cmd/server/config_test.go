@@ -28,8 +28,8 @@ func TestConfigSetDefaults(t *testing.T) {
 	if v.GetString("server.host") != "0.0.0.0" {
 		t.Errorf("expected server.host=0.0.0.0, got %s", v.GetString("server.host"))
 	}
-	if v.GetString("server.base_path") != "/api" {
-		t.Errorf("expected server.base_path=/api, got %s", v.GetString("server.base_path"))
+	if v.GetString("server.base_path") != "/1sat" {
+		t.Errorf("expected server.base_path=/1sat, got %s", v.GetString("server.base_path"))
 	}
 
 	// Verify package defaults are set
@@ -62,7 +62,7 @@ func TestConfigInitializeDisabled(t *testing.T) {
 		Server: ServerConfig{
 			Port:     8080,
 			Host:     "0.0.0.0",
-			BasePath: "/api",
+			BasePath: "/1sat",
 		},
 		Store:   store.Config{Mode: store.ModeDisabled},
 		PubSub:  pubsub.Config{Mode: pubsub.ModeDisabled},
@@ -115,7 +115,7 @@ func TestConfigInitializeEmbeddedPubSub(t *testing.T) {
 		Server: ServerConfig{
 			Port:     8080,
 			Host:     "0.0.0.0",
-			BasePath: "/api",
+			BasePath: "/1sat",
 		},
 		Store:  store.Config{Mode: store.ModeDisabled},
 		PubSub: pubsub.Config{Mode: pubsub.ModeEmbedded},

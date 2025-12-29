@@ -4,7 +4,7 @@ go 1.25.4
 
 replace github.com/bsv-blockchain/go-sdk => github.com/bsv-blockchain/go-sdk v1.2.14-0.20251219052215-a2751960a5f0
 
-replace github.com/bsv-blockchain/arcade => github.com/bsv-blockchain/arcade v0.0.0-20251219053638-534221a38a91
+replace github.com/bsv-blockchain/arcade => ../arcade
 
 replace github.com/bsv-blockchain/go-chaintracks => github.com/bsv-blockchain/go-chaintracks v1.0.1-0.20251219052936-3d69c142aa71
 

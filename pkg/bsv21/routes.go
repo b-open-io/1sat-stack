@@ -45,19 +45,17 @@ func NewRoutes(cfg *RoutesDeps) *Routes {
 	}
 }
 
-// Register registers the BSV21 routes with the Fiber app
-func (r *Routes) Register(app fiber.Router, prefix string) {
-	g := app.Group(prefix)
-
-	g.Get("/:tokenId", r.GetToken)
-	g.Get("/:tokenId/blk/:height", r.GetBlockData)
-	g.Get("/:tokenId/tx/:txid", r.GetTransaction)
-	g.Get("/:tokenId/:lockType/:address/balance", r.GetAddressBalance)
-	g.Get("/:tokenId/:lockType/:address/history", r.GetAddressHistory)
-	g.Get("/:tokenId/:lockType/:address/unspent", r.GetAddressUnspent)
-	g.Post("/:tokenId/:lockType/balance", r.GetMultiAddressBalance)
-	g.Post("/:tokenId/:lockType/history", r.GetMultiAddressHistory)
-	g.Post("/:tokenId/:lockType/unspent", r.GetMultiAddressUnspent)
+// Register registers the BSV21 routes with the Fiber router
+func (r *Routes) Register(router fiber.Router) {
+	router.Get("/:tokenId", r.GetToken)
+	router.Get("/:tokenId/blk/:height", r.GetBlockData)
+	router.Get("/:tokenId/tx/:txid", r.GetTransaction)
+	router.Get("/:tokenId/:lockType/:address/balance", r.GetAddressBalance)
+	router.Get("/:tokenId/:lockType/:address/history", r.GetAddressHistory)
+	router.Get("/:tokenId/:lockType/:address/unspent", r.GetAddressUnspent)
+	router.Post("/:tokenId/:lockType/balance", r.GetMultiAddressBalance)
+	router.Post("/:tokenId/:lockType/history", r.GetMultiAddressHistory)
+	router.Post("/:tokenId/:lockType/unspent", r.GetMultiAddressUnspent)
 }
 
 // TokenResponse represents BSV21 token details
@@ -556,4 +554,48 @@ func parseOutputSearchConfig(c *fiber.Ctx) *txo.OutputSearchCfg {
 	}
 
 	return cfg
+}
+
+// FundingRoutes provides HTTP handlers for token funding status
+type FundingRoutes struct {
+	manager *TokenManager
+	logger  *slog.Logger
+}
+
+// NewFundingRoutes creates a new FundingRoutes instance
+func NewFundingRoutes(manager *TokenManager, logger *slog.Logger) *FundingRoutes {
+	if logger == nil {
+		logger = slog.Default()
+	}
+	return &FundingRoutes{
+		manager: manager,
+		logger:  logger.With("component", "funding-routes"),
+	}
+}
+
+// Register registers the funding status routes with the Fiber router.
+// Should be registered on the same router as bsv21.Routes to add /:tokenId/funding endpoint.
+func (r *FundingRoutes) Register(router fiber.Router) {
+	router.Get("/:tokenId/funding", r.GetFundingStatus)
+}
+
+// GetFundingStatus retrieves funding status for a token
+// @Summary Get token funding status
+// @Tags bsv21
+// @Produce json
+// @Param tokenId path string true "Token ID (outpoint format: txid_vout)"
+// @Success 200 {object} FundingStatus
+// @Router /bsv21/{tokenId}/funding [get]
+func (r *FundingRoutes) GetFundingStatus(c *fiber.Ctx) error {
+	tokenId := c.Params("tokenId")
+
+	status, err := r.manager.GetFundingStatus(c.Context(), tokenId)
+	if err != nil {
+		r.logger.Error("failed to get funding status", "tokenId", tokenId, "error", err)
+		return c.Status(fiber.StatusBadRequest).JSON(ErrorResponse{
+			Message: err.Error(),
+		})
+	}
+
+	return c.JSON(status)
 }

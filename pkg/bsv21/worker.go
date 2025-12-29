@@ -9,6 +9,7 @@ import (
 	"github.com/b-open-io/1sat-stack/pkg/store"
 	"github.com/b-open-io/1sat-stack/pkg/txo"
 	"github.com/b-open-io/1sat-stack/pkg/worker"
+	"github.com/bsv-blockchain/go-sdk/transaction"
 )
 
 // TokenWorker processes transactions for a single token
@@ -58,8 +59,56 @@ func (m *TokenManager) ListWorkers(ctx context.Context) []WorkerStatus {
 	return workers
 }
 
-// calculateBalance calculates credits - debits for a token
-func (m *TokenManager) calculateBalance(ctx context.Context, tokenId, feeAddress string) (int64, error) {
+// FundingStatus represents the funding status of a token
+type FundingStatus struct {
+	TokenID       string `json:"token_id"`
+	FeeAddress    string `json:"fee_address"`
+	Credits       uint64 `json:"credits"`
+	OutputCount   int64  `json:"output_count"`
+	FeePerOutput  int64  `json:"fee_per_output"`
+	Debits        int64  `json:"debits"`
+	Balance       int64  `json:"balance"`
+	IsActive      bool   `json:"is_active"`
+	IsWhitelisted bool   `json:"is_whitelisted"`
+	IsBlacklisted bool   `json:"is_blacklisted"`
+}
+
+// GetFundingStatus returns the funding status for a specific token
+func (m *TokenManager) GetFundingStatus(ctx context.Context, tokenId string) (*FundingStatus, error) {
+	// Parse outpoint from tokenId
+	outpoint, err := transaction.OutpointFromString(tokenId)
+	if err != nil {
+		return nil, fmt.Errorf("invalid token ID: %w", err)
+	}
+
+	// Generate fee address
+	feeAddress, err := GenerateFeeAddress(outpoint)
+	if err != nil {
+		return nil, fmt.Errorf("failed to generate fee address: %w", err)
+	}
+
+	// Check whitelist/blacklist status
+	isWhitelisted, _ := m.store.SIsMember(ctx, KeyWhitelist, []byte(tokenId))
+
+	// If whitelisted or blacklisted, we don't need balance info
+	if isWhitelisted {
+		return &FundingStatus{
+			TokenID:       tokenId,
+			FeeAddress:    feeAddress,
+			IsActive:      true,
+			IsWhitelisted: true,
+		}, nil
+	}
+	isBlacklisted, _ := m.store.SIsMember(ctx, KeyBlacklist, []byte(tokenId))
+	if isBlacklisted {
+		return &FundingStatus{
+			TokenID:       tokenId,
+			FeeAddress:    feeAddress,
+			IsActive:      false,
+			IsBlacklisted: true,
+		}, nil
+	}
+
 	// Credits: unspent satoshis at fee address
 	cfg := &txo.OutputSearchCfg{
 		SearchCfg: store.SearchCfg{
@@ -69,26 +118,27 @@ func (m *TokenManager) calculateBalance(ctx context.Context, tokenId, feeAddress
 	}
 	credits, _, err := m.outputStore.SearchBalance(ctx, cfg)
 	if err != nil {
-		return 0, fmt.Errorf("failed to query balance: %w", err)
+		return nil, fmt.Errorf("failed to query balance: %w", err)
 	}
 
 	// Debits: output count * fee per output
 	topicKey := []byte("z:tp:tm_" + tokenId)
 	outputCount, err := m.store.ZCard(ctx, topicKey)
 	if err != nil {
-		return 0, fmt.Errorf("failed to count outputs: %w", err)
+		return nil, fmt.Errorf("failed to count outputs: %w", err)
 	}
 
 	debits := outputCount * m.feePerOutput
 	balance := int64(credits) - debits
 
-	m.logger.Debug("balance calculated",
-		"tokenId", tokenId,
-		"feeAddress", feeAddress,
-		"credits", credits,
-		"outputCount", outputCount,
-		"debits", debits,
-		"balance", balance)
-
-	return balance, nil
+	return &FundingStatus{
+		TokenID:      tokenId,
+		FeeAddress:   feeAddress,
+		Credits:      credits,
+		OutputCount:  outputCount,
+		FeePerOutput: m.feePerOutput,
+		Debits:       debits,
+		Balance:      balance,
+		IsActive:     balance > 0,
+	}, nil
 }

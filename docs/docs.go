@@ -23,7 +23,7 @@ const docTemplate = `{
     "host": "{{.Host}}",
     "basePath": "{{.BasePath}}",
     "paths": {
-        "/admin/api/blacklist": {
+        "/admin/blacklist": {
             "get": {
                 "description": "Returns the list of blacklisted topics",
                 "produces": [
@@ -108,7 +108,7 @@ const docTemplate = `{
                 }
             }
         },
-        "/admin/api/blacklist/{topic}": {
+        "/admin/blacklist/{topic}": {
             "delete": {
                 "description": "Removes a topic from the blacklist",
                 "produces": [
@@ -149,7 +149,7 @@ const docTemplate = `{
                 }
             }
         },
-        "/admin/api/bsv21/workers": {
+        "/admin/bsv21/workers": {
             "get": {
                 "description": "Returns the status of all active BSV21 token workers",
                 "produces": [
@@ -172,7 +172,7 @@ const docTemplate = `{
                 }
             }
         },
-        "/admin/api/lookups/active": {
+        "/admin/lookups/active": {
             "get": {
                 "description": "Returns the list of currently active lookup services from the overlay engine",
                 "produces": [
@@ -195,9 +195,9 @@ const docTemplate = `{
                 }
             }
         },
-        "/admin/api/progress": {
+        "/admin/progress": {
             "get": {
-                "description": "Returns all sync progress entries",
+                "description": "Returns all sync progress entries (subscriptions, owners, peers)",
                 "produces": [
                     "application/json"
                 ],
@@ -218,7 +218,7 @@ const docTemplate = `{
                 }
             }
         },
-        "/admin/api/progress/{id}": {
+        "/admin/progress/{id}": {
             "put": {
                 "description": "Updates a sync progress entry",
                 "consumes": [
@@ -319,62 +319,7 @@ const docTemplate = `{
                 }
             }
         },
-        "/admin/api/queues": {
-            "get": {
-                "description": "Returns the list of queues (sorted sets with q: prefix)",
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "admin"
-                ],
-                "summary": "Get queues",
-                "responses": {
-                    "200": {
-                        "description": "List of queues with counts",
-                        "schema": {
-                            "type": "array",
-                            "items": {
-                                "$ref": "#/definitions/admin.QueueInfo"
-                            }
-                        }
-                    }
-                }
-            }
-        },
-        "/admin/api/queues/{name}": {
-            "get": {
-                "description": "Returns the first 25 items from a queue",
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "admin"
-                ],
-                "summary": "Get queue items",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "description": "Queue name",
-                        "name": "name",
-                        "in": "path",
-                        "required": true
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "List of queue items",
-                        "schema": {
-                            "type": "array",
-                            "items": {
-                                "$ref": "#/definitions/admin.QueueItem"
-                            }
-                        }
-                    }
-                }
-            }
-        },
-        "/admin/api/topics/active": {
+        "/admin/topics/active": {
             "get": {
                 "description": "Returns the list of currently active topics from the overlay engine",
                 "produces": [
@@ -397,7 +342,7 @@ const docTemplate = `{
                 }
             }
         },
-        "/admin/api/whitelist": {
+        "/admin/whitelist": {
             "get": {
                 "description": "Returns the list of whitelisted BSV21 tokens (always active)",
                 "produces": [
@@ -482,7 +427,7 @@ const docTemplate = `{
                 }
             }
         },
-        "/admin/api/whitelist/{token}": {
+        "/admin/whitelist/{token}": {
             "delete": {
                 "description": "Removes a BSV21 token from the whitelist",
                 "produces": [
@@ -504,6 +449,53 @@ const docTemplate = `{
                 "responses": {
                     "200": {
                         "description": "success message",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/admin/zset/{key}": {
+            "get": {
+                "description": "Returns the first 25 items from any sorted set by key",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "admin"
+                ],
+                "summary": "Get sorted set items",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Sorted set key (e.g., q:tok:abc123, z:ev:own:address)",
+                        "name": "key",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Sorted set info and items",
+                        "schema": {
+                            "$ref": "#/definitions/admin.ZSetResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad request",
                         "schema": {
                             "type": "object",
                             "additionalProperties": {
@@ -972,7 +964,7 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/github_com_b-open-io_1sat-stack_pkg_bsv21.TokenResponse"
+                            "$ref": "#/definitions/pkg_bsv21.TokenResponse"
                         }
                     }
                 }
@@ -1007,7 +999,7 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/github_com_b-open-io_1sat-stack_pkg_bsv21.BlockResponse"
+                            "$ref": "#/definitions/pkg_bsv21.BlockResponse"
                         }
                     }
                 }
@@ -1099,7 +1091,7 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/github_com_b-open-io_1sat-stack_pkg_bsv21.BalanceResponse"
+                            "$ref": "#/definitions/pkg_bsv21.BalanceResponse"
                         }
                     }
                 }
@@ -1247,7 +1239,7 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/github_com_b-open-io_1sat-stack_pkg_bsv21.BalanceResponse"
+                            "$ref": "#/definitions/pkg_bsv21.BalanceResponse"
                         }
                     }
                 }
@@ -2328,7 +2320,7 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/pkg_owner.BalanceResponse"
+                            "$ref": "#/definitions/github_com_b-open-io_1sat-stack_pkg_owner.BalanceResponse"
                         }
                     },
                     "500": {
@@ -2492,7 +2484,7 @@ const docTemplate = `{
                         "schema": {
                             "type": "array",
                             "items": {
-                                "$ref": "#/definitions/github_com_b-open-io_1sat-stack_pkg_txo.IndexedOutputResponse"
+                                "$ref": "#/definitions/pkg_txo.IndexedOutputResponse"
                             }
                         }
                     },
@@ -2589,7 +2581,7 @@ const docTemplate = `{
                         "schema": {
                             "type": "array",
                             "items": {
-                                "$ref": "#/definitions/github_com_b-open-io_1sat-stack_pkg_txo.IndexedOutputResponse"
+                                "$ref": "#/definitions/pkg_txo.IndexedOutputResponse"
                             }
                         }
                     },
@@ -2641,7 +2633,7 @@ const docTemplate = `{
                         "schema": {
                             "type": "array",
                             "items": {
-                                "$ref": "#/definitions/github_com_b-open-io_1sat-stack_pkg_txo.SpendResponse"
+                                "$ref": "#/definitions/pkg_txo.SpendResponse"
                             }
                         }
                     },
@@ -2692,7 +2684,7 @@ const docTemplate = `{
                         "schema": {
                             "type": "array",
                             "items": {
-                                "$ref": "#/definitions/github_com_b-open-io_1sat-stack_pkg_txo.IndexedOutputResponse"
+                                "$ref": "#/definitions/pkg_txo.IndexedOutputResponse"
                             }
                         }
                     },
@@ -2747,7 +2739,7 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/github_com_b-open-io_1sat-stack_pkg_txo.IndexedOutputResponse"
+                            "$ref": "#/definitions/pkg_txo.IndexedOutputResponse"
                         }
                     },
                     "400": {
@@ -2794,7 +2786,7 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/github_com_b-open-io_1sat-stack_pkg_txo.SpendResponse"
+                            "$ref": "#/definitions/pkg_txo.SpendResponse"
                         }
                     },
                     "400": {
@@ -2818,31 +2810,37 @@ const docTemplate = `{
             "type": "object",
             "properties": {
                 "block": {
-                    "type": "number"
+                    "type": "integer"
                 },
                 "id": {
                     "type": "string"
                 }
             }
         },
-        "admin.QueueInfo": {
-            "type": "object",
-            "properties": {
-                "count": {
-                    "type": "integer"
-                },
-                "name": {
-                    "type": "string"
-                }
-            }
-        },
-        "admin.QueueItem": {
+        "admin.ZSetItem": {
             "type": "object",
             "properties": {
                 "score": {
                     "type": "number"
                 },
                 "value": {
+                    "type": "string"
+                }
+            }
+        },
+        "admin.ZSetResponse": {
+            "type": "object",
+            "properties": {
+                "count": {
+                    "type": "integer"
+                },
+                "items": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/admin.ZSetItem"
+                    }
+                },
+                "key": {
                     "type": "string"
                 }
             }
@@ -3446,7 +3444,7 @@ const docTemplate = `{
 var SwaggerInfo = &swag.Spec{
 	Version:          "1.0",
 	Host:             "",
-	BasePath:         "/api",
+	BasePath:         "/1sat",
 	Schemes:          []string{},
 	Title:            "1Sat Stack API",
 	Description:      "Composable BSV blockchain services API",

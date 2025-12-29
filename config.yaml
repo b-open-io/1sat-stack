@@ -20,7 +20,11 @@ junglebus:
 server:
   port: 8080
   host: 0.0.0.0
-  base_path: /api
+  base_path: /1sat
+  pprof:
+    enabled: true        # Enable pprof profiling server
+    port: 6060           # Pprof server port
+    host: localhost      # Pprof server host (localhost for security)
 
 # TXO storage - BadgerDB (default)
 store:
@@ -76,6 +80,9 @@ indexer:
     concurrency: 24          # Worker concurrency
     page_size: 100          # Batch fetch size
     poll_delay: 1s          # Sleep when queue empty
+  arcade:
+    enabled: true           # Enable arcade event listener (bridges to pubsub)
+    ingest: true            # Ingest transactions on ACCEPTED status
   log_level: info
   routes:
     enabled: true
@@ -95,18 +102,21 @@ chaintracks:
 arcade:
   mode: embedded
   storage_path: ~/.1sat/arcade
+  log_level: debug
   database:
     type: sqlite
     sqlite_path: ~/.1sat/arcade/arcade.db
   events:
     type: memory
     buffer_size: 1000
+  teranode:
+    base_url: http://mainnet.gorillanode.io:8833
 
-# Merkle service (proof management)
-merkle:
-  mode: embedded
-  routes:
-    enabled: true
+# Merkle service (deprecated - now handled by indexer status handler)
+# merkle:
+#   mode: embedded
+#   routes:
+#     enabled: true
 
 # BSV21 token support (optional)
 bsv21:
