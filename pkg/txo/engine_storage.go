@@ -17,7 +17,8 @@ import (
 // These methods handle overlay/topic operations
 
 // InsertOutputs inserts transaction outputs for a topic (overlay flow)
-// Extracts block height/index from BEEF if available, otherwise uses timestamp
+// Extracts block height/index from BEEF if available, otherwise uses timestamp.
+// If IngestTx callback is set, triggers main indexing to save satoshis, events, etc.
 func (s *OutputStore) InsertOutputs(ctx context.Context, topic string, txid *chainhash.Hash, outputVouts []uint32, outpointsConsumed []*transaction.Outpoint, beef *transaction.Beef, ancillaryTxids []*chainhash.Hash) error {
 	if len(outputVouts) == 0 {
 		return nil
@@ -30,10 +31,27 @@ func (s *OutputStore) InsertOutputs(ctx context.Context, topic string, txid *cha
 		}
 	}
 
+	// Trigger main indexing if callback is set
+	// This ensures outputs get satoshis, events, owners, etc. saved
+	if s.IngestTx != nil && beef != nil {
+		tx := beef.FindTransactionByHash(txid)
+		if tx != nil {
+			// Populate source transactions from BEEF for input parsing
+			for _, input := range tx.Inputs {
+				if input.SourceTransaction == nil {
+					input.SourceTransaction = beef.FindTransactionByHash(input.SourceTXID)
+				}
+			}
+			if err := s.IngestTx(ctx, tx); err != nil {
+				return fmt.Errorf("ingest tx failed: %w", err)
+			}
+		}
+	}
+
 	// Extract score from BEEF (uses block height if confirmed, timestamp if not)
 	score := types.ScoreFromBeef(beef, txid)
 
-	// Process each output
+	// Process each output - save topic-specific data
 	for _, vout := range outputVouts {
 		op := &transaction.Outpoint{Txid: *txid, Index: vout}
 
@@ -60,7 +78,6 @@ func (s *OutputStore) InsertOutputs(ctx context.Context, topic string, txid *cha
 		}
 	}
 
-	// Add txid to topic's applied transactions
 	return nil
 }
 
@@ -127,7 +144,7 @@ func (s *OutputStore) FindOutputs(ctx context.Context, outpoints []*transaction.
 		return []*engine.Output{}, nil
 	}
 
-	indexed, err := s.loadOutputs(ctx, toLoad, nil)
+	indexed, err := s.LoadOutputs(ctx, toLoad, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -219,7 +236,7 @@ func (s *OutputStore) FindUTXOsForTopic(ctx context.Context, topic string, since
 		ops[i] = transaction.NewOutpointFromBytes(r.Member)
 	}
 
-	indexed, err := s.loadOutputs(ctx, ops, nil)
+	indexed, err := s.LoadOutputs(ctx, ops, nil)
 	if err != nil {
 		return nil, err
 	}

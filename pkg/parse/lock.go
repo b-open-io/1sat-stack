@@ -25,7 +25,7 @@ func ParseLock(ctx *ParseContext) *ParseResult {
 	return &ParseResult{
 		Tag:    TagLock,
 		Data:   lock,
-		Events: []string{},
+		Events: []string{"lock"},
 		Owners: []*types.PKHash{pkHash},
 	}
 }

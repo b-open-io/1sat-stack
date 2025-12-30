@@ -29,6 +29,7 @@ import (
 	chaintracksconfig "github.com/bsv-blockchain/go-chaintracks/config"
 	chaintracksroutes "github.com/bsv-blockchain/go-chaintracks/routes/fiber"
 	"github.com/bsv-blockchain/go-overlay-services/pkg/core/engine"
+	"github.com/bsv-blockchain/go-sdk/transaction"
 	p2p "github.com/bsv-blockchain/go-teranode-p2p-client"
 	"github.com/gofiber/fiber/v2"
 	"github.com/spf13/viper"
@@ -424,6 +425,15 @@ func (c *Config) Initialize(ctx context.Context, logger *slog.Logger) (*Services
 		// Setup routes for webhook callbacks
 		if svc.PubSub != nil {
 			svc.Indexer.SetupRoutes(svc.PubSub.PubSub)
+		}
+		// Wire indexer to TXO for overlay flow integration
+		if svc.TXO != nil && svc.TXO.OutputStore != nil {
+			ingestCtx := svc.Indexer.Indexer
+			svc.TXO.OutputStore.IngestTx = func(ctx context.Context, tx *transaction.Transaction) error {
+				_, err := ingestCtx.IngestTx(ctx, tx)
+				return err
+			}
+			logger.Debug("wired indexer.IngestTx to OutputStore for overlay flow")
 		}
 		logger.Info("indexer initialized", "mode", c.Indexer.Mode, "duration", time.Since(start).Round(time.Millisecond))
 	}

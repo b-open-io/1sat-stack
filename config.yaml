@@ -44,7 +44,7 @@ pubsub:
   routes:
     enabled: true
 
-# BEEF storage chain: LRU cache -> Redis (volatile) -> JungleBus fallback
+# BEEF storage chain: LRU cache -> Redis -> Badger (migration) -> JungleBus fallback
 beef:
   mode: embedded
   chain:
@@ -55,6 +55,9 @@ beef:
       redis:
         url: redis://localhost:6380/1
         ttl: 8760h  # 1 year - marks keys as volatile for LRU eviction
+    - provider: badger
+      badger:
+        path: ~/.1sat/beef  # Temporary: reads from old badger, populates redis
     - provider: junglebus
   routes:
     enabled: true
@@ -111,7 +114,10 @@ arcade:
     type: memory
     buffer_size: 1000
   teranode:
-    base_url: http://mainnet.gorillanode.io:8833
+    broadcast_urls:
+      - http://mainnet.gorillanode.io:8833
+    datahub_urls:
+      - https://mainnet.gorillanode.io/api/v1
 
 # Merkle service (deprecated - now handled by indexer status handler)
 # merkle:

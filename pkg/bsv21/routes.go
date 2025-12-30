@@ -1,7 +1,6 @@
 package bsv21
 
 import (
-	"fmt"
 	"log/slog"
 	"strconv"
 
@@ -297,9 +296,7 @@ func (r *Routes) GetAddressBalance(c *fiber.Ctx) error {
 	lockType := c.Params("lockType")
 	address := c.Params("address")
 
-	event := fmt.Sprintf("%s:%s:%s", lockType, address, tokenId)
-
-	balance, outputs, err := r.lookup.GetBalance(c.Context(), []string{event})
+	balance, utxoCount, err := r.lookup.GetBalance(c.Context(), tokenId, lockType, address)
 	if err != nil {
 		r.logger.Error("Balance calculation error", "error", err)
 		return c.Status(fiber.StatusInternalServerError).JSON(ErrorResponse{
@@ -309,7 +306,7 @@ func (r *Routes) GetAddressBalance(c *fiber.Ctx) error {
 
 	return c.JSON(BalanceResponse{
 		Balance:   balance,
-		UtxoCount: outputs,
+		UtxoCount: utxoCount,
 	})
 }
 
@@ -327,15 +324,20 @@ func (r *Routes) GetAddressHistory(c *fiber.Ctx) error {
 	lockType := c.Params("lockType")
 	address := c.Params("address")
 
-	event := fmt.Sprintf("%s:%s:%s", lockType, address, tokenId)
-	cfg := parseOutputSearchConfig(c)
-	cfg.Keys = [][]byte{[]byte(event)}
-
-	outputs, err := r.storage.SearchOutputs(c.Context(), cfg)
+	cfg := parseSearchConfig(c)
+	outpoints, err := r.lookup.SearchHistory(c.Context(), tokenId, lockType, address, cfg)
 	if err != nil {
 		r.logger.Error("History lookup error", "error", err)
 		return c.Status(fiber.StatusInternalServerError).JSON(ErrorResponse{
 			Message: "Failed to retrieve output history",
+		})
+	}
+
+	outputs, err := r.lookup.LoadOutputs(c.Context(), outpoints)
+	if err != nil {
+		r.logger.Error("Failed to load outputs", "error", err)
+		return c.Status(fiber.StatusInternalServerError).JSON(ErrorResponse{
+			Message: "Failed to load output data",
 		})
 	}
 
@@ -356,19 +358,20 @@ func (r *Routes) GetAddressUnspent(c *fiber.Ctx) error {
 	lockType := c.Params("lockType")
 	address := c.Params("address")
 
-	event := fmt.Sprintf("%s:%s:%s", lockType, address, tokenId)
-	cfg := &txo.OutputSearchCfg{
-		SearchCfg: store.SearchCfg{
-			Keys: [][]byte{[]byte(event)},
-		},
-		FilterSpent: true,
-	}
-
-	outputs, err := r.storage.SearchOutputs(c.Context(), cfg)
+	cfg := parseSearchConfig(c)
+	outpoints, err := r.lookup.SearchUTXOs(c.Context(), tokenId, lockType, address, cfg)
 	if err != nil {
 		r.logger.Error("Unspent lookup error", "error", err)
 		return c.Status(fiber.StatusInternalServerError).JSON(ErrorResponse{
 			Message: "Failed to retrieve unspent outputs",
+		})
+	}
+
+	outputs, err := r.lookup.LoadOutputs(c.Context(), outpoints)
+	if err != nil {
+		r.logger.Error("Failed to load outputs", "error", err)
+		return c.Status(fiber.StatusInternalServerError).JSON(ErrorResponse{
+			Message: "Failed to load output data",
 		})
 	}
 
@@ -408,12 +411,7 @@ func (r *Routes) GetMultiAddressBalance(c *fiber.Ctx) error {
 		})
 	}
 
-	events := make([]string, len(addresses))
-	for i, address := range addresses {
-		events[i] = fmt.Sprintf("%s:%s:%s", lockType, address, tokenId)
-	}
-
-	balance, utxoCount, err := r.lookup.GetBalance(c.Context(), events)
+	balance, utxoCount, err := r.lookup.GetMultiBalance(c.Context(), tokenId, lockType, addresses)
 	if err != nil {
 		r.logger.Error("Balance calculation error", "error", err)
 		return c.Status(fiber.StatusInternalServerError).JSON(ErrorResponse{
@@ -460,19 +458,20 @@ func (r *Routes) GetMultiAddressHistory(c *fiber.Ctx) error {
 		})
 	}
 
-	keys := make([][]byte, len(addresses))
-	for i, address := range addresses {
-		keys[i] = []byte(fmt.Sprintf("%s:%s:%s", lockType, address, tokenId))
-	}
-
-	cfg := parseOutputSearchConfig(c)
-	cfg.Keys = keys
-
-	outputs, err := r.storage.SearchOutputs(c.Context(), cfg)
+	cfg := parseSearchConfig(c)
+	outpoints, err := r.lookup.SearchMultiHistory(c.Context(), tokenId, lockType, addresses, cfg)
 	if err != nil {
 		r.logger.Error("History lookup error", "error", err)
 		return c.Status(fiber.StatusInternalServerError).JSON(ErrorResponse{
 			Message: "Failed to retrieve output history",
+		})
+	}
+
+	outputs, err := r.lookup.LoadOutputs(c.Context(), outpoints)
+	if err != nil {
+		r.logger.Error("Failed to load outputs", "error", err)
+		return c.Status(fiber.StatusInternalServerError).JSON(ErrorResponse{
+			Message: "Failed to load output data",
 		})
 	}
 
@@ -512,19 +511,8 @@ func (r *Routes) GetMultiAddressUnspent(c *fiber.Ctx) error {
 		})
 	}
 
-	keys := make([][]byte, len(addresses))
-	for i, address := range addresses {
-		keys[i] = []byte(fmt.Sprintf("%s:%s:%s", lockType, address, tokenId))
-	}
-
-	cfg := &txo.OutputSearchCfg{
-		SearchCfg: store.SearchCfg{
-			Keys: keys,
-		},
-		FilterSpent: true,
-	}
-
-	outputs, err := r.storage.SearchOutputs(c.Context(), cfg)
+	cfg := parseSearchConfig(c)
+	outpoints, err := r.lookup.SearchMultiUTXOs(c.Context(), tokenId, lockType, addresses, cfg)
 	if err != nil {
 		r.logger.Error("Unspent lookup error", "error", err)
 		return c.Status(fiber.StatusInternalServerError).JSON(ErrorResponse{
@@ -532,12 +520,20 @@ func (r *Routes) GetMultiAddressUnspent(c *fiber.Ctx) error {
 		})
 	}
 
+	outputs, err := r.lookup.LoadOutputs(c.Context(), outpoints)
+	if err != nil {
+		r.logger.Error("Failed to load outputs", "error", err)
+		return c.Status(fiber.StatusInternalServerError).JSON(ErrorResponse{
+			Message: "Failed to load output data",
+		})
+	}
+
 	return c.JSON(outputs)
 }
 
-// parseOutputSearchConfig extracts search parameters from the request
-func parseOutputSearchConfig(c *fiber.Ctx) *txo.OutputSearchCfg {
-	cfg := &txo.OutputSearchCfg{}
+// parseSearchConfig extracts search parameters from the request
+func parseSearchConfig(c *fiber.Ctx) *store.SearchCfg {
+	cfg := &store.SearchCfg{}
 
 	if fromStr := c.Query("from"); fromStr != "" {
 		if from, err := strconv.ParseFloat(fromStr, 64); err == nil {

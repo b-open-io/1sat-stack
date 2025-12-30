@@ -1,9 +1,7 @@
 package parse
 
 import (
-	"github.com/b-open-io/1sat-stack/pkg/types"
 	"github.com/bitcoin-sv/go-templates/template/bsv21"
-	"github.com/bitcoin-sv/go-templates/template/p2pkh"
 	"github.com/bsv-blockchain/go-sdk/script"
 )
 
@@ -21,6 +19,9 @@ type BSV21 struct {
 
 // ParseBSV21 parses a BSV21 token from the parse context.
 // Returns nil if the output does not contain a valid BSV21 token.
+// Note: This parser only extracts tag data. Events and owners come from
+// suffix parsers (P2PKH, Inscription, Cosign). Validated token lookups
+// (balance, history, unspent) are handled by the BSV21 lookup service.
 func ParseBSV21(ctx *ParseContext) *ParseResult {
 	scr := script.NewFromBytes(ctx.LockingScript)
 	b := bsv21.Decode(scr)
@@ -28,12 +29,7 @@ func ParseBSV21(ctx *ParseContext) *ParseResult {
 		return nil
 	}
 
-	result := &ParseResult{
-		Tag:    TagBSV21,
-		Events: []string{},
-	}
-
-	// Build BSV21 data
+	// Build BSV21 data (tag data only, no events)
 	bsvData := &BSV21{
 		Op:       b.Op,
 		Symbol:   b.Symbol,
@@ -49,34 +45,14 @@ func ParseBSV21(ctx *ParseContext) *ParseResult {
 		if ctx.Outpoint != nil {
 			bsvData.Id = ctx.Outpoint.String()
 		}
-		result.Events = append(result.Events, "deploy")
 	case string(bsv21.OpTransfer), string(bsv21.OpBurn), string(bsv21.OpMint), string(bsv21.OpAuth):
 		bsvData.Id = b.Id
 	}
 
-	// Add ID event
-	if bsvData.Id != "" {
-		result.Events = append(result.Events, "id:"+bsvData.Id)
+	return &ParseResult{
+		Tag:  TagBSV21,
+		Data: bsvData,
+		// No events - validated lookups handled by BSV21 lookup service
+		// No owners - determined by suffix parser (P2PKH, Inscription, Cosign)
 	}
-
-	// Add symbol event for deploy operations
-	if bsvData.Symbol != nil {
-		result.Events = append(result.Events, "sym:"+*bsvData.Symbol)
-	}
-
-	result.Data = bsvData
-
-	// Extract owner from inscription suffix
-	if b.Insc != nil && len(b.Insc.ScriptSuffix) > 0 {
-		suffix := script.NewFromBytes(b.Insc.ScriptSuffix)
-		if addr := p2pkh.Decode(suffix, true); addr != nil {
-			pkHash := types.PKHashFromBytes(addr.PublicKeyHash)
-			if pkHash != nil {
-				result.Owners = append(result.Owners, pkHash)
-				result.Events = append(result.Events, "own:"+addr.AddressString)
-			}
-		}
-	}
-
-	return result
 }
