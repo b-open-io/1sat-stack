@@ -20,7 +20,6 @@ import (
 	"github.com/b-open-io/1sat-stack/pkg/owner"
 	"github.com/b-open-io/1sat-stack/pkg/pubsub"
 	"github.com/b-open-io/1sat-stack/pkg/store"
-	"github.com/b-open-io/1sat-stack/pkg/topic"
 	"github.com/b-open-io/1sat-stack/pkg/txo"
 	"github.com/b-open-io/go-junglebus"
 	arcadeconfig "github.com/bsv-blockchain/arcade/config"
@@ -28,7 +27,6 @@ import (
 	"github.com/bsv-blockchain/go-chaintracks/chaintracks"
 	chaintracksconfig "github.com/bsv-blockchain/go-chaintracks/config"
 	chaintracksroutes "github.com/bsv-blockchain/go-chaintracks/routes/fiber"
-	"github.com/bsv-blockchain/go-overlay-services/pkg/core/engine"
 	"github.com/bsv-blockchain/go-sdk/transaction"
 	p2p "github.com/bsv-blockchain/go-teranode-p2p-client"
 	"github.com/gofiber/fiber/v2"
@@ -368,11 +366,17 @@ func (c *Config) Initialize(ctx context.Context, logger *slog.Logger) (*Services
 			svc.Overlay.RegisterLookupService("bsv21", svc.BSV21.Lookup)
 			logger.Info("BSV21 lookup service registered with overlay engine")
 
-			// Register tm_bsv21 discovery topic (admits all deploy+mint operations)
-			svc.Overlay.RegisterTopic("tm_bsv21", func(topicName string) (engine.TopicManager, error) {
-				return topic.NewBsv21DiscoveryTopicManager(topicName, svc.TXO.OutputStore, logger), nil
-			})
-			logger.Info("BSV21 discovery topic (tm_bsv21) registered with overlay engine")
+			// Activate tm_bsv21 discovery topic (admits all deploy+mint operations)
+			// This is a registration-only topic - no worker needed as it just identifies outputs
+			discoveryTopic := &overlay.Topic{
+				Name:    "tm_bsv21",
+				Manager: bsv21.NewBsv21DiscoveryTopicManager("tm_bsv21", svc.TXO.OutputStore, logger),
+			}
+			if err := svc.Overlay.ActivateTopic(ctx, discoveryTopic); err != nil {
+				logger.Error("failed to activate BSV21 discovery topic", "error", err)
+			} else {
+				logger.Info("BSV21 discovery topic (tm_bsv21) activated")
+			}
 		}
 		logger.Info("bsv21 initialized", "duration", time.Since(start).Round(time.Millisecond))
 	}

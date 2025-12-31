@@ -3,20 +3,17 @@ package bsv21
 import (
 	"context"
 	"errors"
-	"fmt"
 	"log/slog"
 	"sync"
 	"time"
 
 	"github.com/b-open-io/1sat-stack/pkg/beef"
 	gaspqueue "github.com/b-open-io/1sat-stack/pkg/gasp"
-	"github.com/b-open-io/1sat-stack/pkg/jbsync"
 	"github.com/b-open-io/1sat-stack/pkg/overlay"
 	"github.com/b-open-io/1sat-stack/pkg/store"
-	topicpkg "github.com/b-open-io/1sat-stack/pkg/topic"
 	"github.com/b-open-io/1sat-stack/pkg/txo"
-	"github.com/b-open-io/1sat-stack/pkg/worker"
 	"github.com/bsv-blockchain/go-chaintracks/chaintracks"
+	"github.com/bsv-blockchain/go-overlay-services/pkg/core/gasp"
 	"github.com/bsv-blockchain/go-sdk/transaction"
 	"golang.org/x/sync/errgroup"
 )
@@ -132,59 +129,44 @@ func (m *TokenManager) createWorker(ctx context.Context, status *TokenStatus) er
 	}
 
 	tokenId := status.TokenID
+	topicName := "tm_" + tokenId
 
 	// Create cancellable context for this worker
 	workerCtx, cancel := context.WithCancel(ctx)
 
-	// Create GASP processor for this token with shared concurrency limit
-	topic := "tm_" + tokenId
-	processor := gaspqueue.NewProcessor(topic, m.beefStorage, m.overlay.Engine, m.concurrency)
+	// Create BeefRemote for local BEEF storage access
+	beefRemote := gaspqueue.NewBeefRemote(m.beefStorage, m.store, "")
 
-	// Create handler - calls back to manager on success for balance tracking
-	handler := func(ctx context.Context, id string, score float64) error {
-		// Parse outpoint from queue member
-		outpoint := transaction.NewOutpointFromBytes([]byte(id))
-		if outpoint == nil {
-			return fmt.Errorf("invalid outpoint: %s", id)
-		}
-
-		if err := processor.ProcessOutput(ctx, outpoint); err != nil {
-			return err
-		}
-
-		// Report successful processing - manager handles balance tracking
-		m.onTokenItemProcessed(tokenId)
-		return nil
-	}
-
-	// Create worker using generic worker package with shared limiter
-	w := worker.New(&worker.Config{
-		Store:   m.store,
-		Key:     jbsync.TokenQueueKey(tokenId),
-		Limiter: m.limiter, // Shared across all token workers
-		Handler: handler,
-		OnError: func(ctx context.Context, id string, score float64, err error) {
-			m.logger.Error("token worker error", "tokenId", tokenId, "outpoint", id, "error", err)
+	// Create TopicWorker with GASP processing
+	tw := gaspqueue.NewTopicWorker(&gaspqueue.TopicWorkerConfig{
+		TopicName:   topicName,
+		Store:       m.store,
+		Engine:      m.overlay.Engine,
+		Remotes:     []gasp.Remote{beefRemote},
+		Concurrency: m.concurrency,
+		OnProcessed: func(name string) error {
+			m.onTokenItemProcessed(tokenId)
+			return nil
 		},
 		Logger: m.logger.With("tokenId", tokenId),
 	})
 
-	tw := &TokenWorker{
+	tokenWorker := &TokenWorker{
 		tokenId:   tokenId,
 		address:   status.FeeAddress,
-		worker:    w,
+		worker:    nil, // TopicWorker is separate
 		startedAt: time.Now(),
 		cancel:    cancel,
 	}
 
 	// Store status for live tracking (all tokens, for admin API access)
 	m.statuses.Store(tokenId, status)
-	m.workers.Store(tokenId, tw)
+	m.workers.Store(tokenId, tokenWorker)
 
 	m.g.Go(func() error {
 		defer m.workers.Delete(tokenId)
 		defer m.statuses.Delete(tokenId)
-		return w.Start(workerCtx)
+		return tw.Start(workerCtx)
 	})
 
 	m.logger.Info("token worker created", "tokenId", tokenId)
@@ -266,7 +248,7 @@ func (m *TokenManager) manageWorkerLifecycle(ctx context.Context) {
 			tokenId := string(member)
 			topicName := "tm_" + tokenId
 			if m.overlay != nil {
-				tm := topicpkg.NewBsv21ValidatedTopicManager(topicName, m.outputStore, nil)
+				tm := NewBsv21ValidatedTopicManager(topicName, m.outputStore, nil)
 				m.overlay.Engine.RegisterTopicManager(topicName, tm)
 			}
 			activeTokens[tokenId] = struct{}{}
@@ -313,7 +295,7 @@ func (m *TokenManager) manageWorkerLifecycle(ctx context.Context) {
 		// Register topic manager
 		topicName := "tm_" + tokenId
 		if m.overlay != nil {
-			tm := topicpkg.NewBsv21ValidatedTopicManager(topicName, m.outputStore, nil)
+			tm := NewBsv21ValidatedTopicManager(topicName, m.outputStore, nil)
 			m.overlay.Engine.RegisterTopicManager(topicName, tm)
 		}
 

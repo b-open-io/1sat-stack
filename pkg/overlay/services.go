@@ -2,23 +2,43 @@ package overlay
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
+	"fmt"
 	"log/slog"
 	"sync"
 
+	"github.com/b-open-io/1sat-stack/pkg/gasp"
+	"github.com/b-open-io/1sat-stack/pkg/store"
+	gasplib "github.com/bsv-blockchain/go-overlay-services/pkg/core/gasp"
 	"github.com/bsv-blockchain/go-overlay-services/pkg/core/engine"
 	"github.com/bsv-blockchain/go-sdk/overlay"
+	"golang.org/x/sync/errgroup"
 )
 
+// RemoteConfig defines a remote for GASP dependency resolution.
+// Stored in DB as JSON for per-topic override configuration.
+type RemoteConfig struct {
+	Type     string `json:"type"`               // "beef", "http", "libp2p"
+	URL      string `json:"url,omitempty"`      // for http remotes
+	Priority int    `json:"priority,omitempty"` // order in chain (lower = higher priority)
+}
+
 // TopicManagerFactory creates a TopicManager instance for a given topic name
+// Deprecated: Use ActivateTopic with a Topic struct instead.
 type TopicManagerFactory func(topicName string) (engine.TopicManager, error)
 
-// Services holds initialized overlay services
+// Services holds initialized overlay services and acts as the central Topic registry.
 type Services struct {
 	Engine *engine.Engine
 	Routes *Routes
+	Store  store.Store // For DB remote config lookup
 	logger *slog.Logger
 
+	// Topic registry - tracks ALL active topics
+	topics sync.Map // topicName -> *Topic
+
+	// Legacy fields (to be removed after migration)
 	mu             sync.RWMutex
 	topicFactories map[string]TopicManagerFactory // topic name -> factory
 	topicWhitelist map[string]struct{}            // config-based whitelist
@@ -165,5 +185,234 @@ func (s *Services) GetLookupServices() []string {
 
 // Close cleans up overlay services
 func (s *Services) Close() error {
+	// Deactivate all topics
+	s.topics.Range(func(key, value any) bool {
+		topicName := key.(string)
+		s.DeactivateTopic(topicName)
+		return true
+	})
 	return nil
+}
+
+// ActivateTopic activates a topic, performing all necessary setup:
+// 1. Registers TopicManager with engine
+// 2. If Remotes configured: checks DB for override, creates and starts TopicWorker
+// 3. Starts listeners
+// 4. Tracks in topics registry
+//
+// Topics without Remotes are "registration-only" (e.g., discovery topics).
+func (s *Services) ActivateTopic(ctx context.Context, topic *Topic) error {
+	if topic == nil {
+		return errors.New("topic is nil")
+	}
+	if topic.Name == "" {
+		return errors.New("topic name is required")
+	}
+	if topic.Manager == nil {
+		return errors.New("topic manager is required")
+	}
+
+	// Check if already active
+	if _, exists := s.topics.Load(topic.Name); exists {
+		return fmt.Errorf("topic %s is already active", topic.Name)
+	}
+
+	// Register with engine
+	s.Engine.RegisterTopicManager(topic.Name, topic.Manager)
+
+	// Create cancellable context for this topic
+	topicCtx, cancel := context.WithCancel(ctx)
+	topic.cancel = cancel
+
+	// Only create worker if remotes are configured
+	if len(topic.Remotes) > 0 {
+		// Check for DB remote config override
+		if dbRemotes, err := s.loadRemotesFromDB(ctx, topic.Name); err == nil && len(dbRemotes) > 0 {
+			topic.Remotes = dbRemotes
+			s.logger.Debug("using DB remote config override", "topic", topic.Name, "remotes", len(dbRemotes))
+		}
+
+		// Create and start TopicWorker
+		topic.worker = gasp.NewTopicWorker(&gasp.TopicWorkerConfig{
+			TopicName:   topic.Name,
+			Store:       s.Store,
+			Engine:      s.Engine,
+			Remotes:     topic.Remotes,
+			Concurrency: 8, // TODO: make configurable
+			OnProcessed: topic.OnProcessed,
+			Logger:      s.logger,
+		})
+
+		// Start worker in background
+		g, gCtx := errgroup.WithContext(topicCtx)
+		g.Go(func() error {
+			return topic.worker.Start(gCtx)
+		})
+
+		// Start listeners
+		for _, listener := range topic.Listeners {
+			l := listener // capture for goroutine
+			g.Go(func() error {
+				return l.Start(gCtx)
+			})
+		}
+	}
+
+	// Track in registry
+	topic.active.Store(true)
+	s.topics.Store(topic.Name, topic)
+
+	s.logger.Info("topic activated",
+		"topic", topic.Name,
+		"remotes", len(topic.Remotes),
+		"listeners", len(topic.Listeners),
+	)
+
+	return nil
+}
+
+// DeactivateTopic deactivates a topic, stopping all components:
+// 1. Stops listeners
+// 2. Stops worker
+// 3. Unregisters from engine
+// 4. Removes from topics registry
+func (s *Services) DeactivateTopic(name string) error {
+	value, exists := s.topics.Load(name)
+	if !exists {
+		return fmt.Errorf("topic %s is not active", name)
+	}
+
+	topic := value.(*Topic)
+
+	// Cancel context (stops worker and listeners)
+	if topic.cancel != nil {
+		topic.cancel()
+	}
+
+	// Stop worker explicitly
+	if topic.worker != nil {
+		topic.worker.Stop()
+	}
+
+	// Stop listeners explicitly
+	for _, listener := range topic.Listeners {
+		listener.Stop()
+	}
+
+	// Unregister from engine
+	s.Engine.UnregisterTopicManager(name)
+
+	// Remove from registry
+	topic.active.Store(false)
+	s.topics.Delete(name)
+
+	s.logger.Info("topic deactivated", "topic", name)
+
+	return nil
+}
+
+// GetTopic returns an active topic by name, or nil if not found.
+func (s *Services) GetTopic(name string) *Topic {
+	if value, exists := s.topics.Load(name); exists {
+		return value.(*Topic)
+	}
+	return nil
+}
+
+// ListActiveTopics returns all active topics.
+func (s *Services) ListActiveTopics() []*Topic {
+	var topics []*Topic
+	s.topics.Range(func(key, value any) bool {
+		topics = append(topics, value.(*Topic))
+		return true
+	})
+	return topics
+}
+
+// Remote config DB key prefix
+const remoteConfigKeyPrefix = "topic:remotes:"
+
+// loadRemotesFromDB loads remote configuration for a topic from the database.
+func (s *Services) loadRemotesFromDB(ctx context.Context, topicName string) ([]gasplib.Remote, error) {
+	if s.Store == nil {
+		return nil, nil
+	}
+
+	key := []byte(remoteConfigKeyPrefix + topicName)
+	data, err := s.Store.Get(ctx, key)
+	if err != nil || len(data) == 0 {
+		return nil, err
+	}
+
+	var configs []RemoteConfig
+	if err := json.Unmarshal(data, &configs); err != nil {
+		return nil, fmt.Errorf("failed to parse remote config: %w", err)
+	}
+
+	// Convert to gasp.Remote slice
+	// TODO: Implement actual remote creation based on type
+	// For now, this is a placeholder
+	remotes := make([]gasplib.Remote, 0, len(configs))
+	for _, cfg := range configs {
+		switch cfg.Type {
+		case "beef":
+			// BeefRemote requires beefStorage - caller should provide this
+			s.logger.Debug("beef remote configured, requires beefStorage from caller", "topic", topicName)
+		case "http":
+			// TODO: Create HTTP remote using OverlayGASPRemote from go-overlay-services
+			s.logger.Debug("http remote configured", "topic", topicName, "url", cfg.URL)
+		default:
+			s.logger.Warn("unknown remote type", "type", cfg.Type)
+		}
+	}
+
+	return remotes, nil
+}
+
+// SaveRemoteConfig saves remote configuration for a topic to the database.
+func (s *Services) SaveRemoteConfig(ctx context.Context, topicName string, configs []RemoteConfig) error {
+	if s.Store == nil {
+		return errors.New("store not configured")
+	}
+
+	data, err := json.Marshal(configs)
+	if err != nil {
+		return fmt.Errorf("failed to marshal remote config: %w", err)
+	}
+
+	key := []byte(remoteConfigKeyPrefix + topicName)
+	return s.Store.Set(ctx, key, data)
+}
+
+// DeleteRemoteConfig removes remote configuration for a topic from the database.
+func (s *Services) DeleteRemoteConfig(ctx context.Context, topicName string) error {
+	if s.Store == nil {
+		return errors.New("store not configured")
+	}
+
+	key := []byte(remoteConfigKeyPrefix + topicName)
+	return s.Store.Del(ctx, key)
+}
+
+// GetRemoteConfig retrieves the remote configuration for a topic.
+func (s *Services) GetRemoteConfig(ctx context.Context, topicName string) ([]RemoteConfig, error) {
+	if s.Store == nil {
+		return nil, errors.New("store not configured")
+	}
+
+	key := []byte(remoteConfigKeyPrefix + topicName)
+	data, err := s.Store.Get(ctx, key)
+	if err != nil {
+		return nil, err
+	}
+	if len(data) == 0 {
+		return nil, nil
+	}
+
+	var configs []RemoteConfig
+	if err := json.Unmarshal(data, &configs); err != nil {
+		return nil, fmt.Errorf("failed to parse remote config: %w", err)
+	}
+
+	return configs, nil
 }

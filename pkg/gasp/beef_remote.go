@@ -1,4 +1,4 @@
-// Package gasp provides GASP (Graph Aware Sync Protocol) implementations for queue-based sync.
+// Package gasp provides GASP (Graph Aware Sync Protocol) implementations for topic-based sync.
 package gasp
 
 import (
@@ -12,18 +12,23 @@ import (
 	"github.com/bsv-blockchain/go-sdk/transaction"
 )
 
-// QueueGASPRemote implements gasp.Remote by reading from a sorted set queue and BEEF storage
-// instead of fetching from a remote HTTP peer. This enables local queue-based GASP sync.
-type QueueGASPRemote struct {
-	queueKey    []byte        // Store key for the queue (e.g., "q:tok:{tokenId}")
+// BeefRemote implements gasp.Remote by reading from local BEEF storage.
+// This is used when transaction data is available locally (e.g., from JungleBus dispatcher).
+type BeefRemote struct {
+	queueKey    []byte        // Store key for initial response queries (optional)
 	store       store.Store   // Store for queue operations
 	beefStorage *beef.Storage // BEEF transaction storage
 }
 
-// NewQueueGASPRemote creates a new QueueGASPRemote for the given queue key.
-func NewQueueGASPRemote(queueKey string, s store.Store, beefStorage *beef.Storage) *QueueGASPRemote {
-	return &QueueGASPRemote{
-		queueKey:    []byte(queueKey),
+// NewBeefRemote creates a new BeefRemote for reading from local BEEF storage.
+// The queueKey is optional - only needed if using GetInitialResponse for bulk sync.
+func NewBeefRemote(beefStorage *beef.Storage, s store.Store, queueKey string) *BeefRemote {
+	var key []byte
+	if queueKey != "" {
+		key = []byte(queueKey)
+	}
+	return &BeefRemote{
+		queueKey:    key,
 		store:       s,
 		beefStorage: beefStorage,
 	}
@@ -31,7 +36,7 @@ func NewQueueGASPRemote(queueKey string, s store.Store, beefStorage *beef.Storag
 
 // GetInitialResponse returns UTXOs from the queue as a GASP initial response.
 // The queue members are txids scored by block height; we convert them to Output structs.
-func (r *QueueGASPRemote) GetInitialResponse(ctx context.Context, request *gasp.InitialRequest) (*gasp.InitialResponse, error) {
+func (r *BeefRemote) GetInitialResponse(ctx context.Context, request *gasp.InitialRequest) (*gasp.InitialResponse, error) {
 	// Query the queue for members with score > since
 	scoreRange := store.ScoreRange{
 		Min:          &request.Since,
@@ -76,7 +81,7 @@ func (r *QueueGASPRemote) GetInitialResponse(ctx context.Context, request *gasp.
 }
 
 // RequestNode loads raw transaction and proof from BEEF storage and returns as a GASP Node.
-func (r *QueueGASPRemote) RequestNode(ctx context.Context, graphID, outpoint *transaction.Outpoint, _ bool) (*gasp.Node, error) {
+func (r *BeefRemote) RequestNode(ctx context.Context, graphID, outpoint *transaction.Outpoint, _ bool) (*gasp.Node, error) {
 	if graphID == nil {
 		graphID = outpoint
 	}
@@ -106,14 +111,14 @@ func (r *QueueGASPRemote) RequestNode(ctx context.Context, graphID, outpoint *tr
 	return node, nil
 }
 
-// GetInitialReply is not needed for queue-based sync (unidirectional).
-// Returns an empty reply since we're pulling from a local queue, not syncing with a peer.
-func (r *QueueGASPRemote) GetInitialReply(_ context.Context, _ *gasp.InitialResponse) (*gasp.InitialReply, error) {
+// GetInitialReply is not needed for local BEEF sync (unidirectional).
+// Returns an empty reply since we're reading from local storage, not syncing with a peer.
+func (r *BeefRemote) GetInitialReply(_ context.Context, _ *gasp.InitialResponse) (*gasp.InitialReply, error) {
 	return &gasp.InitialReply{UTXOList: []*gasp.Output{}}, nil
 }
 
-// SubmitNode is not needed for queue-based sync (we're pulling, not pushing).
+// SubmitNode is not needed for local BEEF sync (we're reading, not writing).
 // Returns an empty response since there's no peer to submit to.
-func (r *QueueGASPRemote) SubmitNode(_ context.Context, _ *gasp.Node) (*gasp.NodeResponse, error) {
+func (r *BeefRemote) SubmitNode(_ context.Context, _ *gasp.Node) (*gasp.NodeResponse, error) {
 	return &gasp.NodeResponse{RequestedInputs: map[transaction.Outpoint]*gasp.NodeResponseData{}}, nil
 }

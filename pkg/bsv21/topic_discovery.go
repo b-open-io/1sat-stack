@@ -1,10 +1,10 @@
-package topic
+package bsv21
 
 import (
 	"context"
 	"log/slog"
 
-	"github.com/bitcoin-sv/go-templates/template/bsv21"
+	bsv21template "github.com/bitcoin-sv/go-templates/template/bsv21"
 	"github.com/bsv-blockchain/go-overlay-services/pkg/core/engine"
 	"github.com/bsv-blockchain/go-sdk/chainhash"
 	"github.com/bsv-blockchain/go-sdk/overlay"
@@ -42,8 +42,8 @@ func (tm *Bsv21DiscoveryTopicManager) IdentifyAdmissibleOutputs(ctx context.Cont
 
 	// Admit deploy+mint and deploy+auth operations
 	for vout, output := range tx.Outputs {
-		if b := bsv21.Decode(output.LockingScript); b != nil {
-			if b.Op == string(bsv21.OpDeployMint) || b.Op == string(bsv21.OpDeployAuth) {
+		if b := bsv21template.Decode(output.LockingScript); b != nil {
+			if b.Op == string(bsv21template.OpDeployMint) || b.Op == string(bsv21template.OpDeployAuth) {
 				// This is a deploy operation - admit it for discovery
 				admit.OutputsToAdmit = append(admit.OutputsToAdmit, uint32(vout))
 				tm.logger.Debug("token discovered",

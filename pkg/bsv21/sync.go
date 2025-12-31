@@ -218,13 +218,14 @@ func (s *SyncServices) dispatch(ctx context.Context, member string, score float6
 			continue
 		}
 
-		// Add outpoint to token queue
-		tokenQueueKey := []byte(jbsync.TokenQueueKey(tokenId))
-		if err := s.store.ZAdd(ctx, tokenQueueKey, store.ScoredMember{
+		// Add outpoint to topic queue (q:tm_{tokenId})
+		// This matches the queue key format used by TopicWorker
+		topicQueueKey := []byte("q:tm_" + tokenId)
+		if err := s.store.ZAdd(ctx, topicQueueKey, store.ScoredMember{
 			Member: outpoint.Bytes(),
 			Score:  score,
 		}); err != nil {
-			return fmt.Errorf("failed to add to token queue: %w", err)
+			return fmt.Errorf("failed to add to topic queue: %w", err)
 		}
 	}
 

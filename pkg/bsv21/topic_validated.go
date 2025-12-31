@@ -1,4 +1,4 @@
-package topic
+package bsv21
 
 import (
 	"context"
@@ -6,7 +6,7 @@ import (
 	"log/slog"
 	"slices"
 
-	"github.com/bitcoin-sv/go-templates/template/bsv21"
+	bsv21template "github.com/bitcoin-sv/go-templates/template/bsv21"
 	"github.com/bsv-blockchain/go-overlay-services/pkg/core/engine"
 	"github.com/bsv-blockchain/go-sdk/chainhash"
 	"github.com/bsv-blockchain/go-sdk/overlay"
@@ -91,9 +91,9 @@ func (tm *Bsv21ValidatedTopicManager) IdentifyAdmissibleOutputs(ctx context.Cont
 
 	// First pass: identify all relevant token IDs in outputs
 	for vout, output := range tx.Outputs {
-		if b := bsv21.Decode(output.LockingScript); b != nil {
+		if b := bsv21template.Decode(output.LockingScript); b != nil {
 			// For deploy operations, tokenId = outpoint
-			if b.Op == string(bsv21.OpDeployMint) || b.Op == string(bsv21.OpDeployAuth) {
+			if b.Op == string(bsv21template.OpDeployMint) || b.Op == string(bsv21template.OpDeployAuth) {
 				b.Id = (&transaction.Outpoint{
 					Txid:  *txid,
 					Index: uint32(vout),
@@ -105,7 +105,7 @@ func (tm *Bsv21ValidatedTopicManager) IdentifyAdmissibleOutputs(ctx context.Cont
 			relevantTokenIds[b.Id] = struct{}{}
 
 			// Deploy operations are always admitted (they create the token)
-			if b.Op == string(bsv21.OpDeployMint) || b.Op == string(bsv21.OpDeployAuth) {
+			if b.Op == string(bsv21template.OpDeployMint) || b.Op == string(bsv21template.OpDeployAuth) {
 				admit.OutputsToAdmit = append(admit.OutputsToAdmit, uint32(vout))
 				continue
 			}
@@ -133,9 +133,9 @@ func (tm *Bsv21ValidatedTopicManager) IdentifyAdmissibleOutputs(ctx context.Cont
 				Index: txin.SourceTxOutIndex,
 			}
 			if sourceOutput := txin.SourceTxOutput(); sourceOutput != nil {
-				if b := bsv21.Decode(sourceOutput.LockingScript); b != nil {
+				if b := bsv21template.Decode(sourceOutput.LockingScript); b != nil {
 					// For deploy operations, tokenId = outpoint
-					if b.Op == string(bsv21.OpDeployMint) || b.Op == string(bsv21.OpDeployAuth) {
+					if b.Op == string(bsv21template.OpDeployMint) || b.Op == string(bsv21template.OpDeployAuth) {
 						b.Id = outpoint.OrdinalString()
 					}
 					if !tm.HasTokenId(b.Id) {
@@ -186,7 +186,7 @@ func (tm *Bsv21ValidatedTopicManager) IdentifyNeededInputs(ctx context.Context, 
 
 	tokens := make(map[string]struct{})
 	for _, output := range tx.Outputs {
-		if b := bsv21.Decode(output.LockingScript); b != nil {
+		if b := bsv21template.Decode(output.LockingScript); b != nil {
 			if !tm.HasTokenId(b.Id) {
 				continue
 			}
