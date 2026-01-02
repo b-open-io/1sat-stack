@@ -335,11 +335,18 @@ func (c *Config) Initialize(ctx context.Context, logger *slog.Logger) (*Services
 	// Initialize overlay engine FIRST (BSV21 needs it for topic/lookup registration)
 	if c.Overlay.Mode != overlay.ModeDisabled && svc.TXO != nil {
 		start = time.Now()
-		overlaySvc, err := c.Overlay.Initialize(ctx, logger, &overlay.InitializeDeps{
+		overlayDeps := &overlay.InitializeDeps{
 			OutputStore:  svc.TXO.OutputStore,
 			ChainTracker: svc.Chaintracks,
-			// Storage: nil for now - Fee service can provide this later
-		})
+		}
+		// Add optional dependencies if available
+		if svc.Store != nil {
+			overlayDeps.Store = svc.Store.Store
+		}
+		if svc.Beef != nil {
+			overlayDeps.BeefStorage = svc.Beef.Storage
+		}
+		overlaySvc, err := c.Overlay.Initialize(ctx, logger, overlayDeps)
 		if err != nil {
 			return nil, fmt.Errorf("failed to initialize overlay: %w", err)
 		}

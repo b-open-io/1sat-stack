@@ -33,18 +33,22 @@ func (s *OutputStore) InsertOutputs(ctx context.Context, topic string, txid *cha
 
 	// Trigger main indexing if callback is set
 	// This ensures outputs get satoshis, events, owners, etc. saved
-	if s.IngestTx != nil && beef != nil {
+	if s.IngestTx != nil {
+		if beef == nil {
+			return fmt.Errorf("InsertOutputs: cannot index tx %s - BEEF is nil", txid.String())
+		}
 		tx := beef.FindTransactionByHash(txid)
-		if tx != nil {
-			// Populate source transactions from BEEF for input parsing
-			for _, input := range tx.Inputs {
-				if input.SourceTransaction == nil {
-					input.SourceTransaction = beef.FindTransactionByHash(input.SourceTXID)
-				}
+		if tx == nil {
+			return fmt.Errorf("InsertOutputs: cannot index tx %s - transaction not found in BEEF", txid.String())
+		}
+		// Populate source transactions from BEEF for input parsing
+		for _, input := range tx.Inputs {
+			if input.SourceTransaction == nil {
+				input.SourceTransaction = beef.FindTransactionByHash(input.SourceTXID)
 			}
-			if err := s.IngestTx(ctx, tx); err != nil {
-				return fmt.Errorf("ingest tx failed: %w", err)
-			}
+		}
+		if err := s.IngestTx(ctx, tx); err != nil {
+			return fmt.Errorf("InsertOutputs: ingest tx %s failed: %w", txid.String(), err)
 		}
 	}
 

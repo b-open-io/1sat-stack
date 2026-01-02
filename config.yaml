@@ -55,9 +55,6 @@ beef:
       redis:
         url: redis://localhost:6380/1
         ttl: 8760h  # 1 year - marks keys as volatile for LRU eviction
-    - provider: badger
-      badger:
-        path: ~/.1sat/beef  # Temporary: reads from old badger, populates redis
     - provider: junglebus
   routes:
     enabled: true

@@ -166,7 +166,14 @@ func (m *TokenManager) createWorker(ctx context.Context, status *TokenStatus) er
 	m.g.Go(func() error {
 		defer m.workers.Delete(tokenId)
 		defer m.statuses.Delete(tokenId)
-		return tw.Start(workerCtx)
+		err := tw.Start(workerCtx)
+		// Workers can be cancelled for valid lifecycle reasons (e.g., underfunding)
+		// Return nil to prevent cascading shutdown of other workers
+		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+			m.logger.Debug("worker exited normally", "tokenId", tokenId)
+			return nil
+		}
+		return err
 	})
 
 	m.logger.Info("token worker created", "tokenId", tokenId)

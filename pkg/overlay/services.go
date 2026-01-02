@@ -6,22 +6,34 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"net/http"
 	"sync"
 
+	"github.com/b-open-io/1sat-stack/pkg/beef"
 	"github.com/b-open-io/1sat-stack/pkg/gasp"
 	"github.com/b-open-io/1sat-stack/pkg/store"
-	gasplib "github.com/bsv-blockchain/go-overlay-services/pkg/core/gasp"
 	"github.com/bsv-blockchain/go-overlay-services/pkg/core/engine"
+	gasplib "github.com/bsv-blockchain/go-overlay-services/pkg/core/gasp"
 	"github.com/bsv-blockchain/go-sdk/overlay"
 	"golang.org/x/sync/errgroup"
 )
 
-// RemoteConfig defines a remote for GASP dependency resolution.
-// Stored in DB as JSON for per-topic override configuration.
+// RemoteConfig defines a peer for topic sync.
+// Stored in DB as JSON array for per-topic configuration.
+// Array order determines priority for GASP resolution (first = highest priority).
 type RemoteConfig struct {
-	Type     string `json:"type"`               // "beef", "http", "libp2p"
-	URL      string `json:"url,omitempty"`      // for http remotes
-	Priority int    `json:"priority,omitempty"` // order in chain (lower = higher priority)
+	// Identity
+	Type   string `json:"type"`              // "beef", "http", "libp2p"
+	URL    string `json:"url,omitempty"`     // for http peers
+	PeerID string `json:"peer_id,omitempty"` // for libp2p peers
+
+	// Inbound (receiving data from peer)
+	SSESubscribe     bool   `json:"sse_subscribe,omitempty"`      // listen via SSE stream
+	GASPSync         bool   `json:"gasp_sync,omitempty"`          // periodic full GASP sync
+	GASPSyncInterval string `json:"gasp_sync_interval,omitempty"` // "15m", "1h", etc.
+
+	// Outbound (sending data to peer)
+	Broadcast bool `json:"broadcast,omitempty"` // push new admissions to peer
 }
 
 // TopicManagerFactory creates a TopicManager instance for a given topic name
@@ -34,6 +46,9 @@ type Services struct {
 	Routes *Routes
 	Store  store.Store // For DB remote config lookup
 	logger *slog.Logger
+
+	// For remote creation
+	beefStorage *beef.Storage
 
 	// Topic registry - tracks ALL active topics
 	topics sync.Map // topicName -> *Topic
@@ -227,9 +242,17 @@ func (s *Services) ActivateTopic(ctx context.Context, topic *Topic) error {
 	// Only create worker if remotes are configured
 	if len(topic.Remotes) > 0 {
 		// Check for DB remote config override
-		if dbRemotes, err := s.loadRemotesFromDB(ctx, topic.Name); err == nil && len(dbRemotes) > 0 {
-			topic.Remotes = dbRemotes
-			s.logger.Debug("using DB remote config override", "topic", topic.Name, "remotes", len(dbRemotes))
+		if configs, err := s.GetRemoteConfig(ctx, topic.Name); err == nil && len(configs) > 0 {
+			// Override remotes from DB config
+			dbRemotes := s.createRemotesFromConfig(topic.Name, configs)
+			if len(dbRemotes) > 0 {
+				topic.Remotes = dbRemotes
+				s.logger.Debug("using DB remote config override", "topic", topic.Name, "remotes", len(dbRemotes))
+			}
+
+			// Create SSE listeners from DB config
+			sseListeners := s.createListenersFromConfig(topic.Name, configs)
+			topic.Listeners = append(topic.Listeners, sseListeners...)
 		}
 
 		// Create and start TopicWorker
@@ -332,41 +355,70 @@ func (s *Services) ListActiveTopics() []*Topic {
 // Remote config DB key prefix
 const remoteConfigKeyPrefix = "topic:remotes:"
 
-// loadRemotesFromDB loads remote configuration for a topic from the database.
-func (s *Services) loadRemotesFromDB(ctx context.Context, topicName string) ([]gasplib.Remote, error) {
-	if s.Store == nil {
-		return nil, nil
-	}
-
-	key := []byte(remoteConfigKeyPrefix + topicName)
-	data, err := s.Store.Get(ctx, key)
-	if err != nil || len(data) == 0 {
-		return nil, err
-	}
-
-	var configs []RemoteConfig
-	if err := json.Unmarshal(data, &configs); err != nil {
-		return nil, fmt.Errorf("failed to parse remote config: %w", err)
-	}
-
-	// Convert to gasp.Remote slice
-	// TODO: Implement actual remote creation based on type
-	// For now, this is a placeholder
+// createRemotesFromConfig converts RemoteConfig slice to actual gasp.Remote instances.
+// Array order is preserved (determines priority).
+func (s *Services) createRemotesFromConfig(topicName string, configs []RemoteConfig) []gasplib.Remote {
 	remotes := make([]gasplib.Remote, 0, len(configs))
+
 	for _, cfg := range configs {
-		switch cfg.Type {
-		case "beef":
-			// BeefRemote requires beefStorage - caller should provide this
-			s.logger.Debug("beef remote configured, requires beefStorage from caller", "topic", topicName)
-		case "http":
-			// TODO: Create HTTP remote using OverlayGASPRemote from go-overlay-services
-			s.logger.Debug("http remote configured", "topic", topicName, "url", cfg.URL)
-		default:
-			s.logger.Warn("unknown remote type", "type", cfg.Type)
+		remote := s.createRemoteFromConfig(topicName, cfg)
+		if remote != nil {
+			remotes = append(remotes, remote)
 		}
 	}
 
-	return remotes, nil
+	return remotes
+}
+
+// createRemoteFromConfig creates a single gasp.Remote from RemoteConfig.
+func (s *Services) createRemoteFromConfig(topicName string, cfg RemoteConfig) gasplib.Remote {
+	switch cfg.Type {
+	case "beef":
+		if s.beefStorage == nil {
+			s.logger.Warn("beef remote configured but beefStorage not available", "topic", topicName)
+			return nil
+		}
+		s.logger.Debug("creating beef remote", "topic", topicName)
+		return gasp.NewBeefRemote(s.beefStorage, s.Store, "")
+
+	case "http":
+		if cfg.URL == "" {
+			s.logger.Warn("http remote configured without URL", "topic", topicName)
+			return nil
+		}
+		s.logger.Debug("creating http remote", "topic", topicName, "url", cfg.URL)
+		return engine.NewOverlayGASPRemote(cfg.URL, topicName, http.DefaultClient, 8)
+
+	case "libp2p":
+		// LibP2P remotes not yet implemented
+		s.logger.Warn("libp2p remote type not yet implemented", "topic", topicName, "peerId", cfg.PeerID)
+		return nil
+
+	default:
+		s.logger.Warn("unknown remote type", "type", cfg.Type, "topic", topicName)
+		return nil
+	}
+}
+
+// createListenersFromConfig creates Listener instances from RemoteConfigs that have SSESubscribe enabled.
+func (s *Services) createListenersFromConfig(topicName string, configs []RemoteConfig) []Listener {
+	var listeners []Listener
+
+	for _, cfg := range configs {
+		if cfg.SSESubscribe && cfg.URL != "" {
+			listener := gasp.NewSSEListener(&gasp.SSEListenerConfig{
+				PeerURL:   cfg.URL,
+				TopicName: topicName,
+				QueueKey:  []byte("q:" + topicName),
+				Store:     s.Store,
+				Logger:    s.logger,
+			})
+			listeners = append(listeners, listener)
+			s.logger.Debug("created SSE listener", "topic", topicName, "peer", cfg.URL)
+		}
+	}
+
+	return listeners
 }
 
 // SaveRemoteConfig saves remote configuration for a topic to the database.

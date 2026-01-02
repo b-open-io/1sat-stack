@@ -86,12 +86,19 @@ func (m *TokenManager) GetTokenStatus(ctx context.Context, tokenId string) (*Tok
 	isWhitelisted, _ := m.store.SIsMember(ctx, KeyWhitelist, []byte(tokenId))
 	isBlacklisted, _ := m.store.SIsMember(ctx, KeyBlacklist, []byte(tokenId))
 
-	// If whitelisted or blacklisted, return early with minimal info
+	// Output count in topic - always calculate for reporting
+	topicKey := []byte("z:tp:tm_" + tokenId)
+	outputCount, err := m.store.ZCard(ctx, topicKey)
+	if err != nil {
+		return nil, fmt.Errorf("failed to count outputs: %w", err)
+	}
+
+	// Whitelisted/blacklisted tokens don't need balance calculation - use 0 fee so debits = 0
 	if isWhitelisted {
-		return NewTokenStatus(tokenId, feeAddress, 0, 0, m.feePerOutput, true, false), nil
+		return NewTokenStatus(tokenId, feeAddress, 0, outputCount, 0, true, false), nil
 	}
 	if isBlacklisted {
-		return NewTokenStatus(tokenId, feeAddress, 0, 0, m.feePerOutput, false, true), nil
+		return NewTokenStatus(tokenId, feeAddress, 0, outputCount, 0, false, true), nil
 	}
 
 	// Credits: unspent satoshis at fee address
@@ -104,13 +111,6 @@ func (m *TokenManager) GetTokenStatus(ctx context.Context, tokenId string) (*Tok
 	credits, _, err := m.outputStore.SearchBalance(ctx, cfg)
 	if err != nil {
 		return nil, fmt.Errorf("failed to query balance: %w", err)
-	}
-
-	// Output count in topic
-	topicKey := []byte("z:tp:tm_" + tokenId)
-	outputCount, err := m.store.ZCard(ctx, topicKey)
-	if err != nil {
-		return nil, fmt.Errorf("failed to count outputs: %w", err)
 	}
 
 	return NewTokenStatus(tokenId, feeAddress, credits, outputCount, m.feePerOutput, false, false), nil
