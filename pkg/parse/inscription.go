@@ -28,14 +28,23 @@ func ParseInscription(ctx *ParseContext) *ParseResult {
 	result := &ParseResult{
 		Tag:    TagInscription,
 		Data:   insc,
-		Events: []string{},
+		Events: []string{"insc"},
 	}
 
-	// Add event for content type (base type without parameters)
+	// Add events for content type at two levels
 	if insc.File.Type != "" {
-		parts := strings.Split(insc.File.Type, ";")
-		if len(parts) > 0 {
-			result.Events = append(result.Events, "type:"+parts[0])
+		// Strip parameters (e.g., "text/plain; charset=utf-8" -> "text/plain")
+		fullType := strings.Split(insc.File.Type, ";")[0]
+		fullType = strings.TrimSpace(fullType)
+
+		if fullType != "" {
+			// Base type (e.g., "image" from "image/jpeg")
+			baseParts := strings.Split(fullType, "/")
+			if len(baseParts) > 0 && baseParts[0] != "" {
+				result.Events = append(result.Events, "type:"+baseParts[0])
+			}
+			// Full type (e.g., "image/jpeg")
+			result.Events = append(result.Events, "type:"+fullType)
 		}
 	}
 

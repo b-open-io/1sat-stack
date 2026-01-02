@@ -135,11 +135,12 @@ func (s *SyncServices) Start(ctx context.Context) error {
 	g, ctx := errgroup.WithContext(ctx)
 
 	// Start dispatcher - reads from q:bsv21 and routes to per-token queues
+	dispatchLimiter := make(chan struct{}, s.config.DispatchWorkers)
 	s.dispatcher = worker.New(&worker.Config{
-		Store:       s.store,
-		Key:         jbsync.QueueKey("bsv21"),
-		Concurrency: s.config.DispatchWorkers,
-		Handler:     s.dispatch,
+		Store:   s.store,
+		Key:     jbsync.QueueKey("bsv21"),
+		Limiter: dispatchLimiter,
+		Handler: s.dispatch,
 		OnError: func(ctx context.Context, id string, score float64, err error) {
 			s.logger.Error("dispatcher error", "txid", id, "score", score, "error", err)
 		},
@@ -217,13 +218,14 @@ func (s *SyncServices) dispatch(ctx context.Context, member string, score float6
 			continue
 		}
 
-		// Add outpoint to token queue
-		tokenQueueKey := []byte(jbsync.TokenQueueKey(tokenId))
-		if err := s.store.ZAdd(ctx, tokenQueueKey, store.ScoredMember{
+		// Add outpoint to topic queue (q:tm_{tokenId})
+		// This matches the queue key format used by TopicWorker
+		topicQueueKey := []byte("q:tm_" + tokenId)
+		if err := s.store.ZAdd(ctx, topicQueueKey, store.ScoredMember{
 			Member: outpoint.Bytes(),
 			Score:  score,
 		}); err != nil {
-			return fmt.Errorf("failed to add to token queue: %w", err)
+			return fmt.Errorf("failed to add to topic queue: %w", err)
 		}
 	}
 

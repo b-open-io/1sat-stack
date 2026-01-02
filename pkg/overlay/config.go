@@ -4,6 +4,8 @@ import (
 	"context"
 	"log/slog"
 
+	"github.com/b-open-io/1sat-stack/pkg/beef"
+	"github.com/b-open-io/1sat-stack/pkg/store"
 	"github.com/b-open-io/1sat-stack/pkg/txo"
 	"github.com/bsv-blockchain/go-overlay-services/pkg/core/engine"
 	"github.com/bsv-blockchain/go-sdk/transaction/chaintracker"
@@ -46,6 +48,8 @@ func (c *Config) SetDefaults(v *viper.Viper, prefix string) {
 type InitializeDeps struct {
 	OutputStore  *txo.OutputStore
 	ChainTracker chaintracker.ChainTracker
+	Store        store.Store   // For remote config and queue operations
+	BeefStorage  *beef.Storage // For BEEF remote creation
 }
 
 // Initialize creates overlay services from configuration
@@ -59,7 +63,9 @@ func (c *Config) Initialize(ctx context.Context, logger *slog.Logger, deps *Init
 	}
 
 	svc := &Services{
-		logger: logger,
+		logger:      logger,
+		Store:       deps.Store,
+		beefStorage: deps.BeefStorage,
 	}
 
 	// Create the overlay engine

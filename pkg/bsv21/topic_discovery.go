@@ -1,11 +1,12 @@
-package topic
+package bsv21
 
 import (
 	"context"
 	"log/slog"
 
-	"github.com/bitcoin-sv/go-templates/template/bsv21"
+	bsv21template "github.com/bitcoin-sv/go-templates/template/bsv21"
 	"github.com/bsv-blockchain/go-overlay-services/pkg/core/engine"
+	"github.com/bsv-blockchain/go-sdk/chainhash"
 	"github.com/bsv-blockchain/go-sdk/overlay"
 	"github.com/bsv-blockchain/go-sdk/transaction"
 )
@@ -33,18 +34,16 @@ func NewBsv21DiscoveryTopicManager(topic string, storage engine.Storage, logger 
 }
 
 // IdentifyAdmissibleOutputs admits all deploy outputs (deploy+mint and deploy+auth) for token discovery
-func (tm *Bsv21DiscoveryTopicManager) IdentifyAdmissibleOutputs(ctx context.Context, beefBytes []byte, previousCoins []uint32) (admit overlay.AdmittanceInstructions, err error) {
-	_, tx, txid, err := transaction.ParseBeef(beefBytes)
-	if err != nil {
-		return admit, err
-	} else if tx == nil {
+func (tm *Bsv21DiscoveryTopicManager) IdentifyAdmissibleOutputs(ctx context.Context, beef *transaction.Beef, txid *chainhash.Hash, previousCoins []uint32) (admit overlay.AdmittanceInstructions, err error) {
+	tx := beef.FindTransactionForSigningByHash(txid)
+	if tx == nil {
 		return admit, engine.ErrInvalidBeef
 	}
 
 	// Admit deploy+mint and deploy+auth operations
 	for vout, output := range tx.Outputs {
-		if b := bsv21.Decode(output.LockingScript); b != nil {
-			if b.Op == string(bsv21.OpDeployMint) || b.Op == string(bsv21.OpDeployAuth) {
+		if b := bsv21template.Decode(output.LockingScript); b != nil {
+			if b.Op == string(bsv21template.OpDeployMint) || b.Op == string(bsv21template.OpDeployAuth) {
 				// This is a deploy operation - admit it for discovery
 				admit.OutputsToAdmit = append(admit.OutputsToAdmit, uint32(vout))
 				tm.logger.Debug("token discovered",
@@ -60,7 +59,7 @@ func (tm *Bsv21DiscoveryTopicManager) IdentifyAdmissibleOutputs(ctx context.Cont
 }
 
 // IdentifyNeededInputs returns empty list since deploy operations need no inputs
-func (tm *Bsv21DiscoveryTopicManager) IdentifyNeededInputs(ctx context.Context, beefBytes []byte) ([]*transaction.Outpoint, error) {
+func (tm *Bsv21DiscoveryTopicManager) IdentifyNeededInputs(ctx context.Context, beef *transaction.Beef, txid *chainhash.Hash) ([]*transaction.Outpoint, error) {
 	return nil, nil
 }
 

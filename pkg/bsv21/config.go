@@ -8,7 +8,6 @@ import (
 	"github.com/b-open-io/1sat-stack/pkg/beef"
 	lookuppkg "github.com/b-open-io/1sat-stack/pkg/lookup"
 	"github.com/b-open-io/1sat-stack/pkg/overlay"
-	topicpkg "github.com/b-open-io/1sat-stack/pkg/topic"
 	"github.com/b-open-io/1sat-stack/pkg/txo"
 	"github.com/b-open-io/go-junglebus"
 	"github.com/bsv-blockchain/go-chaintracks/chaintracks"
@@ -64,10 +63,11 @@ func (c *Config) SetDefaults(v *viper.Viper, prefix string) {
 
 // Services holds initialized BSV21 services
 type Services struct {
-	Lookup       *lookuppkg.BSV21Lookup
-	TopicManager *topicpkg.Bsv21ValidatedTopicManager
-	Sync         *SyncServices
-	Routes       *Routes
+	Lookup        *lookuppkg.BSV21Lookup
+	TopicManager  *Bsv21ValidatedTopicManager
+	Sync          *SyncServices
+	Routes        *Routes
+	FundingRoutes *FundingRoutes
 }
 
 // Initialize creates BSV21 services from the configuration
@@ -94,7 +94,7 @@ func (c *Config) Initialize(
 		bsv21Lookup := lookuppkg.NewBSV21Lookup(txoStorage)
 
 		// Create topic manager for overlay engine integration
-		topicManager := topicpkg.NewBsv21ValidatedTopicManager("bsv21", txoStorage, c.WhitelistTokens)
+		topicManager := NewBsv21ValidatedTopicManager("bsv21", txoStorage, c.WhitelistTokens)
 
 		svc := &Services{
 			Lookup:       bsv21Lookup,
@@ -117,6 +117,11 @@ func (c *Config) Initialize(
 				return nil, fmt.Errorf("failed to create BSV21 sync services: %w", err)
 			}
 			svc.Sync = syncSvc
+
+			// Create funding routes if routes are enabled and we have a token manager
+			if c.Routes.Enabled && syncSvc.manager != nil {
+				svc.FundingRoutes = NewFundingRoutes(syncSvc.manager, logger)
+			}
 		}
 
 		// Create routes if enabled

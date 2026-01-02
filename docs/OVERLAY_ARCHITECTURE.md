@@ -84,7 +84,7 @@ Engine.Submit()
 ```
 Client
      │
-     │ GET /api/lookup/{service}?query=...
+     │ GET /1sat/lookup/{service}?query=...
      ▼
 LookupService.Lookup()
      │

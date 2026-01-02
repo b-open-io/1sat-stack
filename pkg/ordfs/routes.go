@@ -40,26 +40,23 @@ func NewRoutes(deps *RoutesDeps) *Routes {
 }
 
 // Register registers the routes on a Fiber router
-func (r *Routes) Register(router fiber.Router, prefix string) {
-	g := router.Group(prefix)
-
+func (r *Routes) Register(router fiber.Router) {
 	// Metadata endpoint - returns metadata without content bytes
-	g.Get("/metadata/*", r.HandleMetadata)
+	router.Get("/metadata/*", r.HandleMetadata)
 
 	// Preview endpoints - render HTML content
-	g.Get("/preview/:b64HtmlData", r.HandlePreview)
-	g.Post("/preview", r.HandlePreviewPost)
+	router.Get("/preview/:b64HtmlData", r.HandlePreview)
+	router.Post("/preview", r.HandlePreviewPost)
 
 	// Stream endpoint
-	g.Get("/stream/:outpoint", r.HandleStream)
+	router.Get("/stream/:outpoint", r.HandleStream)
 }
 
-// RegisterContent registers the wildcard content endpoint at the given prefix.
+// RegisterContent registers the wildcard content endpoint.
 // This is for standalone content servers (e.g., /content/*).
 // Separate from Register() because wildcard routes should be registered last.
-func (r *Routes) RegisterContent(router fiber.Router, prefix string) {
-	g := router.Group(prefix)
-	g.Get("/*", r.HandleContent)
+func (r *Routes) RegisterContent(router fiber.Router) {
+	router.Get("/*", r.HandleContent)
 }
 
 // HandleContent serves inscription content with directory resolution
@@ -258,7 +255,7 @@ func (r *Routes) sendContentResponse(c *fiber.Ctx, resp *Response, seq *int) err
 // @Success 200 {object} Response "Metadata"
 // @Failure 400 {object} map[string]string "Bad request"
 // @Failure 404 {object} map[string]string "Not found"
-// @Router /api/ordfs/metadata/{path} [get]
+// @Router /ordfs/metadata/{path} [get]
 func (r *Routes) HandleMetadata(c *fiber.Ctx) error {
 	path := c.Params("*")
 	if path == "" {
@@ -312,7 +309,7 @@ func (r *Routes) HandleMetadata(c *fiber.Ctx) error {
 // @Param b64HtmlData path string true "Base64-encoded HTML content"
 // @Success 200 {string} string "HTML content"
 // @Failure 400 {object} map[string]string "Bad request"
-// @Router /api/ordfs/preview/{b64HtmlData} [get]
+// @Router /ordfs/preview/{b64HtmlData} [get]
 func (r *Routes) HandlePreview(c *fiber.Ctx) error {
 	b64Html := c.Params("b64HtmlData")
 	if b64Html == "" {
@@ -340,7 +337,7 @@ func (r *Routes) HandlePreview(c *fiber.Ctx) error {
 // @Produce */*
 // @Success 200 {string} string "Content"
 // @Failure 400 {object} map[string]string "Bad request"
-// @Router /api/ordfs/preview [post]
+// @Router /ordfs/preview [post]
 func (r *Routes) HandlePreviewPost(c *fiber.Ctx) error {
 	body := c.Body()
 	if len(body) == 0 {
@@ -365,7 +362,7 @@ func (r *Routes) HandlePreviewPost(c *fiber.Ctx) error {
 // @Success 200 {file} binary "Streamed content"
 // @Failure 400 {object} map[string]string "Bad request"
 // @Failure 404 {object} map[string]string "Not found"
-// @Router /api/ordfs/stream/{outpoint} [get]
+// @Router /ordfs/stream/{outpoint} [get]
 func (r *Routes) HandleStream(c *fiber.Ctx) error {
 	outpointStr := c.Params("outpoint")
 	if outpointStr == "" {

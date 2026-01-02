@@ -2,16 +2,19 @@ package admin
 
 import (
 	"embed"
+	"encoding/binary"
 	"encoding/hex"
 	"io/fs"
 	"log/slog"
 	"net/http"
 	"net/url"
 	"sort"
+	"strconv"
 
 	"github.com/b-open-io/1sat-stack/pkg/bsv21"
 	"github.com/b-open-io/1sat-stack/pkg/overlay"
 	"github.com/b-open-io/1sat-stack/pkg/store"
+	"github.com/b-open-io/1sat-stack/pkg/txo"
 	"github.com/b-open-io/1sat-stack/pkg/types"
 	"github.com/bsv-blockchain/go-sdk/chainhash"
 	"github.com/gofiber/fiber/v2"
@@ -56,12 +59,16 @@ func (r *Routes) Register(group fiber.Router) {
 	// Active topics endpoint
 	group.Get("/topics/active", r.handleGetActiveTopics)
 
+	// Topic remote configuration endpoints
+	group.Get("/topics/:name/remotes", r.handleGetTopicRemotes)
+	group.Put("/topics/:name/remotes", r.handleSetTopicRemotes)
+	group.Delete("/topics/:name/remotes", r.handleDeleteTopicRemotes)
+
 	// Active lookup services endpoint
 	group.Get("/lookups/active", r.handleGetActiveLookups)
 
-	// Queue endpoints
-	group.Get("/queues", r.handleGetQueues)
-	group.Get("/queues/*", r.handleGetQueueItems)
+	// ZSet lookup endpoint (for queues and other sorted sets)
+	group.Get("/zset/*", r.handleGetZSetItems)
 
 	// Progress endpoints
 	group.Get("/progress", r.handleGetProgress)
@@ -104,7 +111,7 @@ func (r *Routes) Register(group fiber.Router) {
 // @Produce json
 // @Success 200 {array} string "List of whitelisted tokens"
 // @Failure 500 {object} map[string]string "Internal server error"
-// @Router /admin/api/whitelist [get]
+// @Router /admin/whitelist [get]
 func (r *Routes) handleGetWhitelist(c *fiber.Ctx) error {
 	members, err := r.store.SMembers(c.Context(), bsv21.KeyWhitelist)
 	if err != nil {
@@ -130,7 +137,7 @@ func (r *Routes) handleGetWhitelist(c *fiber.Ctx) error {
 // @Success 200 {object} map[string]string "success message"
 // @Failure 400 {object} map[string]string "Bad request"
 // @Failure 500 {object} map[string]string "Internal server error"
-// @Router /admin/api/whitelist [post]
+// @Router /admin/whitelist [post]
 func (r *Routes) handleAddToWhitelist(c *fiber.Ctx) error {
 	var req struct {
 		Topic string `json:"topic"`
@@ -169,7 +176,7 @@ func (r *Routes) handleAddToWhitelist(c *fiber.Ctx) error {
 // @Param token path string true "Token ID to remove"
 // @Success 200 {object} map[string]string "success message"
 // @Failure 500 {object} map[string]string "Internal server error"
-// @Router /admin/api/whitelist/{token} [delete]
+// @Router /admin/whitelist/{token} [delete]
 func (r *Routes) handleRemoveFromWhitelist(c *fiber.Ctx) error {
 	token := c.Params("token")
 	if token == "" {
@@ -199,7 +206,7 @@ func (r *Routes) handleRemoveFromWhitelist(c *fiber.Ctx) error {
 // @Produce json
 // @Success 200 {array} string "List of blacklisted topics"
 // @Failure 500 {object} map[string]string "Internal server error"
-// @Router /admin/api/blacklist [get]
+// @Router /admin/blacklist [get]
 func (r *Routes) handleGetBlacklist(c *fiber.Ctx) error {
 	members, err := r.store.SMembers(c.Context(), bsv21.KeyBlacklist)
 	if err != nil {
@@ -225,7 +232,7 @@ func (r *Routes) handleGetBlacklist(c *fiber.Ctx) error {
 // @Success 200 {object} map[string]string "success message"
 // @Failure 400 {object} map[string]string "Bad request"
 // @Failure 500 {object} map[string]string "Internal server error"
-// @Router /admin/api/blacklist [post]
+// @Router /admin/blacklist [post]
 func (r *Routes) handleAddToBlacklist(c *fiber.Ctx) error {
 	var req struct {
 		Topic string `json:"topic"`
@@ -264,7 +271,7 @@ func (r *Routes) handleAddToBlacklist(c *fiber.Ctx) error {
 // @Param topic path string true "Topic ID to remove"
 // @Success 200 {object} map[string]string "success message"
 // @Failure 500 {object} map[string]string "Internal server error"
-// @Router /admin/api/blacklist/{topic} [delete]
+// @Router /admin/blacklist/{topic} [delete]
 func (r *Routes) handleRemoveFromBlacklist(c *fiber.Ctx) error {
 	topic := c.Params("topic")
 	if topic == "" {
@@ -293,7 +300,7 @@ func (r *Routes) handleRemoveFromBlacklist(c *fiber.Ctx) error {
 // @Tags admin
 // @Produce json
 // @Success 200 {array} string "List of active topics"
-// @Router /admin/api/topics/active [get]
+// @Router /admin/topics/active [get]
 func (r *Routes) handleGetActiveTopics(c *fiber.Ctx) error {
 	if r.overlay == nil {
 		return c.JSON([]string{})
@@ -311,7 +318,7 @@ func (r *Routes) handleGetActiveTopics(c *fiber.Ctx) error {
 // @Tags admin
 // @Produce json
 // @Success 200 {array} string "List of active lookup services"
-// @Router /admin/api/lookups/active [get]
+// @Router /admin/lookups/active [get]
 func (r *Routes) handleGetActiveLookups(c *fiber.Ctx) error {
 	if r.overlay == nil {
 		return c.JSON([]string{})
@@ -323,96 +330,67 @@ func (r *Routes) handleGetActiveLookups(c *fiber.Ctx) error {
 	return c.JSON(lookups)
 }
 
-// QueueInfo represents queue information
-type QueueInfo struct {
-	Name  string `json:"name"`
-	Count int64  `json:"count"`
-}
-
-// QueueItem represents an item in a queue
-type QueueItem struct {
+// ZSetItem represents an item in a sorted set
+type ZSetItem struct {
 	Value string  `json:"value"`
 	Score float64 `json:"score"`
 }
 
-// handleGetQueues returns the list of queues
-// @Summary Get queues
-// @Description Returns the list of queues (sorted sets with q: prefix)
-// @Tags admin
-// @Produce json
-// @Success 200 {array} QueueInfo "List of queues with counts"
-// @Router /admin/api/queues [get]
-func (r *Routes) handleGetQueues(c *fiber.Ctx) error {
-	if r.store == nil {
-		return c.JSON([]QueueInfo{})
-	}
-
-	keys, err := r.store.ZKeys(c.Context(), []byte("q:"))
-	if err != nil {
-		r.logger.Error("failed to get queue keys", "error", err)
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
-			"error": "failed to get queues",
-		})
-	}
-
-	queues := make([]QueueInfo, 0, len(keys))
-	for _, key := range keys {
-		count, err := r.store.ZCard(c.Context(), []byte(key))
-		if err != nil {
-			r.logger.Warn("failed to get queue count", "key", key, "error", err)
-			count = 0
-		}
-		queues = append(queues, QueueInfo{
-			Name:  key,
-			Count: count,
-		})
-	}
-
-	// Sort by name
-	sort.Slice(queues, func(i, j int) bool {
-		return queues[i].Name < queues[j].Name
-	})
-
-	return c.JSON(queues)
+// ZSetResponse represents the response for a zset lookup
+type ZSetResponse struct {
+	Key   string     `json:"key"`
+	Count int64      `json:"count"`
+	Items []ZSetItem `json:"items"`
 }
 
-// handleGetQueueItems returns items from a specific queue
-// @Summary Get queue items
-// @Description Returns the first 25 items from a queue
+// handleGetZSetItems returns items from a specific sorted set by key
+// @Summary Get sorted set items
+// @Description Returns the first 25 items from any sorted set by key
 // @Tags admin
 // @Produce json
-// @Param name path string true "Queue name"
-// @Success 200 {array} QueueItem "List of queue items"
-// @Router /admin/api/queues/{name} [get]
-func (r *Routes) handleGetQueueItems(c *fiber.Ctx) error {
+// @Param key path string true "Sorted set key (e.g., q:tok:abc123, z:ev:own:address)"
+// @Success 200 {object} ZSetResponse "Sorted set info and items"
+// @Failure 400 {object} map[string]string "Bad request"
+// @Failure 500 {object} map[string]string "Internal server error"
+// @Router /admin/zset/{key} [get]
+func (r *Routes) handleGetZSetItems(c *fiber.Ctx) error {
 	if r.store == nil {
-		return c.JSON([]QueueItem{})
-	}
-
-	nameEncoded := c.Params("*")
-	name, err := url.PathUnescape(nameEncoded)
-	if err != nil {
-		name = nameEncoded
-	}
-	r.logger.Debug("handleGetQueueItems", "nameEncoded", nameEncoded, "name", name, "path", c.Path())
-	if name == "" {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
-			"error": "queue name is required",
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"error": "store not available",
 		})
 	}
 
-	members, err := r.store.ZRange(c.Context(), []byte(name), store.ScoreRange{
+	keyEncoded := c.Params("*")
+	key, err := url.PathUnescape(keyEncoded)
+	if err != nil {
+		key = keyEncoded
+	}
+	if key == "" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": "key is required",
+		})
+	}
+
+	// Get count
+	count, err := r.store.ZCard(c.Context(), []byte(key))
+	if err != nil {
+		r.logger.Error("failed to get zset count", "key", key, "error", err)
+		count = 0
+	}
+
+	// Get items
+	members, err := r.store.ZRange(c.Context(), []byte(key), store.ScoreRange{
 		Count: 25,
 	})
-	r.logger.Debug("handleGetQueueItems result", "name", name, "count", len(members), "err", err)
+	r.logger.Debug("handleGetZSetItems result", "key", key, "count", len(members), "err", err)
 	if err != nil {
-		r.logger.Error("failed to get queue items", "queue", name, "error", err)
+		r.logger.Error("failed to get zset items", "key", key, "error", err)
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
-			"error": "failed to get queue items",
+			"error": "failed to get zset items",
 		})
 	}
 
-	items := make([]QueueItem, 0, len(members))
+	items := make([]ZSetItem, 0, len(members))
 	for _, m := range members {
 		var value string
 		switch len(m.Member) {
@@ -433,39 +411,56 @@ func (r *Routes) handleGetQueueItems(c *fiber.Ctx) error {
 				value = hex.EncodeToString(m.Member)
 			}
 		default:
-			value = hex.EncodeToString(m.Member)
+			// Try as string first, fall back to hex
+			if isPrintable(m.Member) {
+				value = string(m.Member)
+			} else {
+				value = hex.EncodeToString(m.Member)
+			}
 		}
-		items = append(items, QueueItem{
+		items = append(items, ZSetItem{
 			Value: value,
 			Score: m.Score,
 		})
 	}
 
-	return c.JSON(items)
+	return c.JSON(ZSetResponse{
+		Key:   key,
+		Count: count,
+		Items: items,
+	})
 }
 
-// ProgressKey is the key for sync progress tracking
-const ProgressKey = "sync:progress"
+// isPrintable checks if a byte slice is printable ASCII
+func isPrintable(b []byte) bool {
+	for _, c := range b {
+		if c < 32 || c > 126 {
+			return false
+		}
+	}
+	return len(b) > 0
+}
 
 // ProgressItem represents a progress entry
 type ProgressItem struct {
-	ID    string  `json:"id"`
-	Block float64 `json:"block"`
+	ID    string `json:"id"`
+	Block uint32 `json:"block"`
 }
 
-// handleGetProgress returns all progress entries
+// handleGetProgress returns all progress entries from the h:prog hash
 // @Summary Get progress
-// @Description Returns all sync progress entries
+// @Description Returns all sync progress entries (subscriptions, owners, peers)
 // @Tags admin
 // @Produce json
 // @Success 200 {array} ProgressItem "List of progress entries"
-// @Router /admin/api/progress [get]
+// @Router /admin/progress [get]
 func (r *Routes) handleGetProgress(c *fiber.Ctx) error {
 	if r.store == nil {
 		return c.JSON([]ProgressItem{})
 	}
 
-	members, err := r.store.ZRange(c.Context(), []byte(ProgressKey), store.ScoreRange{})
+	// Get all fields from the h:prog hash
+	entries, err := r.store.HGetAll(c.Context(), txo.KeyProgress)
 	if err != nil {
 		r.logger.Error("failed to get progress", "error", err)
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
@@ -473,11 +468,21 @@ func (r *Routes) handleGetProgress(c *fiber.Ctx) error {
 		})
 	}
 
-	items := make([]ProgressItem, 0, len(members))
-	for _, m := range members {
+	items := make([]ProgressItem, 0, len(entries))
+	for id, valueBytes := range entries {
+		var block uint32
+		if len(valueBytes) == 4 {
+			// Binary uint32 big-endian (used by jbsync and owner sync)
+			block = binary.BigEndian.Uint32(valueBytes)
+		} else {
+			// Try parsing as string (used by peer interactions)
+			if parsed, err := strconv.ParseFloat(string(valueBytes), 64); err == nil {
+				block = uint32(parsed)
+			}
+		}
 		items = append(items, ProgressItem{
-			ID:    string(m.Member),
-			Block: m.Score,
+			ID:    id,
+			Block: block,
 		})
 	}
 
@@ -489,7 +494,7 @@ func (r *Routes) handleGetProgress(c *fiber.Ctx) error {
 	return c.JSON(items)
 }
 
-// handleUpdateProgress updates a progress entry
+// handleUpdateProgress updates a progress entry in the h:prog hash
 // @Summary Update progress
 // @Description Updates a sync progress entry
 // @Tags admin
@@ -500,7 +505,7 @@ func (r *Routes) handleGetProgress(c *fiber.Ctx) error {
 // @Success 200 {object} map[string]string "success message"
 // @Failure 400 {object} map[string]string "Bad request"
 // @Failure 500 {object} map[string]string "Internal server error"
-// @Router /admin/api/progress/{id} [put]
+// @Router /admin/progress/{id} [put]
 func (r *Routes) handleUpdateProgress(c *fiber.Ctx) error {
 	if r.store == nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
@@ -516,7 +521,7 @@ func (r *Routes) handleUpdateProgress(c *fiber.Ctx) error {
 	}
 
 	var req struct {
-		Block float64 `json:"block"`
+		Block uint32 `json:"block"`
 	}
 	if err := c.BodyParser(&req); err != nil {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
@@ -524,10 +529,11 @@ func (r *Routes) handleUpdateProgress(c *fiber.Ctx) error {
 		})
 	}
 
-	err := r.store.ZAdd(c.Context(), []byte(ProgressKey), store.ScoredMember{
-		Member: []byte(id),
-		Score:  req.Block,
-	})
+	// Store as binary uint32 big-endian (matches jbsync and owner sync)
+	progressBytes := make([]byte, 4)
+	binary.BigEndian.PutUint32(progressBytes, req.Block)
+
+	err := r.store.HSet(c.Context(), txo.KeyProgress, []byte(id), progressBytes)
 	if err != nil {
 		r.logger.Error("failed to update progress", "error", err, "id", id)
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
@@ -543,7 +549,7 @@ func (r *Routes) handleUpdateProgress(c *fiber.Ctx) error {
 	})
 }
 
-// handleDeleteProgress deletes a progress entry
+// handleDeleteProgress deletes a progress entry from the h:prog hash
 // @Summary Delete progress
 // @Description Deletes a sync progress entry
 // @Tags admin
@@ -551,7 +557,7 @@ func (r *Routes) handleUpdateProgress(c *fiber.Ctx) error {
 // @Param id path string true "Progress ID"
 // @Success 200 {object} map[string]string "success message"
 // @Failure 500 {object} map[string]string "Internal server error"
-// @Router /admin/api/progress/{id} [delete]
+// @Router /admin/progress/{id} [delete]
 func (r *Routes) handleDeleteProgress(c *fiber.Ctx) error {
 	if r.store == nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
@@ -566,7 +572,7 @@ func (r *Routes) handleDeleteProgress(c *fiber.Ctx) error {
 		})
 	}
 
-	err := r.store.ZRem(c.Context(), []byte(ProgressKey), []byte(id))
+	err := r.store.HDel(c.Context(), txo.KeyProgress, []byte(id))
 	if err != nil {
 		r.logger.Error("failed to delete progress", "error", err, "id", id)
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
@@ -581,13 +587,136 @@ func (r *Routes) handleDeleteProgress(c *fiber.Ctx) error {
 	})
 }
 
+// handleGetTopicRemotes returns the remote configuration for a topic
+// @Summary Get topic remotes
+// @Description Returns the configured remotes for a topic
+// @Tags admin
+// @Produce json
+// @Param name path string true "Topic name"
+// @Success 200 {array} overlay.RemoteConfig "List of configured remotes"
+// @Failure 500 {object} map[string]string "Internal server error"
+// @Router /admin/topics/{name}/remotes [get]
+func (r *Routes) handleGetTopicRemotes(c *fiber.Ctx) error {
+	if r.overlay == nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"error": "overlay service not available",
+		})
+	}
+
+	name := c.Params("name")
+	if name == "" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": "topic name is required",
+		})
+	}
+
+	configs, err := r.overlay.GetRemoteConfig(c.Context(), name)
+	if err != nil {
+		r.logger.Error("failed to get topic remotes", "error", err, "topic", name)
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"error": "failed to get topic remotes",
+		})
+	}
+
+	if configs == nil {
+		configs = []overlay.RemoteConfig{}
+	}
+
+	return c.JSON(configs)
+}
+
+// handleSetTopicRemotes sets the remote configuration for a topic
+// @Summary Set topic remotes
+// @Description Sets the configured remotes for a topic (overrides defaults)
+// @Tags admin
+// @Accept json
+// @Produce json
+// @Param name path string true "Topic name"
+// @Param body body []overlay.RemoteConfig true "Remote configurations"
+// @Success 200 {object} map[string]string "success message"
+// @Failure 400 {object} map[string]string "Bad request"
+// @Failure 500 {object} map[string]string "Internal server error"
+// @Router /admin/topics/{name}/remotes [put]
+func (r *Routes) handleSetTopicRemotes(c *fiber.Ctx) error {
+	if r.overlay == nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"error": "overlay service not available",
+		})
+	}
+
+	name := c.Params("name")
+	if name == "" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": "topic name is required",
+		})
+	}
+
+	var configs []overlay.RemoteConfig
+	if err := c.BodyParser(&configs); err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": "invalid request body",
+		})
+	}
+
+	if err := r.overlay.SaveRemoteConfig(c.Context(), name, configs); err != nil {
+		r.logger.Error("failed to save topic remotes", "error", err, "topic", name)
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"error": "failed to save topic remotes",
+		})
+	}
+
+	r.logger.Info("saved topic remotes", "topic", name, "remotes", len(configs))
+	return c.JSON(fiber.Map{
+		"message": "topic remotes saved",
+		"topic":   name,
+		"count":   len(configs),
+	})
+}
+
+// handleDeleteTopicRemotes deletes the remote configuration for a topic
+// @Summary Delete topic remotes
+// @Description Removes the remote config override, reverting to defaults
+// @Tags admin
+// @Produce json
+// @Param name path string true "Topic name"
+// @Success 200 {object} map[string]string "success message"
+// @Failure 500 {object} map[string]string "Internal server error"
+// @Router /admin/topics/{name}/remotes [delete]
+func (r *Routes) handleDeleteTopicRemotes(c *fiber.Ctx) error {
+	if r.overlay == nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"error": "overlay service not available",
+		})
+	}
+
+	name := c.Params("name")
+	if name == "" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": "topic name is required",
+		})
+	}
+
+	if err := r.overlay.DeleteRemoteConfig(c.Context(), name); err != nil {
+		r.logger.Error("failed to delete topic remotes", "error", err, "topic", name)
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"error": "failed to delete topic remotes",
+		})
+	}
+
+	r.logger.Info("deleted topic remotes", "topic", name)
+	return c.JSON(fiber.Map{
+		"message": "topic remotes deleted (reverted to defaults)",
+		"topic":   name,
+	})
+}
+
 // handleGetBSV21Workers returns the status of all active BSV21 token workers
 // @Summary Get BSV21 workers
 // @Description Returns the status of all active BSV21 token workers
 // @Tags admin
 // @Produce json
 // @Success 200 {array} bsv21.WorkerStatus "List of active workers"
-// @Router /admin/api/bsv21/workers [get]
+// @Router /admin/bsv21/workers [get]
 func (r *Routes) handleGetBSV21Workers(c *fiber.Ctx) error {
 	if r.bsv21Sync == nil {
 		r.logger.Debug("bsv21 workers: sync service is nil")

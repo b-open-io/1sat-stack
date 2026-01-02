@@ -1081,7 +1081,7 @@ beefRoutes.Register(app.Group("/tx"))        // /tx/:txid, /tx/:txid/beef, etc.
 merkleRoutes.Register(app.Group("/arc"))     // /arc/callback
 txoRoutes.Register(app.Group("/txo"))        // /txo/:outpoint, /txo/search/:key, etc.
 sseRoutes.Register(app.Group("/sse"))        // /sse/subscribe
-submitRoutes.Register(app.Group("/api/v1"))  // /api/v1/submit
+submitRoutes.Register(app.Group("/1sat/v1"))  // /1sat/v1/submit
 
 indexerRoutes.Register(app.Group("/idx"))    // /idx/:txid/parse, /idx/parse
 bsv21Routes.Register(app.Group("/bsv21"))    // /bsv21/*

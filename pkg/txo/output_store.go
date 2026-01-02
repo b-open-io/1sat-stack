@@ -30,6 +30,10 @@ const (
 
 // === OutputStore ===
 
+// IngestTxFunc is a callback for triggering main indexing from overlay flow.
+// Set this after initialization to wire up the indexer.
+type IngestTxFunc func(ctx context.Context, tx *transaction.Transaction) error
+
 // OutputStore provides global output storage.
 // Output data is keyed by binary outpoint for locality.
 // Spends and satoshis use hashes for efficient bulk lookups.
@@ -37,6 +41,11 @@ type OutputStore struct {
 	Store     store.Store
 	PubSub    pubsub.PubSub
 	BeefStore *beef.Storage
+
+	// IngestTx is an optional callback to trigger main indexing when
+	// outputs are inserted via overlay flow. Set after initialization
+	// to wire up the indexer (avoids circular imports).
+	IngestTx IngestTxFunc
 }
 
 // NewOutputStore creates a new global OutputStore
@@ -56,9 +65,8 @@ func (s *OutputStore) SaveOutput(ctx context.Context, output *IndexedOutput, sat
 	opBytes := op.Bytes()
 	hashKey := KeyOutHash(op)
 
-	// Build events list - include txid event and owner events
-	events := make([]string, 0, len(output.Events)+len(output.Owners)+1)
-	events = append(events, "txid:"+op.Txid.String())
+	// Build events list - include owner events
+	events := make([]string, 0, len(output.Events)+len(output.Owners))
 	events = append(events, output.Events...)
 	for _, owner := range output.Owners {
 		if !owner.IsZero() {
@@ -449,7 +457,7 @@ func (s *OutputStore) filterSpent(ctx context.Context, results []store.ScoredMem
 
 // LoadOutput loads a single output by outpoint
 func (s *OutputStore) LoadOutput(ctx context.Context, op *transaction.Outpoint, cfg *OutputSearchCfg) (*IndexedOutput, error) {
-	outputs, err := s.loadOutputs(ctx, []*transaction.Outpoint{op}, cfg)
+	outputs, err := s.LoadOutputs(ctx, []*transaction.Outpoint{op}, cfg)
 	if err != nil {
 		return nil, err
 	}
@@ -488,7 +496,7 @@ func (s *OutputStore) LoadOutputsByTxid(ctx context.Context, txid *chainhash.Has
 		}
 	}
 
-	return s.loadOutputs(ctx, ops, cfg)
+	return s.LoadOutputs(ctx, ops, cfg)
 }
 
 // loadOutputsFromResults loads outputs from search results, including scores
@@ -508,8 +516,8 @@ func (s *OutputStore) loadOutputsFromResults(ctx context.Context, results []stor
 	return s.loadOutputsWithScores(ctx, ops, scores, cfg)
 }
 
-// loadOutputs loads multiple outputs with their data based on cfg (no scores)
-func (s *OutputStore) loadOutputs(ctx context.Context, ops []*transaction.Outpoint, cfg *OutputSearchCfg) ([]*IndexedOutput, error) {
+// LoadOutputs loads multiple outputs based on cfg flags
+func (s *OutputStore) LoadOutputs(ctx context.Context, ops []*transaction.Outpoint, cfg *OutputSearchCfg) ([]*IndexedOutput, error) {
 	// No scores available - pass nil
 	return s.loadOutputsWithScores(ctx, ops, nil, cfg)
 }

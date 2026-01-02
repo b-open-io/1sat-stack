@@ -53,9 +53,7 @@ func (c *Config) SetDefaults(v *viper.Viper, prefix string) {
 	v.SetDefault(p+"badger.path", "~/.1sat/store")
 	v.SetDefault(p+"badger.in_memory", false)
 	v.SetDefault(p+"badger.log_level", "warn") // Default to warn to quiet BadgerDB
-	v.SetDefault(p+"redis.addr", "localhost:6379")
-	v.SetDefault(p+"redis.password", "")
-	v.SetDefault(p+"redis.db", 0)
+	v.SetDefault(p+"redis.url", "redis://localhost:6379/0")
 }
 
 // Services holds initialized store services.

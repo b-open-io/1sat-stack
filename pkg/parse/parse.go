@@ -52,7 +52,6 @@ var DefaultTags = []string{
 	TagBSV21,       // BSV21 fungible tokens
 	TagOrdLock,     // Ordinal lock listings
 	TagCosign,      // Cosign protocol
-	TagShrug,       // Shrug tokens
 	TagBitcom,      // Base bitcom parser (must come before B, MAP, etc.)
 	TagB,           // B:// protocol
 	TagMAP,         // MAP protocol

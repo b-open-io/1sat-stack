@@ -268,19 +268,14 @@ func (s *Service) ValidateAndUpdateTx(ctx context.Context, txid *chainhash.Hash,
 	s.logger.Debug("updating tx score", "txid", txid.String(), "score", newScore)
 
 	// Update BEEF storage with new proof
+	beef := assembleBEEF(tx)
 	if s.beefStore != nil {
-		beefBytes, err := assembleBEEF(tx)
-		if err == nil {
-			s.beefStore.SaveBeef(ctx, txid, beefBytes)
-		}
+		s.beefStore.SaveBeef(ctx, txid, beef)
 	}
 
 	// Update txo storage if available
 	if s.txoStore != nil {
-		beefBytes, _ := assembleBEEF(tx)
-		if len(beefBytes) > 0 {
-			s.txoStore.UpdateTransactionBEEF(ctx, txid, beefBytes)
-		}
+		s.txoStore.UpdateTransactionBEEF(ctx, txid, beef)
 	}
 
 	// Check if now immutable
@@ -318,10 +313,10 @@ func (s *Service) GetImmutableThreshold() float64 {
 	return s.immutableScore
 }
 
-// assembleBEEF creates BEEF bytes from a transaction.
-func assembleBEEF(tx *transaction.Transaction) ([]byte, error) {
+// assembleBEEF creates a BEEF object from a transaction.
+func assembleBEEF(tx *transaction.Transaction) *transaction.Beef {
 	beef := transaction.NewBeef()
 	beef.BUMPs = []*transaction.MerklePath{tx.MerklePath}
 	beef.Transactions[*tx.TxID()] = &transaction.BeefTx{Transaction: tx}
-	return beef.Bytes()
+	return beef
 }

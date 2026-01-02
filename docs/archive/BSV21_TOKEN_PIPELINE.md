@@ -250,20 +250,20 @@ Tokens can be managed via admin API:
 
 ```bash
 # Whitelist a token (always active, bypasses fee check)
-curl -X POST http://localhost:8080/admin/api/whitelist \
+curl -X POST http://localhost:8080/1sat/admin/whitelist \
   -H "Content-Type: application/json" \
   -d '{"topic": "abc123..."}'
 
 # Blacklist a token (never active)
-curl -X POST http://localhost:8080/admin/api/blacklist \
+curl -X POST http://localhost:8080/1sat/admin/blacklist \
   -H "Content-Type: application/json" \
   -d '{"topic": "abc123..."}'
 
 # Remove from whitelist
-curl -X DELETE http://localhost:8080/admin/api/whitelist/abc123...
+curl -X DELETE http://localhost:8080/1sat/admin/whitelist/abc123...
 
 # Remove from blacklist
-curl -X DELETE http://localhost:8080/admin/api/blacklist/abc123...
+curl -X DELETE http://localhost:8080/1sat/admin/blacklist/abc123...
 ```
 
 ## Key Design Decisions

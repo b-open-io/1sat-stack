@@ -46,7 +46,7 @@ func (r *Routes) Register(router fiber.Router) {
 // OwnerTxos returns transaction outputs owned by a specific owner.
 // @Summary Get owner TXOs
 // @Description Get transaction outputs owned by a specific owner (address/pubkey/script hash)
-// @Tags own
+// @Tags owner
 // @Produce json
 // @Param owner path string true "Owner identifier (address, pubkey, or script hash)"
 // @Param refresh query bool false "Refresh owner data from blockchain before returning" default(true)
@@ -100,7 +100,7 @@ func (r *Routes) OwnerTxos(c *fiber.Ctx) error {
 // OwnerBalance returns the satoshi balance for a specific owner.
 // @Summary Get owner balance
 // @Description Get the satoshi balance for a specific owner
-// @Tags own
+// @Tags owner
 // @Produce json
 // @Param owner path string true "Owner identifier (address, pubkey, or script hash)"
 // @Success 200 {object} BalanceResponse

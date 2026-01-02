@@ -389,20 +389,24 @@
                     </div>
                 </div>
 
-                <!-- Queues Card -->
+                <!-- ZSet Lookup Card -->
                 <div class="card" style="grid-column: 1 / -1;">
                     <div class="card-header">
-                        <h2>Queues</h2>
-                        <div>
-                            <span class="badge" id="queue-count">0 queues</span>
-                            <button class="secondary" onclick="refreshQueues()" style="margin-left: 0.5rem;">Refresh</button>
-                        </div>
+                        <h2>Sorted Set Lookup</h2>
                     </div>
                     <p style="color: var(--text-secondary); margin-bottom: 1rem; font-size: 0.875rem;">
-                        Processing queues (click to view items)
+                        Look up any sorted set by key (e.g., q:tok:abc123, z:ev:own:address)
                     </p>
-                    <div class="topic-list" id="queue-items">
-                        <div class="loading">Loading...</div>
+                    <div class="input-group">
+                        <input type="text" id="zset-input" placeholder="Enter sorted set key (e.g., q:tok:abc123...)">
+                        <button onclick="lookupZSet()">Lookup</button>
+                    </div>
+                    <div id="zset-result" style="display: none;">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">
+                            <span class="topic-name" id="zset-key"></span>
+                            <span class="badge" id="zset-count">0 items</span>
+                        </div>
+                        <div class="topic-list" id="zset-items"></div>
                     </div>
                 </div>
 
@@ -424,21 +428,6 @@
                 </div>
             </div>
         </section>
-    </div>
-
-    <!-- Queue Items Modal -->
-    <div id="queue-modal" style="display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.8); z-index: 1000; overflow-y: auto;">
-        <div style="max-width: 800px; margin: 2rem auto; background: var(--bg-secondary); border-radius: 1rem; border: 1px solid var(--border);">
-            <div style="display: flex; justify-content: space-between; align-items: center; padding: 1.5rem; border-bottom: 1px solid var(--border);">
-                <h2 id="queue-modal-title">Queue Items</h2>
-                <button class="secondary" onclick="closeQueueModal()">Close</button>
-            </div>
-            <div style="padding: 1.5rem;">
-                <div class="topic-list" id="queue-modal-items" style="max-height: 60vh;">
-                    <div class="loading">Loading...</div>
-                </div>
-            </div>
-        </div>
     </div>
 
     <div class="toast" id="toast"></div>
@@ -528,15 +517,45 @@
             }
         }
 
-        async function fetchQueues() {
+        // ZSet lookup function
+        async function lookupZSet() {
+            const input = document.getElementById('zset-input');
+            const key = input.value.trim();
+            if (!key) {
+                showToast('Please enter a sorted set key', 'error');
+                return;
+            }
+
+            const resultDiv = document.getElementById('zset-result');
+            const itemsDiv = document.getElementById('zset-items');
+            resultDiv.style.display = 'block';
+            itemsDiv.innerHTML = '<div class="loading">Loading...</div>';
+
             try {
-                const response = await fetch(`${API_BASE}/queues`);
-                const queues = await response.json();
-                renderQueueList('queue-items', queues);
-                document.getElementById('queue-count').textContent = `${queues.length} queue${queues.length !== 1 ? 's' : ''}`;
+                const response = await fetch(`${API_BASE}/zset/${encodeURIComponent(key)}`);
+                if (!response.ok) {
+                    const data = await response.json();
+                    throw new Error(data.error || 'Failed to lookup');
+                }
+                const data = await response.json();
+
+                document.getElementById('zset-key').textContent = data.key;
+                document.getElementById('zset-count').textContent = `${data.count} item${data.count !== 1 ? 's' : ''}`;
+
+                if (!data.items || data.items.length === 0) {
+                    itemsDiv.innerHTML = '<div class="empty-state">No items found</div>';
+                    return;
+                }
+
+                itemsDiv.innerHTML = data.items.map(item => `
+                    <div class="topic-item">
+                        <span class="topic-name" style="word-break: break-all;">${escapeHtml(item.value)}</span>
+                        <span class="badge" style="white-space: nowrap;">score: ${item.score}</span>
+                    </div>
+                `).join('');
             } catch (error) {
-                console.error('Failed to fetch queues:', error);
-                document.getElementById('queue-items').innerHTML = '<div class="empty-state">Failed to load</div>';
+                console.error('Failed to lookup zset:', error);
+                itemsDiv.innerHTML = `<div class="empty-state">${escapeHtml(error.message)}</div>`;
             }
         }
 
@@ -590,51 +609,6 @@
         function refreshWorkers() {
             document.getElementById('worker-items').innerHTML = '<div class="loading">Loading...</div>';
             fetchWorkers();
-        }
-
-        function renderQueueList(containerId, queues) {
-            const container = document.getElementById(containerId);
-            if (!queues || queues.length === 0) {
-                container.innerHTML = '<div class="empty-state">No queues</div>';
-                return;
-            }
-
-            container.innerHTML = queues.map(q => `
-                <div class="topic-item" style="cursor: pointer;" onclick="showQueueItems('${escapeHtml(q.name)}')">
-                    <span class="topic-name">${escapeHtml(q.name)}</span>
-                    <span class="badge">${q.count} item${q.count !== 1 ? 's' : ''}</span>
-                </div>
-            `).join('');
-        }
-
-        async function showQueueItems(name) {
-            document.getElementById('queue-modal').style.display = 'block';
-            document.getElementById('queue-modal-title').textContent = name;
-            document.getElementById('queue-modal-items').innerHTML = '<div class="loading">Loading...</div>';
-
-            try {
-                const response = await fetch(`${API_BASE}/queues/${encodeURIComponent(name)}`);
-                const items = await response.json();
-                
-                if (!items || items.length === 0) {
-                    document.getElementById('queue-modal-items').innerHTML = '<div class="empty-state">Queue is empty</div>';
-                    return;
-                }
-
-                document.getElementById('queue-modal-items').innerHTML = items.map(item => `
-                    <div class="topic-item">
-                        <span class="topic-name" style="word-break: break-all;">${escapeHtml(item.value)}</span>
-                        <span class="badge" style="white-space: nowrap;">score: ${item.score}</span>
-                    </div>
-                `).join('');
-            } catch (error) {
-                console.error('Failed to fetch queue items:', error);
-                document.getElementById('queue-modal-items').innerHTML = '<div class="empty-state">Failed to load</div>';
-            }
-        }
-
-        function closeQueueModal() {
-            document.getElementById('queue-modal').style.display = 'none';
         }
 
         // Progress functions
@@ -726,18 +700,6 @@
             document.getElementById('progress-items').innerHTML = '<div class="loading">Loading...</div>';
             fetchProgress();
         }
-
-        // Close modal on escape key
-        document.addEventListener('keydown', (e) => {
-            if (e.key === 'Escape') {
-                closeQueueModal();
-            }
-        });
-
-        // Close modal on background click
-        document.getElementById('queue-modal').addEventListener('click', (e) => {
-            if (e.target.id === 'queue-modal') closeQueueModal();
-        });
 
         async function addToWhitelist() {
             const input = document.getElementById('whitelist-input');
@@ -841,11 +803,6 @@
             fetchLookups();
         }
 
-        function refreshQueues() {
-            document.getElementById('queue-items').innerHTML = '<div class="loading">Loading...</div>';
-            fetchQueues();
-        }
-
         // Handle enter key on inputs
         document.getElementById('whitelist-input').addEventListener('keypress', (e) => {
             if (e.key === 'Enter') addToWhitelist();
@@ -855,12 +812,15 @@
             if (e.key === 'Enter') addToBlacklist();
         });
 
+        document.getElementById('zset-input').addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') lookupZSet();
+        });
+
         // Initial load
         fetchWhitelist();
         fetchBlacklist();
         fetchActiveTopics();
         fetchLookups();
-        fetchQueues();
         fetchProgress();
         fetchWorkers();
 

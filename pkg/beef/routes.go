@@ -38,11 +38,16 @@ func (r *Routes) getBeef(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid txid"})
 	}
 
-	beefBytes, err := r.storage.LoadBeef(c.Context(), txid)
+	beef, err := r.storage.LoadBeef(c.Context(), txid)
 	if err != nil {
 		if err.Error() == "transaction "+txidStr+" not found in BEEF" {
 			return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "not found"})
 		}
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": err.Error()})
+	}
+
+	beefBytes, err := beef.AtomicBytes(txid)
+	if err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": err.Error()})
 	}
 

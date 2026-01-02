@@ -3,20 +3,17 @@ package bsv21
 import (
 	"context"
 	"errors"
-	"fmt"
 	"log/slog"
 	"sync"
 	"time"
 
 	"github.com/b-open-io/1sat-stack/pkg/beef"
 	gaspqueue "github.com/b-open-io/1sat-stack/pkg/gasp"
-	"github.com/b-open-io/1sat-stack/pkg/jbsync"
 	"github.com/b-open-io/1sat-stack/pkg/overlay"
 	"github.com/b-open-io/1sat-stack/pkg/store"
-	topicpkg "github.com/b-open-io/1sat-stack/pkg/topic"
 	"github.com/b-open-io/1sat-stack/pkg/txo"
-	"github.com/b-open-io/1sat-stack/pkg/worker"
 	"github.com/bsv-blockchain/go-chaintracks/chaintracks"
+	"github.com/bsv-blockchain/go-overlay-services/pkg/core/gasp"
 	"github.com/bsv-blockchain/go-sdk/transaction"
 	"golang.org/x/sync/errgroup"
 )
@@ -45,8 +42,9 @@ type TokenManager struct {
 	lifecycleInterval time.Duration
 	logger            *slog.Logger
 
-	workers sync.Map // tokenId -> *TokenWorker
-	limiter chan struct{}
+	workers  sync.Map // tokenId -> *TokenWorker
+	statuses sync.Map // tokenId -> *TokenStatus
+	limiter  chan struct{}
 	g       *errgroup.Group
 	ctx     context.Context
 }
@@ -106,67 +104,168 @@ func (m *TokenManager) Start(ctx context.Context) error {
 		}
 	})
 
+	// Background refresher for inactive tokens (every 15 minutes)
+	g.Go(func() error {
+		ticker := time.NewTicker(15 * time.Minute)
+		defer ticker.Stop()
+		m.logger.Info("inactive token refresher started", "interval", "15m")
+		for {
+			select {
+			case <-ctx.Done():
+				return nil
+			case <-ticker.C:
+				m.refreshInactiveTokens(ctx)
+			}
+		}
+	})
+
 	return g.Wait()
 }
 
 // createWorker creates a new worker for a token
-func (m *TokenManager) createWorker(ctx context.Context, tokenId, address string) error {
+func (m *TokenManager) createWorker(ctx context.Context, status *TokenStatus) error {
 	if m.g == nil || m.ctx == nil {
 		return errors.New("token manager not started")
 	}
 
-	// Create GASP processor for this token
-	topic := "tm_" + tokenId
-	processor := gaspqueue.NewProcessor(topic, m.beefStorage, m.overlay.Engine)
+	tokenId := status.TokenID
+	topicName := "tm_" + tokenId
 
-	// Create handler that uses shared limiter and GASP processor
-	handler := func(ctx context.Context, id string, score float64) error {
-		// Acquire shared limiter
-		m.limiter <- struct{}{}
-		defer func() { <-m.limiter }()
+	// Create cancellable context for this worker
+	workerCtx, cancel := context.WithCancel(ctx)
 
-		// Parse outpoint from queue member
-		outpoint := transaction.NewOutpointFromBytes([]byte(id))
-		if outpoint == nil {
-			return fmt.Errorf("invalid outpoint: %s", id)
-		}
+	// Create BeefRemote for local BEEF storage access
+	beefRemote := gaspqueue.NewBeefRemote(m.beefStorage, m.store, "")
 
-		return processor.ProcessOutput(ctx, outpoint)
-	}
-
-	// Create worker using generic worker package
-	w := worker.New(&worker.Config{
+	// Create TopicWorker with GASP processing
+	tw := gaspqueue.NewTopicWorker(&gaspqueue.TopicWorkerConfig{
+		TopicName:   topicName,
 		Store:       m.store,
-		Key:         jbsync.TokenQueueKey(tokenId),
-		Concurrency: 1, // Actual concurrency controlled by shared limiter
-		Handler:     handler,
-		OnError: func(ctx context.Context, id string, score float64, err error) {
-			m.logger.Error("token worker error", "tokenId", tokenId, "outpoint", id, "error", err)
+		Engine:      m.overlay.Engine,
+		Remotes:     []gasp.Remote{beefRemote},
+		Concurrency: m.concurrency,
+		OnProcessed: func(name string) error {
+			m.onTokenItemProcessed(tokenId)
+			return nil
 		},
 		Logger: m.logger.With("tokenId", tokenId),
 	})
 
-	tw := &TokenWorker{
+	tokenWorker := &TokenWorker{
 		tokenId:   tokenId,
-		address:   address,
-		worker:    w,
+		address:   status.FeeAddress,
+		worker:    nil, // TopicWorker is separate
 		startedAt: time.Now(),
+		cancel:    cancel,
 	}
 
-	m.workers.Store(tokenId, tw)
+	// Store status for live tracking (all tokens, for admin API access)
+	m.statuses.Store(tokenId, status)
+	m.workers.Store(tokenId, tokenWorker)
 
 	m.g.Go(func() error {
 		defer m.workers.Delete(tokenId)
-		return w.Start(m.ctx)
+		defer m.statuses.Delete(tokenId)
+		err := tw.Start(workerCtx)
+		// Workers can be cancelled for valid lifecycle reasons (e.g., underfunding)
+		// Return nil to prevent cascading shutdown of other workers
+		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+			m.logger.Debug("worker exited normally", "tokenId", tokenId)
+			return nil
+		}
+		return err
 	})
 
 	m.logger.Info("token worker created", "tokenId", tokenId)
 	return nil
 }
 
+// onTokenItemProcessed is called after each successful item processing.
+// It decrements the in-memory balance and triggers sync/shutdown if needed.
+func (m *TokenManager) onTokenItemProcessed(tokenId string) {
+	statusVal, ok := m.statuses.Load(tokenId)
+	if !ok {
+		return
+	}
+	status := statusVal.(*TokenStatus)
+
+	// Whitelisted tokens don't track balance
+	if status.IsWhitelisted {
+		return
+	}
+
+	// Atomically decrement balance
+	newBalance := status.Deduct()
+
+	if newBalance <= 0 {
+		// Balance exhausted - try to sync (only one goroutine will succeed)
+		if !status.TryStartSync() {
+			// Another goroutine is already syncing, let it handle this
+			return
+		}
+
+		// We acquired the sync lock - do the sync and recalc
+		go func() {
+			defer status.EndSync()
+			ctx := context.Background()
+
+			// Sync fee address to get new UTXOs
+			if m.ownerSync != nil {
+				if err := m.ownerSync.Sync(ctx, status.FeeAddress); err != nil {
+					m.logger.Debug("failed to sync fee address", "tokenId", tokenId, "error", err)
+				}
+			}
+
+			// Recalculate from DB
+			newStatus, err := m.GetTokenStatus(ctx, tokenId)
+			if err != nil {
+				m.logger.Error("failed to recalculate token status", "tokenId", tokenId, "error", err)
+				return
+			}
+
+			// Update live balance from fresh calculation
+			status.Credits = newStatus.Credits
+			status.OutputCount = newStatus.OutputCount
+			status.Debits = newStatus.Debits
+			status.UpdateBalance(newStatus.Balance())
+
+			// If still underfunded, cancel the worker
+			if !status.IsActive() {
+				if tw, ok := m.workers.Load(tokenId); ok {
+					tw.(*TokenWorker).cancel()
+					m.logger.Info("worker cancelled due to insufficient funding", "tokenId", tokenId)
+				}
+			}
+		}()
+	}
+}
+
 // manageWorkerLifecycle manages worker creation/destruction based on fee balances
 func (m *TokenManager) manageWorkerLifecycle(ctx context.Context) {
-	// Query tm_bsv21 topic for all known token outpoints
+	// Track which tokens are currently active (for cleanup at the end)
+	activeTokens := make(map[string]struct{})
+
+	// Phase 1: Register topic managers for all whitelisted tokens
+	// (They should always be ready to receive transactions, even if no work queued yet)
+	whitelistMembers, err := m.store.SMembers(ctx, KeyWhitelist)
+	if err != nil {
+		m.logger.Error("failed to load whitelist", "error", err)
+	} else {
+		for _, member := range whitelistMembers {
+			tokenId := string(member)
+			topicName := "tm_" + tokenId
+			if m.overlay != nil {
+				tm := NewBsv21ValidatedTopicManager(topicName, m.outputStore, nil)
+				m.overlay.Engine.RegisterTopicManager(topicName, tm)
+			}
+			activeTokens[tokenId] = struct{}{}
+		}
+		if len(whitelistMembers) > 0 {
+			m.logger.Debug("registered topic managers for whitelisted tokens", "count", len(whitelistMembers))
+		}
+	}
+
+	// Phase 2: Discover tokens needing workers
 	topicKey := txo.KeyTopicOutputs("tm_bsv21")
 	members, err := m.store.ZRange(ctx, topicKey, store.ScoreRange{})
 	if err != nil {
@@ -174,140 +273,50 @@ func (m *TokenManager) manageWorkerLifecycle(ctx context.Context) {
 		return
 	}
 
-	// Load whitelist (tokens always active regardless of balance)
-	whitelist := make(map[string]struct{})
-	if whitelistMembers, err := m.store.SMembers(ctx, KeyWhitelist); err == nil {
-		for _, member := range whitelistMembers {
-			whitelist[string(member)] = struct{}{}
-		}
-	}
-
-	// Load blacklist (tokens never active)
-	blacklist := make(map[string]struct{})
-	if blacklistMembers, err := m.store.SMembers(ctx, KeyBlacklist); err == nil {
-		for _, member := range blacklistMembers {
-			blacklist[string(member)] = struct{}{}
-		}
-	}
-
-	// Track which tokens are currently active
-	activeTokens := make(map[string]struct{})
-
-	// Separate whitelisted tokens from others for priority processing
-	var whitelistedOutpoints []*transaction.Outpoint
-	var otherMembers []store.ScoredMember
 	for _, member := range members {
 		outpoint := transaction.NewOutpointFromBytes(member.Member)
 		if outpoint == nil {
 			continue
 		}
 		tokenId := outpoint.OrdinalString()
-		if _, isWhitelisted := whitelist[tokenId]; isWhitelisted {
-			whitelistedOutpoints = append(whitelistedOutpoints, outpoint)
-		} else {
-			otherMembers = append(otherMembers, member)
-		}
-	}
 
-	// Phase 1: Process whitelisted tokens first (priority)
-	for _, outpoint := range whitelistedOutpoints {
-		tokenId := outpoint.OrdinalString()
-
-		feeAddress, err := GenerateFeeAddress(outpoint)
-		if err != nil {
-			m.logger.Error("failed to generate fee address", "error", err, "tokenId", tokenId)
+		// Skip if worker already exists - it's self-monitoring
+		if _, exists := m.workers.Load(tokenId); exists {
+			activeTokens[tokenId] = struct{}{}
 			continue
 		}
 
-		// Sync fee address to ingest any new payment transactions
-		if m.ownerSync != nil {
-			if err := m.ownerSync.Sync(ctx, feeAddress); err != nil {
-				m.logger.Debug("failed to sync fee address", "error", err, "address", feeAddress, "tokenId", tokenId)
-			}
+		// Check funding for NEW tokens only
+		status, err := m.GetTokenStatus(ctx, tokenId)
+		if err != nil {
+			m.logger.Debug("failed to get token status", "error", err, "tokenId", tokenId)
+			continue
+		}
+
+		if !status.IsActive() {
+			continue
 		}
 
 		activeTokens[tokenId] = struct{}{}
 
-		// Create worker if not exists
-		if _, exists := m.workers.Load(tokenId); !exists {
-			topicName := "tm_" + tokenId
-			if m.overlay != nil {
-				tm := topicpkg.NewBsv21ValidatedTopicManager(topicName, m.outputStore, nil)
-				m.overlay.Engine.RegisterTopicManager(topicName, tm)
-			}
-
-			if err := m.createWorker(ctx, tokenId, feeAddress); err != nil {
-				m.logger.Error("failed to create worker", "error", err, "tokenId", tokenId)
-			}
-		}
-	}
-	if len(whitelistedOutpoints) > 0 {
-		m.logger.Info("whitelisted tokens activated", "count", len(whitelistedOutpoints))
-	}
-
-	// Phase 2: Process remaining tokens (balance-based activation)
-	for _, member := range otherMembers {
-		outpoint := transaction.NewOutpointFromBytes(member.Member)
-		if outpoint == nil {
-			continue
-		}
-		tokenId := outpoint.OrdinalString()
-
-		// Skip blacklisted tokens
-		if _, blocked := blacklist[tokenId]; blocked {
-			continue
+		// Register topic manager
+		topicName := "tm_" + tokenId
+		if m.overlay != nil {
+			tm := NewBsv21ValidatedTopicManager(topicName, m.outputStore, nil)
+			m.overlay.Engine.RegisterTopicManager(topicName, tm)
 		}
 
-		// Derive fee address
-		feeAddress, err := GenerateFeeAddress(outpoint)
-		if err != nil {
-			m.logger.Error("failed to generate fee address", "error", err, "tokenId", tokenId)
-			continue
-		}
-
-		// Sync fee address to ingest any new payment transactions
-		if m.ownerSync != nil {
-			if err := m.ownerSync.Sync(ctx, feeAddress); err != nil {
-				m.logger.Debug("failed to sync fee address", "error", err, "address", feeAddress, "tokenId", tokenId)
-			}
-		}
-
-		// Calculate balance: credits - debits
-		balance, err := m.calculateBalance(ctx, tokenId, feeAddress)
-		if err != nil {
-			m.logger.Debug("failed to calculate balance", "error", err, "tokenId", tokenId)
-			continue
-		}
-
-		// Token is active if balance > 0
-		if balance > 0 {
-			activeTokens[tokenId] = struct{}{}
-
-			// Create worker if not exists
-			if _, exists := m.workers.Load(tokenId); !exists {
-				// Register topic with overlay engine
-				topicName := "tm_" + tokenId
-				if m.overlay != nil {
-					tm := topicpkg.NewBsv21ValidatedTopicManager(topicName, m.outputStore, nil)
-					m.overlay.Engine.RegisterTopicManager(topicName, tm)
-				}
-
-				if err := m.createWorker(ctx, tokenId, feeAddress); err != nil {
-					m.logger.Error("failed to create worker", "error", err, "tokenId", tokenId)
-				}
-			}
+		// Create worker
+		if err := m.createWorker(ctx, status); err != nil {
+			m.logger.Error("failed to create worker", "error", err, "tokenId", tokenId)
 		}
 	}
 
-	// Stop workers for tokens that are no longer active
+	// Phase 3: Unregister topic managers for tokens no longer active
+	// (workers delete themselves from maps when they exit via deferred cleanup)
 	m.workers.Range(func(key, value any) bool {
 		tokenId := key.(string)
 		if _, active := activeTokens[tokenId]; !active {
-			// Stop worker first, then unregister topic
-			if w, ok := value.(*TokenWorker); ok {
-				w.worker.Stop()
-			}
-
 			topicName := "tm_" + tokenId
 			if m.overlay != nil {
 				m.overlay.Engine.UnregisterTopicManager(topicName)
@@ -315,4 +324,46 @@ func (m *TokenManager) manageWorkerLifecycle(ctx context.Context) {
 		}
 		return true
 	})
+}
+
+// refreshInactiveTokens syncs fee addresses for tokens without active workers.
+// This allows inactive tokens to receive new funding deposits.
+func (m *TokenManager) refreshInactiveTokens(ctx context.Context) {
+	topicKey := txo.KeyTopicOutputs("tm_bsv21")
+	members, err := m.store.ZRange(ctx, topicKey, store.ScoreRange{})
+	if err != nil {
+		m.logger.Error("failed to query tm_bsv21 topic for refresh", "error", err)
+		return
+	}
+
+	refreshed := 0
+	for _, member := range members {
+		outpoint := transaction.NewOutpointFromBytes(member.Member)
+		if outpoint == nil {
+			continue
+		}
+		tokenId := outpoint.OrdinalString()
+
+		// Only refresh tokens WITHOUT active workers
+		if _, exists := m.workers.Load(tokenId); exists {
+			continue
+		}
+
+		feeAddress, err := GenerateFeeAddress(outpoint)
+		if err != nil {
+			continue
+		}
+
+		if m.ownerSync != nil {
+			if err := m.ownerSync.Sync(ctx, feeAddress); err != nil {
+				m.logger.Debug("failed to sync inactive token fee address", "tokenId", tokenId, "error", err)
+				continue
+			}
+			refreshed++
+		}
+	}
+
+	if refreshed > 0 {
+		m.logger.Debug("refreshed inactive token fee addresses", "count", refreshed)
+	}
 }

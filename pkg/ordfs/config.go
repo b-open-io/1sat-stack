@@ -23,9 +23,7 @@ type Config struct {
 
 // RedisConfig holds Redis connection settings
 type RedisConfig struct {
-	Addr     string `mapstructure:"addr"`
-	Password string `mapstructure:"password"`
-	DB       int    `mapstructure:"db"`
+	URL string `mapstructure:"url"` // e.g., "redis://user:pass@localhost:6379/0"
 }
 
 // RoutesConfig holds route configuration
@@ -42,9 +40,7 @@ func (c *Config) SetDefaults(v *viper.Viper, prefix string) {
 	}
 
 	v.SetDefault(p+"enabled", false)
-	v.SetDefault(p+"redis.addr", "localhost:6379")
-	v.SetDefault(p+"redis.password", "")
-	v.SetDefault(p+"redis.db", 0)
+	v.SetDefault(p+"redis.url", "redis://localhost:6379/0")
 	v.SetDefault(p+"routes.enabled", true)
 	v.SetDefault(p+"routes.prefix", "/ordfs")
 }
@@ -75,18 +71,18 @@ func (c *Config) Initialize(
 	}
 
 	// Create Redis client
-	redisClient := redis.NewClient(&redis.Options{
-		Addr:     c.Redis.Addr,
-		Password: c.Redis.Password,
-		DB:       c.Redis.DB,
-	})
+	opts, err := redis.ParseURL(c.Redis.URL)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse redis url: %w", err)
+	}
+	redisClient := redis.NewClient(opts)
 
 	// Test connection
 	if err := redisClient.Ping(ctx).Err(); err != nil {
 		return nil, fmt.Errorf("failed to connect to redis: %w", err)
 	}
 
-	logger.Info("ordfs connected to redis", "addr", c.Redis.Addr, "db", c.Redis.DB)
+	logger.Info("ordfs connected to redis", "url", c.Redis.URL)
 
 	// Create ordfs service
 	ordfs := New(jb, redisClient, logger)

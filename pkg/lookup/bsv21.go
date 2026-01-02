@@ -6,15 +6,11 @@ import (
 	"strconv"
 	"sync"
 
-	"github.com/b-open-io/1sat-stack/pkg/parse"
 	"github.com/b-open-io/1sat-stack/pkg/store"
 	"github.com/b-open-io/1sat-stack/pkg/txo"
 	"github.com/b-open-io/1sat-stack/pkg/types"
 	"github.com/bitcoin-sv/go-templates/template/bsv21"
-	"github.com/bitcoin-sv/go-templates/template/bsv21/ltm"
-	"github.com/bitcoin-sv/go-templates/template/bsv21/pow20"
 	"github.com/bitcoin-sv/go-templates/template/cosign"
-	"github.com/bitcoin-sv/go-templates/template/ordlock"
 	"github.com/bsv-blockchain/go-overlay-services/pkg/core/engine"
 	"github.com/bsv-blockchain/go-sdk/chainhash"
 	"github.com/bsv-blockchain/go-sdk/overlay"
@@ -25,6 +21,7 @@ import (
 )
 
 // BSV21Lookup implements the LookupService interface for BSV21
+// Uses dedicated ZSets for topic-specific lookups with authoritative UTXO tracking
 type BSV21Lookup struct {
 	storage   *txo.OutputStore
 	mintCache sync.Map // Cache of mint tokens by tokenId
@@ -37,7 +34,19 @@ func NewBSV21Lookup(storage *txo.OutputStore) *BSV21Lookup {
 	}
 }
 
+// KeyBSV21 generates a ZSet key for BSV21 unspent lookups: tm_{tokenId}:{lockType}:{address}
+func KeyBSV21(tokenId, lockType, address string) []byte {
+	return []byte(fmt.Sprintf("tm_%s:%s:%s", tokenId, lockType, address))
+}
+
+// KeyBSV21History generates a ZSet key for BSV21 history lookups: tm_{tokenId}:{lockType}:{address}:h
+// Unlike the main ZSet, entries are never removed (for historical queries)
+func KeyBSV21History(tokenId, lockType, address string) []byte {
+	return []byte(fmt.Sprintf("tm_%s:%s:%s:h", tokenId, lockType, address))
+}
+
 // OutputAdmittedByTopic is called when an output is admitted to a topic
+// Adds the output to topic-specific ZSets for efficient lookups
 func (l *BSV21Lookup) OutputAdmittedByTopic(ctx context.Context, payload *engine.OutputAdmittedByTopic) error {
 	_, tx, txid, err := transaction.ParseBeef(payload.AtomicBEEF)
 	if err != nil {
@@ -55,85 +64,40 @@ func (l *BSV21Lookup) OutputAdmittedByTopic(ctx context.Context, payload *engine
 		return nil
 	}
 
-	events := make([]string, 0, 5)
-
 	// For deploy operations, set the ID to the ordinal string
 	if b.Op == string(bsv21.OpDeployMint) || b.Op == string(bsv21.OpDeployAuth) {
 		b.Id = outpoint.OrdinalString()
-		if b.Symbol != nil {
-			events = append(events, fmt.Sprintf("sym:%s", *b.Symbol))
-		}
-	} else if b.Op == string(bsv21.OpTransfer) {
-		// For transfers, get the mint token data (uses cache)
-		tokenOutpoint, err := transaction.OutpointFromString(b.Id)
-		if err == nil {
-			mintData, err := l.GetToken(ctx, tokenOutpoint)
-			if err == nil {
-				if sym, ok := mintData["sym"].(string); ok {
-					b.Symbol = &sym
-				}
-				if dec, ok := mintData["dec"].(uint8); ok {
-					b.Decimals = &dec
-				} else if dec, ok := mintData["dec"].(float64); ok {
-					decUint8 := uint8(dec)
-					b.Decimals = &decUint8
-				}
-				if icon, ok := mintData["icon"].(string); ok {
-					b.Icon = &icon
-				}
-			}
-		}
-	}
-	events = append(events, fmt.Sprintf("id:%s", b.Id))
-
-	// Extract address from suffix script
-	var address string
-	suffix := script.NewFromBytes(b.Insc.ScriptSuffix)
-	if p := p2pkh.Decode(suffix, true); p != nil {
-		address = p.AddressString
-		events = append(events, fmt.Sprintf("p2pkh:%s:%s", address, b.Id))
-	} else if c := cosign.Decode(suffix); c != nil {
-		address = c.Address
-		events = append(events, fmt.Sprintf("cos:%s:%s", address, b.Id))
-	} else if ltmData := ltm.Decode(suffix); ltmData != nil {
-		events = append(events, fmt.Sprintf("ltm:%s", b.Id))
-	} else if pow20Data := pow20.Decode(suffix); pow20Data != nil {
-		events = append(events, fmt.Sprintf("pow20:%s", b.Id))
-	} else if ordLock := ordlock.Decode(suffix); ordLock != nil {
-		if ordLock.Seller != nil {
-			address = ordLock.Seller.AddressString
-			events = append(events, fmt.Sprintf("list:%s:%s", address, b.Id))
-		}
-		events = append(events, fmt.Sprintf("list:%s", b.Id))
-	}
-
-	// Build BSV21 data structure
-	bsv21Data := map[string]any{
-		"id":  b.Id,
-		"op":  b.Op,
-		"amt": strconv.FormatUint(b.Amt, 10),
-	}
-
-	if b.Symbol != nil {
-		bsv21Data["sym"] = *b.Symbol
-	}
-	if b.Decimals != nil {
-		bsv21Data["dec"] = *b.Decimals
-	}
-	if b.Icon != nil {
-		bsv21Data["icon"] = *b.Icon
-	}
-	if address != "" {
-		bsv21Data["address"] = address
-	}
-
-	dataToStore := map[string]any{
-		"bsv21": bsv21Data,
 	}
 
 	// Extract score from transaction (block height if confirmed, timestamp if not)
 	score := types.ScoreFromTx(tx, txid)
-	return l.storage.SaveEvents(ctx, outpoint, events, dataToStore, score)
+	opBytes := outpoint.Bytes()
+
+	// Helper to add to both UTXO and history ZSets
+	member := store.ScoredMember{Member: opBytes, Score: score}
+	addToZSets := func(tokenId, lockType, address string) error {
+		// Add to authoritative UTXO set (will be removed on spend)
+		if err := l.storage.Store.ZAdd(ctx, KeyBSV21(tokenId, lockType, address), member); err != nil {
+			return err
+		}
+		// Add to history set (never removed)
+		return l.storage.Store.ZAdd(ctx, KeyBSV21History(tokenId, lockType, address), member)
+	}
+
+	// Extract lock type and address from suffix script, add to appropriate ZSets
+	// Only index p2pkh and cosign - other lock types handled by general indexer
+	suffix := script.NewFromBytes(b.Insc.ScriptSuffix)
+	if p := p2pkh.Decode(suffix, true); p != nil {
+		if err := addToZSets(b.Id, "p2pkh", p.AddressString); err != nil {
+			return err
+		}
+	} else if c := cosign.Decode(suffix); c != nil {
+		if err := addToZSets(b.Id, "cos", c.Address); err != nil {
+			return err
+		}
+	}
+
+	return nil
 }
 
 // GetDocumentation returns documentation for this lookup service
@@ -149,8 +113,9 @@ func (l *BSV21Lookup) GetMetaData() *overlay.MetaData {
 }
 
 // OutputSpent is called when a previously-admitted UTXO is spent
+// Removes the output from topic-specific ZSets (authoritative UTXO tracking)
 func (l *BSV21Lookup) OutputSpent(ctx context.Context, payload *engine.OutputSpent) error {
-	_, tx, txid, err := transaction.ParseBeef(payload.SpendingAtomicBEEF)
+	_, tx, _, err := transaction.ParseBeef(payload.SpendingAtomicBEEF)
 	if err != nil {
 		return err
 	}
@@ -170,28 +135,24 @@ func (l *BSV21Lookup) OutputSpent(ctx context.Context, payload *engine.OutputSpe
 
 	spentOutput := input.SourceTransaction.Outputs[payload.Outpoint.Index]
 
-	// Parse the spent output using BSV21 parser
-	results := parse.Parse(payload.Outpoint, spentOutput.LockingScript.Bytes(), spentOutput.Satoshis, []string{parse.TagBSV21})
-
-	if len(results) == 0 {
+	// Decode BSV21 data from spent output
+	b := bsv21.Decode(spentOutput.LockingScript)
+	if b == nil {
 		return nil
 	}
 
-	// Collect events with tag prefixes
-	var allEvents []string
-	for tag, result := range results {
-		for _, event := range result.Events {
-			allEvents = append(allEvents, tag+":"+event)
-		}
-		for _, owner := range result.Owners {
-			allEvents = append(allEvents, "own:"+owner.Address())
-		}
+	opBytes := payload.Outpoint.Bytes()
+
+	// Remove from the appropriate ZSet based on lock type
+	// Only handle p2pkh and cosign - other lock types handled by general indexer
+	suffix := script.NewFromBytes(b.Insc.ScriptSuffix)
+	if p := p2pkh.Decode(suffix, true); p != nil {
+		l.storage.Store.ZRem(ctx, KeyBSV21(b.Id, "p2pkh", p.AddressString), opBytes)
+	} else if c := cosign.Decode(suffix); c != nil {
+		l.storage.Store.ZRem(ctx, KeyBSV21(b.Id, "cos", c.Address), opBytes)
 	}
 
-	// Extract score from the spending transaction
-	score := types.ScoreFromTx(tx, txid)
-
-	return l.storage.IndexSpentEvents(ctx, payload.Outpoint, allEvents, score)
+	return nil
 }
 
 // OutputNoLongerRetainedInHistory is called when historical retention is no longer required
@@ -216,23 +177,175 @@ func (l *BSV21Lookup) Lookup(ctx context.Context, question *lookup.LookupQuestio
 	}, nil
 }
 
-// GetBalance calculates the total balance of BSV21 tokens for given event patterns
-func (l *BSV21Lookup) GetBalance(ctx context.Context, events []string) (uint64, int, error) {
-	keys := make([][]byte, len(events))
-	for i, event := range events {
-		keys[i] = []byte(event)
+// SearchUTXOs searches for unspent outputs in a topic-specific ZSet
+// Returns outpoints from the ZSet (already filtered for unspent since ZRem is called on spend)
+func (l *BSV21Lookup) SearchUTXOs(ctx context.Context, tokenId, lockType, address string, cfg *store.SearchCfg) ([]*transaction.Outpoint, error) {
+	key := KeyBSV21(tokenId, lockType, address)
+
+	searchCfg := &store.SearchCfg{
+		Keys:    [][]byte{key},
+		Limit:   cfg.Limit,
+		Reverse: cfg.Reverse,
+	}
+	if cfg.From != nil {
+		searchCfg.From = cfg.From
+	}
+	if cfg.To != nil {
+		searchCfg.To = cfg.To
+	}
+
+	results, err := l.storage.Store.Search(ctx, searchCfg)
+	if err != nil {
+		return nil, err
+	}
+
+	outpoints := make([]*transaction.Outpoint, 0, len(results))
+	for _, r := range results {
+		op := transaction.NewOutpointFromBytes(r.Member)
+		if op != nil {
+			outpoints = append(outpoints, op)
+		}
+	}
+
+	return outpoints, nil
+}
+
+// SearchMultiUTXOs searches for unspent outputs across multiple addresses
+func (l *BSV21Lookup) SearchMultiUTXOs(ctx context.Context, tokenId, lockType string, addresses []string, cfg *store.SearchCfg) ([]*transaction.Outpoint, error) {
+	keys := make([][]byte, len(addresses))
+	for i, addr := range addresses {
+		keys[i] = KeyBSV21(tokenId, lockType, addr)
+	}
+
+	searchCfg := &store.SearchCfg{
+		Keys:     keys,
+		Limit:    cfg.Limit,
+		Reverse:  cfg.Reverse,
+		JoinType: store.JoinUnion,
+	}
+	if cfg.From != nil {
+		searchCfg.From = cfg.From
+	}
+	if cfg.To != nil {
+		searchCfg.To = cfg.To
+	}
+
+	results, err := l.storage.Store.Search(ctx, searchCfg)
+	if err != nil {
+		return nil, err
+	}
+
+	outpoints := make([]*transaction.Outpoint, 0, len(results))
+	for _, r := range results {
+		op := transaction.NewOutpointFromBytes(r.Member)
+		if op != nil {
+			outpoints = append(outpoints, op)
+		}
+	}
+
+	return outpoints, nil
+}
+
+// SearchHistory searches for all outputs (including spent) in the history ZSet
+func (l *BSV21Lookup) SearchHistory(ctx context.Context, tokenId, lockType, address string, cfg *store.SearchCfg) ([]*transaction.Outpoint, error) {
+	key := KeyBSV21History(tokenId, lockType, address)
+
+	searchCfg := &store.SearchCfg{
+		Keys:    [][]byte{key},
+		Limit:   cfg.Limit,
+		Reverse: cfg.Reverse,
+	}
+	if cfg.From != nil {
+		searchCfg.From = cfg.From
+	}
+	if cfg.To != nil {
+		searchCfg.To = cfg.To
+	}
+
+	results, err := l.storage.Store.Search(ctx, searchCfg)
+	if err != nil {
+		return nil, err
+	}
+
+	outpoints := make([]*transaction.Outpoint, 0, len(results))
+	for _, r := range results {
+		op := transaction.NewOutpointFromBytes(r.Member)
+		if op != nil {
+			outpoints = append(outpoints, op)
+		}
+	}
+
+	return outpoints, nil
+}
+
+// SearchMultiHistory searches history across multiple addresses
+func (l *BSV21Lookup) SearchMultiHistory(ctx context.Context, tokenId, lockType string, addresses []string, cfg *store.SearchCfg) ([]*transaction.Outpoint, error) {
+	keys := make([][]byte, len(addresses))
+	for i, addr := range addresses {
+		keys[i] = KeyBSV21History(tokenId, lockType, addr)
+	}
+
+	searchCfg := &store.SearchCfg{
+		Keys:     keys,
+		Limit:    cfg.Limit,
+		Reverse:  cfg.Reverse,
+		JoinType: store.JoinUnion,
+	}
+	if cfg.From != nil {
+		searchCfg.From = cfg.From
+	}
+	if cfg.To != nil {
+		searchCfg.To = cfg.To
+	}
+
+	results, err := l.storage.Store.Search(ctx, searchCfg)
+	if err != nil {
+		return nil, err
+	}
+
+	outpoints := make([]*transaction.Outpoint, 0, len(results))
+	for _, r := range results {
+		op := transaction.NewOutpointFromBytes(r.Member)
+		if op != nil {
+			outpoints = append(outpoints, op)
+		}
+	}
+
+	return outpoints, nil
+}
+
+// GetBalance calculates the total balance of BSV21 tokens for a given address
+// Uses the authoritative ZSet (already unspent) and loads amounts from main store
+func (l *BSV21Lookup) GetBalance(ctx context.Context, tokenId, lockType, address string) (uint64, int, error) {
+	outpoints, err := l.SearchUTXOs(ctx, tokenId, lockType, address, &store.SearchCfg{})
+	if err != nil {
+		return 0, 0, err
+	}
+
+	return l.sumAmounts(ctx, outpoints)
+}
+
+// GetMultiBalance calculates the total balance across multiple addresses
+func (l *BSV21Lookup) GetMultiBalance(ctx context.Context, tokenId, lockType string, addresses []string) (uint64, int, error) {
+	outpoints, err := l.SearchMultiUTXOs(ctx, tokenId, lockType, addresses, &store.SearchCfg{})
+	if err != nil {
+		return 0, 0, err
+	}
+
+	return l.sumAmounts(ctx, outpoints)
+}
+
+// sumAmounts loads BSV21 amounts from main store and sums them
+func (l *BSV21Lookup) sumAmounts(ctx context.Context, outpoints []*transaction.Outpoint) (uint64, int, error) {
+	if len(outpoints) == 0 {
+		return 0, 0, nil
 	}
 
 	cfg := &txo.OutputSearchCfg{
-		SearchCfg: store.SearchCfg{
-			Keys: keys,
-		},
-		FilterSpent: true,
 		IncludeTags: []string{"bsv21"},
 	}
 
-	// Search for unspent outputs only
-	outputs, err := l.storage.SearchOutputs(ctx, cfg)
+	outputs, err := l.storage.LoadOutputs(ctx, outpoints, cfg)
 	if err != nil {
 		return 0, 0, err
 	}
@@ -336,4 +449,12 @@ func (l *BSV21Lookup) GetToken(ctx context.Context, outpoint *transaction.Outpoi
 	l.mintCache.Store(tokenId, response)
 
 	return response, nil
+}
+
+// LoadOutputs loads full output data for a list of outpoints
+func (l *BSV21Lookup) LoadOutputs(ctx context.Context, outpoints []*transaction.Outpoint) ([]*txo.IndexedOutput, error) {
+	cfg := &txo.OutputSearchCfg{
+		IncludeTags: []string{"bsv21"},
+	}
+	return l.storage.LoadOutputs(ctx, outpoints, cfg)
 }
