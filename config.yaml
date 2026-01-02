@@ -153,8 +153,8 @@ owner:
 
 # Wallet service (remote wallet storage via BRC-100)
 wallet:
-  mode: disabled  # disabled, embedded
-  # server_private_key: ""  # Required: hex-encoded private key for BRC-100 auth
+  mode: embedded  # disabled, embedded
+  server_private_key: ""  # Required: hex-encoded private key for BRC-100 auth
   # name: "1sat-wallet"  # Storage name identifier
   db:
     engine: sqlite
