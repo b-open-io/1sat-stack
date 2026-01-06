@@ -18,7 +18,7 @@ replace github.com/bitcoin-sv/go-templates => ../go-templates
 
 replace github.com/b-open-io/go-junglebus => ../go-junglebus
 
-replace github.com/bsv-blockchain/go-wallet-toolbox => ../1sat-indexer/go-wallet-toolbox
+replace github.com/bsv-blockchain/go-wallet-toolbox => ../go-wallet-toolbox
 
 require (
 	github.com/b-open-io/go-junglebus v0.3.4
@@ -28,9 +28,10 @@ require (
 	github.com/bsv-blockchain/go-overlay-services v0.0.0-00010101000000-000000000000
 	github.com/bsv-blockchain/go-sdk v1.2.14
 	github.com/bsv-blockchain/go-teranode-p2p-client v0.0.0
-	github.com/bsv-blockchain/go-wallet-toolbox v0.0.0
+	github.com/bsv-blockchain/go-wallet-toolbox v0.161.1-0.20260106005037-727c9cc63804
 	github.com/dgraph-io/badger/v4 v4.8.0
 	github.com/gofiber/fiber/v2 v2.52.10
+	github.com/joho/godotenv v1.6.0-pre.2
 	github.com/redis/go-redis/v9 v9.17.2
 	github.com/spf13/viper v1.21.0
 	github.com/swaggo/swag v1.16.6
@@ -163,7 +164,6 @@ require (
 	github.com/jellydator/ttlcache/v3 v3.4.0 // indirect
 	github.com/jinzhu/inflection v1.0.0 // indirect
 	github.com/jinzhu/now v1.1.5 // indirect
-	github.com/joho/godotenv v1.6.0-pre.2 // indirect
 	github.com/josharian/intern v1.0.0 // indirect
 	github.com/jpillora/backoff v1.0.0 // indirect
 	github.com/json-iterator/go v1.1.12 // indirect

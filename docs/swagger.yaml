@@ -216,6 +216,30 @@ definitions:
       sequence:
         type: integer
     type: object
+  github_com_b-open-io_1sat-stack_pkg_overlay.RemoteConfig:
+    properties:
+      broadcast:
+        description: Outbound (sending data to peer)
+        type: boolean
+      gasp_sync:
+        description: periodic full GASP sync
+        type: boolean
+      gasp_sync_interval:
+        description: '"15m", "1h", etc.'
+        type: string
+      peer_id:
+        description: for libp2p peers
+        type: string
+      sse_subscribe:
+        description: Inbound (receiving data from peer)
+        type: boolean
+      type:
+        description: Identity
+        type: string
+      url:
+        description: for http peers
+        type: string
+    type: object
   github_com_b-open-io_1sat-stack_pkg_owner.BalanceResponse:
     properties:
       balance:
@@ -710,6 +734,101 @@ paths:
               type: string
             type: object
       summary: Update progress
+      tags:
+      - admin
+  /admin/topics/{name}/remotes:
+    delete:
+      description: Removes the remote config override, reverting to defaults
+      parameters:
+      - description: Topic name
+        in: path
+        name: name
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: success message
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Delete topic remotes
+      tags:
+      - admin
+    get:
+      description: Returns the configured remotes for a topic
+      parameters:
+      - description: Topic name
+        in: path
+        name: name
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: List of configured remotes
+          schema:
+            items:
+              $ref: '#/definitions/github_com_b-open-io_1sat-stack_pkg_overlay.RemoteConfig'
+            type: array
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Get topic remotes
+      tags:
+      - admin
+    put:
+      consumes:
+      - application/json
+      description: Sets the configured remotes for a topic (overrides defaults)
+      parameters:
+      - description: Topic name
+        in: path
+        name: name
+        required: true
+        type: string
+      - description: Remote configurations
+        in: body
+        name: body
+        required: true
+        schema:
+          items:
+            $ref: '#/definitions/github_com_b-open-io_1sat-stack_pkg_overlay.RemoteConfig'
+          type: array
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: success message
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "400":
+          description: Bad request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Set topic remotes
       tags:
       - admin
   /admin/topics/active:

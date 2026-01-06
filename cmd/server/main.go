@@ -15,6 +15,7 @@ import (
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/middleware/cors"
 	"github.com/gofiber/fiber/v2/middleware/recover"
+	"github.com/joho/godotenv"
 
 	_ "github.com/b-open-io/1sat-stack/docs"
 )
@@ -33,6 +34,9 @@ import (
 // @BasePath /1sat
 
 func main() {
+	// Load .env file if present (optional, won't error if missing)
+	_ = godotenv.Load()
+
 	// Parse command line flags
 	configPath := flag.String("config", "", "Path to config file")
 	logLevel := flag.String("log-level", "", "Log level override (debug, info, warn, error)")

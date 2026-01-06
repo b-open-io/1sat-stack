@@ -335,6 +335,149 @@
                 }
             }
         },
+        "/admin/topics/{name}/remotes": {
+            "get": {
+                "description": "Returns the configured remotes for a topic",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "admin"
+                ],
+                "summary": "Get topic remotes",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Topic name",
+                        "name": "name",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "List of configured remotes",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/github_com_b-open-io_1sat-stack_pkg_overlay.RemoteConfig"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            },
+            "put": {
+                "description": "Sets the configured remotes for a topic (overrides defaults)",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "admin"
+                ],
+                "summary": "Set topic remotes",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Topic name",
+                        "name": "name",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Remote configurations",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/github_com_b-open-io_1sat-stack_pkg_overlay.RemoteConfig"
+                            }
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "success message",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Bad request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            },
+            "delete": {
+                "description": "Removes the remote config override, reverting to defaults",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "admin"
+                ],
+                "summary": "Delete topic remotes",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Topic name",
+                        "name": "name",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "success message",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
         "/admin/whitelist": {
             "get": {
                 "description": "Returns the list of whitelisted BSV21 tokens (always active)",
@@ -3149,6 +3292,39 @@
                 },
                 "sequence": {
                     "type": "integer"
+                }
+            }
+        },
+        "github_com_b-open-io_1sat-stack_pkg_overlay.RemoteConfig": {
+            "type": "object",
+            "properties": {
+                "broadcast": {
+                    "description": "Outbound (sending data to peer)",
+                    "type": "boolean"
+                },
+                "gasp_sync": {
+                    "description": "periodic full GASP sync",
+                    "type": "boolean"
+                },
+                "gasp_sync_interval": {
+                    "description": "\"15m\", \"1h\", etc.",
+                    "type": "string"
+                },
+                "peer_id": {
+                    "description": "for libp2p peers",
+                    "type": "string"
+                },
+                "sse_subscribe": {
+                    "description": "Inbound (receiving data from peer)",
+                    "type": "boolean"
+                },
+                "type": {
+                    "description": "Identity",
+                    "type": "string"
+                },
+                "url": {
+                    "description": "for http peers",
+                    "type": "string"
                 }
             }
         },

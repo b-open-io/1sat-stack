@@ -46,6 +46,9 @@ func (c *Config) Initialize(
 		return nil, fmt.Errorf("server_private_key is required for wallet service")
 	}
 
+	// Expand ~ in database path
+	c.ExpandDBPath()
+
 	// Create logger with component name
 	walletLogger := logging.NewComponentLogger(logger, "wallet", "")
 

@@ -20,8 +20,8 @@ import (
 	"github.com/b-open-io/1sat-stack/pkg/owner"
 	"github.com/b-open-io/1sat-stack/pkg/pubsub"
 	"github.com/b-open-io/1sat-stack/pkg/store"
-	"github.com/b-open-io/1sat-stack/pkg/wallet"
 	"github.com/b-open-io/1sat-stack/pkg/txo"
+	"github.com/b-open-io/1sat-stack/pkg/wallet"
 	"github.com/b-open-io/go-junglebus"
 	arcadeconfig "github.com/bsv-blockchain/arcade/config"
 	arcaderoutes "github.com/bsv-blockchain/arcade/routes/fiber"
@@ -116,9 +116,9 @@ type RoutesConfig struct {
 
 // ServerConfig holds HTTP server settings
 type ServerConfig struct {
-	Port     int    `mapstructure:"port"`
-	Host     string `mapstructure:"host"`
-	BasePath string `mapstructure:"base_path"`
+	Port     int         `mapstructure:"port"`
+	Host     string      `mapstructure:"host"`
+	BasePath string      `mapstructure:"base_path"`
 	Pprof    PprofConfig `mapstructure:"pprof"`
 }
 
@@ -147,17 +147,17 @@ func (c *Config) CreateLogger(logLevelOverride string) *slog.Logger {
 
 // Services holds all initialized services
 type Services struct {
-	Store      *store.Services
-	PubSub     *pubsub.Services
-	Beef       *beef.Services
-	TXO        *txo.Services
-	Indexer    *indexer.Services
-	BSV21      *bsv21.Services
-	Overlay    *overlay.Services
-	ORDFS      *ordfs.Services
-	Own        *owner.Services
-	Admin      *admin.Services
-	Wallet *wallet.Services
+	Store   *store.Services
+	PubSub  *pubsub.Services
+	Beef    *beef.Services
+	TXO     *txo.Services
+	Indexer *indexer.Services
+	BSV21   *bsv21.Services
+	Overlay *overlay.Services
+	ORDFS   *ordfs.Services
+	Own     *owner.Services
+	Admin   *admin.Services
+	Wallet  *wallet.Services
 
 	// JungleBus subscriptions
 	JBSubscribers []*jbsync.Subscriber
@@ -662,7 +662,12 @@ func (c *Config) RegisterRoutes(app *fiber.App, svc *Services) {
 		walletGroup := api.Group(prefix)
 		svc.Wallet.Routes.Register(walletGroup)
 		capabilities = append(capabilities, "wallet")
-		slog.Debug("registered wallet routes", "prefix", prefix)
+		slog.Debug("registered wallet routes", "prefix", c.Server.BasePath+prefix)
+
+		// Also register at /.well-known/auth for BRC-100 authentication handshake
+		// The wallet middleware expects this route at the root level
+		svc.Wallet.Routes.RegisterWellKnown(app)
+		slog.Debug("registered wallet .well-known/auth route")
 	}
 
 	// Health check endpoint

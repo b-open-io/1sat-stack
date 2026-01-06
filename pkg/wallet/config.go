@@ -1,6 +1,10 @@
 package wallet
 
 import (
+	"os"
+	"path/filepath"
+	"strings"
+
 	"github.com/bsv-blockchain/go-wallet-toolbox/pkg/defs"
 	"github.com/spf13/viper"
 )
@@ -41,7 +45,28 @@ func (c *Config) SetDefaults(v *viper.Viper, prefix string) {
 
 	// Database defaults - SQLite by default
 	v.SetDefault(p+"db.engine", "sqlite")
-	v.SetDefault(p+"db.sqlite.connection_string", "./data/wallet.sqlite")
+	v.SetDefault(p+"db.sqlite.connection_string", "~/.1sat/wallet.sqlite")
 	v.SetDefault(p+"db.max_idle_connections", 5)
 	v.SetDefault(p+"db.max_open_connections", 5)
+}
+
+// expandPath expands ~ to the user's home directory
+func expandPath(path string) string {
+	if strings.HasPrefix(path, "~/") {
+		if home, err := os.UserHomeDir(); err == nil {
+			return filepath.Join(home, path[2:])
+		}
+	} else if path == "~" {
+		if home, err := os.UserHomeDir(); err == nil {
+			return home
+		}
+	}
+	return path
+}
+
+// ExpandDBPath expands the ~ in SQLite connection string if present
+func (c *Config) ExpandDBPath() {
+	if c.DB.Engine == defs.DBTypeSQLite {
+		c.DB.SQLite.ConnectionString = expandPath(c.DB.SQLite.ConnectionString)
+	}
 }
