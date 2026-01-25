@@ -5,6 +5,7 @@ import (
 	"encoding/binary"
 	"encoding/json"
 	"fmt"
+	"math"
 
 	"github.com/b-open-io/1sat-stack/pkg/beef"
 	"github.com/b-open-io/1sat-stack/pkg/pubsub"
@@ -354,6 +355,9 @@ func (s *OutputStore) GetSatsBulk(ctx context.Context, ops []*transaction.Outpoi
 //
 // If no prefix is provided, "ev:" is assumed for backwards compatibility.
 // The "z:" storage prefix is added automatically.
+//
+// When FilterSpent is true, the search paginates internally to ensure the
+// requested Limit of unspent results is returned (if available).
 func (s *OutputStore) Search(ctx context.Context, cfg *OutputSearchCfg) ([]store.ScoredMember, error) {
 	prefixedCfg := cfg.SearchCfg
 	prefixedCfg.Keys = make([][]byte, len(cfg.Keys))
@@ -363,15 +367,89 @@ func (s *OutputStore) Search(ctx context.Context, cfg *OutputSearchCfg) ([]store
 		prefixedCfg.Keys[i] = prefixKey(key)
 	}
 
-	results, err := s.Store.Search(ctx, &prefixedCfg)
-	if err != nil {
-		return nil, err
+	// If not filtering spent, just do a simple search
+	if !cfg.FilterSpent {
+		return s.Store.Search(ctx, &prefixedCfg)
 	}
 
-	if cfg.FilterSpent {
+	// When filtering spent outputs, we need to paginate internally to collect
+	// enough unspent results to satisfy the requested limit
+	requestedLimit := prefixedCfg.Limit
+	if requestedLimit == 0 {
+		// No limit specified - fetch all and filter
+		results, err := s.Store.Search(ctx, &prefixedCfg)
+		if err != nil {
+			return nil, err
+		}
 		return s.filterSpent(ctx, results)
 	}
-	return results, nil
+
+	// Paginate to collect enough unspent results
+	const batchMultiplier uint32 = 4 // Fetch more than needed to account for spent outputs
+	const maxIterations = 100        // Safety limit to prevent infinite loops
+
+	var unspent []store.ScoredMember
+	var currentFrom *float64
+	if prefixedCfg.From != nil {
+		fromCopy := *prefixedCfg.From
+		currentFrom = &fromCopy
+	}
+
+	for i := 0; i < maxIterations && uint32(len(unspent)) < requestedLimit; i++ {
+		// Calculate how many more we need, with buffer for filtering
+		remaining := requestedLimit - uint32(len(unspent))
+		batchSize := remaining * batchMultiplier
+		if batchSize < 100 {
+			batchSize = 100 // Minimum batch size
+		}
+
+		batchCfg := prefixedCfg
+		batchCfg.Limit = batchSize
+		batchCfg.From = currentFrom
+
+		results, err := s.Store.Search(ctx, &batchCfg)
+		if err != nil {
+			return nil, err
+		}
+
+		if len(results) == 0 {
+			break // No more results
+		}
+
+		// Filter this batch
+		filtered, err := s.filterSpent(ctx, results)
+		if err != nil {
+			return nil, err
+		}
+
+		unspent = append(unspent, filtered...)
+
+		// Update cursor for next iteration - use math.Nextafter to get next
+		// representable float64 value, ensuring we don't re-fetch the same score
+		lastScore := results[len(results)-1].Score
+		var nextScore float64
+		if prefixedCfg.Reverse {
+			// For reverse order, go to the next smaller value
+			nextScore = math.Nextafter(lastScore, math.Inf(-1))
+		} else {
+			// For forward order, go to the next larger value
+			nextScore = math.Nextafter(lastScore, math.Inf(1))
+		}
+		currentFrom = new(float64)
+		*currentFrom = nextScore
+
+		// If we got fewer results than requested, we've exhausted the data
+		if uint32(len(results)) < batchSize {
+			break
+		}
+	}
+
+	// Trim to requested limit
+	if uint32(len(unspent)) > requestedLimit {
+		unspent = unspent[:requestedLimit]
+	}
+
+	return unspent, nil
 }
 
 // prefixKey adds the appropriate z: prefix based on key type.
@@ -604,10 +682,23 @@ func (s *OutputStore) loadOutputsWithScores(ctx context.Context, ops []*transact
 
 			// Parse tag data based on cfg.IncludeTags
 			if len(fields) > 0 {
+				// Check if wildcard "*" is requested or no cfg provided
+				loadAllTags := cfg == nil
 				if cfg != nil && len(cfg.IncludeTags) > 0 {
-					output.Data = make(map[string]any)
 					for _, tag := range cfg.IncludeTags {
-						if data, ok := fields[fldData+tag]; ok {
+						if tag == "*" {
+							loadAllTags = true
+							break
+						}
+					}
+				}
+
+				if loadAllTags {
+					// Load all tag data
+					output.Data = make(map[string]any)
+					for field, data := range fields {
+						if len(field) > len(fldData) && field[:len(fldData)] == fldData {
+							tag := field[len(fldData):]
 							var tagData any
 							if err := json.Unmarshal(data, &tagData); err != nil {
 								return nil, fmt.Errorf("failed to unmarshal tag %s for %s: %w", tag, op.String(), err)
@@ -615,12 +706,11 @@ func (s *OutputStore) loadOutputsWithScores(ctx context.Context, ops []*transact
 							output.Data[tag] = tagData
 						}
 					}
-				} else if cfg == nil {
-					// Load all tag data if no cfg provided
+				} else if cfg != nil && len(cfg.IncludeTags) > 0 {
+					// Load specific tags
 					output.Data = make(map[string]any)
-					for field, data := range fields {
-						if len(field) > len(fldData) && field[:len(fldData)] == fldData {
-							tag := field[len(fldData):]
+					for _, tag := range cfg.IncludeTags {
+						if data, ok := fields[fldData+tag]; ok {
 							var tagData any
 							if err := json.Unmarshal(data, &tagData); err != nil {
 								return nil, fmt.Errorf("failed to unmarshal tag %s for %s: %w", tag, op.String(), err)

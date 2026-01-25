@@ -51,7 +51,11 @@ func (r *Routes) Register(router fiber.Router) {
 // @Param owner path string true "Owner identifier (address, pubkey, or script hash)"
 // @Param refresh query bool false "Refresh owner data from blockchain before returning" default(true)
 // @Param unspent query bool false "Filter for unspent outputs only" default(true)
-// @Param tags query string false "Comma-separated list of tags to include"
+// @Param tags query string false "Comma-separated list of tags to include (* for all)"
+// @Param sats query bool false "Include satoshi values" default(true)
+// @Param spend query bool false "Include spend txid" default(true)
+// @Param events query bool false "Include events array" default(true)
+// @Param block query bool false "Include block height and index" default(true)
 // @Param from query number false "Starting score for pagination"
 // @Param rev query bool false "Reverse order"
 // @Param limit query int false "Maximum number of results" default(100)
@@ -85,8 +89,12 @@ func (r *Routes) OwnerTxos(c *fiber.Ctx) error {
 			Reverse: c.QueryBool("rev", false),
 			From:    from,
 		},
-		FilterSpent: c.QueryBool("unspent", true),
-		IncludeTags: tags,
+		FilterSpent:   c.QueryBool("unspent", true),
+		IncludeSats:   c.QueryBool("sats", true),
+		IncludeSpend:  c.QueryBool("spend", true),
+		IncludeEvents: c.QueryBool("events", true),
+		IncludeBlock:  c.QueryBool("block", true),
+		IncludeTags:   tags,
 	}
 
 	outputs, err := r.outputStore.SearchOutputs(c.Context(), cfg)

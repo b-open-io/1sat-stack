@@ -41,6 +41,8 @@ func (r *Routes) Register(router fiber.Router) {
 // This is required for BRC-100 authentication handshake, which expects this route
 // to be at the root of the server, not under a prefix.
 func (r *Routes) RegisterWellKnown(app *fiber.App) {
-	// The auth middleware intercepts /.well-known/auth internally, so we pass it through as-is
+	// The auth middleware intercepts /.well-known/auth internally, so we pass it through as-is.
+	// The underlying go-wallet-toolbox handler includes its own CORS middleware (AllowAllCORSMiddleware),
+	// so we don't add CORS headers here to avoid duplicate header values.
 	app.All("/.well-known/auth", adaptor.HTTPHandler(r.handler))
 }

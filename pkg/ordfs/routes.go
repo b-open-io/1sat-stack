@@ -221,7 +221,7 @@ func (r *Routes) sendContentResponse(c *fiber.Ctx, resp *Response, seq *int) err
 	c.Set("X-Ord-Seq", fmt.Sprintf("%d", resp.Sequence))
 
 	// Cache control based on seq
-	if seq == nil || *seq == -1 {
+	if seq != nil && *seq == -1 {
 		c.Set("Cache-Control", "no-cache, no-store, must-revalidate")
 	} else {
 		c.Set("Cache-Control", "public, max-age=31536000, immutable")

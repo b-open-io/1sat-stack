@@ -22,21 +22,17 @@ func ParseP2PKH(ctx *ParseContext) *ParseResult {
 		return nil
 	}
 
+	address := pkHash.Address()
 	result := &ParseResult{
 		Tag:    TagP2PKH,
-		Data:   addr,
 		Events: []string{},
 		Owners: []*types.PKHash{pkHash},
 	}
 
-	// Add p2pkh event only for pure P2PKH scripts (exactly 25 bytes)
+	// Add p2pkh:{address} event only for pure P2PKH scripts (exactly 25 bytes)
 	// Composite scripts (inscriptions, etc.) still tracked by owner but not as p2pkh
 	if len(ctx.LockingScript) == 25 {
-		result.Events = append(result.Events, "p2pkh")
-		// Add fund event for fundable UTXOs (non-dust, > 1 satoshi)
-		if ctx.Satoshis > 1 {
-			result.Events = append(result.Events, "fund")
-		}
+		result.Events = append(result.Events, TagP2PKH+":"+address)
 	}
 
 	return result

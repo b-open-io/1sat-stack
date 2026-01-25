@@ -103,7 +103,17 @@ func main() {
 		)
 		return err
 	})
-	app.Use(cors.New())
+	app.Use(cors.New(cors.Config{
+		AllowOrigins:     "*",
+		AllowMethods:     "GET,POST,OPTIONS",
+		AllowHeaders:     "Content-Type,Authorization,X-CallbackUrl,X-CallbackToken",
+		AllowCredentials: false, // Cannot use credentials with wildcard origin
+		Next: func(c *fiber.Ctx) bool {
+			// Skip Fiber CORS for wallet routes - go-wallet-toolbox has its own CORS middleware
+			path := c.Path()
+			return path == "/.well-known/auth" || path == "/1sat/wallet" || path == "/1sat/wallet/"
+		},
+	}))
 
 	// Register routes
 	cfg.RegisterRoutes(app, svc)

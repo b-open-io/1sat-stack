@@ -19,9 +19,8 @@ type BSV21 struct {
 
 // ParseBSV21 parses a BSV21 token from the parse context.
 // Returns nil if the output does not contain a valid BSV21 token.
-// Note: This parser only extracts tag data. Events and owners come from
-// suffix parsers (P2PKH, Inscription, Cosign). Validated token lookups
-// (balance, history, unspent) are handled by the BSV21 lookup service.
+// Emits a "bsv21:{tokenId}" event for indexing. Validated token lookups
+// (balance, history, unspent) are handled separately by the BSV21 overlay.
 func ParseBSV21(ctx *ParseContext) *ParseResult {
 	scr := script.NewFromBytes(ctx.LockingScript)
 	b := bsv21.Decode(scr)
@@ -29,7 +28,7 @@ func ParseBSV21(ctx *ParseContext) *ParseResult {
 		return nil
 	}
 
-	// Build BSV21 data (tag data only, no events)
+	// Build BSV21 data
 	bsvData := &BSV21{
 		Op:       b.Op,
 		Symbol:   b.Symbol,
@@ -47,12 +46,18 @@ func ParseBSV21(ctx *ParseContext) *ParseResult {
 		}
 	case string(bsv21.OpTransfer), string(bsv21.OpBurn), string(bsv21.OpMint), string(bsv21.OpAuth):
 		bsvData.Id = b.Id
+	default:
+		return nil
+	}
+
+	var events []string
+	if bsvData.Id != "" {
+		events = append(events, "bsv21:"+bsvData.Id)
 	}
 
 	return &ParseResult{
-		Tag:  TagBSV21,
-		Data: bsvData,
-		// No events - validated lookups handled by BSV21 lookup service
-		// No owners - determined by suffix parser (P2PKH, Inscription, Cosign)
+		Tag:    TagBSV21,
+		Data:   bsvData,
+		Events: events,
 	}
 }

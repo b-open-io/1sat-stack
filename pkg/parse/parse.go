@@ -42,10 +42,12 @@ var Parsers = map[string]ParserFunc{
 	TagAIP:         ParseAIP,
 	TagBAP:         ParseBAP,
 	TagSigma:       ParseSigma,
+	Tag1Sat:        Parse1Sat,
 }
 
 // DefaultTags is the recommended order of tags for comprehensive parsing
 var DefaultTags = []string{
+	Tag1Sat,        // 1 satoshi outputs
 	TagP2PKH,       // Basic P2PKH address extraction
 	TagLock,        // Lock protocol
 	TagInscription, // 1Sat ordinals inscriptions

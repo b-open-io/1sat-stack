@@ -742,8 +742,8 @@ func registerDocsRoutes(app *fiber.App) {
 	// Serve swagger files at /api-spec
 	app.Static("/api-spec", docsPath)
 
-	// Serve Scalar API reference UI at /docs
-	app.Get("/docs", func(c *fiber.Ctx) error {
+	// Serve Scalar API reference UI at /1sat/docs
+	app.Get("/1sat/docs", func(c *fiber.Ctx) error {
 		html := `<!doctype html>
 <html>
 <head>

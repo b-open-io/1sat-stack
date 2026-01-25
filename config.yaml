@@ -70,9 +70,11 @@ indexer:
   mode: embedded
   verbose: false
   tags:
+    - 1sat
     - p2pkh
     - lock
     - inscription
+    - bsv21
     - ordlock
     - cosign
   sync:
@@ -153,7 +155,7 @@ owner:
 
 # Wallet service (remote wallet storage via BRC-100)
 wallet:
-  mode: embedded  # disabled, embedded
+  mode: disabled  # disabled, embedded
   server_private_key: ""  # Required: hex-encoded private key for BRC-100 auth
   # name: "1sat-wallet"  # Storage name identifier
   db:
