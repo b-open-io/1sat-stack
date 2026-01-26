@@ -14,6 +14,7 @@ import (
 	"github.com/b-open-io/1sat-stack/pkg/txo"
 	"github.com/bsv-blockchain/go-chaintracks/chaintracks"
 	"github.com/bsv-blockchain/go-overlay-services/pkg/core/gasp"
+	sdkoverlay "github.com/bsv-blockchain/go-sdk/overlay"
 	"github.com/bsv-blockchain/go-sdk/transaction"
 	"golang.org/x/sync/errgroup"
 )
@@ -255,7 +256,11 @@ func (m *TokenManager) manageWorkerLifecycle(ctx context.Context) {
 			tokenId := string(member)
 			topicName := "tm_" + tokenId
 			if m.overlay != nil {
-				tm := NewBsv21ValidatedTopicManager(topicName, m.outputStore, nil)
+				var metadata *sdkoverlay.MetaData
+				if outpoint, err := transaction.OutpointFromString(tokenId); err == nil {
+					metadata = m.getTokenMetadata(ctx, outpoint)
+				}
+				tm := NewBsv21ValidatedTopicManager(topicName, m.outputStore, nil, metadata)
 				m.overlay.Engine.RegisterTopicManager(topicName, tm)
 			}
 			activeTokens[tokenId] = struct{}{}
@@ -302,7 +307,8 @@ func (m *TokenManager) manageWorkerLifecycle(ctx context.Context) {
 		// Register topic manager
 		topicName := "tm_" + tokenId
 		if m.overlay != nil {
-			tm := NewBsv21ValidatedTopicManager(topicName, m.outputStore, nil)
+			metadata := m.getTokenMetadata(ctx, outpoint)
+			tm := NewBsv21ValidatedTopicManager(topicName, m.outputStore, nil, metadata)
 			m.overlay.Engine.RegisterTopicManager(topicName, tm)
 		}
 
@@ -366,4 +372,43 @@ func (m *TokenManager) refreshInactiveTokens(ctx context.Context) {
 	if refreshed > 0 {
 		m.logger.Debug("refreshed inactive token fee addresses", "count", refreshed)
 	}
+}
+
+// getTokenMetadata fetches token metadata from the output store for topic manager registration
+func (m *TokenManager) getTokenMetadata(ctx context.Context, outpoint *transaction.Outpoint) *sdkoverlay.MetaData {
+	cfg := &txo.OutputSearchCfg{
+		IncludeTags: []string{"bsv21"},
+	}
+	output, err := m.outputStore.LoadOutput(ctx, outpoint, cfg)
+	if err != nil || output == nil {
+		return nil
+	}
+
+	bsv21DataRaw, ok := output.Data["bsv21"]
+	if !ok {
+		return nil
+	}
+
+	bsv21Data, ok := bsv21DataRaw.(map[string]any)
+	if !ok {
+		return nil
+	}
+
+	metadata := &sdkoverlay.MetaData{
+		Description: "BSV21 Token",
+	}
+
+	// Use symbol as name if available
+	if sym, ok := bsv21Data["sym"].(string); ok && sym != "" {
+		metadata.Name = sym
+	} else {
+		metadata.Name = "BSV21"
+	}
+
+	// Use icon URL if available
+	if icon, ok := bsv21Data["icon"].(string); ok && icon != "" {
+		metadata.Icon = icon
+	}
+
+	return metadata
 }

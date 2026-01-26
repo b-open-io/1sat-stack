@@ -45,19 +45,24 @@ type Bsv21ValidatedTopicManager struct {
 	topic    string
 	storage  engine.Storage
 	tokenIds map[string]struct{}
+	metadata *overlay.MetaData
 }
 
 // NewBsv21ValidatedTopicManager creates a new BSV21 validated topic manager
-func NewBsv21ValidatedTopicManager(topic string, storage engine.Storage, tokenIds []string) *Bsv21ValidatedTopicManager {
+func NewBsv21ValidatedTopicManager(topic string, storage engine.Storage, tokenIds []string, metadata *overlay.MetaData) *Bsv21ValidatedTopicManager {
 	tm := &Bsv21ValidatedTopicManager{
-		topic:   topic,
-		storage: storage,
+		topic:    topic,
+		storage:  storage,
+		metadata: metadata,
 	}
 	if len(tokenIds) > 0 {
 		tm.tokenIds = make(map[string]struct{}, len(tokenIds))
 		for _, tokenId := range tokenIds {
 			tm.tokenIds[tokenId] = struct{}{}
 		}
+	}
+	if tm.metadata == nil {
+		tm.metadata = &overlay.MetaData{Name: "BSV21"}
 	}
 	return tm
 }
@@ -217,7 +222,5 @@ func (tm *Bsv21ValidatedTopicManager) GetDocumentation() string {
 
 // GetMetaData returns metadata for this topic manager
 func (tm *Bsv21ValidatedTopicManager) GetMetaData() *overlay.MetaData {
-	return &overlay.MetaData{
-		Name: "BSV21",
-	}
+	return tm.metadata
 }

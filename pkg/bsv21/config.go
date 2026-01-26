@@ -94,7 +94,7 @@ func (c *Config) Initialize(
 		bsv21Lookup := lookuppkg.NewBSV21Lookup(txoStorage)
 
 		// Create topic manager for overlay engine integration
-		topicManager := NewBsv21ValidatedTopicManager("bsv21", txoStorage, c.WhitelistTokens)
+		topicManager := NewBsv21ValidatedTopicManager("bsv21", txoStorage, c.WhitelistTokens, nil)
 
 		svc := &Services{
 			Lookup:       bsv21Lookup,
