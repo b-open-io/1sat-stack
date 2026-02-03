@@ -21,6 +21,7 @@ server:
   port: 8080
   host: 0.0.0.0
   base_path: /1sat
+  body_limit: 100mb  # Max request body size (supports: b, kb, mb, gb)
   pprof:
     enabled: true        # Enable pprof profiling server
     port: 6060           # Pprof server port
@@ -115,8 +116,10 @@ arcade:
   teranode:
     broadcast_urls:
       - http://mainnet.gorillanode.io:8833
+      # - https://teranode-eks-testnet-eu-1-propagation.bsvb.tech/
     datahub_urls:
       - https://mainnet.gorillanode.io/api/v1
+      # - https://teranode-eks-testnet-eu-1.bsvb.tech/api/v1
 
 # Merkle service (deprecated - now handled by indexer status handler)
 # merkle:

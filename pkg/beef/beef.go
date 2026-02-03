@@ -234,6 +234,41 @@ func (s *Storage) SaveBeefBytes(ctx context.Context, txid *chainhash.Hash, beefB
 	return s.SaveBeef(ctx, txid, beef)
 }
 
+// SaveRaw saves raw transaction bytes, which may be BEEF or raw transaction format.
+// It will attempt to parse as BEEF first, and if that fails, parse as raw transaction.
+func (s *Storage) SaveRaw(ctx context.Context, rawBytes []byte) error {
+	if len(rawBytes) == 0 {
+		return errors.New("empty raw bytes")
+	}
+
+	// Try to parse as BEEF first
+	beef, tx, _, err := transaction.ParseBeef(rawBytes)
+	if err == nil && beef != nil && tx != nil {
+		return s.SaveBeef(ctx, tx.TxID(), beef)
+	}
+
+	// Try to parse as raw transaction
+	tx, err = transaction.NewTransactionFromBytes(rawBytes)
+	if err != nil {
+		return fmt.Errorf("failed to parse as BEEF or raw transaction: %w", err)
+	}
+
+	// Wrap in BEEF format and save
+	txid := tx.TxID()
+	individualBeef, err := s.createIndividualBEEF(txid, tx)
+	if err != nil {
+		return fmt.Errorf("failed to create BEEF wrapper: %w", err)
+	}
+
+	for _, storage := range s.storages {
+		if err := storage.Put(ctx, txid, individualBeef); err != nil {
+			return fmt.Errorf("failed to save to storage: %w", err)
+		}
+	}
+
+	return nil
+}
+
 func (s *Storage) saveBeefInternal(ctx context.Context, txid *chainhash.Hash, beef *transaction.Beef) error {
 	if beef == nil {
 		return errors.New("beef is nil")
@@ -449,7 +484,7 @@ func (s *Storage) BuildFullBeef(ctx context.Context, txid *chainhash.Hash) ([]by
 func (s *Storage) LoadRawTx(ctx context.Context, txid *chainhash.Hash) ([]byte, error) {
 	for i, storage := range s.storages {
 		rawTx, err := storage.GetRawTx(ctx, txid)
-		if err == nil {
+		if err == nil && len(rawTx) > 0 {
 			if i > 0 {
 				if beefBytes, err := assembleBEEF(txid, rawTx, nil); err == nil {
 					for j := 0; j < i; j++ {
@@ -459,7 +494,9 @@ func (s *Storage) LoadRawTx(ctx context.Context, txid *chainhash.Hash) ([]byte, 
 			}
 			return rawTx, nil
 		}
-		if err != ErrNotFound {
+		// Only propagate context errors; treat all other errors as "not found"
+		// to allow the chain to degrade gracefully on transient failures
+		if err != nil && err == ctx.Err() {
 			return nil, err
 		}
 	}
@@ -470,7 +507,7 @@ func (s *Storage) LoadRawTx(ctx context.Context, txid *chainhash.Hash) ([]byte, 
 func (s *Storage) LoadProof(ctx context.Context, txid *chainhash.Hash) ([]byte, error) {
 	for i, storage := range s.storages {
 		proof, err := storage.GetProof(ctx, txid)
-		if err == nil {
+		if err == nil && len(proof) > 0 {
 			if i > 0 {
 				if rawTx, err := storage.GetRawTx(ctx, txid); err == nil {
 					if beefBytes, err := assembleBEEF(txid, rawTx, proof); err == nil {
@@ -482,7 +519,9 @@ func (s *Storage) LoadProof(ctx context.Context, txid *chainhash.Hash) ([]byte, 
 			}
 			return proof, nil
 		}
-		if err != ErrNotFound {
+		// Only propagate context errors; treat all other errors as "not found"
+		// to allow the chain to degrade gracefully on transient failures
+		if err != nil && err == ctx.Err() {
 			return nil, err
 		}
 	}

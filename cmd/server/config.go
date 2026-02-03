@@ -116,10 +116,11 @@ type RoutesConfig struct {
 
 // ServerConfig holds HTTP server settings
 type ServerConfig struct {
-	Port     int         `mapstructure:"port"`
-	Host     string      `mapstructure:"host"`
-	BasePath string      `mapstructure:"base_path"`
-	Pprof    PprofConfig `mapstructure:"pprof"`
+	Port      int         `mapstructure:"port"`
+	Host      string      `mapstructure:"host"`
+	BasePath  string      `mapstructure:"base_path"`
+	BodyLimit string      `mapstructure:"body_limit"` // Max request body size (e.g., "100mb", "1gb")
+	Pprof     PprofConfig `mapstructure:"pprof"`
 }
 
 // PprofConfig holds pprof profiling server settings
@@ -127,6 +128,37 @@ type PprofConfig struct {
 	Enabled bool   `mapstructure:"enabled"`
 	Port    int    `mapstructure:"port"`
 	Host    string `mapstructure:"host"`
+}
+
+// ParseBodyLimit parses a body limit string like "100mb" or "1gb" into bytes.
+// Supports: b, kb, mb, gb (case-insensitive). Defaults to 4MB if invalid.
+func ParseBodyLimit(limit string) int {
+	if limit == "" {
+		return 4 * 1024 * 1024 // 4MB default (Fiber's default)
+	}
+
+	limit = strings.ToLower(strings.TrimSpace(limit))
+	multiplier := 1
+
+	if strings.HasSuffix(limit, "gb") {
+		multiplier = 1024 * 1024 * 1024
+		limit = strings.TrimSuffix(limit, "gb")
+	} else if strings.HasSuffix(limit, "mb") {
+		multiplier = 1024 * 1024
+		limit = strings.TrimSuffix(limit, "mb")
+	} else if strings.HasSuffix(limit, "kb") {
+		multiplier = 1024
+		limit = strings.TrimSuffix(limit, "kb")
+	} else if strings.HasSuffix(limit, "b") {
+		limit = strings.TrimSuffix(limit, "b")
+	}
+
+	var value int
+	if _, err := fmt.Sscanf(limit, "%d", &value); err != nil {
+		return 4 * 1024 * 1024 // default on parse error
+	}
+
+	return value * multiplier
 }
 
 // CreateLogger creates a logger from the logging configuration.
@@ -191,6 +223,7 @@ func (c *Config) SetDefaults(v *viper.Viper) {
 	v.SetDefault("server.port", 8080)
 	v.SetDefault("server.host", "0.0.0.0")
 	v.SetDefault("server.base_path", "/1sat")
+	v.SetDefault("server.body_limit", "100mb") // Max request body size
 	v.SetDefault("server.pprof.enabled", false)
 	v.SetDefault("server.pprof.port", 6060)
 	v.SetDefault("server.pprof.host", "localhost")
@@ -316,9 +349,17 @@ func (c *Config) Initialize(ctx context.Context, logger *slog.Logger) (*Services
 			return nil, fmt.Errorf("failed to initialize arcade: %w", err)
 		}
 		svc.Arcade = arcadeSvc
-		// Create routes with all needed components
+
+		// Wrap arcade service with BEEF capture (saves raw tx at submission time)
+		wrappedService := NewBeefCapturingArcadeService(
+			arcadeSvc.ArcadeService,
+			svc.Beef.Storage,
+			logger,
+		)
+
+		// Create routes with wrapped service for BEEF capture
 		svc.ArcadeRoutes = arcaderoutes.NewRoutes(arcaderoutes.Config{
-			Service:        arcadeSvc.ArcadeService,
+			Service:        wrappedService,
 			Store:          arcadeSvc.Store,
 			EventPublisher: arcadeSvc.EventPublisher,
 			Arcade:         arcadeSvc.Arcade,
@@ -876,14 +917,23 @@ func (svc *Services) StartSubscribers(ctx context.Context, logger *slog.Logger) 
 		logger.Info("started BSV21 sync services")
 	}
 
-	// Start indexer sync services
+	// Start arcade event handlers (arcade listener + status handler)
+	if svc.Indexer != nil {
+		if err := svc.Indexer.StartEventHandlers(ctx); err != nil {
+			logger.Error("Failed to start event handlers", "error", err)
+		} else {
+			logger.Info("started arcade event handlers")
+		}
+	}
+
+	// Start JungleBus sync (if configured)
 	if svc.Indexer != nil && svc.Indexer.Sync != nil {
 		go func() {
 			if err := svc.Indexer.Start(ctx); err != nil {
 				logger.Error("Indexer sync error", "error", err)
 			}
 		}()
-		logger.Info("started indexer sync services")
+		logger.Info("started indexer sync")
 	}
 }
 

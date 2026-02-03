@@ -84,9 +84,12 @@ func main() {
 	svc.StartSubscribers(ctx, log)
 
 	// Create Fiber app
+	bodyLimit := ParseBodyLimit(cfg.Server.BodyLimit)
+	log.Info("configuring body limit", "limit", cfg.Server.BodyLimit, "bytes", bodyLimit)
 	app := fiber.New(fiber.Config{
 		AppName:               "1sat-stack",
 		DisableStartupMessage: false,
+		BodyLimit:             bodyLimit,
 	})
 
 	// Middleware
