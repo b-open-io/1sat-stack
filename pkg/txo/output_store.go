@@ -66,8 +66,9 @@ func (s *OutputStore) SaveOutput(ctx context.Context, output *IndexedOutput, sat
 	opBytes := op.Bytes()
 	hashKey := KeyOutHash(op)
 
-	// Build events list - include owner events
-	events := make([]string, 0, len(output.Events)+len(output.Owners))
+	// Build events list - include txid and owner events
+	events := make([]string, 0, len(output.Events)+len(output.Owners)+1)
+	events = append(events, "txid:"+op.Txid.String())
 	events = append(events, output.Events...)
 	for _, owner := range output.Owners {
 		if !owner.IsZero() {

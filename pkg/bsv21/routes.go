@@ -237,15 +237,32 @@ func (r *Routes) GetTransaction(c *fiber.Ctx) error {
 
 	includeBeef := c.Query("beef") == "true"
 
-	// Load outputs for this txid
-	outputs, err := r.storage.LoadOutputsByTxid(c.Context(), txid, nil)
+	// Query txid event index - O(log n + k) where k = outputs for this txid
+	cfg := &txo.OutputSearchCfg{
+		SearchCfg: store.SearchCfg{
+			Keys: [][]byte{txo.KeyEvent("txid:" + txidStr)},
+		},
+		IncludeTags: []string{"bsv21"},
+	}
+
+	outputs, err := r.storage.SearchOutputs(c.Context(), cfg)
 	if err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(ErrorResponse{
 			Message: "Failed to retrieve transaction details",
 		})
 	}
 
-	if len(outputs) == 0 {
+	// Filter to BSV21 outputs (small set, typically <100 per tx)
+	var bsv21Outputs []*txo.IndexedOutput
+	for _, out := range outputs {
+		if out != nil && out.Data != nil {
+			if _, ok := out.Data["bsv21"]; ok {
+				bsv21Outputs = append(bsv21Outputs, out)
+			}
+		}
+	}
+
+	if len(bsv21Outputs) == 0 {
 		return c.Status(fiber.StatusNotFound).JSON(ErrorResponse{
 			Message: "Transaction not found",
 		})
@@ -253,29 +270,17 @@ func (r *Routes) GetTransaction(c *fiber.Ctx) error {
 
 	tx := &TransactionData{
 		TxID:    txidStr,
-		Outputs: outputs,
+		Outputs: bsv21Outputs,
 	}
 
-	if len(outputs) > 0 && outputs[0] != nil && outputs[0].BlockHeight != nil {
-		tx.BlockHeight = *outputs[0].BlockHeight
+	if len(bsv21Outputs) > 0 && bsv21Outputs[0].BlockHeight != nil {
+		tx.BlockHeight = *bsv21Outputs[0].BlockHeight
 	}
 
 	if includeBeef && r.storage.BeefStore != nil {
 		beef, err := r.storage.BeefStore.LoadBeef(c.Context(), txid)
-		if err != nil {
-			r.logger.Error("Failed to load BEEF", "txid", txid.String(), "error", err)
-			return c.Status(fiber.StatusInternalServerError).JSON(ErrorResponse{
-				Message: "Failed to load BEEF data",
-			})
-		}
-		if beef != nil {
-			tx.Beef, err = beef.AtomicBytes(txid)
-			if err != nil {
-				r.logger.Error("Failed to serialize BEEF", "txid", txid.String(), "error", err)
-				return c.Status(fiber.StatusInternalServerError).JSON(ErrorResponse{
-					Message: "Failed to serialize BEEF data",
-				})
-			}
+		if err == nil && beef != nil {
+			tx.Beef, _ = beef.AtomicBytes(txid)
 		}
 	}
 
