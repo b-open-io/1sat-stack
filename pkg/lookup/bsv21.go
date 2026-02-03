@@ -2,10 +2,12 @@ package lookup
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"strconv"
 	"sync"
 
+	"github.com/b-open-io/1sat-stack/pkg/parse"
 	"github.com/b-open-io/1sat-stack/pkg/store"
 	"github.com/b-open-io/1sat-stack/pkg/txo"
 	"github.com/b-open-io/1sat-stack/pkg/types"
@@ -385,13 +387,13 @@ func (l *BSV21Lookup) sumAmounts(ctx context.Context, outpoints []*transaction.O
 	return totalBalance, count, nil
 }
 
-// GetToken returns the mint transaction details for a specific BSV21 token
-func (l *BSV21Lookup) GetToken(ctx context.Context, outpoint *transaction.Outpoint) (map[string]any, error) {
+// GetToken returns the parsed BSV21 deploy data for a specific token
+func (l *BSV21Lookup) GetToken(ctx context.Context, outpoint *transaction.Outpoint) (*parse.BSV21, error) {
 	tokenId := outpoint.OrdinalString()
 
 	// Check cache first
 	if cached, ok := l.mintCache.Load(tokenId); ok {
-		return cached.(map[string]any), nil
+		return cached.(*parse.BSV21), nil
 	}
 
 	// Load output data for this outpoint
@@ -404,51 +406,37 @@ func (l *BSV21Lookup) GetToken(ctx context.Context, outpoint *transaction.Outpoi
 	}
 
 	if output == nil {
-		return nil, fmt.Errorf("token data not found")
+		return nil, fmt.Errorf("token not found")
 	}
 
 	bsv21DataRaw, ok := output.Data["bsv21"]
 	if !ok {
-		return nil, fmt.Errorf("token data not found")
+		return nil, fmt.Errorf("token not found")
 	}
 
-	bsv21Data, ok := bsv21DataRaw.(map[string]any)
-	if !ok {
-		return nil, fmt.Errorf("invalid token data format")
+	// Re-marshal and unmarshal to hydrate into the typed struct
+	dataBytes, err := json.Marshal(bsv21DataRaw)
+	if err != nil {
+		return nil, fmt.Errorf("invalid token data: %w", err)
 	}
 
-	op, ok := bsv21Data["op"].(string)
-	if !ok || op != "deploy+mint" {
-		return nil, fmt.Errorf("outpoint exists but is not a mint transaction (op=%s)", op)
+	token := &parse.BSV21{}
+	if err := json.Unmarshal(dataBytes, token); err != nil {
+		return nil, fmt.Errorf("invalid token data: %w", err)
 	}
 
-	response := map[string]any{
-		"id":   tokenId,
-		"txid": outpoint.Txid.String(),
-		"vout": outpoint.Index,
-		"op":   op,
+	// Ensure this is a deploy operation
+	if token.Op != string(bsv21.OpDeployMint) && token.Op != string(bsv21.OpDeployAuth) {
+		return nil, fmt.Errorf("outpoint is not a deploy transaction (op=%s)", token.Op)
 	}
 
-	if amtStr, ok := bsv21Data["amt"].(string); ok {
-		response["amt"] = amtStr
-	}
+	// Set the ID to the canonical outpoint string
+	token.Id = tokenId
 
-	if sym, ok := bsv21Data["sym"].(string); ok {
-		response["sym"] = sym
-	}
+	// Cache the result
+	l.mintCache.Store(tokenId, token)
 
-	if dec, ok := bsv21Data["dec"].(float64); ok {
-		response["dec"] = uint8(dec)
-	}
-
-	if icon, ok := bsv21Data["icon"].(string); ok {
-		response["icon"] = icon
-	}
-
-	// Cache the response
-	l.mintCache.Store(tokenId, response)
-
-	return response, nil
+	return token, nil
 }
 
 // LoadOutputs loads full output data for a list of outpoints

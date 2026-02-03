@@ -625,11 +625,6 @@ func (c *Config) RegisterRoutes(app *fiber.App, svc *Services) {
 		bsv21Group := api.Group(prefix)
 		svc.BSV21.Routes.Register(bsv21Group)
 
-		// Register funding routes on the same group (adds /:tokenId/funding endpoint)
-		if svc.BSV21.FundingRoutes != nil {
-			svc.BSV21.FundingRoutes.Register(bsv21Group)
-		}
-
 		capabilities = append(capabilities, "bsv21")
 	}
 

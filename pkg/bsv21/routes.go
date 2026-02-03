@@ -5,6 +5,7 @@ import (
 	"strconv"
 
 	lookuppkg "github.com/b-open-io/1sat-stack/pkg/lookup"
+	"github.com/b-open-io/1sat-stack/pkg/parse"
 	"github.com/b-open-io/1sat-stack/pkg/store"
 	"github.com/b-open-io/1sat-stack/pkg/txo"
 	"github.com/b-open-io/1sat-stack/pkg/types"
@@ -18,6 +19,7 @@ import (
 type Routes struct {
 	storage      *txo.OutputStore
 	lookup       *lookuppkg.BSV21Lookup
+	manager      *TokenManager
 	chaintracker chaintracks.Chaintracks
 	logger       *slog.Logger
 }
@@ -26,6 +28,7 @@ type Routes struct {
 type RoutesDeps struct {
 	Storage      *txo.OutputStore
 	Lookup       *lookuppkg.BSV21Lookup
+	Manager      *TokenManager
 	ChainTracker chaintracks.Chaintracks
 	Logger       *slog.Logger
 }
@@ -39,6 +42,7 @@ func NewRoutes(cfg *RoutesDeps) *Routes {
 	return &Routes{
 		storage:      cfg.Storage,
 		lookup:       cfg.Lookup,
+		manager:      cfg.Manager,
 		chaintracker: cfg.ChainTracker,
 		logger:       logger,
 	}
@@ -46,6 +50,9 @@ func NewRoutes(cfg *RoutesDeps) *Routes {
 
 // Register registers the BSV21 routes with the Fiber router
 func (r *Routes) Register(router fiber.Router) {
+	// Static routes must be registered before parameterized routes
+	router.Post("/lookup", r.LookupTokens)
+
 	router.Get("/:tokenId", r.GetToken)
 	router.Get("/:tokenId/blk/:height", r.GetBlockData)
 	router.Get("/:tokenId/tx/:txid", r.GetTransaction)
@@ -57,24 +64,31 @@ func (r *Routes) Register(router fiber.Router) {
 	router.Post("/:tokenId/:lockType/unspent", r.GetMultiAddressUnspent)
 }
 
-// TokenResponse represents BSV21 token details
-type TokenResponse struct {
-	ID     string `json:"id"`
-	Txid   string `json:"txid"`
-	Vout   uint32 `json:"vout"`
-	Op     string `json:"op"`
-	Amt    string `json:"amt"`
-	Symbol string `json:"sym,omitempty"`
-	Dec    uint8  `json:"dec,omitempty"`
-	Icon   string `json:"icon,omitempty"`
+// TokenDetailResponse represents combined BSV21 token details and funding status
+// @Description Combined token metadata and funding status
+type TokenDetailResponse struct {
+	TokenID string       `json:"tokenId"`
+	Token   *parse.BSV21 `json:"token"`
+	Status  *TokenStatus `json:"status,omitempty"`
 }
 
-// TransactionData represents a transaction with its outputs
+// OutputData represents an output (or input) in a transaction response
+// @Description Output or input data for a transaction
+type OutputData struct {
+	TxID  *string        `json:"txid,omitempty"` // Source txid (for inputs only)
+	Vout  uint32         `json:"vout"`
+	Data  map[string]any `json:"data,omitempty"`
+	Spend *string        `json:"spend,omitempty"` // Spending txid hex (for outputs only, null if unspent)
+}
+
+// TransactionData represents a transaction with its inputs and outputs
+// @Description Transaction details with inputs, outputs, and optional BEEF
 type TransactionData struct {
-	TxID        string               `json:"txid"`
-	Outputs     []*txo.IndexedOutput `json:"outputs"`
-	Beef        []byte               `json:"beef,omitempty"`
-	BlockHeight uint32               `json:"block_height,omitempty"`
+	TxID        string        `json:"txid"`
+	Inputs      []*OutputData `json:"inputs"`
+	Outputs     []*OutputData `json:"outputs"`
+	Beef        []byte        `json:"beef,omitempty"`
+	BlockHeight uint32        `json:"block_height,omitempty"`
 }
 
 // BlockResponse represents block data for a token
@@ -102,36 +116,96 @@ type ErrorResponse struct {
 	Message string `json:"message"`
 }
 
-// GetToken retrieves BSV21 token details
-// @Summary Get BSV21 token details
+// GetToken retrieves BSV21 token details and funding status
+// @Summary Get BSV21 token details with funding status
 // @Tags bsv21
 // @Produce json
 // @Param tokenId path string true "Token ID (outpoint format: txid_vout)"
-// @Success 200 {object} TokenResponse
+// @Success 200 {object} TokenDetailResponse
 // @Router /bsv21/{tokenId} [get]
 func (r *Routes) GetToken(c *fiber.Ctx) error {
 	tokenIdStr := c.Params("tokenId")
 
+	resp, err := r.getTokenDetail(c, tokenIdStr)
+	if err != nil {
+		return err
+	}
+
+	return c.JSON(resp)
+}
+
+// LookupTokens retrieves details for multiple tokens
+// @Summary Bulk lookup BSV21 token details with funding status
+// @Tags bsv21
+// @Accept json
+// @Produce json
+// @Param tokenIds body []string true "Array of token IDs (max 100)"
+// @Success 200 {array} TokenDetailResponse
+// @Router /bsv21/lookup [post]
+func (r *Routes) LookupTokens(c *fiber.Ctx) error {
+	var tokenIds []string
+	if err := c.BodyParser(&tokenIds); err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(ErrorResponse{
+			Message: "Invalid request body",
+		})
+	}
+
+	if len(tokenIds) == 0 {
+		return c.Status(fiber.StatusBadRequest).JSON(ErrorResponse{
+			Message: "No token IDs provided",
+		})
+	}
+
+	if len(tokenIds) > 100 {
+		return c.Status(fiber.StatusBadRequest).JSON(ErrorResponse{
+			Message: "Too many token IDs (max 100)",
+		})
+	}
+
+	results := make([]*TokenDetailResponse, 0, len(tokenIds))
+	for _, tokenId := range tokenIds {
+		resp, err := r.getTokenDetail(c, tokenId)
+		if err != nil {
+			// Skip tokens that fail to load rather than failing the whole request
+			r.logger.Debug("failed to load token in bulk lookup", "tokenId", tokenId, "error", err)
+			continue
+		}
+		results = append(results, resp)
+	}
+
+	return c.JSON(results)
+}
+
+// getTokenDetail loads combined token data and funding status for a single token ID
+func (r *Routes) getTokenDetail(c *fiber.Ctx, tokenIdStr string) (*TokenDetailResponse, error) {
 	outpoint, err := transaction.OutpointFromString(tokenIdStr)
 	if err != nil {
-		return c.Status(fiber.StatusBadRequest).JSON(ErrorResponse{
-			Message: "Invalid token ID format",
+		return nil, c.Status(fiber.StatusBadRequest).JSON(ErrorResponse{
+			Message: "Invalid token ID format: " + tokenIdStr,
 		})
 	}
 
 	tokenData, err := r.lookup.GetToken(c.Context(), outpoint)
 	if err != nil {
-		if err.Error() == "token not found" {
-			return c.Status(fiber.StatusNotFound).JSON(ErrorResponse{
-				Message: "Token not found",
-			})
-		}
-		return c.Status(fiber.StatusInternalServerError).JSON(ErrorResponse{
-			Message: "Failed to retrieve token details",
+		return nil, c.Status(fiber.StatusNotFound).JSON(ErrorResponse{
+			Message: "Token not found: " + tokenIdStr,
 		})
 	}
 
-	return c.JSON(tokenData)
+	resp := &TokenDetailResponse{
+		TokenID: tokenIdStr,
+		Token:   tokenData,
+	}
+
+	// Include funding status if the token manager is available
+	if r.manager != nil {
+		status, err := r.manager.GetTokenStatus(c.Context(), tokenIdStr)
+		if err == nil {
+			resp.Status = status
+		}
+	}
+
+	return resp, nil
 }
 
 // GetBlockData retrieves block data for a token at a specific height
@@ -164,6 +238,8 @@ func (r *Routes) GetBlockData(c *fiber.Ctx) error {
 			From: &score,
 			To:   &scoreEnd,
 		},
+		IncludeSpend: true,
+		IncludeTags:  []string{"bsv21"},
 	}
 
 	outputs, err := r.storage.SearchOutputs(c.Context(), cfg)
@@ -187,7 +263,15 @@ func (r *Routes) GetBlockData(c *fiber.Ctx) error {
 				BlockHeight: height,
 			}
 		}
-		txMap[txidStr].Outputs = append(txMap[txidStr].Outputs, output)
+		od := &OutputData{
+			Vout: output.Outpoint.Index,
+			Data: output.Data,
+		}
+		if output.SpendTxid != nil {
+			s := output.SpendTxid.String()
+			od.Spend = &s
+		}
+		txMap[txidStr].Outputs = append(txMap[txidStr].Outputs, od)
 	}
 
 	transactions := make([]*TransactionData, 0, len(txMap))
@@ -223,9 +307,10 @@ func (r *Routes) GetBlockData(c *fiber.Ctx) error {
 // @Param tokenId path string true "Token ID"
 // @Param txid path string true "Transaction ID"
 // @Param beef query bool false "Include BEEF data"
-// @Success 200 {object} map[string]interface{}
+// @Success 200 {object} TransactionData
 // @Router /bsv21/{tokenId}/tx/{txid} [get]
 func (r *Routes) GetTransaction(c *fiber.Ctx) error {
+	tokenId := c.Params("tokenId")
 	txidStr := c.Params("txid")
 
 	txid, err := chainhash.NewHashFromHex(txidStr)
@@ -236,45 +321,89 @@ func (r *Routes) GetTransaction(c *fiber.Ctx) error {
 	}
 
 	includeBeef := c.Query("beef") == "true"
+	topic := "tm_" + tokenId
 
-	// Query txid event index - O(log n + k) where k = outputs for this txid
+	// Query txid event index for outputs of this transaction
 	cfg := &txo.OutputSearchCfg{
 		SearchCfg: store.SearchCfg{
 			Keys: [][]byte{txo.KeyEvent("txid:" + txidStr)},
 		},
-		IncludeTags: []string{"bsv21"},
+		IncludeSpend: true,
+		IncludeBlock: true,
+		IncludeTags:  []string{"bsv21"},
 	}
 
-	outputs, err := r.storage.SearchOutputs(c.Context(), cfg)
+	rawOutputs, err := r.storage.SearchOutputs(c.Context(), cfg)
 	if err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(ErrorResponse{
 			Message: "Failed to retrieve transaction details",
 		})
 	}
 
-	// Filter to BSV21 outputs (small set, typically <100 per tx)
-	var bsv21Outputs []*txo.IndexedOutput
-	for _, out := range outputs {
-		if out != nil && out.Data != nil {
-			if _, ok := out.Data["bsv21"]; ok {
-				bsv21Outputs = append(bsv21Outputs, out)
+	// Filter to BSV21 outputs and convert to OutputData
+	var outputs []*OutputData
+	var blockHeight uint32
+	var firstOutput *txo.IndexedOutput
+	for _, out := range rawOutputs {
+		if out == nil || out.Data == nil {
+			continue
+		}
+		if _, ok := out.Data["bsv21"]; !ok {
+			continue
+		}
+		od := &OutputData{
+			Vout: out.Outpoint.Index,
+			Data: out.Data,
+		}
+		if out.SpendTxid != nil {
+			s := out.SpendTxid.String()
+			od.Spend = &s
+		}
+		outputs = append(outputs, od)
+		if firstOutput == nil {
+			firstOutput = out
+			if out.BlockHeight != nil {
+				blockHeight = *out.BlockHeight
 			}
 		}
 	}
 
-	if len(bsv21Outputs) == 0 {
+	if len(outputs) == 0 {
 		return c.Status(fiber.StatusNotFound).JSON(ErrorResponse{
 			Message: "Transaction not found",
 		})
 	}
 
-	tx := &TransactionData{
-		TxID:    txidStr,
-		Outputs: bsv21Outputs,
+	// Find inputs: outputs from other transactions that were consumed by this transaction.
+	// GetInputsConsumed returns the outpoints consumed to produce a given output for a topic.
+	// All outputs of the same tx share the same consumed inputs, so query the first one.
+	var inputs []*OutputData
+	consumedOps, err := r.storage.GetInputsConsumed(c.Context(), &firstOutput.Outpoint, topic)
+	if err == nil && len(consumedOps) > 0 {
+		// Load the consumed outputs with their BSV21 data
+		inputOutputs, err := r.storage.LoadOutputs(c.Context(), consumedOps, &txo.OutputSearchCfg{
+			IncludeTags: []string{"bsv21"},
+		})
+		if err == nil {
+			for _, inp := range inputOutputs {
+				if inp == nil {
+					continue
+				}
+				srcTxid := inp.Outpoint.Txid.String()
+				inputs = append(inputs, &OutputData{
+					TxID: &srcTxid,
+					Vout: inp.Outpoint.Index,
+					Data: inp.Data,
+				})
+			}
+		}
 	}
 
-	if len(bsv21Outputs) > 0 && bsv21Outputs[0].BlockHeight != nil {
-		tx.BlockHeight = *bsv21Outputs[0].BlockHeight
+	tx := &TransactionData{
+		TxID:        txidStr,
+		Inputs:      inputs,
+		Outputs:     outputs,
+		BlockHeight: blockHeight,
 	}
 
 	if includeBeef && r.storage.BeefStore != nil {
@@ -563,48 +692,4 @@ func parseSearchConfig(c *fiber.Ctx) *store.SearchCfg {
 	}
 
 	return cfg
-}
-
-// FundingRoutes provides HTTP handlers for token funding status
-type FundingRoutes struct {
-	manager *TokenManager
-	logger  *slog.Logger
-}
-
-// NewFundingRoutes creates a new FundingRoutes instance
-func NewFundingRoutes(manager *TokenManager, logger *slog.Logger) *FundingRoutes {
-	if logger == nil {
-		logger = slog.Default()
-	}
-	return &FundingRoutes{
-		manager: manager,
-		logger:  logger.With("component", "funding-routes"),
-	}
-}
-
-// Register registers the funding status routes with the Fiber router.
-// Should be registered on the same router as bsv21.Routes to add /:tokenId/funding endpoint.
-func (r *FundingRoutes) Register(router fiber.Router) {
-	router.Get("/:tokenId/funding", r.GetFundingStatus)
-}
-
-// GetFundingStatus retrieves funding status for a token
-// @Summary Get token funding status
-// @Tags bsv21
-// @Produce json
-// @Param tokenId path string true "Token ID (outpoint format: txid_vout)"
-// @Success 200 {object} TokenStatus
-// @Router /bsv21/{tokenId}/funding [get]
-func (r *FundingRoutes) GetFundingStatus(c *fiber.Ctx) error {
-	tokenId := c.Params("tokenId")
-
-	status, err := r.manager.GetTokenStatus(c.Context(), tokenId)
-	if err != nil {
-		r.logger.Error("failed to get token status", "tokenId", tokenId, "error", err)
-		return c.Status(fiber.StatusBadRequest).JSON(ErrorResponse{
-			Message: err.Error(),
-		})
-	}
-
-	return c.JSON(status)
 }

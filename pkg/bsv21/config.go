@@ -63,11 +63,10 @@ func (c *Config) SetDefaults(v *viper.Viper, prefix string) {
 
 // Services holds initialized BSV21 services
 type Services struct {
-	Lookup        *lookuppkg.BSV21Lookup
-	TopicManager  *Bsv21ValidatedTopicManager
-	Sync          *SyncServices
-	Routes        *Routes
-	FundingRoutes *FundingRoutes
+	Lookup       *lookuppkg.BSV21Lookup
+	TopicManager *Bsv21ValidatedTopicManager
+	Sync         *SyncServices
+	Routes       *Routes
 }
 
 // Initialize creates BSV21 services from the configuration
@@ -117,21 +116,21 @@ func (c *Config) Initialize(
 				return nil, fmt.Errorf("failed to create BSV21 sync services: %w", err)
 			}
 			svc.Sync = syncSvc
-
-			// Create funding routes if routes are enabled and we have a token manager
-			if c.Routes.Enabled && syncSvc.manager != nil {
-				svc.FundingRoutes = NewFundingRoutes(syncSvc.manager, logger)
-			}
 		}
 
 		// Create routes if enabled
 		if c.Routes.Enabled && txoStorage != nil {
-			svc.Routes = NewRoutes(&RoutesDeps{
+			deps := &RoutesDeps{
 				Storage:      txoStorage,
 				Lookup:       bsv21Lookup,
 				ChainTracker: chaintracker,
 				Logger:       logger,
-			})
+			}
+			// Include token manager if sync is enabled
+			if svc.Sync != nil && svc.Sync.manager != nil {
+				deps.Manager = svc.Sync.manager
+			}
+			svc.Routes = NewRoutes(deps)
 		}
 
 		return svc, nil
