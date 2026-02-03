@@ -75,21 +75,25 @@ func (l *ArcadeListener) Stop() {
 func (l *ArcadeListener) listen() {
 	defer l.wg.Done()
 
+	l.logger.Info("arcade listener subscribing to event publisher")
 	eventCh, err := l.eventPublisher.Subscribe(l.ctx)
 	if err != nil {
 		l.logger.Error("failed to subscribe to arcade events", "error", err)
 		return
 	}
+	l.logger.Info("arcade listener subscribed, waiting for events")
 
 	for {
 		select {
 		case <-l.ctx.Done():
+			l.logger.Info("arcade listener context done")
 			return
 		case status, ok := <-eventCh:
 			if !ok {
 				l.logger.Info("arcade event channel closed")
 				return
 			}
+			l.logger.Info("arcade listener received event", "txid", status.TxID, "status", status.Status)
 			l.bridgeToPublish(status)
 		}
 	}
@@ -111,7 +115,7 @@ func (l *ArcadeListener) bridgeToPublish(status *models.TransactionStatus) {
 		return
 	}
 
-	l.logger.Debug("bridging arcade event to pubsub",
+	l.logger.Info("bridging arcade event to pubsub",
 		"txid", status.TxID,
 		"status", status.Status)
 

@@ -161,7 +161,16 @@ func (c *Config) Initialize(
 // SetupArcadeListener initializes the arcade listener with its dependencies.
 // This must be called after arcade is initialized since arcade depends on indexer.
 func (s *Services) SetupArcadeListener(deps *ArcadeListenerDeps) {
+	s.logger.Info("SetupArcadeListener called",
+		"arcade.enabled", s.config.Arcade.Enabled,
+		"eventPublisher", deps.EventPublisher != nil,
+		"pubsub", deps.PubSub != nil)
+
 	if !s.config.Arcade.Enabled || deps.EventPublisher == nil || deps.PubSub == nil {
+		s.logger.Warn("ArcadeListener not initialized",
+			"arcade.enabled", s.config.Arcade.Enabled,
+			"hasEventPublisher", deps.EventPublisher != nil,
+			"hasPubSub", deps.PubSub != nil)
 		return
 	}
 
@@ -199,13 +208,19 @@ func (s *Services) SetupRoutes(ps pubsub.PubSub) {
 	s.Routes = NewRoutes(ps)
 }
 
-// Start starts background services (sync worker, arcade listener, status handler).
+// Start starts the JungleBus sync worker (if configured).
 func (s *Services) Start(ctx context.Context) error {
 	if s.Sync != nil {
 		if err := s.Sync.Start(ctx); err != nil {
 			return err
 		}
 	}
+	return nil
+}
+
+// StartEventHandlers starts the arcade listener and status handler.
+// These handle transaction events from arcade broadcasts.
+func (s *Services) StartEventHandlers(ctx context.Context) error {
 	if s.ArcadeListener != nil {
 		if err := s.ArcadeListener.Start(ctx); err != nil {
 			return err

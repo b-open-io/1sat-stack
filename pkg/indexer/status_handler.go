@@ -153,7 +153,7 @@ func (h *StatusHandler) handleEvent(event pubsub.Event) {
 		return
 	}
 
-	h.logger.Debug("arc event received",
+	h.logger.Info("arc event received",
 		"txid", arcEvent.TxID,
 		"status", arcEvent.Status)
 
@@ -173,7 +173,13 @@ func (h *StatusHandler) handleEvent(event pubsub.Event) {
 
 // handleAccepted ingests a newly accepted transaction.
 func (h *StatusHandler) handleAccepted(event ArcEvent) {
+	h.logger.Info("handleAccepted called", "txid", event.TxID)
+
 	if h.indexer == nil || h.beefStorage == nil {
+		h.logger.Warn("handleAccepted skipped - missing indexer or beefStorage",
+			"txid", event.TxID,
+			"hasIndexer", h.indexer != nil,
+			"hasBeefStorage", h.beefStorage != nil)
 		return
 	}
 
@@ -186,7 +192,7 @@ func (h *StatusHandler) handleAccepted(event ArcEvent) {
 	// Try to load from beef storage
 	tx, err := h.beefStorage.LoadTx(h.ctx, txid)
 	if err != nil || tx == nil {
-		h.logger.Debug("tx not in beef storage yet", "txid", event.TxID)
+		h.logger.Info("tx not in beef storage yet", "txid", event.TxID, "error", err)
 		return
 	}
 
