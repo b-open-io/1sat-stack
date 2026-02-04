@@ -90,6 +90,7 @@ func main() {
 		AppName:               "1sat-stack",
 		DisableStartupMessage: false,
 		BodyLimit:             bodyLimit,
+		UnescapePath:          true,
 	})
 
 	// Middleware

@@ -549,7 +549,6 @@ func (s *BadgerStore) zRangeInternal(ctx context.Context, key []byte, scoreRange
 
 	err := s.db.View(func(txn *badger.Txn) error {
 		opts := badger.DefaultIteratorOptions
-		opts.Prefix = prefix
 		opts.PrefetchValues = false
 		opts.Reverse = reverse
 
@@ -559,7 +558,20 @@ func (s *BadgerStore) zRangeInternal(ctx context.Context, key []byte, scoreRange
 		var skipped int64
 		var collected int64
 
-		for it.Rewind(); it.Valid(); it.Next() {
+		// For reverse iteration, seek past the end of prefix range
+		// For forward iteration, seek to start of prefix
+		if reverse {
+			// Create a key that's just past the end of the prefix range
+			// by appending 0xff bytes
+			seekKey := make([]byte, len(prefix)+1)
+			copy(seekKey, prefix)
+			seekKey[len(prefix)] = 0xff
+			it.Seek(seekKey)
+		} else {
+			it.Seek(prefix)
+		}
+
+		for ; it.ValidForPrefix(prefix); it.Next() {
 			item := it.Item()
 			k := item.Key()
 

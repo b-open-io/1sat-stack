@@ -3,11 +3,9 @@ package admin
 import (
 	"embed"
 	"encoding/binary"
-	"encoding/hex"
 	"io/fs"
 	"log/slog"
 	"net/http"
-	"net/url"
 	"sort"
 	"strconv"
 
@@ -15,8 +13,6 @@ import (
 	"github.com/b-open-io/1sat-stack/pkg/overlay"
 	"github.com/b-open-io/1sat-stack/pkg/store"
 	"github.com/b-open-io/1sat-stack/pkg/txo"
-	"github.com/bsv-blockchain/go-sdk/chainhash"
-	"github.com/bsv-blockchain/go-sdk/transaction"
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/middleware/filesystem"
 )
@@ -67,9 +63,6 @@ func (r *Routes) Register(group fiber.Router) {
 	// Active lookup services endpoint
 	group.Get("/lookups/active", r.handleGetActiveLookups)
 
-	// ZSet lookup endpoint (for queues and other sorted sets)
-	group.Get("/zset/*", r.handleGetZSetItems)
-
 	// Progress endpoints
 	group.Get("/progress", r.handleGetProgress)
 	group.Put("/progress/:id", r.handleUpdateProgress)
@@ -77,6 +70,10 @@ func (r *Routes) Register(group fiber.Router) {
 
 	// BSV21 worker endpoints
 	group.Get("/bsv21/workers", r.handleGetBSV21Workers)
+
+	// Data query routes
+	dataRoutes := NewDataRoutes(r.store, r.logger)
+	dataRoutes.Register(group.Group("/data"))
 
 	// Serve static UI files
 	uiSubFS, err := fs.Sub(uiFS, "ui")
@@ -328,117 +325,6 @@ func (r *Routes) handleGetActiveLookups(c *fiber.Ctx) error {
 		lookups = []string{}
 	}
 	return c.JSON(lookups)
-}
-
-// ZSetItem represents an item in a sorted set
-type ZSetItem struct {
-	Value string  `json:"value"`
-	Score float64 `json:"score"`
-}
-
-// ZSetResponse represents the response for a zset lookup
-type ZSetResponse struct {
-	Key   string     `json:"key"`
-	Count int64      `json:"count"`
-	Items []ZSetItem `json:"items"`
-}
-
-// handleGetZSetItems returns items from a specific sorted set by key
-// @Summary Get sorted set items
-// @Description Returns the first 25 items from any sorted set by key
-// @Tags admin
-// @Produce json
-// @Param key path string true "Sorted set key (e.g., q:tok:abc123, z:ev:own:address)"
-// @Success 200 {object} ZSetResponse "Sorted set info and items"
-// @Failure 400 {object} map[string]string "Bad request"
-// @Failure 500 {object} map[string]string "Internal server error"
-// @Router /admin/zset/{key} [get]
-func (r *Routes) handleGetZSetItems(c *fiber.Ctx) error {
-	if r.store == nil {
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
-			"error": "store not available",
-		})
-	}
-
-	keyEncoded := c.Params("*")
-	key, err := url.PathUnescape(keyEncoded)
-	if err != nil {
-		key = keyEncoded
-	}
-	if key == "" {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
-			"error": "key is required",
-		})
-	}
-
-	// Get count
-	count, err := r.store.ZCard(c.Context(), []byte(key))
-	if err != nil {
-		r.logger.Error("failed to get zset count", "key", key, "error", err)
-		count = 0
-	}
-
-	// Get items
-	members, err := r.store.ZRange(c.Context(), []byte(key), store.ScoreRange{
-		Count: 25,
-	})
-	r.logger.Debug("handleGetZSetItems result", "key", key, "count", len(members), "err", err)
-	if err != nil {
-		r.logger.Error("failed to get zset items", "key", key, "error", err)
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
-			"error": "failed to get zset items",
-		})
-	}
-
-	items := make([]ZSetItem, 0, len(members))
-	for _, m := range members {
-		var value string
-		switch len(m.Member) {
-		case 32:
-			// chainhash.Hash
-			hash, err := chainhash.NewHash(m.Member)
-			if err == nil {
-				value = hash.String()
-			} else {
-				value = hex.EncodeToString(m.Member)
-			}
-		case 36:
-			// transaction.Outpoint
-			op := transaction.NewOutpointFromBytes(m.Member)
-			if op != nil {
-				value = op.String()
-			} else {
-				value = hex.EncodeToString(m.Member)
-			}
-		default:
-			// Try as string first, fall back to hex
-			if isPrintable(m.Member) {
-				value = string(m.Member)
-			} else {
-				value = hex.EncodeToString(m.Member)
-			}
-		}
-		items = append(items, ZSetItem{
-			Value: value,
-			Score: m.Score,
-		})
-	}
-
-	return c.JSON(ZSetResponse{
-		Key:   key,
-		Count: count,
-		Items: items,
-	})
-}
-
-// isPrintable checks if a byte slice is printable ASCII
-func isPrintable(b []byte) bool {
-	for _, c := range b {
-		if c < 32 || c > 126 {
-			return false
-		}
-	}
-	return len(b) > 0
 }
 
 // ProgressItem represents a progress entry
