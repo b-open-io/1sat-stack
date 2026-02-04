@@ -274,9 +274,11 @@ definitions:
   github_com_b-open-io_1sat-stack_pkg_parse.BSV21:
     properties:
       amt:
-        type: integer
+        example: "0"
+        type: string
       dec:
-        type: integer
+        example: "0"
+        type: string
       icon:
         type: string
       id:
@@ -2083,7 +2085,7 @@ paths:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/pkg_owner.BalanceResponse'
+            $ref: '#/definitions/github_com_b-open-io_1sat-stack_pkg_owner.BalanceResponse'
         "500":
           description: Internal server error
           schema:

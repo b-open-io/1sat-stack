@@ -30,16 +30,18 @@ func NewLoader[K comparable, T any](load func(K) (T, error)) *Loader[K, T] {
 func (d *Loader[K, T]) Load(key K) (T, error) {
 	var wg sync.WaitGroup
 	wg.Add(1)
-	defer wg.Done()
 
 	if inflight, loaded := d.operations.LoadOrStore(key, &Operation[T]{wg: &wg}); loaded {
 		op := inflight.(*Operation[T])
 		op.wg.Wait()
 		return op.result, op.err
 	} else {
+		defer func() {
+			d.operations.Delete(key)
+			wg.Done()
+		}()
 		op := inflight.(*Operation[T])
 		op.result, op.err = d.load(key)
-		d.operations.Delete(key)
 		return op.result, op.err
 	}
 }

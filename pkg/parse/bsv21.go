@@ -12,9 +12,9 @@ type BSV21 struct {
 	Id       string  `json:"id"`
 	Op       string  `json:"op"`
 	Symbol   *string `json:"sym,omitempty"`
-	Decimals *uint8  `json:"dec,omitempty"`
+	Decimals *uint8  `json:"dec,omitempty,string"`
 	Icon     *string `json:"icon,omitempty"`
-	Amt      uint64  `json:"amt"`
+	Amt      uint64  `json:"amt,string"`
 }
 
 // ParseBSV21 parses a BSV21 token from the parse context.

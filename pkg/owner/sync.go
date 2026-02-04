@@ -7,6 +7,7 @@ import (
 	"sync"
 
 	"github.com/b-open-io/1sat-stack/pkg/beef"
+	"github.com/b-open-io/1sat-stack/pkg/dedup"
 	"github.com/b-open-io/1sat-stack/pkg/indexer"
 	"github.com/b-open-io/1sat-stack/pkg/store"
 	"github.com/b-open-io/1sat-stack/pkg/txo"
@@ -21,6 +22,7 @@ type OwnerSync struct {
 	outputStore *txo.OutputStore
 	concurrency int
 	logger      *slog.Logger
+	syncDedup   *dedup.Loader[string, struct{}]
 }
 
 // NewOwnerSync creates a new OwnerSync instance
@@ -34,7 +36,7 @@ func NewOwnerSync(
 	if logger == nil {
 		logger = slog.Default()
 	}
-	return &OwnerSync{
+	s := &OwnerSync{
 		jb:          jb,
 		beefStorage: beefStorage,
 		indexer:     idx,
@@ -42,6 +44,10 @@ func NewOwnerSync(
 		concurrency: 1,
 		logger:      logger,
 	}
+	s.syncDedup = dedup.NewLoader(func(owner string) (struct{}, error) {
+		return struct{}{}, s.sync(context.Background(), owner)
+	})
+	return s
 }
 
 // WithConcurrency sets the concurrency level for syncing
@@ -51,8 +57,15 @@ func (s *OwnerSync) WithConcurrency(n int) *OwnerSync {
 }
 
 // Sync syncs all transactions for an owner from JungleBus.
-// It fetches transactions starting from the last synced height and indexes them directly.
+// Concurrent calls for the same owner are deduplicated — only one sync runs
+// at a time per owner, and other callers wait for the result.
 func (s *OwnerSync) Sync(ctx context.Context, owner string) error {
+	_, err := s.syncDedup.Load(owner)
+	return err
+}
+
+// sync performs the actual sync work for an owner.
+func (s *OwnerSync) sync(ctx context.Context, owner string) error {
 	s.logger.Debug("OwnerSync starting", "owner", owner)
 
 	// Get last synced height (0 if not found)

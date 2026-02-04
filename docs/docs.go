@@ -2320,7 +2320,7 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/pkg_owner.BalanceResponse"
+                            "$ref": "#/definitions/github_com_b-open-io_1sat-stack_pkg_owner.BalanceResponse"
                         }
                     },
                     "500": {
@@ -3448,10 +3448,12 @@ const docTemplate = `{
             "type": "object",
             "properties": {
                 "amt": {
-                    "type": "integer"
+                    "type": "string",
+                    "example": "0"
                 },
                 "dec": {
-                    "type": "integer"
+                    "type": "string",
+                    "example": "0"
                 },
                 "icon": {
                     "type": "string"
