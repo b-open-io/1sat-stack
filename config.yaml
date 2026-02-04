@@ -177,6 +177,11 @@ ordfs:
   routes:
     enabled: true
 
+# Admin API
+admin:
+  routes:
+    bearer_token: ""  # Set via ONESAT_ADMIN_ROUTES_BEARER_TOKEN env var
+
 # JungleBus Sync subscriptions
 jbsync:
   subscribers:
