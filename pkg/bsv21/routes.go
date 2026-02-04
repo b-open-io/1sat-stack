@@ -3,6 +3,7 @@ package bsv21
 import (
 	"log/slog"
 	"strconv"
+	"strings"
 
 	lookuppkg "github.com/b-open-io/1sat-stack/pkg/lookup"
 	"github.com/b-open-io/1sat-stack/pkg/parse"
@@ -52,6 +53,10 @@ func NewRoutes(cfg *RoutesDeps) *Routes {
 func (r *Routes) Register(router fiber.Router) {
 	// Static routes must be registered before parameterized routes
 	router.Post("/lookup", r.LookupTokens)
+
+	// Output validation routes
+	router.Post("/:tokenId/outputs", r.ValidateOutputs)
+	router.Get("/:tokenId/outputs/:outpoint", r.GetTokenOutput)
 
 	router.Get("/:tokenId", r.GetToken)
 	router.Get("/:tokenId/blk/:height", r.GetBlockData)
@@ -242,11 +247,19 @@ func (r *Routes) GetBlockData(c *fiber.Ctx) error {
 		IncludeTags:  []string{"bsv21"},
 	}
 
-	outputs, err := r.storage.SearchOutputs(c.Context(), cfg)
+	results, err := r.storage.Search(c.Context(), cfg)
 	if err != nil {
-		r.logger.Error("GetBlockData error", "error", err)
+		r.logger.Error("GetBlockData search error", "error", err)
 		return c.Status(fiber.StatusInternalServerError).JSON(ErrorResponse{
 			Message: "Failed to get block data",
+		})
+	}
+
+	outputs, err := r.storage.LoadOutputsFromResults(c.Context(), results, cfg)
+	if err != nil {
+		r.logger.Error("GetBlockData load error", "error", err)
+		return c.Status(fiber.StatusInternalServerError).JSON(ErrorResponse{
+			Message: "Failed to load output data",
 		})
 	}
 
@@ -333,10 +346,17 @@ func (r *Routes) GetTransaction(c *fiber.Ctx) error {
 		IncludeTags:  []string{"bsv21"},
 	}
 
-	rawOutputs, err := r.storage.SearchOutputs(c.Context(), cfg)
+	results, err := r.storage.Search(c.Context(), cfg)
 	if err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(ErrorResponse{
 			Message: "Failed to retrieve transaction details",
+		})
+	}
+
+	rawOutputs, err := r.storage.LoadOutputsFromResults(c.Context(), results, cfg)
+	if err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(ErrorResponse{
+			Message: "Failed to load output data",
 		})
 	}
 
@@ -663,6 +683,179 @@ func (r *Routes) GetMultiAddressUnspent(c *fiber.Ctx) error {
 	}
 
 	return c.JSON(outputs)
+}
+
+// ValidateOutputs validates specific outpoints exist in the token's overlay topic
+// @Summary Validate specific outpoints
+// @Description Checks if specific outpoints exist in the token's overlay topic. Returns only those found. By default returns minimal data (outpoint + score). Use query params to load additional data.
+// @Tags bsv21
+// @Accept json
+// @Produce json
+// @Param tokenId path string true "Token ID (outpoint format: txid_vout)"
+// @Param outpoints body []string true "Array of outpoints to validate (max 1000)"
+// @Param unspent query bool false "Filter for unspent outputs only" default(false)
+// @Param spend query bool false "Include spend txid" default(false)
+// @Param sats query bool false "Include satoshis" default(false)
+// @Param events query bool false "Include events array" default(false)
+// @Param block query bool false "Include block info" default(false)
+// @Param tags query string false "Comma-separated data tags to include (e.g., 'bsv21')"
+// @Success 200 {array} txo.IndexedOutputResponse
+// @Failure 400 {object} ErrorResponse
+// @Failure 500 {object} ErrorResponse
+// @Router /bsv21/{tokenId}/outputs [post]
+func (r *Routes) ValidateOutputs(c *fiber.Ctx) error {
+	tokenId := c.Params("tokenId")
+	topic := "tm_" + tokenId
+
+	var outpointStrs []string
+	if err := c.BodyParser(&outpointStrs); err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(ErrorResponse{
+			Message: "Invalid request body",
+		})
+	}
+
+	if len(outpointStrs) == 0 {
+		return c.Status(fiber.StatusBadRequest).JSON(ErrorResponse{
+			Message: "No outpoints provided",
+		})
+	}
+
+	if len(outpointStrs) > 1000 {
+		return c.Status(fiber.StatusBadRequest).JSON(ErrorResponse{
+			Message: "Too many outpoints (max 1000)",
+		})
+	}
+
+	// Parse outpoints to bytes
+	members := make([][]byte, 0, len(outpointStrs))
+	for _, opStr := range outpointStrs {
+		op, err := transaction.OutpointFromString(opStr)
+		if err != nil {
+			// Skip invalid outpoints silently
+			r.logger.Debug("invalid outpoint format", "outpoint", opStr, "error", err)
+			continue
+		}
+		members = append(members, op.Bytes())
+	}
+
+	if len(members) == 0 {
+		return c.JSON([]*txo.IndexedOutput{}) // Empty array if all invalid
+	}
+
+	// Build config - defaults to minimal data
+	cfg := &txo.OutputSearchCfg{
+		FilterSpent:   c.QueryBool("unspent", false),
+		IncludeSats:   c.QueryBool("sats", false),
+		IncludeSpend:  c.QueryBool("spend", false),
+		IncludeEvents: c.QueryBool("events", false),
+		IncludeBlock:  c.QueryBool("block", false),
+	}
+
+	// Only load tags if explicitly requested
+	if tagsQuery := c.Query("tags", ""); tagsQuery != "" {
+		cfg.IncludeTags = strings.Split(tagsQuery, ",")
+	}
+
+	// Check membership
+	results, err := r.storage.CheckMembership(c.Context(),
+		[][]byte{[]byte("tp:" + topic)},
+		members)
+	if err != nil {
+		r.logger.Error("ValidateOutputs membership check error", "error", err)
+		return c.Status(fiber.StatusInternalServerError).JSON(ErrorResponse{
+			Message: "Failed to check membership",
+		})
+	}
+
+	// Load output data
+	outputs, err := r.storage.LoadOutputsFromResults(c.Context(), results, cfg)
+	if err != nil {
+		r.logger.Error("ValidateOutputs load error", "error", err)
+		return c.Status(fiber.StatusInternalServerError).JSON(ErrorResponse{
+			Message: "Failed to load output data",
+		})
+	}
+
+	return c.JSON(outputs)
+}
+
+// GetTokenOutput validates a single outpoint exists in the token's overlay topic
+// @Summary Validate single outpoint
+// @Description Checks if a specific outpoint exists in the token's overlay topic. Returns 404 if not found. By default returns minimal data (outpoint + score). Use query params to load additional data.
+// @Tags bsv21
+// @Produce json
+// @Param tokenId path string true "Token ID (outpoint format: txid_vout)"
+// @Param outpoint path string true "Outpoint (format: txid_vout or txid.vout)"
+// @Param unspent query bool false "Filter for unspent outputs only" default(false)
+// @Param spend query bool false "Include spend txid" default(false)
+// @Param sats query bool false "Include satoshis" default(false)
+// @Param events query bool false "Include events array" default(false)
+// @Param block query bool false "Include block info" default(false)
+// @Param tags query string false "Comma-separated data tags to include (e.g., 'bsv21')"
+// @Success 200 {object} txo.IndexedOutputResponse
+// @Failure 400 {object} ErrorResponse
+// @Failure 404 {object} ErrorResponse
+// @Failure 500 {object} ErrorResponse
+// @Router /bsv21/{tokenId}/outputs/{outpoint} [get]
+func (r *Routes) GetTokenOutput(c *fiber.Ctx) error {
+	tokenId := c.Params("tokenId")
+	outpointStr := c.Params("outpoint")
+	topic := "tm_" + tokenId
+
+	op, err := transaction.OutpointFromString(outpointStr)
+	if err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(ErrorResponse{
+			Message: "Invalid outpoint format",
+		})
+	}
+
+	// Build config - defaults to minimal data
+	cfg := &txo.OutputSearchCfg{
+		FilterSpent:   c.QueryBool("unspent", false),
+		IncludeSats:   c.QueryBool("sats", false),
+		IncludeSpend:  c.QueryBool("spend", false),
+		IncludeEvents: c.QueryBool("events", false),
+		IncludeBlock:  c.QueryBool("block", false),
+	}
+
+	// Only load tags if explicitly requested
+	if tagsQuery := c.Query("tags", ""); tagsQuery != "" {
+		cfg.IncludeTags = strings.Split(tagsQuery, ",")
+	}
+
+	// Check membership
+	results, err := r.storage.CheckMembership(c.Context(),
+		[][]byte{[]byte("tp:" + topic)},
+		[][]byte{op.Bytes()})
+	if err != nil {
+		r.logger.Error("GetTokenOutput membership check error", "error", err)
+		return c.Status(fiber.StatusInternalServerError).JSON(ErrorResponse{
+			Message: "Failed to check membership",
+		})
+	}
+
+	if len(results) == 0 {
+		return c.Status(fiber.StatusNotFound).JSON(ErrorResponse{
+			Message: "Outpoint not found in topic",
+		})
+	}
+
+	// Load output data
+	outputs, err := r.storage.LoadOutputsFromResults(c.Context(), results, cfg)
+	if err != nil {
+		r.logger.Error("GetTokenOutput load error", "error", err)
+		return c.Status(fiber.StatusInternalServerError).JSON(ErrorResponse{
+			Message: "Failed to load output data",
+		})
+	}
+
+	if len(outputs) == 0 || outputs[0] == nil {
+		return c.Status(fiber.StatusNotFound).JSON(ErrorResponse{
+			Message: "Output data not found",
+		})
+	}
+
+	return c.JSON(outputs[0])
 }
 
 // parseSearchConfig extracts search parameters from the request

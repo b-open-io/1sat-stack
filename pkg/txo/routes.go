@@ -1,9 +1,6 @@
 package txo
 
 import (
-	"encoding/hex"
-	"fmt"
-	"strconv"
 	"strings"
 
 	"github.com/bsv-blockchain/go-sdk/chainhash"
@@ -46,7 +43,7 @@ func (r *Routes) Register(router fiber.Router) {
 // @Description Get a transaction output by its outpoint
 // @Tags txos
 // @Produce json
-// @Param outpoint path string true "Outpoint in format txid_vout or txid:vout"
+// @Param outpoint path string true "Outpoint in format txid_vout or txid.vout"
 // @Param tags query string false "Comma-separated list of tags to include"
 // @Param spend query bool false "Include spend txid" default(true)
 // @Success 200 {object} IndexedOutputResponse
@@ -55,7 +52,7 @@ func (r *Routes) Register(router fiber.Router) {
 // @Failure 500 {string} string "Internal server error"
 // @Router /txo/{outpoint} [get]
 func (r *Routes) GetTxo(c *fiber.Ctx) error {
-	op, err := ParseOutpoint(c.Params("outpoint"))
+	op, err := transaction.OutpointFromString(c.Params("outpoint"))
 	if err != nil {
 		return c.Status(fiber.StatusBadRequest).SendString("Invalid outpoint format")
 	}
@@ -83,13 +80,13 @@ func (r *Routes) GetTxo(c *fiber.Ctx) error {
 // @Description Get the spending transaction for an outpoint
 // @Tags txos
 // @Produce json
-// @Param outpoint path string true "Outpoint in format txid_vout or txid:vout"
+// @Param outpoint path string true "Outpoint in format txid_vout or txid.vout"
 // @Success 200 {object} SpendResponse
 // @Failure 400 {string} string "Invalid outpoint format"
 // @Failure 500 {string} string "Internal server error"
 // @Router /txo/{outpoint}/spend [get]
 func (r *Routes) GetSpend(c *fiber.Ctx) error {
-	op, err := ParseOutpoint(c.Params("outpoint"))
+	op, err := transaction.OutpointFromString(c.Params("outpoint"))
 	if err != nil {
 		return c.Status(fiber.StatusBadRequest).SendString("Invalid outpoint format")
 	}
@@ -140,7 +137,7 @@ func (r *Routes) GetTxos(c *fiber.Ctx) error {
 
 	outputs := make([]*IndexedOutput, len(outpoints))
 	for i, opStr := range outpoints {
-		op, err := ParseOutpoint(opStr)
+		op, err := transaction.OutpointFromString(opStr)
 		if err != nil {
 			continue
 		}
@@ -172,7 +169,7 @@ func (r *Routes) GetSpends(c *fiber.Ctx) error {
 
 	ops := make([]*transaction.Outpoint, len(outpoints))
 	for i, opStr := range outpoints {
-		op, err := ParseOutpoint(opStr)
+		op, err := transaction.OutpointFromString(opStr)
 		if err != nil {
 			continue
 		}
@@ -210,7 +207,7 @@ func (r *Routes) GetSpends(c *fiber.Ctx) error {
 func (r *Routes) TxosByTxid(c *fiber.Ctx) error {
 	txidStr := c.Params("txid")
 
-	txid, err := ParseTxid(txidStr)
+	txid, err := chainhash.NewHashFromHex(txidStr)
 	if err != nil {
 		return c.Status(fiber.StatusBadRequest).SendString("Invalid txid")
 	}
@@ -278,7 +275,12 @@ func (r *Routes) Search(c *fiber.Ctx) error {
 		cfg.From = &from
 	}
 
-	outputs, err := r.outputStore.SearchOutputs(c.Context(), cfg)
+	results, err := r.outputStore.Search(c.Context(), cfg)
+	if err != nil {
+		return err
+	}
+
+	outputs, err := r.outputStore.LoadOutputsFromResults(c.Context(), results, cfg)
 	if err != nil {
 		return err
 	}
@@ -290,56 +292,3 @@ func (r *Routes) Search(c *fiber.Ctx) error {
 
 // Outpoint is an alias for transaction.Outpoint
 type Outpoint = transaction.Outpoint
-
-// ParseOutpoint parses an outpoint string in format "txid_vout" or "txid:vout"
-func ParseOutpoint(s string) (*Outpoint, error) {
-	// Try underscore separator first, then colon
-	var parts []string
-	if strings.Contains(s, "_") {
-		parts = strings.Split(s, "_")
-	} else if strings.Contains(s, ":") {
-		parts = strings.Split(s, ":")
-	} else {
-		return nil, fmt.Errorf("invalid outpoint format: %s", s)
-	}
-
-	if len(parts) != 2 {
-		return nil, fmt.Errorf("invalid outpoint format: %s", s)
-	}
-
-	txid, err := ParseTxid(parts[0])
-	if err != nil {
-		return nil, err
-	}
-
-	vout, err := strconv.ParseUint(parts[1], 10, 32)
-	if err != nil {
-		return nil, fmt.Errorf("invalid vout: %w", err)
-	}
-
-	return &transaction.Outpoint{
-		Txid:  *txid,
-		Index: uint32(vout),
-	}, nil
-}
-
-// ParseTxid parses a transaction ID hex string
-func ParseTxid(s string) (*chainhash.Hash, error) {
-	if len(s) != 64 {
-		return nil, fmt.Errorf("invalid txid length: %d", len(s))
-	}
-
-	bytes, err := hex.DecodeString(s)
-	if err != nil {
-		return nil, fmt.Errorf("invalid txid hex: %w", err)
-	}
-
-	// Reverse bytes (txid is displayed in reverse byte order)
-	for i, j := 0, len(bytes)-1; i < j; i, j = i+1, j-1 {
-		bytes[i], bytes[j] = bytes[j], bytes[i]
-	}
-
-	txid := &chainhash.Hash{}
-	copy(txid[:], bytes)
-	return txid, nil
-}

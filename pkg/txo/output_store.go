@@ -476,14 +476,51 @@ func prefixKey(key string) []byte {
 	return KeyEvent(key)
 }
 
-// SearchOutputs searches and loads output data based on cfg flags
-func (s *OutputStore) SearchOutputs(ctx context.Context, cfg *OutputSearchCfg) ([]*IndexedOutput, error) {
-	results, err := s.Search(ctx, cfg)
-	if err != nil {
-		return nil, err
+// CheckMembership checks if specific members exist in the given keys.
+// Returns ScoredMembers for those that exist (with their scores from the ZSets).
+// This is useful for validating specific outpoints against topic or event indices
+// without iterating through the entire ZSet.
+//
+// Keys are automatically prefixed if needed (same as Search).
+// Members that don't exist in any of the keys are omitted from results.
+// Multiple keys are combined with union logic (member found in any key).
+func (s *OutputStore) CheckMembership(ctx context.Context, keys [][]byte, members [][]byte) ([]store.ScoredMember, error) {
+	var results []store.ScoredMember
+	seen := make(map[string]bool) // Deduplicate if member exists in multiple keys
+
+	// Prefix keys same way Search does
+	prefixedKeys := make([][]byte, len(keys))
+	for i, k := range keys {
+		prefixedKeys[i] = prefixKey(string(k))
 	}
 
-	return s.loadOutputsFromResults(ctx, results, cfg)
+	// Check each member against each key
+	for _, key := range prefixedKeys {
+		for _, member := range members {
+			memberStr := string(member)
+			if seen[memberStr] {
+				continue // Already found in a previous key
+			}
+
+			score, err := s.Store.ZScore(ctx, key, member)
+			if err == store.ErrKeyNotFound {
+				continue // Not in this key, try next
+			}
+			if err != nil {
+				return nil, err
+			}
+
+			// Found it!
+			results = append(results, store.ScoredMember{
+				Member: member,
+				Score:  score,
+				Key:    key,
+			})
+			seen[memberStr] = true
+		}
+	}
+
+	return results, nil
 }
 
 // SearchBalance calculates total satoshi balance (excludes spent)
@@ -578,8 +615,8 @@ func (s *OutputStore) LoadOutputsByTxid(ctx context.Context, txid *chainhash.Has
 	return s.LoadOutputs(ctx, ops, cfg)
 }
 
-// loadOutputsFromResults loads outputs from search results, including scores
-func (s *OutputStore) loadOutputsFromResults(ctx context.Context, results []store.ScoredMember, cfg *OutputSearchCfg) ([]*IndexedOutput, error) {
+// LoadOutputsFromResults loads outputs from search results, including scores
+func (s *OutputStore) LoadOutputsFromResults(ctx context.Context, results []store.ScoredMember, cfg *OutputSearchCfg) ([]*IndexedOutput, error) {
 	if len(results) == 0 {
 		return nil, nil
 	}

@@ -97,7 +97,12 @@ func (r *Routes) OwnerTxos(c *fiber.Ctx) error {
 		IncludeTags:   tags,
 	}
 
-	outputs, err := r.outputStore.SearchOutputs(c.Context(), cfg)
+	results, err := r.outputStore.Search(c.Context(), cfg)
+	if err != nil {
+		return err
+	}
+
+	outputs, err := r.outputStore.LoadOutputsFromResults(c.Context(), results, cfg)
 	if err != nil {
 		return err
 	}

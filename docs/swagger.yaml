@@ -121,6 +121,11 @@ definitions:
           $ref: '#/definitions/github_com_b-open-io_1sat-stack_pkg_bsv21.TransactionData'
         type: array
     type: object
+  github_com_b-open-io_1sat-stack_pkg_bsv21.ErrorResponse:
+    properties:
+      message:
+        type: string
+    type: object
   github_com_b-open-io_1sat-stack_pkg_bsv21.OutputData:
     description: Output or input data for a transaction
     properties:
@@ -421,6 +426,11 @@ definitions:
         items:
           $ref: '#/definitions/pkg_bsv21.TransactionData'
         type: array
+    type: object
+  pkg_bsv21.ErrorResponse:
+    properties:
+      message:
+        type: string
     type: object
   pkg_bsv21.OutputData:
     description: Output or input data for a transaction
@@ -1374,6 +1384,143 @@ paths:
       summary: Get block data for a token
       tags:
       - bsv21
+  /bsv21/{tokenId}/outputs:
+    post:
+      consumes:
+      - application/json
+      description: Checks if specific outpoints exist in the token's overlay topic.
+        Returns only those found. By default returns minimal data (outpoint + score).
+        Use query params to load additional data.
+      parameters:
+      - description: 'Token ID (outpoint format: txid_vout)'
+        in: path
+        name: tokenId
+        required: true
+        type: string
+      - description: Array of outpoints to validate (max 1000)
+        in: body
+        name: outpoints
+        required: true
+        schema:
+          items:
+            type: string
+          type: array
+      - default: false
+        description: Filter for unspent outputs only
+        in: query
+        name: unspent
+        type: boolean
+      - default: false
+        description: Include spend txid
+        in: query
+        name: spend
+        type: boolean
+      - default: false
+        description: Include satoshis
+        in: query
+        name: sats
+        type: boolean
+      - default: false
+        description: Include events array
+        in: query
+        name: events
+        type: boolean
+      - default: false
+        description: Include block info
+        in: query
+        name: block
+        type: boolean
+      - description: Comma-separated data tags to include (e.g., 'bsv21')
+        in: query
+        name: tags
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/github_com_b-open-io_1sat-stack_pkg_txo.IndexedOutputResponse'
+            type: array
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/pkg_bsv21.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/pkg_bsv21.ErrorResponse'
+      summary: Validate specific outpoints
+      tags:
+      - bsv21
+  /bsv21/{tokenId}/outputs/{outpoint}:
+    get:
+      description: Checks if a specific outpoint exists in the token's overlay topic.
+        Returns 404 if not found. By default returns minimal data (outpoint + score).
+        Use query params to load additional data.
+      parameters:
+      - description: 'Token ID (outpoint format: txid_vout)'
+        in: path
+        name: tokenId
+        required: true
+        type: string
+      - description: 'Outpoint (format: txid_vout or txid:vout)'
+        in: path
+        name: outpoint
+        required: true
+        type: string
+      - default: false
+        description: Filter for unspent outputs only
+        in: query
+        name: unspent
+        type: boolean
+      - default: false
+        description: Include spend txid
+        in: query
+        name: spend
+        type: boolean
+      - default: false
+        description: Include satoshis
+        in: query
+        name: sats
+        type: boolean
+      - default: false
+        description: Include events array
+        in: query
+        name: events
+        type: boolean
+      - default: false
+        description: Include block info
+        in: query
+        name: block
+        type: boolean
+      - description: Comma-separated data tags to include (e.g., 'bsv21')
+        in: query
+        name: tags
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/github_com_b-open-io_1sat-stack_pkg_txo.IndexedOutputResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/pkg_bsv21.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/pkg_bsv21.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/pkg_bsv21.ErrorResponse'
+      summary: Validate single outpoint
+      tags:
+      - bsv21
   /bsv21/{tokenId}/tx/{txid}:
     get:
       parameters:
@@ -1682,7 +1829,7 @@ paths:
         "200":
           description: Metadata
           schema:
-            $ref: '#/definitions/github_com_b-open-io_1sat-stack_pkg_ordfs.Response'
+            $ref: '#/definitions/pkg_ordfs.Response'
         "400":
           description: Bad request
           schema:
@@ -2085,7 +2232,7 @@ paths:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/github_com_b-open-io_1sat-stack_pkg_owner.BalanceResponse'
+            $ref: '#/definitions/pkg_owner.BalanceResponse'
         "500":
           description: Internal server error
           schema:

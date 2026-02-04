@@ -958,6 +958,201 @@ const docTemplate = `{
                 }
             }
         },
+        "/bsv21/{tokenId}/outputs": {
+            "post": {
+                "description": "Checks if specific outpoints exist in the token's overlay topic. Returns only those found. By default returns minimal data (outpoint + score). Use query params to load additional data.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "bsv21"
+                ],
+                "summary": "Validate specific outpoints",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Token ID (outpoint format: txid_vout)",
+                        "name": "tokenId",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Array of outpoints to validate (max 1000)",
+                        "name": "outpoints",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    {
+                        "type": "boolean",
+                        "default": false,
+                        "description": "Filter for unspent outputs only",
+                        "name": "unspent",
+                        "in": "query"
+                    },
+                    {
+                        "type": "boolean",
+                        "default": false,
+                        "description": "Include spend txid",
+                        "name": "spend",
+                        "in": "query"
+                    },
+                    {
+                        "type": "boolean",
+                        "default": false,
+                        "description": "Include satoshis",
+                        "name": "sats",
+                        "in": "query"
+                    },
+                    {
+                        "type": "boolean",
+                        "default": false,
+                        "description": "Include events array",
+                        "name": "events",
+                        "in": "query"
+                    },
+                    {
+                        "type": "boolean",
+                        "default": false,
+                        "description": "Include block info",
+                        "name": "block",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Comma-separated data tags to include (e.g., 'bsv21')",
+                        "name": "tags",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/github_com_b-open-io_1sat-stack_pkg_txo.IndexedOutputResponse"
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/pkg_bsv21.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/pkg_bsv21.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/bsv21/{tokenId}/outputs/{outpoint}": {
+            "get": {
+                "description": "Checks if a specific outpoint exists in the token's overlay topic. Returns 404 if not found. By default returns minimal data (outpoint + score). Use query params to load additional data.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "bsv21"
+                ],
+                "summary": "Validate single outpoint",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Token ID (outpoint format: txid_vout)",
+                        "name": "tokenId",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Outpoint (format: txid_vout or txid:vout)",
+                        "name": "outpoint",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "boolean",
+                        "default": false,
+                        "description": "Filter for unspent outputs only",
+                        "name": "unspent",
+                        "in": "query"
+                    },
+                    {
+                        "type": "boolean",
+                        "default": false,
+                        "description": "Include spend txid",
+                        "name": "spend",
+                        "in": "query"
+                    },
+                    {
+                        "type": "boolean",
+                        "default": false,
+                        "description": "Include satoshis",
+                        "name": "sats",
+                        "in": "query"
+                    },
+                    {
+                        "type": "boolean",
+                        "default": false,
+                        "description": "Include events array",
+                        "name": "events",
+                        "in": "query"
+                    },
+                    {
+                        "type": "boolean",
+                        "default": false,
+                        "description": "Include block info",
+                        "name": "block",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Comma-separated data tags to include (e.g., 'bsv21')",
+                        "name": "tags",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_b-open-io_1sat-stack_pkg_txo.IndexedOutputResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/pkg_bsv21.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/pkg_bsv21.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/pkg_bsv21.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/bsv21/{tokenId}/tx/{txid}": {
             "get": {
                 "produces": [
@@ -1670,7 +1865,7 @@ const docTemplate = `{
                     "200": {
                         "description": "Metadata",
                         "schema": {
-                            "$ref": "#/definitions/github_com_b-open-io_1sat-stack_pkg_ordfs.Response"
+                            "$ref": "#/definitions/pkg_ordfs.Response"
                         }
                     },
                     "400": {
@@ -2320,7 +2515,7 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/github_com_b-open-io_1sat-stack_pkg_owner.BalanceResponse"
+                            "$ref": "#/definitions/pkg_owner.BalanceResponse"
                         }
                     },
                     "500": {
@@ -3223,6 +3418,14 @@ const docTemplate = `{
                 }
             }
         },
+        "github_com_b-open-io_1sat-stack_pkg_bsv21.ErrorResponse": {
+            "type": "object",
+            "properties": {
+                "message": {
+                    "type": "string"
+                }
+            }
+        },
         "github_com_b-open-io_1sat-stack_pkg_bsv21.OutputData": {
             "description": "Output or input data for a transaction",
             "type": "object",
@@ -3658,6 +3861,14 @@ const docTemplate = `{
                     "items": {
                         "$ref": "#/definitions/pkg_bsv21.TransactionData"
                     }
+                }
+            }
+        },
+        "pkg_bsv21.ErrorResponse": {
+            "type": "object",
+            "properties": {
+                "message": {
+                    "type": "string"
                 }
             }
         },
