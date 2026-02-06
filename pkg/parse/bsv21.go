@@ -3,6 +3,7 @@ package parse
 import (
 	"github.com/bitcoin-sv/go-templates/template/bsv21"
 	"github.com/bsv-blockchain/go-sdk/script"
+	"github.com/bsv-blockchain/go-sdk/transaction"
 )
 
 const TagBSV21 = "bsv21"
@@ -42,9 +43,12 @@ func ParseBSV21(ctx *ParseContext) *ParseResult {
 	case string(bsv21.OpDeployMint), string(bsv21.OpDeployAuth):
 		// For deploy operations, the ID is the outpoint of this output
 		if ctx.Outpoint != nil {
-			bsvData.Id = ctx.Outpoint.String()
+			bsvData.Id = ctx.Outpoint.OrdinalString()
 		}
 	case string(bsv21.OpTransfer), string(bsv21.OpBurn), string(bsv21.OpMint), string(bsv21.OpAuth):
+		if _, err := transaction.OutpointFromString(b.Id); err != nil {
+			return nil
+		}
 		bsvData.Id = b.Id
 	default:
 		return nil

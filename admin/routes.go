@@ -15,8 +15,8 @@ import (
 	"github.com/b-open-io/1sat-stack/pkg/overlay"
 	"github.com/b-open-io/1sat-stack/pkg/store"
 	"github.com/b-open-io/1sat-stack/pkg/txo"
-	"github.com/b-open-io/1sat-stack/pkg/types"
 	"github.com/bsv-blockchain/go-sdk/chainhash"
+	"github.com/bsv-blockchain/go-sdk/transaction"
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/middleware/filesystem"
 )
@@ -404,7 +404,7 @@ func (r *Routes) handleGetZSetItems(c *fiber.Ctx) error {
 			}
 		case 36:
 			// transaction.Outpoint
-			op := types.NewOutpointFromBytes(m.Member)
+			op := transaction.NewOutpointFromBytes(m.Member)
 			if op != nil {
 				value = op.String()
 			} else {

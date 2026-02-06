@@ -12,7 +12,7 @@ import (
 // IndexedOutputResponse is the JSON response format for IndexedOutput.
 // @Description Transaction output with indexing metadata
 type IndexedOutputResponse struct {
-	Outpoint    string         `json:"outpoint"`              // Always present: "txid_vout" format
+	Outpoint    string         `json:"outpoint"`              // Always present: "txid.vout" format
 	Score       float64        `json:"score"`                 // Always present
 	Satoshis    *uint64        `json:"satoshis,omitempty"`    // Present if IncludeSats
 	BlockHeight *uint32        `json:"blockHeight,omitempty"` // Present if IncludeBlock
@@ -107,7 +107,7 @@ func (o *IndexedOutput) GetData(tag string) (interface{}, bool) {
 // MarshalJSON implements custom JSON marshaling using IndexedOutputResponse
 func (o *IndexedOutput) MarshalJSON() ([]byte, error) {
 	resp := IndexedOutputResponse{
-		Outpoint:    o.Outpoint.OrdinalString(),
+		Outpoint:    o.Outpoint.String(),
 		Score:       o.Score,
 		Satoshis:    o.Satoshis,
 		BlockHeight: o.BlockHeight,

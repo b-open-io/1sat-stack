@@ -213,10 +213,10 @@ func (r *Routes) sendContentResponse(c *fiber.Ctx, resp *Response, seq *int) err
 	c.Set("Content-Type", resp.ContentType)
 
 	if resp.Outpoint != nil {
-		c.Set("X-Outpoint", resp.Outpoint.OrdinalString())
+		c.Set("X-Outpoint", resp.Outpoint.String())
 	}
 	if resp.Origin != nil {
-		c.Set("X-Origin", resp.Origin.OrdinalString())
+		c.Set("X-Origin", resp.Origin.String())
 	}
 	c.Set("X-Ord-Seq", fmt.Sprintf("%d", resp.Sequence))
 
@@ -232,7 +232,7 @@ func (r *Routes) sendContentResponse(c *fiber.Ctx, resp *Response, seq *int) err
 	}
 
 	if resp.Parent != nil {
-		c.Set("X-Parent", resp.Parent.OrdinalString())
+		c.Set("X-Parent", resp.Parent.String())
 	}
 
 	// HEAD request - just send headers
@@ -280,23 +280,23 @@ func (r *Routes) HandleMetadata(c *fiber.Ctx) error {
 		})
 	}
 
-	// Return metadata without content bytes, using OrdinalString for outpoints
+	// Return metadata without content bytes
 	result := fiber.Map{
 		"contentType":   resp.ContentType,
 		"contentLength": resp.ContentLength,
 		"sequence":      resp.Sequence,
 	}
 	if resp.Outpoint != nil {
-		result["outpoint"] = resp.Outpoint.OrdinalString()
+		result["outpoint"] = resp.Outpoint.String()
 	}
 	if resp.Origin != nil {
-		result["origin"] = resp.Origin.OrdinalString()
+		result["origin"] = resp.Origin.String()
 	}
 	if resp.Map != nil {
 		result["map"] = resp.Map
 	}
 	if resp.Parent != nil {
-		result["parent"] = resp.Parent.OrdinalString()
+		result["parent"] = resp.Parent.String()
 	}
 	return c.JSON(result)
 }
@@ -415,7 +415,7 @@ func (r *Routes) HandleStream(c *fiber.Ctx) error {
 	}
 
 	if streamResp.Origin != nil {
-		c.Set("X-Origin", streamResp.Origin.OrdinalString())
+		c.Set("X-Origin", streamResp.Origin.String())
 	}
 
 	return nil
