@@ -14,6 +14,16 @@ import (
 	"github.com/b-open-io/go-junglebus"
 )
 
+// SyncProgress reports the state of an owner sync operation.
+type SyncProgress struct {
+	Phase     string `json:"phase"`               // "fetch", "ingest", "done", "error"
+	Total     int    `json:"total,omitempty"`     // Total txns to process (set after fetch)
+	Processed int    `json:"processed,omitempty"` // Txns processed so far
+	Error     string `json:"error,omitempty"`     // Error message if phase=="error"
+	Owner     string `json:"owner,omitempty"`     // Owner being synced
+	Height    uint32 `json:"height,omitempty"`    // Last synced height
+}
+
 // OwnerSync handles syncing transactions for owners from JungleBus
 type OwnerSync struct {
 	jb          *junglebus.Client
@@ -64,9 +74,35 @@ func (s *OwnerSync) Sync(ctx context.Context, owner string) error {
 	return err
 }
 
-// sync performs the actual sync work for an owner.
+// SyncWithProgress syncs an owner and sends progress updates to the provided channel.
+// Unlike Sync, this bypasses deduplication so the caller always receives progress events.
+// The channel is NOT closed by this method — the caller owns it.
+func (s *OwnerSync) SyncWithProgress(ctx context.Context, owner string, progress chan<- SyncProgress) error {
+	return s.syncWithProgress(ctx, owner, progress)
+}
+
+// sync performs the actual sync work for an owner (no progress reporting).
 func (s *OwnerSync) sync(ctx context.Context, owner string) error {
+	return s.syncWithProgress(ctx, owner, nil)
+}
+
+// syncWithProgress performs the actual sync work for an owner.
+// If progress is non-nil, it sends SyncProgress updates as work proceeds.
+func (s *OwnerSync) syncWithProgress(ctx context.Context, owner string, progress chan<- SyncProgress) error {
 	s.logger.Debug("OwnerSync starting", "owner", owner)
+
+	sendProgress := func(p SyncProgress) {
+		if progress == nil {
+			return
+		}
+		p.Owner = owner
+		select {
+		case progress <- p:
+		case <-ctx.Done():
+		}
+	}
+
+	sendProgress(SyncProgress{Phase: "fetch"})
 
 	// Get last synced height (0 if not found)
 	var lastHeight float64
@@ -74,6 +110,7 @@ func (s *OwnerSync) sync(ctx context.Context, owner string) error {
 		lastHeight = float64(binary.BigEndian.Uint32(progressBytes))
 	} else if err != nil && err != store.ErrKeyNotFound {
 		s.logger.Error("OwnerSync: failed to get last height", "owner", owner, "error", err)
+		sendProgress(SyncProgress{Phase: "error", Error: err.Error()})
 		return err
 	}
 
@@ -83,6 +120,7 @@ func (s *OwnerSync) sync(ctx context.Context, owner string) error {
 	addTxns, err := s.jb.GetAddressTransactions(ctx, owner, uint32(lastHeight))
 	if err != nil {
 		s.logger.Error("OwnerSync: JungleBus fetch failed", "owner", owner, "error", err)
+		sendProgress(SyncProgress{Phase: "error", Error: err.Error()})
 		return err
 	}
 
@@ -90,29 +128,41 @@ func (s *OwnerSync) sync(ctx context.Context, owner string) error {
 
 	if len(addTxns) == 0 {
 		s.logger.Debug("OwnerSync: no new transactions", "owner", owner)
+		sendProgress(SyncProgress{Phase: "done", Height: uint32(lastHeight)})
 		return nil
 	}
+
+	// Filter out already-synced txns to get accurate total
+	var toProcess []struct {
+		txid        string
+		blockHeight uint32
+	}
+	for _, addTxn := range addTxns {
+		if float64(addTxn.BlockHeight) >= lastHeight {
+			toProcess = append(toProcess, struct {
+				txid        string
+				blockHeight uint32
+			}{addTxn.TransactionID, addTxn.BlockHeight})
+		}
+	}
+
+	total := len(toProcess)
+	sendProgress(SyncProgress{Phase: "ingest", Total: total, Processed: 0})
 
 	limiter := make(chan struct{}, s.concurrency)
 	var wg sync.WaitGroup
 	var mu sync.Mutex
 	var firstErr error
-	var processed, skipped int
+	var processed int
 	var newMaxHeight float64 = lastHeight
 
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
-	for _, addTxn := range addTxns {
+	for _, item := range toProcess {
 		// Stop if context cancelled
 		if ctx.Err() != nil {
 			break
-		}
-
-		// Skip if already before last synced height
-		if float64(addTxn.BlockHeight) < lastHeight {
-			skipped++
-			continue
 		}
 
 		wg.Add(1)
@@ -139,13 +189,20 @@ func (s *OwnerSync) sync(ctx context.Context, owner string) error {
 					newMaxHeight = float64(blockHeight)
 				}
 				mu.Unlock()
+
+				sendProgress(SyncProgress{
+					Phase:     "ingest",
+					Total:     total,
+					Processed: processed,
+				})
 			}
-		}(addTxn.TransactionID, addTxn.BlockHeight)
+		}(item.txid, item.blockHeight)
 	}
 
 	wg.Wait()
 
 	if firstErr != nil {
+		sendProgress(SyncProgress{Phase: "error", Error: firstErr.Error()})
 		return firstErr
 	}
 
@@ -153,9 +210,11 @@ func (s *OwnerSync) sync(ctx context.Context, owner string) error {
 	progressBytes := make([]byte, 4)
 	binary.BigEndian.PutUint32(progressBytes, uint32(newMaxHeight))
 	if err := s.outputStore.Store.HSet(ctx, txo.KeyProgress, []byte(owner), progressBytes); err != nil {
+		sendProgress(SyncProgress{Phase: "error", Error: err.Error()})
 		return err
 	}
 
-	s.logger.Debug("OwnerSync complete", "owner", owner, "processed", processed, "skipped", skipped)
+	sendProgress(SyncProgress{Phase: "done", Height: uint32(newMaxHeight)})
+	s.logger.Debug("OwnerSync complete", "owner", owner, "processed", processed)
 	return nil
 }

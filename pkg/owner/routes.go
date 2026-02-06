@@ -43,12 +43,18 @@ func (r *Routes) Register(router fiber.Router) {
 	router.Get("/:owner/balance", r.OwnerBalance)
 }
 
-// OwnerTxos returns transaction outputs owned by a specific owner.
-// @Summary Get owner TXOs
-// @Description Get transaction outputs owned by a specific owner (address/pubkey/script hash)
+// OwnerTxos streams transaction outputs owned by a specific owner via SSE.
+// The stream has three phases:
+//  1. Sync phase — if refresh is enabled, progress events report blockchain sync status
+//  2. Data phase — each matching TXO is streamed as an individual event
+//  3. Done — a final event signals the stream is complete
+//
+// @Summary Stream owner TXOs via SSE
+// @Description Stream transaction outputs owned by a specific owner via Server-Sent Events. When refresh is enabled, sync progress is streamed first, followed by results. On reconnect, the browser sends Last-Event-ID which skips refresh and resumes from that score.
 // @Tags owner
-// @Produce json
+// @Produce text/event-stream
 // @Param owner path string true "Owner identifier (address, pubkey, or script hash)"
+// @Param Last-Event-ID header string false "Score of last received event (sent automatically by EventSource on reconnect). When present, refresh is skipped."
 // @Param refresh query bool false "Refresh owner data from blockchain before returning" default(true)
 // @Param unspent query bool false "Filter for unspent outputs only" default(true)
 // @Param tags query string false "Comma-separated list of tags to include (* for all)"
@@ -59,21 +65,22 @@ func (r *Routes) Register(router fiber.Router) {
 // @Param from query number false "Starting score for pagination"
 // @Param rev query bool false "Reverse order"
 // @Param limit query int false "Maximum number of results" default(100)
-// @Success 200 {array} txo.IndexedOutput
-// @Failure 500 {string} string "Internal server error"
+// @Success 200 {string} string "SSE stream of sync progress and TXO events"
+// @Failure 400 {string} string "Bad request"
 // @Router /owner/{owner}/txos [get]
 func (r *Routes) OwnerTxos(c *fiber.Ctx) error {
 	owner := c.Params("owner")
+	refresh := c.QueryBool("refresh", true)
 
-	// Sync by default
-	if c.QueryBool("refresh", true) && r.sync != nil {
-		if err := r.sync.Sync(c.Context(), owner); err != nil {
-			return err
-		}
-	}
-
+	// If Last-Event-ID is present, the client is reconnecting after a previous
+	// stream — skip the costly refresh and resume from where it left off.
 	var from *float64
-	if f := c.QueryFloat("from", 0); f != 0 {
+	if lastEventID := c.Get("Last-Event-ID"); lastEventID != "" {
+		if parsed, err := strconv.ParseFloat(lastEventID, 64); err == nil {
+			from = &parsed
+		}
+		refresh = false
+	} else if f := c.QueryFloat("from", 0); f != 0 {
 		from = &f
 	}
 
@@ -97,17 +104,86 @@ func (r *Routes) OwnerTxos(c *fiber.Ctx) error {
 		IncludeTags:   tags,
 	}
 
-	results, err := r.outputStore.Search(c.Context(), cfg)
-	if err != nil {
-		return err
-	}
+	c.Set("Content-Type", "text/event-stream")
+	c.Set("Cache-Control", "no-cache")
+	c.Set("Connection", "keep-alive")
+	c.Set("Transfer-Encoding", "chunked")
+	c.Set("X-Accel-Buffering", "no")
+	c.Set("Access-Control-Allow-Origin", "*")
 
-	outputs, err := r.outputStore.LoadOutputsFromResults(c.Context(), results, cfg)
-	if err != nil {
-		return err
-	}
+	c.Context().SetBodyStreamWriter(func(w *bufio.Writer) {
+		ctx := r.ctx
 
-	return c.JSON(outputs)
+		// Phase 1: Sync with progress reporting
+		if refresh && r.sync != nil {
+			progress := make(chan SyncProgress, 16)
+			syncDone := make(chan error, 1)
+
+			go func() {
+				syncDone <- r.sync.SyncWithProgress(ctx, owner, progress)
+				close(progress)
+			}()
+
+			for p := range progress {
+				data, err := json.Marshal(p)
+				if err != nil {
+					continue
+				}
+				fmt.Fprintf(w, "event: sync\ndata: %s\n\n", data)
+				if err := w.Flush(); err != nil {
+					return // Client disconnected
+				}
+			}
+
+			if err := <-syncDone; err != nil {
+				errData, _ := json.Marshal(SyncProgress{
+					Phase: "error",
+					Owner: owner,
+					Error: err.Error(),
+				})
+				fmt.Fprintf(w, "event: error\ndata: %s\n\n", errData)
+				w.Flush()
+				return
+			}
+		}
+
+		// Phase 2: Stream results
+		results, err := r.outputStore.Search(ctx, cfg)
+		if err != nil {
+			r.logger.Error("OwnerTxos search error", "error", err)
+			fmt.Fprintf(w, "event: error\ndata: %s\n\n", err.Error())
+			w.Flush()
+			return
+		}
+
+		outputs, err := r.outputStore.LoadOutputsFromResults(ctx, results, cfg)
+		if err != nil {
+			r.logger.Error("OwnerTxos load error", "error", err)
+			fmt.Fprintf(w, "event: error\ndata: %s\n\n", err.Error())
+			w.Flush()
+			return
+		}
+
+		for i, output := range outputs {
+			if output == nil {
+				continue
+			}
+			data, err := json.Marshal(output)
+			if err != nil {
+				continue
+			}
+			fmt.Fprintf(w, "event: txo\ndata: %s\nid: %.0f\n\n", data, results[i].Score)
+			if err := w.Flush(); err != nil {
+				return // Client disconnected
+			}
+		}
+
+		// Phase 3: Done
+		fmt.Fprintf(w, "event: done\ndata: {}\n\n")
+		w.Flush()
+	})
+
+	return nil
 }
 
 // OwnerBalance returns the satoshi balance for a specific owner.
