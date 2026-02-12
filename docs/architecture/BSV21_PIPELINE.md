@@ -215,5 +215,5 @@ balance, _ := outputStore.SearchBalance(ctx, cfg.WithEvents("own:" + feeAddress)
 
 ## Related Documentation
 
-- `docs/OVERLAY_ARCHITECTURE.md` - General overlay system
+- `docs/architecture/OVERLAY_ARCHITECTURE.md` - General overlay system
 - `pkg/store/KEYS.md` - Complete key reference

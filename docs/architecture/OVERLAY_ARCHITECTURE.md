@@ -155,4 +155,4 @@ Helper functions:
 ## Related Documentation
 
 - `pkg/store/KEYS.md` - Complete key reference
-- `docs/BSV21_PIPELINE.md` - BSV21-specific processing pipeline
+- `docs/architecture/BSV21_PIPELINE.md` - BSV21-specific processing pipeline

@@ -11,7 +11,7 @@ Create a composable server by copying and consolidating from sibling directories
 - Single composable server where packages can be toggled on/off via config
 - Shared infrastructure (storage, pubsub, chaintracks, merkle) with explicit dependency injection
 - Embedded config pattern (all packages compiled in, `mode` field controls: `embedded`/`remote`/`disabled`)
-- Follow established CONFIG_GUIDE.md pattern throughout
+- Follow established docs/standards/CONFIG_GUIDE.md pattern throughout
 - Copy code into 1sat-stack (originals will be archived later by user)
 - **All HTTP handlers must have Swag annotations** for automatic OpenAPI documentation
 
@@ -45,7 +45,7 @@ Create a composable server by copying and consolidating from sibling directories
 
 ### Clarifications (from user discussion)
 
-1. **Upgrade as we copy** - Don't copy old patterns, apply CONFIG_GUIDE.md pattern as we go
+1. **Upgrade as we copy** - Don't copy old patterns, apply docs/standards/CONFIG_GUIDE.md pattern as we go
 2. **Mode field only** - Use `mode: embedded|remote|disabled` (no separate `enabled` flag)
 3. **Naming mapping**:
    - overlay's `queue/` → `pkg/store/` (low-level KV storage)
@@ -397,7 +397,7 @@ var _ BeefService = (*Client)(nil)        // Remote
 
 ---
 
-## Config Pattern (follows CONFIG_GUIDE.md)
+## Config Pattern (follows docs/standards/CONFIG_GUIDE.md)
 
 Each package is an embedded config struct with SetDefaults and Initialize. Packages are enabled/disabled via their own config (e.g., `enabled: true` or presence of required fields).
 
