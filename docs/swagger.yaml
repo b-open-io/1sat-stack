@@ -7,22 +7,28 @@ definitions:
       id:
         type: string
     type: object
-  admin.ZSetItem:
+  arcade.FeeAmount:
     properties:
-      score:
-        type: number
-      value:
-        type: string
-    type: object
-  admin.ZSetResponse:
-    properties:
-      count:
+      bytes:
         type: integer
-      items:
-        items:
-          $ref: '#/definitions/admin.ZSetItem'
-        type: array
-      key:
+      satoshis:
+        type: integer
+    type: object
+  arcade.PolicyResponse:
+    properties:
+      maxscriptsizepolicy:
+        type: integer
+      maxtxsigopscountspolicy:
+        type: integer
+      maxtxsizepolicy:
+        type: integer
+      miningFee:
+        $ref: '#/definitions/arcade.FeeAmount'
+    type: object
+  arcade.TransactionRequest:
+    properties:
+      rawTx:
+        example: 0100000001...
         type: string
     type: object
   chaintracks.BlockHeader:
@@ -57,98 +63,22 @@ definitions:
         description: 4 bytes - Block version
         type: integer
     type: object
-  errors.ErrorFields:
-    properties:
-      detail:
-        type: string
-      extraInfo:
-        type: string
-      status:
-        type: integer
-      title:
-        type: string
-      type:
-        type: string
-    type: object
-  fiber.ErrorResponse:
+  chaintracks.ErrorResponse:
     properties:
       error:
         example: Header not found
         type: string
     type: object
-  fiber.HeightResponse:
+  chaintracks.HeightResponse:
     properties:
       height:
         example: 874123
         type: integer
     type: object
-  fiber.NetworkResponse:
+  chaintracks.NetworkResponse:
     properties:
       network:
         example: mainnet
-        type: string
-    type: object
-  fiber.TransactionRequest:
-    properties:
-      rawTx:
-        example: 0100000001...
-        type: string
-    type: object
-  github_com_b-open-io_1sat-stack_pkg_bsv21.BalanceResponse:
-    properties:
-      balance:
-        type: integer
-      utxoCount:
-        type: integer
-    type: object
-  github_com_b-open-io_1sat-stack_pkg_bsv21.BlockInfo:
-    properties:
-      hash:
-        type: string
-      height:
-        type: integer
-      previousblockhash:
-        type: string
-      timestamp:
-        type: integer
-    type: object
-  github_com_b-open-io_1sat-stack_pkg_bsv21.BlockResponse:
-    properties:
-      block:
-        $ref: '#/definitions/github_com_b-open-io_1sat-stack_pkg_bsv21.BlockInfo'
-      transactions:
-        items:
-          $ref: '#/definitions/github_com_b-open-io_1sat-stack_pkg_bsv21.TransactionData'
-        type: array
-    type: object
-  github_com_b-open-io_1sat-stack_pkg_bsv21.ErrorResponse:
-    properties:
-      message:
-        type: string
-    type: object
-  github_com_b-open-io_1sat-stack_pkg_bsv21.OutputData:
-    description: Output or input data for a transaction
-    properties:
-      data:
-        additionalProperties: {}
-        type: object
-      spend:
-        description: Spending txid hex (for outputs only, null if unspent)
-        type: string
-      txid:
-        description: Source txid (for inputs only)
-        type: string
-      vout:
-        type: integer
-    type: object
-  github_com_b-open-io_1sat-stack_pkg_bsv21.TokenDetailResponse:
-    description: Combined token metadata and funding status
-    properties:
-      status:
-        $ref: '#/definitions/github_com_b-open-io_1sat-stack_pkg_bsv21.TokenStatus'
-      token:
-        $ref: '#/definitions/github_com_b-open-io_1sat-stack_pkg_parse.BSV21'
-      tokenId:
         type: string
     type: object
   github_com_b-open-io_1sat-stack_pkg_bsv21.TokenStatus:
@@ -173,26 +103,6 @@ definitions:
         description: Identity
         type: string
     type: object
-  github_com_b-open-io_1sat-stack_pkg_bsv21.TransactionData:
-    description: Transaction details with inputs, outputs, and optional BEEF
-    properties:
-      beef:
-        items:
-          type: integer
-        type: array
-      block_height:
-        type: integer
-      inputs:
-        items:
-          $ref: '#/definitions/github_com_b-open-io_1sat-stack_pkg_bsv21.OutputData'
-        type: array
-      outputs:
-        items:
-          $ref: '#/definitions/github_com_b-open-io_1sat-stack_pkg_bsv21.OutputData'
-        type: array
-      txid:
-        type: string
-    type: object
   github_com_b-open-io_1sat-stack_pkg_bsv21.WorkerStatus:
     properties:
       fee_address:
@@ -205,45 +115,6 @@ definitions:
         $ref: '#/definitions/github_com_b-open-io_1sat-stack_pkg_bsv21.TokenStatus'
       token_id:
         type: string
-    type: object
-  github_com_b-open-io_1sat-stack_pkg_indexer.ArcEvent:
-    properties:
-      extraInfo:
-        type: string
-      merklePath:
-        items:
-          type: integer
-        type: array
-      rawTx:
-        description: Hex-encoded raw tx (non-EF format)
-        type: string
-      txId:
-        type: string
-      txStatus:
-        type: string
-    type: object
-  github_com_b-open-io_1sat-stack_pkg_ordfs.Response:
-    properties:
-      content:
-        items:
-          type: integer
-        type: array
-      contentLength:
-        type: integer
-      contentType:
-        type: string
-      map:
-        items:
-          type: integer
-        type: array
-      origin:
-        $ref: '#/definitions/transaction.Outpoint'
-      outpoint:
-        $ref: '#/definitions/transaction.Outpoint'
-      parent:
-        $ref: '#/definitions/transaction.Outpoint'
-      sequence:
-        type: integer
     type: object
   github_com_b-open-io_1sat-stack_pkg_overlay.RemoteConfig:
     properties:
@@ -268,13 +139,6 @@ definitions:
       url:
         description: for http peers
         type: string
-    type: object
-  github_com_b-open-io_1sat-stack_pkg_owner.BalanceResponse:
-    properties:
-      balance:
-        type: integer
-      count:
-        type: integer
     type: object
   github_com_b-open-io_1sat-stack_pkg_parse.BSV21:
     properties:
@@ -314,7 +178,7 @@ definitions:
           type: string
         type: array
       outpoint:
-        description: 'Always present: "txid_vout" format'
+        description: 'Always present: "txid.vout" format'
         type: string
       satoshis:
         description: Present if IncludeSats
@@ -325,35 +189,6 @@ definitions:
       spend:
         description: Present if IncludeSpend (nil = unspent, string = spend txid)
         type: string
-    type: object
-  github_com_b-open-io_1sat-stack_pkg_txo.SpendResponse:
-    properties:
-      spendTxid:
-        type: string
-    type: object
-  merkle.ArcCallback:
-    properties:
-      merklePath:
-        items:
-          type: integer
-        type: array
-      txId:
-        type: string
-      txStatus:
-        type: string
-    type: object
-  models.Policy:
-    properties:
-      maxscriptsizepolicy:
-        type: integer
-      maxtxsigopscountspolicy:
-        type: integer
-      maxtxsizepolicy:
-        type: integer
-      miningFeeBytes:
-        type: integer
-      miningFeeSatoshis:
-        type: integer
     type: object
   models.Status:
     enum:
@@ -564,7 +399,7 @@ definitions:
           type: string
         type: array
       outpoint:
-        description: 'Always present: "txid_vout" format'
+        description: 'Always present: "txid.vout" format'
         type: string
       satoshis:
         description: Present if IncludeSats
@@ -991,22 +826,28 @@ paths:
       summary: Remove from whitelist
       tags:
       - admin
-  /admin/zset/{key}:
-    get:
-      description: Returns the first 25 items from any sorted set by key
+  /arc/callback:
+    post:
+      consumes:
+      - application/json
+      description: Receives transaction status updates from Arc/Arcade broadcaster
+        via webhook
       parameters:
-      - description: Sorted set key (e.g., q:tok:abc123, z:ev:own:address)
-        in: path
-        name: key
+      - description: Arc callback payload
+        in: body
+        name: callback
         required: true
-        type: string
+        schema:
+          $ref: '#/definitions/pkg_indexer.ArcEvent'
       produces:
       - application/json
       responses:
         "200":
-          description: Sorted set info and items
+          description: OK
           schema:
-            $ref: '#/definitions/admin.ZSetResponse'
+            additionalProperties:
+              type: string
+            type: object
         "400":
           description: Bad request
           schema:
@@ -1019,10 +860,196 @@ paths:
             additionalProperties:
               type: string
             type: object
-      summary: Get sorted set items
+      summary: Handle Arc callback
       tags:
-      - admin
-  /api/beef/{txid}:
+      - arc
+  /arcade/events/{callbackToken}:
+    get:
+      description: Server-Sent Events stream of transaction status updates for transactions
+        associated with the callback token
+      parameters:
+      - description: Callback token from transaction submission
+        in: path
+        name: callbackToken
+        required: true
+        type: string
+      produces:
+      - text/event-stream
+      responses:
+        "200":
+          description: SSE stream of transaction status updates
+          schema:
+            type: string
+      summary: Stream transaction events
+      tags:
+      - arcade
+  /arcade/policy:
+    get:
+      description: Returns the transaction policy configuration including fee rates
+        and limits
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/arcade.PolicyResponse'
+      summary: Get policy
+      tags:
+      - arcade
+  /arcade/tx:
+    post:
+      consumes:
+      - application/json
+      - application/octet-stream
+      - text/plain
+      description: Submit a single transaction for broadcast. Accepts raw transaction
+        bytes, hex string, or JSON with rawTx field.
+      parameters:
+      - description: Transaction data
+        in: body
+        name: transaction
+        required: true
+        schema:
+          $ref: '#/definitions/arcade.TransactionRequest'
+      - description: URL for status callbacks
+        in: header
+        name: X-CallbackUrl
+        type: string
+      - description: Token for SSE event filtering
+        in: header
+        name: X-CallbackToken
+        type: string
+      - description: Send all status updates (true/false)
+        in: header
+        name: X-FullStatusUpdates
+        type: string
+      - description: Skip fee validation (true/false)
+        in: header
+        name: X-SkipFeeValidation
+        type: string
+      - description: Skip script validation (true/false)
+        in: header
+        name: X-SkipScriptValidation
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.TransactionStatus'
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "465":
+          description: ARC validation error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Submit transaction
+      tags:
+      - arcade
+  /arcade/tx/{txid}:
+    get:
+      description: Get the current status of a submitted transaction
+      parameters:
+      - description: Transaction ID
+        in: path
+        name: txid
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.TransactionStatus'
+        "404":
+          description: Not Found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Get transaction status
+      tags:
+      - arcade
+  /arcade/txs:
+    post:
+      consumes:
+      - application/json
+      description: Submit multiple transactions for broadcast
+      parameters:
+      - description: Array of transactions
+        in: body
+        name: transactions
+        required: true
+        schema:
+          items:
+            $ref: '#/definitions/arcade.TransactionRequest'
+          type: array
+      - description: URL for status callbacks
+        in: header
+        name: X-CallbackUrl
+        type: string
+      - description: Token for SSE event filtering
+        in: header
+        name: X-CallbackToken
+        type: string
+      - description: Send all status updates (true/false)
+        in: header
+        name: X-FullStatusUpdates
+        type: string
+      - description: Skip fee validation (true/false)
+        in: header
+        name: X-SkipFeeValidation
+        type: string
+      - description: Skip script validation (true/false)
+        in: header
+        name: X-SkipScriptValidation
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/models.TransactionStatus'
+            type: array
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "465":
+          description: ARC validation error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Submit multiple transactions
+      tags:
+      - arcade
+  /beef/{txid}:
     get:
       description: Retrieves the BEEF (BSV Envelope Format) for a specific transaction
       parameters:
@@ -1047,7 +1074,7 @@ paths:
       summary: Get BEEF for a transaction
       tags:
       - beef
-  /api/beef/{txid}/proof:
+  /beef/{txid}/proof:
     get:
       description: Retrieves just the merkle proof bytes for a transaction
       parameters:
@@ -1072,61 +1099,6 @@ paths:
       summary: Get merkle proof
       tags:
       - beef
-  /api/sse/{topics}:
-    get:
-      description: Establishes an SSE connection for real-time event streaming
-      parameters:
-      - description: Comma-separated list of topics to subscribe to
-        in: path
-        name: topics
-        required: true
-        type: string
-      produces:
-      - text/event-stream
-      responses:
-        "200":
-          description: SSE stream
-          schema:
-            type: string
-      summary: Subscribe to Server-Sent Events
-      tags:
-      - sse
-  /arc/callback:
-    post:
-      consumes:
-      - application/json
-      description: Receives transaction status updates from Arc broadcaster
-      parameters:
-      - description: Arc callback payload
-        in: body
-        name: callback
-        required: true
-        schema:
-          $ref: '#/definitions/merkle.ArcCallback'
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            additionalProperties:
-              type: string
-            type: object
-        "400":
-          description: Bad request
-          schema:
-            additionalProperties:
-              type: string
-            type: object
-        "500":
-          description: Internal server error
-          schema:
-            additionalProperties:
-              type: string
-            type: object
-      summary: Handle Arc callback
-      tags:
-      - merkle
   /beef/{txid}/tx:
     get:
       description: Retrieves just the raw transaction bytes (without proof)
@@ -1465,7 +1437,7 @@ paths:
         name: tokenId
         required: true
         type: string
-      - description: 'Outpoint (format: txid_vout or txid:vout)'
+      - description: 'Outpoint (format: txid_vout or txid.vout)'
         in: path
         name: outpoint
         required: true
@@ -1607,11 +1579,11 @@ paths:
         "400":
           description: Bad Request
           schema:
-            $ref: '#/definitions/fiber.ErrorResponse'
+            $ref: '#/definitions/chaintracks.ErrorResponse'
         "404":
           description: Not Found
           schema:
-            $ref: '#/definitions/fiber.ErrorResponse'
+            $ref: '#/definitions/chaintracks.ErrorResponse'
       summary: Get header by hash
       tags:
       - chaintracks
@@ -1634,11 +1606,11 @@ paths:
         "400":
           description: Bad Request
           schema:
-            $ref: '#/definitions/fiber.ErrorResponse'
+            $ref: '#/definitions/chaintracks.ErrorResponse'
         "404":
           description: Not Found
           schema:
-            $ref: '#/definitions/fiber.ErrorResponse'
+            $ref: '#/definitions/chaintracks.ErrorResponse'
       summary: Get header by height
       tags:
       - chaintracks
@@ -1667,7 +1639,7 @@ paths:
         "400":
           description: Bad Request
           schema:
-            $ref: '#/definitions/fiber.ErrorResponse'
+            $ref: '#/definitions/chaintracks.ErrorResponse'
       summary: Get multiple headers
       tags:
       - chaintracks
@@ -1680,7 +1652,7 @@ paths:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/fiber.HeightResponse'
+            $ref: '#/definitions/chaintracks.HeightResponse'
       summary: Get chain height
       tags:
       - chaintracks
@@ -1693,25 +1665,12 @@ paths:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/fiber.NetworkResponse'
+            $ref: '#/definitions/chaintracks.NetworkResponse'
         "500":
           description: Internal Server Error
           schema:
-            $ref: '#/definitions/fiber.ErrorResponse'
+            $ref: '#/definitions/chaintracks.ErrorResponse'
       summary: Get network name
-      tags:
-      - chaintracks
-  /chaintracks/reorg/stream:
-    get:
-      description: Server-Sent Events stream of chain reorganization events.
-      produces:
-      - text/event-stream
-      responses:
-        "200":
-          description: SSE stream of ReorgEvent JSON objects
-          schema:
-            type: string
-      summary: Stream reorg events
       tags:
       - chaintracks
   /chaintracks/tip:
@@ -1727,7 +1686,7 @@ paths:
         "404":
           description: Not Found
           schema:
-            $ref: '#/definitions/fiber.ErrorResponse'
+            $ref: '#/definitions/chaintracks.ErrorResponse'
       summary: Get chain tip
       tags:
       - chaintracks
@@ -1777,42 +1736,21 @@ paths:
       summary: Get inscription content
       tags:
       - ordfs
-  /events:
-    get:
-      description: Server-Sent Events stream of transaction status updates. If callbackToken
-        is provided, only events for that token are streamed.
-      parameters:
-      - description: Callback token from transaction submission
-        in: query
-        name: callbackToken
-        type: string
-      produces:
-      - text/event-stream
-      responses:
-        "200":
-          description: SSE stream of transaction status updates
-          schema:
-            type: string
-      summary: Stream transaction events
-      tags:
-      - arcade
   /health:
     get:
       description: Returns the health status of the service
       produces:
-      - text/plain
+      - application/json
       responses:
         "200":
-          description: OK
+          description: 'status: ok'
           schema:
-            type: string
-        "503":
-          description: Service Unavailable
-          schema:
-            type: string
+            additionalProperties:
+              type: string
+            type: object
       summary: Health check
       tags:
-      - arcade
+      - system
   /ordfs/metadata/{path}:
     get:
       description: Get metadata about inscription content without downloading the
@@ -2242,13 +2180,20 @@ paths:
       - owner
   /owner/{owner}/txos:
     get:
-      description: Get transaction outputs owned by a specific owner (address/pubkey/script
-        hash)
+      description: Stream transaction outputs owned by a specific owner via Server-Sent
+        Events. When refresh is enabled, sync progress is streamed first, followed
+        by results. On reconnect, the browser sends Last-Event-ID which skips refresh
+        and resumes from that score.
       parameters:
       - description: Owner identifier (address, pubkey, or script hash)
         in: path
         name: owner
         required: true
+        type: string
+      - description: Score of last received event (sent automatically by EventSource
+          on reconnect). When present, refresh is skipped.
+        in: header
+        name: Last-Event-ID
         type: string
       - default: true
         description: Refresh owner data from blockchain before returning
@@ -2298,19 +2243,17 @@ paths:
         name: limit
         type: integer
       produces:
-      - application/json
+      - text/event-stream
       responses:
         "200":
-          description: OK
-          schema:
-            items:
-              $ref: '#/definitions/github_com_b-open-io_1sat-stack_pkg_txo.IndexedOutput'
-            type: array
-        "500":
-          description: Internal server error
+          description: SSE stream of sync progress and TXO events
           schema:
             type: string
-      summary: Get owner TXOs
+        "400":
+          description: Bad request
+          schema:
+            type: string
+      summary: Stream owner TXOs via SSE
       tags:
       - owner
   /owner/sync:
@@ -2341,115 +2284,30 @@ paths:
       summary: Stream owner sync via SSE
       tags:
       - owner
-  /policy:
+  /sse/{topics}:
     get:
-      description: Returns the transaction policy configuration including fee rates
-        and limits
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            $ref: '#/definitions/models.Policy'
-      summary: Get policy
-      tags:
-      - arcade
-  /tx:
-    post:
-      consumes:
-      - application/json
-      - application/octet-stream
-      - text/plain
-      description: Submit a single transaction for broadcast. Accepts raw transaction
-        bytes, hex string, or JSON with rawTx field.
+      description: Establishes an SSE connection for real-time event streaming
       parameters:
-      - description: Transaction data
-        in: body
-        name: transaction
-        required: true
-        schema:
-          $ref: '#/definitions/fiber.TransactionRequest'
-      - description: URL for status callbacks
-        in: header
-        name: X-CallbackUrl
-        type: string
-      - description: Token for SSE event filtering
-        in: header
-        name: X-CallbackToken
-        type: string
-      - description: Send all status updates (true/false)
-        in: header
-        name: X-FullStatusUpdates
-        type: string
-      - description: Skip fee validation (true/false)
-        in: header
-        name: X-SkipFeeValidation
-        type: string
-      - description: Skip script validation (true/false)
-        in: header
-        name: X-SkipScriptValidation
-        type: string
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            $ref: '#/definitions/models.TransactionStatus'
-        "400":
-          description: Bad Request
-          schema:
-            $ref: '#/definitions/errors.ErrorFields'
-        "465":
-          description: ARC validation error
-          schema:
-            $ref: '#/definitions/errors.ErrorFields'
-        "500":
-          description: Internal Server Error
-          schema:
-            additionalProperties:
-              type: string
-            type: object
-      summary: Submit transaction
-      tags:
-      - arcade
-  /tx/{txid}:
-    get:
-      description: Get the current status of a submitted transaction
-      parameters:
-      - description: Transaction ID
+      - description: Comma-separated list of topics to subscribe to
         in: path
-        name: txid
+        name: topics
         required: true
         type: string
       produces:
-      - application/json
+      - text/event-stream
       responses:
         "200":
-          description: OK
+          description: SSE stream
           schema:
-            $ref: '#/definitions/models.TransactionStatus'
-        "404":
-          description: Not Found
-          schema:
-            additionalProperties:
-              type: string
-            type: object
-        "500":
-          description: Internal Server Error
-          schema:
-            additionalProperties:
-              type: string
-            type: object
-      summary: Get transaction status
+            type: string
+      summary: Subscribe to Server-Sent Events
       tags:
-      - arcade
+      - sse
   /txo/{outpoint}:
     get:
       description: Get a transaction output by its outpoint
       parameters:
-      - description: Outpoint in format txid_vout or txid:vout
+      - description: Outpoint in format txid_vout or txid.vout
         in: path
         name: outpoint
         required: true
@@ -2489,7 +2347,7 @@ paths:
     get:
       description: Get the spending transaction for an outpoint
       parameters:
-      - description: Outpoint in format txid_vout or txid:vout
+      - description: Outpoint in format txid_vout or txid.vout
         in: path
         name: outpoint
         required: true
@@ -2689,58 +2547,4 @@ paths:
       summary: Get TXOs by transaction ID
       tags:
       - txos
-  /txs:
-    post:
-      consumes:
-      - application/json
-      description: Submit multiple transactions for broadcast
-      parameters:
-      - description: Array of transactions
-        in: body
-        name: transactions
-        required: true
-        schema:
-          items:
-            $ref: '#/definitions/fiber.TransactionRequest'
-          type: array
-      - description: URL for status callbacks
-        in: header
-        name: X-CallbackUrl
-        type: string
-      - description: Token for SSE event filtering
-        in: header
-        name: X-CallbackToken
-        type: string
-      - description: Send all status updates (true/false)
-        in: header
-        name: X-FullStatusUpdates
-        type: string
-      - description: Skip fee validation (true/false)
-        in: header
-        name: X-SkipFeeValidation
-        type: string
-      - description: Skip script validation (true/false)
-        in: header
-        name: X-SkipScriptValidation
-        type: string
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            items:
-              $ref: '#/definitions/models.TransactionStatus'
-            type: array
-        "400":
-          description: Bad Request
-          schema:
-            $ref: '#/definitions/errors.ErrorFields'
-        "465":
-          description: ARC validation error
-          schema:
-            $ref: '#/definitions/errors.ErrorFields'
-      summary: Submit multiple transactions
-      tags:
-      - arcade
 swagger: "2.0"

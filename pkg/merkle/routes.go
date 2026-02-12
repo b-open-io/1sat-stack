@@ -27,16 +27,6 @@ func (r *Routes) Register(router fiber.Router) {
 }
 
 // handleArcCallback handles Arc transaction status callbacks
-// @Summary Handle Arc callback
-// @Description Receives transaction status updates from Arc broadcaster
-// @Tags merkle
-// @Accept json
-// @Produce json
-// @Param callback body ArcCallback true "Arc callback payload"
-// @Success 200 {object} map[string]string "OK"
-// @Failure 400 {object} map[string]string "Bad request"
-// @Failure 500 {object} map[string]string "Internal server error"
-// @Router /arc/callback [post]
 func (r *Routes) handleArcCallback(c *fiber.Ctx) error {
 	var callback ArcCallback
 	if err := c.BodyParser(&callback); err != nil {

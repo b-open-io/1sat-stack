@@ -725,11 +725,6 @@ func (c *Config) RegisterRoutes(app *fiber.App, svc *Services) {
 	// Capabilities endpoint - returns list of enabled services
 	api.Get("/capabilities", handleCapabilities(capabilities))
 
-	// Capabilities endpoint - returns list of enabled services
-	api.Get("/capabilities", func(c *fiber.Ctx) error {
-		return c.JSON(capabilities)
-	})
-
 	// Setup API documentation routes
 	registerDocsRoutes(app)
 }
