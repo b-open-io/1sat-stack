@@ -2,7 +2,6 @@ package indexer
 
 import (
 	"context"
-	"log/slog"
 
 	"github.com/b-open-io/1sat-stack/pkg/parse"
 	"github.com/b-open-io/1sat-stack/pkg/txo"
@@ -163,57 +162,10 @@ func (idxCtx *IndexContext) ParseSpends() error {
 	return nil
 }
 
-// Save saves the indexed outputs and spends to the store
+// Save saves the indexed outputs, spends, and pending log to the store.
 func (idxCtx *IndexContext) Save() error {
 	if idxCtx.Store == nil {
 		return nil
 	}
-
-	// Save each output
-	for i, output := range idxCtx.Outputs {
-		if output == nil {
-			continue
-		}
-		satoshis := idxCtx.Tx.Outputs[i].Satoshis
-		if err := idxCtx.Store.SaveOutput(idxCtx.Ctx, output, satoshis, idxCtx.Score); err != nil {
-			slog.Error("save output error", "txid", idxCtx.TxidHex, "vout", i, "error", err)
-			return err
-		}
-	}
-
-	// Save spends - this is the key fix for proper spend indexing
-	for i, spend := range idxCtx.Spends {
-		if spend == nil {
-			continue
-		}
-
-		input := idxCtx.Tx.Inputs[i]
-		outpoint := &transaction.Outpoint{
-			Txid:  *input.SourceTXID,
-			Index: input.SourceTxOutIndex,
-		}
-
-		// Build events list for the spent output
-		events := buildEventsFromOutput(spend)
-
-		if err := idxCtx.Store.SaveSpend(idxCtx.Ctx, outpoint, idxCtx.Txid, events, idxCtx.Score); err != nil {
-			slog.Error("save spend error", "outpoint", outpoint.String(), "error", err)
-			return err
-		}
-	}
-
-	return nil
-}
-
-// buildEventsFromOutput constructs the full events list for an output
-func buildEventsFromOutput(output *txo.IndexedOutput) []string {
-	events := make([]string, 0, len(output.Events)+len(output.Owners)+1)
-	events = append(events, "txid:"+output.Outpoint.Txid.String())
-	events = append(events, output.Events...)
-	for _, owner := range output.Owners {
-		if !owner.IsZero() {
-			events = append(events, "own:"+owner.Address())
-		}
-	}
-	return events
+	return idxCtx.Store.SaveTransaction(idxCtx.Ctx, idxCtx.Tx, idxCtx.Outputs, idxCtx.Spends, idxCtx.TxidHex, idxCtx.Score)
 }

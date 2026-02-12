@@ -17,16 +17,6 @@ import (
 	"github.com/bsv-blockchain/go-sdk/transaction/chaintracker"
 )
 
-// Transaction log keys for tracking confirmation state
-const (
-	PendingTxLog   = "tx:pending"   // Transactions awaiting confirmation
-	ImmutableTxLog = "tx:immutable" // Confirmed transactions (>10 blocks)
-	RollbackTxLog  = "tx:rollback"  // Rolled back transactions
-)
-
-// ImmutabilityBlocks is the number of confirmations before a tx is considered immutable
-const ImmutabilityBlocks = 10
-
 // StatusHandler subscribes to the "arc" pubsub topic and handles all transaction status updates.
 // This consolidates ingestion, proof validation, and rollback into one handler.
 type StatusHandler struct {
@@ -110,7 +100,7 @@ func (h *StatusHandler) Stop() {
 
 // SetChainTip updates the immutability threshold based on the current chain tip.
 func (h *StatusHandler) SetChainTip(height uint32) {
-	h.immutableScore = types.HeightScore(height-ImmutabilityBlocks, 0)
+	h.immutableScore = types.HeightScore(height-txo.ImmutabilityBlocks, 0)
 	h.logger.Info("chain tip updated", "height", height, "immutable_threshold", h.immutableScore)
 }
 
@@ -196,21 +186,10 @@ func (h *StatusHandler) handleAccepted(event ArcEvent) {
 		return
 	}
 
-	// Ingest the transaction
+	// Ingest the transaction (IngestTx handles tx:pending logging)
 	if _, err := h.indexer.IngestTx(h.ctx, tx); err != nil {
 		h.logger.Error("failed to ingest transaction", "txid", event.TxID, "error", err)
 		return
-	}
-
-	// Log as pending with unconfirmed score
-	if h.store != nil {
-		pendingScore := types.HeightScore(0, 0)
-		if err := h.store.ZAdd(h.ctx, txo.KeyLog(PendingTxLog), store.ScoredMember{
-			Member: []byte(event.TxID),
-			Score:  pendingScore,
-		}); err != nil {
-			h.logger.Error("failed to log pending tx", "txid", event.TxID, "error", err)
-		}
 	}
 
 	h.logger.Info("transaction ingested", "txid", event.TxID)
@@ -296,20 +275,13 @@ func (h *StatusHandler) handleMined(event ArcEvent) {
 				h.outputStore.UpdateTransactionBEEF(h.ctx, txid, beef)
 			}
 		}
-	}
 
-	// Check if now immutable and update logs
-	if h.store != nil && newScore > 0 && newScore < h.immutableScore {
-		h.logger.Debug("archiving immutable tx", "txid", event.TxID)
-
-		// Move from pending to immutable
-		if err := h.store.ZAdd(h.ctx, txo.KeyLog(ImmutableTxLog), store.ScoredMember{
-			Member: []byte(event.TxID),
-			Score:  newScore,
-		}); err != nil {
-			h.logger.Error("failed to log immutable tx", "txid", event.TxID, "error", err)
+		// Re-ingest to update scores with confirmed block height
+		if h.indexer != nil {
+			if _, err := h.indexer.IngestTx(h.ctx, tx); err != nil {
+				h.logger.Error("failed to re-ingest mined tx", "txid", event.TxID, "error", err)
+			}
 		}
-		h.store.ZRem(h.ctx, txo.KeyLog(PendingTxLog), []byte(event.TxID))
 	}
 
 	h.logger.Info("transaction mined", "txid", event.TxID, "height", merklePath.BlockHeight)
@@ -359,13 +331,13 @@ func (h *StatusHandler) handleRejected(event ArcEvent) {
 
 	// Log to rollback set and remove from pending
 	if h.store != nil {
-		if err := h.store.ZAdd(h.ctx, txo.KeyLog(RollbackTxLog), store.ScoredMember{
+		if err := h.store.ZAdd(h.ctx, txo.KeyLog(txo.RollbackTxLog), store.ScoredMember{
 			Member: []byte(event.TxID),
 			Score:  types.HeightScore(0, 0),
 		}); err != nil {
 			h.logger.Error("failed to log rollback", "txid", event.TxID, "error", err)
 		}
-		h.store.ZRem(h.ctx, txo.KeyLog(PendingTxLog), []byte(event.TxID))
+		h.store.ZRem(h.ctx, txo.KeyLog(txo.PendingTxLog), []byte(event.TxID))
 	}
 
 	h.logger.Info("rolled back rejected tx", "txid", event.TxID, "outputs", len(outputs))
@@ -376,7 +348,7 @@ func (h *StatusHandler) LogPending(ctx context.Context, txid string, score float
 	if h.store == nil {
 		return nil
 	}
-	return h.store.ZAdd(ctx, txo.KeyLog(PendingTxLog), store.ScoredMember{
+	return h.store.ZAdd(ctx, txo.KeyLog(txo.PendingTxLog), store.ScoredMember{
 		Member: []byte(txid),
 		Score:  score,
 	})
@@ -387,7 +359,7 @@ func (h *StatusHandler) DequeuePending(ctx context.Context, txid string) error {
 	if h.store == nil {
 		return nil
 	}
-	return h.store.ZRem(ctx, txo.KeyLog(PendingTxLog), []byte(txid))
+	return h.store.ZRem(ctx, txo.KeyLog(txo.PendingTxLog), []byte(txid))
 }
 
 // GetImmutableThreshold returns the current score threshold for immutability.

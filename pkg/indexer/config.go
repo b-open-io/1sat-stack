@@ -11,6 +11,8 @@ import (
 	"github.com/b-open-io/1sat-stack/pkg/store"
 	"github.com/b-open-io/1sat-stack/pkg/txo"
 	"github.com/bsv-blockchain/arcade/events"
+	"github.com/bsv-blockchain/arcade/service"
+	"github.com/bsv-blockchain/go-chaintracks/chaintracks"
 	"github.com/bsv-blockchain/go-sdk/transaction/chaintracker"
 	"github.com/spf13/viper"
 )
@@ -90,6 +92,7 @@ type Services struct {
 	Sync           *IngestSync
 	ArcadeListener *ArcadeListener
 	StatusHandler  *StatusHandler
+	PendingAuditor *PendingAuditor
 	Routes         *Routes
 
 	config   *Config
@@ -200,6 +203,30 @@ func (s *Services) SetupStatusHandler(deps *StatusHandlerDeps) {
 	)
 }
 
+// PendingAuditorDeps holds dependencies for pending auditor initialization.
+type PendingAuditorDeps struct {
+	Chaintracks   chaintracks.Chaintracks
+	ArcadeService service.ArcadeService // may be nil
+}
+
+// SetupPendingAuditor initializes the pending transaction auditor.
+// This subscribes to chaintracks for new block events and audits tx:pending.
+func (s *Services) SetupPendingAuditor(deps *PendingAuditorDeps) {
+	if deps.Chaintracks == nil {
+		s.logger.Warn("no chaintracks, pending auditor disabled")
+		return
+	}
+
+	s.PendingAuditor = NewPendingAuditor(
+		s.initDeps.OutputStore,
+		s.initDeps.BeefStorage,
+		s.Indexer,
+		deps.Chaintracks,
+		deps.ArcadeService,
+		s.logger,
+	)
+}
+
 // SetupRoutes initializes the routes with pubsub for webhook callbacks.
 func (s *Services) SetupRoutes(ps pubsub.PubSub) {
 	if !s.config.Routes.Enabled || ps == nil {
@@ -218,8 +245,7 @@ func (s *Services) Start(ctx context.Context) error {
 	return nil
 }
 
-// StartEventHandlers starts the arcade listener and status handler.
-// These handle transaction events from arcade broadcasts.
+// StartEventHandlers starts the arcade listener, status handler, and pending auditor.
 func (s *Services) StartEventHandlers(ctx context.Context) error {
 	if s.ArcadeListener != nil {
 		if err := s.ArcadeListener.Start(ctx); err != nil {
@@ -231,11 +257,17 @@ func (s *Services) StartEventHandlers(ctx context.Context) error {
 			return err
 		}
 	}
+	if s.PendingAuditor != nil {
+		s.PendingAuditor.Start(ctx)
+	}
 	return nil
 }
 
 // Close closes the indexer services.
 func (s *Services) Close() error {
+	if s.PendingAuditor != nil {
+		s.PendingAuditor.Stop()
+	}
 	if s.StatusHandler != nil {
 		s.StatusHandler.Stop()
 	}

@@ -25,6 +25,7 @@ import (
 	"github.com/b-open-io/go-junglebus"
 	arcadeconfig "github.com/bsv-blockchain/arcade/config"
 	arcaderoutes "github.com/bsv-blockchain/arcade/routes/fiber"
+	"github.com/bsv-blockchain/arcade/service"
 	"github.com/bsv-blockchain/go-chaintracks/chaintracks"
 	chaintracksconfig "github.com/bsv-blockchain/go-chaintracks/config"
 	chaintracksroutes "github.com/bsv-blockchain/go-chaintracks/routes/fiber"
@@ -477,6 +478,18 @@ func (c *Config) Initialize(ctx context.Context, logger *slog.Logger) (*Services
 			svc.Indexer.SetupStatusHandler(&indexer.StatusHandlerDeps{
 				PubSub:       svc.PubSub.PubSub,
 				ChainTracker: svc.Chaintracks,
+			})
+		}
+
+		// Setup pending auditor to verify proofs on each new block
+		if svc.Chaintracks != nil {
+			var arcadeService service.ArcadeService
+			if svc.Arcade != nil {
+				arcadeService = svc.Arcade.ArcadeService
+			}
+			svc.Indexer.SetupPendingAuditor(&indexer.PendingAuditorDeps{
+				Chaintracks:   svc.Chaintracks,
+				ArcadeService: arcadeService,
 			})
 		}
 

@@ -16,17 +16,6 @@ import (
 	"github.com/bsv-blockchain/go-sdk/transaction/chaintracker"
 )
 
-// Log keys for transaction tracking
-// These are used with store.ZAdd directly, so they need the z: prefix
-// to match what OutputStore.Log() produces
-const (
-	PendingTxLog   = "tx:pending"   // Transactions awaiting confirmation
-	ImmutableTxLog = "tx:immutable" // Confirmed transactions (>10 blocks)
-	RollbackTxLog  = "tx:rollback"  // Rolled back transactions
-)
-
-// ImmutabilityBlocks is the number of confirmations before a tx is considered immutable
-const ImmutabilityBlocks = 10
 
 // ArcCallback represents an Arc transaction status update
 type ArcCallback struct {
@@ -207,7 +196,7 @@ func (s *Service) handleRejectedCallback(callback ArcCallback) {
 	}
 
 	// Log to rollback set using properly scaled timestamp
-	if err := s.store.ZAdd(s.ctx, txo.KeyLog(RollbackTxLog), store.ScoredMember{
+	if err := s.store.ZAdd(s.ctx, txo.KeyLog(txo.RollbackTxLog), store.ScoredMember{
 		Member: []byte(callback.TxID),
 		Score:  types.HeightScore(0, 0),
 	}); err != nil {
@@ -215,13 +204,13 @@ func (s *Service) handleRejectedCallback(callback ArcCallback) {
 	}
 
 	// Remove from pending
-	s.store.ZRem(s.ctx, txo.KeyLog(PendingTxLog), []byte(callback.TxID))
+	s.store.ZRem(s.ctx, txo.KeyLog(txo.PendingTxLog), []byte(callback.TxID))
 }
 
 // SetChainTip updates the immutability threshold based on the current chain tip.
 // Call this when receiving block notifications from external source.
 func (s *Service) SetChainTip(height uint32) {
-	s.immutableScore = types.HeightScore(height-ImmutabilityBlocks, 0)
+	s.immutableScore = types.HeightScore(height-txo.ImmutabilityBlocks, 0)
 	s.logger.Info("chain tip updated", "height", height, "immutable_threshold", s.immutableScore)
 }
 
@@ -283,13 +272,13 @@ func (s *Service) ValidateAndUpdateTx(ctx context.Context, txid *chainhash.Hash,
 		s.logger.Debug("archiving immutable tx", "txid", txid.String())
 
 		// Move from pending to immutable
-		if err := s.store.ZAdd(ctx, txo.KeyLog(ImmutableTxLog), store.ScoredMember{
+		if err := s.store.ZAdd(ctx, txo.KeyLog(txo.ImmutableTxLog), store.ScoredMember{
 			Member: []byte(txid.String()),
 			Score:  newScore,
 		}); err != nil {
 			return err
 		}
-		s.store.ZRem(ctx, txo.KeyLog(PendingTxLog), []byte(txid.String()))
+		s.store.ZRem(ctx, txo.KeyLog(txo.PendingTxLog), []byte(txid.String()))
 	}
 
 	return nil
@@ -297,7 +286,7 @@ func (s *Service) ValidateAndUpdateTx(ctx context.Context, txid *chainhash.Hash,
 
 // LogPending logs a transaction as pending confirmation.
 func (s *Service) LogPending(ctx context.Context, txid string, score float64) error {
-	return s.store.ZAdd(ctx, txo.KeyLog(PendingTxLog), store.ScoredMember{
+	return s.store.ZAdd(ctx, txo.KeyLog(txo.PendingTxLog), store.ScoredMember{
 		Member: []byte(txid),
 		Score:  score,
 	})
@@ -305,7 +294,7 @@ func (s *Service) LogPending(ctx context.Context, txid string, score float64) er
 
 // DequeuePending removes a transaction from the pending log.
 func (s *Service) DequeuePending(ctx context.Context, txid string) error {
-	return s.store.ZRem(ctx, txo.KeyLog(PendingTxLog), []byte(txid))
+	return s.store.ZRem(ctx, txo.KeyLog(txo.PendingTxLog), []byte(txid))
 }
 
 // GetImmutableThreshold returns the current score threshold for immutability.

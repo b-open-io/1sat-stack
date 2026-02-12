@@ -48,6 +48,16 @@ func KeyTopicTxs(topic string) []byte {
 	return []byte(PfxZSet + PfxTopic + topic + ":tx")
 }
 
+// Transaction log names for tracking confirmation state
+const (
+	PendingTxLog   = "tx:pending"   // Transactions awaiting confirmation
+	ImmutableTxLog = "tx:immutable" // Confirmed transactions (100+ blocks deep)
+	RollbackTxLog  = "tx:rollback"  // Rolled back transactions
+)
+
+// ImmutabilityBlocks is the number of confirmations before a tx is considered immutable
+const ImmutabilityBlocks = 100
+
 // KeyLog builds ZSet key for log entries: z:{logName}
 // Used with OutputStore.Log() for tracking processed items
 // Members are typically binary txids (32 bytes), scores are HeightScore

@@ -252,6 +252,61 @@ func (s *OutputStore) IndexSpentEvents(ctx context.Context, op *transaction.Outp
 	return nil
 }
 
+// SaveTransaction saves outputs, spends, and logs the transaction as pending.
+func (s *OutputStore) SaveTransaction(ctx context.Context, tx *transaction.Transaction, outputs []*IndexedOutput, spends []*IndexedOutput, txidHex string, score float64) error {
+	txid := tx.TxID()
+
+	// Save each output
+	for i, output := range outputs {
+		if output == nil {
+			continue
+		}
+		satoshis := tx.Outputs[i].Satoshis
+		if err := s.SaveOutput(ctx, output, satoshis, score); err != nil {
+			return err
+		}
+	}
+
+	// Save spends
+	for i, spend := range spends {
+		if spend == nil {
+			continue
+		}
+		input := tx.Inputs[i]
+		outpoint := &transaction.Outpoint{
+			Txid:  *input.SourceTXID,
+			Index: input.SourceTxOutIndex,
+		}
+		events := buildSpendEvents(spend)
+		if err := s.SaveSpend(ctx, outpoint, txid, events, score); err != nil {
+			return err
+		}
+	}
+
+	// Log to tx:pending — the audit process handles promotion to tx:immutable
+	if err := s.Store.ZAdd(ctx, KeyLog(PendingTxLog), store.ScoredMember{
+		Member: []byte(txidHex),
+		Score:  score,
+	}); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+// buildSpendEvents constructs the events list for a spent output.
+func buildSpendEvents(output *IndexedOutput) []string {
+	events := make([]string, 0, len(output.Events)+len(output.Owners)+1)
+	events = append(events, "txid:"+output.Outpoint.Txid.String())
+	events = append(events, output.Events...)
+	for _, owner := range output.Owners {
+		if !owner.IsZero() {
+			events = append(events, "own:"+owner.Address())
+		}
+	}
+	return events
+}
+
 // GetSpend returns the spending txid for an outpoint (nil if unspent)
 func (s *OutputStore) GetSpend(ctx context.Context, op *transaction.Outpoint) (*chainhash.Hash, error) {
 	spendBytes, err := s.Store.HGet(ctx, hashSpnd, op.Bytes())
