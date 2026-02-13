@@ -796,7 +796,7 @@ func registerDocsRoutes(app *fiber.App) {
     <meta name="viewport" content="width=device-width, initial-scale=1" />
 </head>
 <body>
-    <script id="api-reference" data-url="/api-spec/swagger.json"></script>
+    <script id="api-reference" data-url="/api-spec/swagger.json" data-configuration='{"defaultOpenAllTags": false}'></script>
     <script src="https://cdn.jsdelivr.net/npm/@scalar/api-reference"></script>
 </body>
 </html>`

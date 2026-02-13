@@ -33,6 +33,33 @@ import (
 
 // @BasePath /1sat
 
+// @tag.name txos
+// @tag.description Transaction output queries
+// @tag.name ordfs
+// @tag.description Ordinals file system
+// @tag.name bsv21
+// @tag.description BSV21 token operations
+// @tag.name owner
+// @tag.description Owner-based queries
+// @tag.name overlay
+// @tag.description Overlay network services
+// @tag.name beef
+// @tag.description BEEF transaction data
+// @tag.name arcade
+// @tag.description Transaction broadcasting
+// @tag.name chaintracks
+// @tag.description Chain tracking services
+// @tag.name sse
+// @tag.description Server-sent events
+// @tag.name arc
+// @tag.description ARC callback endpoints
+// @tag.name system
+// @tag.description System health and info
+// @tag.name admin
+// @tag.description Administrative endpoints (requires auth)
+// @tag.name overlay-admin
+// @tag.description Overlay admin endpoints (requires auth)
+
 func main() {
 	// Load .env file if present (optional, won't error if missing)
 	_ = godotenv.Load()

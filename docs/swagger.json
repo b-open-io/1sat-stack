@@ -1722,7 +1722,7 @@
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/chaintracks.BlockHeader"
+                            "$ref": "#/definitions/pkg_chaintracks.BlockHeader"
                         }
                     },
                     "400": {
@@ -1763,7 +1763,7 @@
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/chaintracks.BlockHeader"
+                            "$ref": "#/definitions/pkg_chaintracks.BlockHeader"
                         }
                     },
                     "400": {
@@ -1883,7 +1883,7 @@
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/chaintracks.BlockHeader"
+                            "$ref": "#/definitions/pkg_chaintracks.BlockHeader"
                         }
                     },
                     "404": {
@@ -3223,51 +3223,6 @@
                 }
             }
         },
-        "chaintracks.BlockHeader": {
-            "type": "object",
-            "properties": {
-                "bits": {
-                    "description": "4 bytes - Difficulty target",
-                    "type": "integer"
-                },
-                "hash": {
-                    "type": "array",
-                    "items": {
-                        "type": "integer"
-                    }
-                },
-                "height": {
-                    "description": "Block height in the chain",
-                    "type": "integer"
-                },
-                "merkleRoot": {
-                    "description": "32 bytes - Merkle root hash",
-                    "type": "array",
-                    "items": {
-                        "type": "integer"
-                    }
-                },
-                "nonce": {
-                    "description": "4 bytes - Nonce",
-                    "type": "integer"
-                },
-                "previousHash": {
-                    "description": "32 bytes - Previous block hash",
-                    "type": "array",
-                    "items": {
-                        "type": "integer"
-                    }
-                },
-                "time": {
-                    "description": "4 bytes - Block timestamp (Unix time)",
-                    "type": "integer"
-                },
-                "version": {
-                    "description": "4 bytes - Block version",
-                    "type": "integer"
-                }
-            }
-        },
         "chaintracks.ErrorResponse": {
             "type": "object",
             "properties": {
@@ -3658,6 +3613,51 @@
                 }
             }
         },
+        "pkg_chaintracks.BlockHeader": {
+            "type": "object",
+            "properties": {
+                "bits": {
+                    "description": "4 bytes - Difficulty target",
+                    "type": "integer"
+                },
+                "hash": {
+                    "type": "array",
+                    "items": {
+                        "type": "integer"
+                    }
+                },
+                "height": {
+                    "description": "Block height in the chain",
+                    "type": "integer"
+                },
+                "merkleRoot": {
+                    "description": "32 bytes - Merkle root hash",
+                    "type": "array",
+                    "items": {
+                        "type": "integer"
+                    }
+                },
+                "nonce": {
+                    "description": "4 bytes - Nonce",
+                    "type": "integer"
+                },
+                "previousHash": {
+                    "description": "32 bytes - Previous block hash",
+                    "type": "array",
+                    "items": {
+                        "type": "integer"
+                    }
+                },
+                "time": {
+                    "description": "4 bytes - Block timestamp (Unix time)",
+                    "type": "integer"
+                },
+                "version": {
+                    "description": "4 bytes - Block version",
+                    "type": "integer"
+                }
+            }
+        },
         "pkg_indexer.ArcEvent": {
             "type": "object",
             "properties": {
@@ -3792,5 +3792,59 @@
                 }
             }
         }
-    }
+    },
+    "tags": [
+        {
+            "description": "Transaction output queries",
+            "name": "txos"
+        },
+        {
+            "description": "Ordinals file system",
+            "name": "ordfs"
+        },
+        {
+            "description": "BSV21 token operations",
+            "name": "bsv21"
+        },
+        {
+            "description": "Owner-based queries",
+            "name": "owner"
+        },
+        {
+            "description": "Overlay network services",
+            "name": "overlay"
+        },
+        {
+            "description": "BEEF transaction data",
+            "name": "beef"
+        },
+        {
+            "description": "Transaction broadcasting",
+            "name": "arcade"
+        },
+        {
+            "description": "Chain tracking services",
+            "name": "chaintracks"
+        },
+        {
+            "description": "Server-sent events",
+            "name": "sse"
+        },
+        {
+            "description": "ARC callback endpoints",
+            "name": "arc"
+        },
+        {
+            "description": "System health and info",
+            "name": "system"
+        },
+        {
+            "description": "Administrative endpoints (requires auth)",
+            "name": "admin"
+        },
+        {
+            "description": "Overlay admin endpoints (requires auth)",
+            "name": "overlay-admin"
+        }
+    ]
 }
