@@ -454,6 +454,25 @@ func (s *Storage) BuildFullBeefTx(ctx context.Context, txid *chainhash.Hash) (*t
 	return tx, nil
 }
 
+// PopulateAncestors fills in SourceTransaction for each input of an already-parsed transaction
+// by loading ancestors from storage. This avoids re-loading a transaction we already have in hand.
+func (s *Storage) PopulateAncestors(ctx context.Context, tx *transaction.Transaction) error {
+	if tx.MerklePath != nil {
+		return nil
+	}
+	for _, input := range tx.Inputs {
+		if input.SourceTransaction != nil {
+			continue
+		}
+		var err error
+		input.SourceTransaction, err = s.BuildBeefTx(ctx, input.SourceTXID)
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 func (s *Storage) BuildFullBeef(ctx context.Context, txid *chainhash.Hash) ([]byte, error) {
 	beef, err := s.LoadBeef(ctx, txid)
 	if err != nil {

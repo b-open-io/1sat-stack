@@ -7,11 +7,12 @@ import (
 	"github.com/b-open-io/1sat-stack/pkg/beef"
 	"github.com/bsv-blockchain/arcade/models"
 	"github.com/bsv-blockchain/arcade/service"
+	sdkTx "github.com/bsv-blockchain/go-sdk/transaction"
 )
 
 // BeefCapturingArcadeService wraps an ArcadeService to capture BEEF data before submission.
-// This decorator pattern eliminates the need for submission events by saving the raw
-// transaction data at the point of submission.
+// When a raw transaction (not BEEF) is submitted, it automatically builds a BEEF envelope
+// with ancestor transactions from storage, enabling arcade to submit ancestors to teranode.
 type BeefCapturingArcadeService struct {
 	inner       service.ArcadeService
 	beefStorage *beef.Storage
@@ -34,28 +35,66 @@ func NewBeefCapturingArcadeService(
 	}
 }
 
-// SubmitTransaction saves BEEF before delegating to the inner service.
-func (s *BeefCapturingArcadeService) SubmitTransaction(ctx context.Context, rawTx []byte, opts *models.SubmitOptions) (*models.TransactionStatus, error) {
-	// Save BEEF before submission
-	if s.beefStorage != nil {
+// enrichWithBeef takes raw transaction bytes and attempts to build a BEEF envelope.
+// If the input is already BEEF, it saves and returns it as-is.
+// If it's a raw tx, it saves it, populates ancestors from storage, and returns BEEF bytes.
+// On any failure, it returns the original raw bytes.
+func (s *BeefCapturingArcadeService) enrichWithBeef(ctx context.Context, rawTx []byte) []byte {
+	if s.beefStorage == nil {
+		return rawTx
+	}
+
+	// Check if already BEEF
+	_, tx, _, err := sdkTx.ParseBeef(rawTx)
+	if err == nil && tx != nil {
+		// Already BEEF — save and pass through
 		if err := s.beefStorage.SaveRaw(ctx, rawTx); err != nil {
 			s.logger.Warn("failed to save BEEF", "error", err)
 		}
+		return rawTx
 	}
-	return s.inner.SubmitTransaction(ctx, rawTx, opts)
+
+	// Raw tx — parse it
+	tx, err = sdkTx.NewTransactionFromBytes(rawTx)
+	if err != nil {
+		s.logger.Warn("failed to parse raw tx for BEEF enrichment", "error", err)
+		return rawTx
+	}
+
+	// Save to beef storage first
+	if err := s.beefStorage.SaveRaw(ctx, rawTx); err != nil {
+		s.logger.Warn("failed to save raw tx", "error", err)
+	}
+
+	// Populate ancestors from storage
+	if err := s.beefStorage.PopulateAncestors(ctx, tx); err != nil {
+		s.logger.Warn("failed to populate ancestors, submitting raw tx", "txid", tx.TxID().String(), "error", err)
+		return rawTx
+	}
+
+	// Serialize as BEEF
+	beefBytes, err := tx.BEEF()
+	if err != nil {
+		s.logger.Warn("failed to serialize BEEF, submitting raw tx", "txid", tx.TxID().String(), "error", err)
+		return rawTx
+	}
+
+	s.logger.Debug("enriched raw tx with BEEF", "txid", tx.TxID().String(), "rawSize", len(rawTx), "beefSize", len(beefBytes))
+	return beefBytes
 }
 
-// SubmitTransactions saves BEEF for each transaction before delegating to the inner service.
+// SubmitTransaction enriches with BEEF before delegating to the inner service.
+func (s *BeefCapturingArcadeService) SubmitTransaction(ctx context.Context, rawTx []byte, opts *models.SubmitOptions) (*models.TransactionStatus, error) {
+	return s.inner.SubmitTransaction(ctx, s.enrichWithBeef(ctx, rawTx), opts)
+}
+
+// SubmitTransactions enriches each tx with BEEF before delegating to the inner service.
 func (s *BeefCapturingArcadeService) SubmitTransactions(ctx context.Context, rawTxs [][]byte, opts *models.SubmitOptions) ([]*models.TransactionStatus, error) {
-	// Save BEEF for each transaction before submission
-	if s.beefStorage != nil {
-		for _, rawTx := range rawTxs {
-			if err := s.beefStorage.SaveRaw(ctx, rawTx); err != nil {
-				s.logger.Warn("failed to save BEEF", "error", err)
-			}
-		}
+	enriched := make([][]byte, len(rawTxs))
+	for i, rawTx := range rawTxs {
+		enriched[i] = s.enrichWithBeef(ctx, rawTx)
 	}
-	return s.inner.SubmitTransactions(ctx, rawTxs, opts)
+	return s.inner.SubmitTransactions(ctx, enriched, opts)
 }
 
 // GetStatus delegates to the inner service.

@@ -115,10 +115,12 @@ arcade:
     buffer_size: 1000
   teranode:
     broadcast_urls:
-      - http://mainnet.gorillanode.io:8833
+      - https://teranode-eks-mainnet-eu-1-propagation.bsvb.tech
+      # - http://mainnet.gorillanode.io:8833
       # - https://teranode-eks-testnet-eu-1-propagation.bsvb.tech/
     datahub_urls:
-      - https://mainnet.gorillanode.io/api/v1
+      - https://teranode-eks-mainnet-eu-1.bsvb.tech/api/v1
+      # - https://mainnet.gorillanode.io/api/v1
       # - https://teranode-eks-testnet-eu-1.bsvb.tech/api/v1
 
 # Merkle service (deprecated - now handled by indexer status handler)
