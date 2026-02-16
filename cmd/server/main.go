@@ -33,6 +33,11 @@ import (
 
 // @BasePath /1sat
 
+// @securityDefinitions.apiKey BearerAuth
+// @in header
+// @name Authorization
+// @description Enter "Bearer {token}" (with quotes around the full value)
+
 // @tag.name txos
 // @tag.description Transaction output queries
 // @tag.name ordfs

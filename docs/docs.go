@@ -25,6 +25,11 @@ const docTemplate = `{
     "paths": {
         "/admin/blacklist": {
             "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
                 "description": "Returns the list of blacklisted topics",
                 "produces": [
                     "application/json"
@@ -55,6 +60,11 @@ const docTemplate = `{
                 }
             },
             "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
                 "description": "Adds a topic to the blacklist",
                 "consumes": [
                     "application/json"
@@ -73,7 +83,7 @@ const docTemplate = `{
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "type": "object"
+                            "$ref": "#/definitions/admin.TopicRequest"
                         }
                     }
                 ],
@@ -110,6 +120,11 @@ const docTemplate = `{
         },
         "/admin/blacklist/{topic}": {
             "delete": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
                 "description": "Removes a topic from the blacklist",
                 "produces": [
                     "application/json"
@@ -151,6 +166,11 @@ const docTemplate = `{
         },
         "/admin/bsv21/workers": {
             "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
                 "description": "Returns the status of all active BSV21 token workers",
                 "produces": [
                     "application/json"
@@ -174,6 +194,11 @@ const docTemplate = `{
         },
         "/admin/lookups/active": {
             "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
                 "description": "Returns the list of currently active lookup services from the overlay engine",
                 "produces": [
                     "application/json"
@@ -197,6 +222,11 @@ const docTemplate = `{
         },
         "/admin/progress": {
             "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
                 "description": "Returns all sync progress entries (subscriptions, owners, peers)",
                 "produces": [
                     "application/json"
@@ -220,6 +250,11 @@ const docTemplate = `{
         },
         "/admin/progress/{id}": {
             "put": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
                 "description": "Updates a sync progress entry",
                 "consumes": [
                     "application/json"
@@ -245,7 +280,7 @@ const docTemplate = `{
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "type": "object"
+                            "$ref": "#/definitions/admin.UpdateProgressRequest"
                         }
                     }
                 ],
@@ -280,6 +315,11 @@ const docTemplate = `{
                 }
             },
             "delete": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
                 "description": "Deletes a sync progress entry",
                 "produces": [
                     "application/json"
@@ -321,6 +361,11 @@ const docTemplate = `{
         },
         "/admin/topics/active": {
             "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
                 "description": "Returns the list of currently active topics from the overlay engine",
                 "produces": [
                     "application/json"
@@ -344,6 +389,11 @@ const docTemplate = `{
         },
         "/admin/topics/{name}/remotes": {
             "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
                 "description": "Returns the configured remotes for a topic",
                 "produces": [
                     "application/json"
@@ -383,6 +433,11 @@ const docTemplate = `{
                 }
             },
             "put": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
                 "description": "Sets the configured remotes for a topic (overrides defaults)",
                 "consumes": [
                     "application/json"
@@ -446,6 +501,11 @@ const docTemplate = `{
                 }
             },
             "delete": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
                 "description": "Removes the remote config override, reverting to defaults",
                 "produces": [
                     "application/json"
@@ -487,6 +547,11 @@ const docTemplate = `{
         },
         "/admin/whitelist": {
             "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
                 "description": "Returns the list of whitelisted BSV21 tokens (always active)",
                 "produces": [
                     "application/json"
@@ -517,6 +582,11 @@ const docTemplate = `{
                 }
             },
             "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
                 "description": "Adds a BSV21 token to the whitelist (always active)",
                 "consumes": [
                     "application/json"
@@ -535,7 +605,7 @@ const docTemplate = `{
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "type": "object"
+                            "$ref": "#/definitions/admin.TopicRequest"
                         }
                     }
                 ],
@@ -572,6 +642,11 @@ const docTemplate = `{
         },
         "/admin/whitelist/{token}": {
             "delete": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
                 "description": "Removes a BSV21 token from the whitelist",
                 "produces": [
                     "application/json"
@@ -3193,6 +3268,24 @@ const docTemplate = `{
                 }
             }
         },
+        "admin.TopicRequest": {
+            "type": "object",
+            "properties": {
+                "topic": {
+                    "type": "string",
+                    "example": "bsv21_token_id_here"
+                }
+            }
+        },
+        "admin.UpdateProgressRequest": {
+            "type": "object",
+            "properties": {
+                "block": {
+                    "type": "integer",
+                    "example": 123456
+                }
+            }
+        },
         "arcade.FeeAmount": {
             "type": "object",
             "properties": {
@@ -3798,6 +3891,14 @@ const docTemplate = `{
                     }
                 }
             }
+        }
+    },
+    "securityDefinitions": {
+        "BearerAuth": {
+            "description": "Enter \"Bearer {token}\" (with quotes around the full value)",
+            "type": "apiKey",
+            "name": "Authorization",
+            "in": "header"
         }
     },
     "tags": [

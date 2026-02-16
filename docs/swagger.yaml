@@ -7,6 +7,18 @@ definitions:
       id:
         type: string
     type: object
+  admin.TopicRequest:
+    properties:
+      topic:
+        example: bsv21_token_id_here
+        type: string
+    type: object
+  admin.UpdateProgressRequest:
+    properties:
+      block:
+        example: 123456
+        type: integer
+    type: object
   arcade.FeeAmount:
     properties:
       bytes:
@@ -455,6 +467,8 @@ paths:
             additionalProperties:
               type: string
             type: object
+      security:
+      - BearerAuth: []
       summary: Get blacklist
       tags:
       - admin
@@ -468,7 +482,7 @@ paths:
         name: body
         required: true
         schema:
-          type: object
+          $ref: '#/definitions/admin.TopicRequest'
       produces:
       - application/json
       responses:
@@ -490,6 +504,8 @@ paths:
             additionalProperties:
               type: string
             type: object
+      security:
+      - BearerAuth: []
       summary: Add to blacklist
       tags:
       - admin
@@ -517,6 +533,8 @@ paths:
             additionalProperties:
               type: string
             type: object
+      security:
+      - BearerAuth: []
       summary: Remove from blacklist
       tags:
       - admin
@@ -532,6 +550,8 @@ paths:
             items:
               $ref: '#/definitions/github_com_b-open-io_1sat-stack_pkg_bsv21.WorkerStatus'
             type: array
+      security:
+      - BearerAuth: []
       summary: Get BSV21 workers
       tags:
       - admin
@@ -548,6 +568,8 @@ paths:
             items:
               type: string
             type: array
+      security:
+      - BearerAuth: []
       summary: Get active lookup services
       tags:
       - admin
@@ -563,6 +585,8 @@ paths:
             items:
               $ref: '#/definitions/admin.ProgressItem'
             type: array
+      security:
+      - BearerAuth: []
       summary: Get progress
       tags:
       - admin
@@ -590,6 +614,8 @@ paths:
             additionalProperties:
               type: string
             type: object
+      security:
+      - BearerAuth: []
       summary: Delete progress
       tags:
       - admin
@@ -608,7 +634,7 @@ paths:
         name: body
         required: true
         schema:
-          type: object
+          $ref: '#/definitions/admin.UpdateProgressRequest'
       produces:
       - application/json
       responses:
@@ -630,6 +656,8 @@ paths:
             additionalProperties:
               type: string
             type: object
+      security:
+      - BearerAuth: []
       summary: Update progress
       tags:
       - admin
@@ -657,6 +685,8 @@ paths:
             additionalProperties:
               type: string
             type: object
+      security:
+      - BearerAuth: []
       summary: Delete topic remotes
       tags:
       - admin
@@ -683,6 +713,8 @@ paths:
             additionalProperties:
               type: string
             type: object
+      security:
+      - BearerAuth: []
       summary: Get topic remotes
       tags:
       - admin
@@ -725,6 +757,8 @@ paths:
             additionalProperties:
               type: string
             type: object
+      security:
+      - BearerAuth: []
       summary: Set topic remotes
       tags:
       - admin
@@ -740,6 +774,8 @@ paths:
             items:
               type: string
             type: array
+      security:
+      - BearerAuth: []
       summary: Get active topics
       tags:
       - admin
@@ -761,6 +797,8 @@ paths:
             additionalProperties:
               type: string
             type: object
+      security:
+      - BearerAuth: []
       summary: Get whitelist
       tags:
       - admin
@@ -774,7 +812,7 @@ paths:
         name: body
         required: true
         schema:
-          type: object
+          $ref: '#/definitions/admin.TopicRequest'
       produces:
       - application/json
       responses:
@@ -796,6 +834,8 @@ paths:
             additionalProperties:
               type: string
             type: object
+      security:
+      - BearerAuth: []
       summary: Add to whitelist
       tags:
       - admin
@@ -823,6 +863,8 @@ paths:
             additionalProperties:
               type: string
             type: object
+      security:
+      - BearerAuth: []
       summary: Remove from whitelist
       tags:
       - admin
@@ -2547,6 +2589,12 @@ paths:
       summary: Get TXOs by transaction ID
       tags:
       - txos
+securityDefinitions:
+  BearerAuth:
+    description: Enter "Bearer {token}" (with quotes around the full value)
+    in: header
+    name: Authorization
+    type: apiKey
 swagger: "2.0"
 tags:
 - description: Transaction output queries
