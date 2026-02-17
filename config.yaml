@@ -80,10 +80,14 @@ indexer:
     - cosign
   sync:
     enabled: true
+    subscription_ids: []    # Set via ONESAT_INDEXER_SYNC_SUBSCRIPTION_IDS env var (comma-separated)
     queue_name: "ingest"    # Queue to consume from (q:ingest)
-    concurrency: 24          # Worker concurrency
+    from_block: 783968      # Starting block for JungleBus subscriptions
+    concurrency: 24         # Worker concurrency
     page_size: 100          # Batch fetch size
     poll_delay: 1s          # Sleep when queue empty
+    batch_size: 500         # JungleBus batch size
+    reorg_depth: 6          # JungleBus reorg depth
   arcade:
     enabled: true           # Enable arcade event listener (bridges to pubsub)
     ingest: true            # Ingest transactions on ACCEPTED status
@@ -134,13 +138,59 @@ bsv21:
   mode: embedded
   sync:
     enabled: true
+    subscription_id: ""  # Set via ONESAT_BSV21_SYNC_SUBSCRIPTION_ID env var
+    from_block: 783968   # BSV21 genesis block
+    batch_size: 1000
     dispatch_workers: 16
     token_workers: 32
     fee_per_output: 1000
     lifecycle_interval: 5m  # How often to check token balances and manage workers (default: 5m)
-    log_level: info  # Highlight BSV21 sync1 (debug, info, warn, error)
+    log_level: info  # Highlight BSV21 sync (debug, info, warn, error)
   routes:
     enabled: true
+
+# MongoDB (shared by BAP and BSocial)
+mongodb:
+  url: mongodb://mongo:mongo@localhost:27017
+
+# BAP identity overlay
+bap:
+  mode: embedded
+  sync:
+    enabled: true
+    subscription_id: ""  # Set via ONESAT_BAP_SYNC_SUBSCRIPTION_ID env var
+    queue_name: "bap"
+    from_block: 575000
+    concurrency: 1  # Must be sequential - BAP validates against current identity owner state
+  routes:
+    enabled: true
+    prefix: /bap
+
+# BSocial overlay
+bsocial:
+  mode: disabled
+  sync:
+    enabled: false
+    subscription_id: ""  # Set via ONESAT_BSOCIAL_SYNC_SUBSCRIPTION_ID env var
+    queue_name: "bsocial"
+    from_block: 575000
+    concurrency: 8
+  routes:
+    enabled: true
+    prefix: /bsocial
+
+# OPNS domain name overlay
+opns:
+  mode: disabled
+  sync:
+    enabled: false
+    subscription_id: ""  # Set via ONESAT_OPNS_SYNC_SUBSCRIPTION_ID env var
+    queue_name: "opns"
+    from_block: 800000
+    concurrency: 8
+  routes:
+    enabled: true
+    prefix: /opns
 
 # Overlay services
 overlay:
@@ -183,21 +233,3 @@ ordfs:
 admin:
   routes:
     bearer_token: ""  # Set via ONESAT_ADMIN_ROUTES_BEARER_TOKEN env var
-
-# JungleBus Sync subscriptions
-jbsync:
-  subscribers:
-    - subscription_id: "51ce778bfa6c7c5fd3f3b6fbaf96ebde1348198c33ca26cb1a8fadbfee0212d7"
-      queue_name: "bsv21"
-      from_block: 783968  # BSV21 genesis block
-      batch_size: 1000
-      reorg_depth: 6
-      enable_mempool: false
-      autostart: true
-    - subscription_id: "9efa781363dcdd470fdd2664c9ad75ff2195694429c88d638e6dd9631e78fa17"
-      queue_name: "ingest"
-      from_block: 783968
-      batch_size: 500
-      reorg_depth: 6
-      enable_mempool: false
-      autostart: true

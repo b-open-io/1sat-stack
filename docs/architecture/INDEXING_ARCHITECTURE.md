@@ -67,17 +67,29 @@
 
 ### Main Indexing Flow
 ```
-JungleBus -> q:ingest -> IngestSync -> IngestTxid -> ParseTx -> Save()
-                                                            |-- SaveOutput (for each output)
-                                                            +-- SaveSpend (for each input)
+JungleBus (subscription_ids from indexer.sync config) -> q:ingest -> IngestSync -> IngestTxid -> ParseTx -> Save()
+                                                                                                        |-- SaveOutput (for each output)
+                                                                                                        +-- SaveSpend (for each input)
 ```
+
+Ingest subscription IDs are set via `ONESAT_INDEXER_SYNC_SUBSCRIPTION_IDS` env var (comma-separated).
+Multiple subscriptions all feed the same `q:ingest` queue.
 
 ### BSV21/Overlay Flow
 ```
-JungleBus -> q:bsv21 -> dispatcher -> overlay.Submit()
-                                      |-- InsertOutputs (topic data only)
-                                      +-- OutputAdmittedByTopic -> SaveEvents (events + tag data)
+JungleBus (subscription_id from bsv21.sync config) -> q:bsv21 -> dispatcher -> overlay.Submit()
+                                                                                |-- InsertOutputs (topic data only)
+                                                                                +-- OutputAdmittedByTopic -> SaveEvents (events + tag data)
 ```
+
+### BAP/BSocial/OPNS Overlay Flow
+```
+JungleBus (subscription_id from {module}.sync config) -> q:{module} -> OverlaySync -> BEEF -> overlay.Submit()
+```
+
+Each overlay module (BAP, BSocial, OPNS) has its own subscription_id set via env var
+(e.g., `ONESAT_BAP_SYNC_SUBSCRIPTION_ID`). The generic `OverlaySync` worker drains the
+queue, builds BEEF, and submits through the overlay engine.
 
 ---
 

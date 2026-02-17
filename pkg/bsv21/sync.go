@@ -29,11 +29,27 @@ import (
 // SyncConfig holds BSV21 sync configuration
 type SyncConfig struct {
 	Enabled           bool          `mapstructure:"enabled"`            // Enable sync services
+	SubscriptionID    string        `mapstructure:"subscription_id"`    // JungleBus subscription ID (set via env var)
+	FromBlock         uint64        `mapstructure:"from_block"`         // Starting block for JungleBus subscription
+	BatchSize         int           `mapstructure:"batch_size"`         // JungleBus batch size (default: 1000)
+	ReorgDepth        uint32        `mapstructure:"reorg_depth"`        // JungleBus reorg depth (default: 6)
 	DispatchWorkers   int           `mapstructure:"dispatch_workers"`   // Concurrency for dispatcher
 	TokenWorkers      int           `mapstructure:"token_workers"`      // Concurrency for token processing
 	FeePerOutput      int64         `mapstructure:"fee_per_output"`     // Satoshis per admitted output (default: 1000)
 	LogLevel          string        `mapstructure:"log_level"`          // Log level for sync (debug, info, warn, error)
 	LifecycleInterval time.Duration `mapstructure:"lifecycle_interval"` // Interval for token lifecycle management (default: 5m)
+}
+
+// SubscriberConfig creates a jbsync.SubscriberConfig from this BSV21 sync config.
+func (c *SyncConfig) SubscriberConfig() *jbsync.SubscriberConfig {
+	return &jbsync.SubscriberConfig{
+		AutoStart:      true,
+		SubscriptionID: c.SubscriptionID,
+		QueueName:      "bsv21",
+		FromBlock:      c.FromBlock,
+		BatchSize:      c.BatchSize,
+		ReorgDepth:     c.ReorgDepth,
+	}
 }
 
 // SyncServices manages BSV21 sync pipeline

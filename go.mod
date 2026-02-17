@@ -27,6 +27,7 @@ require (
 	github.com/redis/go-redis/v9 v9.17.2
 	github.com/spf13/viper v1.21.0
 	github.com/swaggo/swag v1.16.6
+	go.mongodb.org/mongo-driver/v2 v2.5.0
 	golang.org/x/sync v0.19.0
 )
 
@@ -60,6 +61,15 @@ require (
 	github.com/benbjohnson/clock v1.3.5 // indirect
 	github.com/beorn7/perks v1.0.1 // indirect
 	github.com/bitcoin-sv/go-sdk v1.1.21 // indirect
+	github.com/bitcoinschema/go-aip v0.3.3 // indirect
+	github.com/bitcoinschema/go-b v0.2.3 // indirect
+	github.com/bitcoinschema/go-bap v0.4.2 // indirect
+	github.com/bitcoinschema/go-bmap v0.2.4 // indirect
+	github.com/bitcoinschema/go-bob v0.5.2 // indirect
+	github.com/bitcoinschema/go-boost v0.2.2 // indirect
+	github.com/bitcoinschema/go-bpu v0.2.2 // indirect
+	github.com/bitcoinschema/go-map v0.2.2 // indirect
+	github.com/bitcoinschema/go-sigma v0.1.2 // indirect
 	github.com/bsv-blockchain/go-batcher v1.2.7 // indirect
 	github.com/bsv-blockchain/go-bsv-middleware v0.12.4 // indirect
 	github.com/bsv-blockchain/go-bt/v2 v2.5.3 // indirect
@@ -271,6 +281,10 @@ require (
 	github.com/whyrusleeping/go-keyspace v0.0.0-20160322163242-5b898ac5add1 // indirect
 	github.com/wlynxg/anet v0.0.5 // indirect
 	github.com/x448/float16 v0.8.4 // indirect
+	github.com/xdg-go/pbkdf2 v1.0.0 // indirect
+	github.com/xdg-go/scram v1.2.0 // indirect
+	github.com/xdg-go/stringprep v1.0.4 // indirect
+	github.com/youmark/pkcs8 v0.0.0-20240726163527-a2c0da244d78 // indirect
 	github.com/yuin/gopher-lua v1.1.1 // indirect
 	go.opencensus.io v0.24.0 // indirect
 	go.opentelemetry.io/auto/sdk v1.2.1 // indirect

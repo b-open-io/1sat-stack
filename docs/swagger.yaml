@@ -215,6 +215,44 @@ definitions:
       txid:
         type: string
     type: object
+  pkg_bap.Address:
+    properties:
+      address:
+        type: string
+      block:
+        type: integer
+      txId:
+        type: string
+    type: object
+  pkg_bap.Identity:
+    properties:
+      _:
+        type: string
+      addresses:
+        items:
+          $ref: '#/definitions/pkg_bap.Address'
+        type: array
+      currentAddress:
+        type: string
+      firstSeen:
+        type: integer
+      idKey:
+        type: string
+      identity:
+        additionalProperties: {}
+        type: object
+      rootAddress:
+        type: string
+    type: object
+  pkg_bap.Profile:
+    properties:
+      _id:
+        type: string
+      data:
+        items:
+          type: integer
+        type: array
+    type: object
   pkg_bsv21.BalanceResponse:
     properties:
       balance:
@@ -361,6 +399,20 @@ definitions:
         type: string
       txStatus:
         type: string
+    type: object
+  pkg_opns.MineResult:
+    properties:
+      domain:
+        type: string
+      outpoint:
+        $ref: '#/definitions/transaction.Outpoint'
+    type: object
+  pkg_opns.OwnerResult:
+    properties:
+      address:
+        type: string
+      outpoint:
+        $ref: '#/definitions/transaction.Outpoint'
     type: object
   pkg_ordfs.Response:
     properties:
@@ -1091,6 +1143,145 @@ paths:
       summary: Submit multiple transactions
       tags:
       - arcade
+  /bap/identity/get:
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: Identity request with idKey field
+        in: body
+        name: request
+        required: true
+        schema:
+          properties:
+            idKey:
+              type: string
+          type: object
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/pkg_bap.Identity'
+        "400":
+          description: Bad Request
+          schema:
+            properties:
+              message:
+                type: string
+            type: object
+        "404":
+          description: Not Found
+          schema:
+            properties:
+              message:
+                type: string
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            properties:
+              message:
+                type: string
+            type: object
+      summary: Get identity by ID
+      tags:
+      - bap
+  /bap/identity/search:
+    get:
+      parameters:
+      - description: Search query
+        in: query
+        name: q
+        required: true
+        type: string
+      - default: 20
+        description: Results limit
+        in: query
+        name: limit
+        type: integer
+      - default: 0
+        description: Results offset
+        in: query
+        name: offset
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/pkg_bap.Identity'
+            type: array
+        "500":
+          description: Internal Server Error
+          schema:
+            properties:
+              message:
+                type: string
+            type: object
+      summary: Search identities
+      tags:
+      - bap
+  /bap/profile:
+    get:
+      parameters:
+      - default: 20
+        description: Results limit
+        in: query
+        name: limit
+        type: integer
+      - default: 0
+        description: Results offset
+        in: query
+        name: offset
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/pkg_bap.Profile'
+            type: array
+        "500":
+          description: Internal Server Error
+          schema:
+            properties:
+              message:
+                type: string
+            type: object
+      summary: List profiles
+      tags:
+      - bap
+  /bap/profile/{bapId}:
+    get:
+      parameters:
+      - description: BAP Identity ID
+        in: path
+        name: bapId
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            properties:
+              message:
+                type: string
+            type: object
+      summary: Get profile by BAP ID
+      tags:
+      - bap
   /beef/{txid}:
     get:
       description: Retrieves the BEEF (BSV Envelope Format) for a specific transaction
@@ -1166,6 +1357,43 @@ paths:
       summary: Get transaction
       tags:
       - beef
+  /bsocial/post/search:
+    get:
+      parameters:
+      - description: Search query
+        in: query
+        name: q
+        required: true
+        type: string
+      - default: 20
+        description: Results limit
+        in: query
+        name: limit
+        type: integer
+      - default: 0
+        description: Results offset
+        in: query
+        name: offset
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              type: object
+            type: array
+        "500":
+          description: Internal Server Error
+          schema:
+            properties:
+              message:
+                type: string
+            type: object
+      summary: Search posts
+      tags:
+      - bsocial
   /bsv21/{tokenId}:
     get:
       parameters:
@@ -1793,6 +2021,84 @@ paths:
       summary: Health check
       tags:
       - system
+  /opns/mine/{name}:
+    get:
+      parameters:
+      - description: Domain name
+        in: path
+        name: name
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/pkg_opns.MineResult'
+        "400":
+          description: Bad Request
+          schema:
+            properties:
+              error:
+                type: string
+            type: object
+        "404":
+          description: Not Found
+          schema:
+            properties:
+              error:
+                type: string
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            properties:
+              error:
+                type: string
+            type: object
+      summary: Get domain mining status
+      tags:
+      - opns
+  /opns/owner/{name}:
+    get:
+      parameters:
+      - description: Domain name
+        in: path
+        name: name
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/pkg_opns.OwnerResult'
+        "400":
+          description: Bad Request
+          schema:
+            properties:
+              error:
+                type: string
+            type: object
+        "404":
+          description: Not Found
+          schema:
+            properties:
+              error:
+                type: string
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            properties:
+              error:
+                type: string
+            type: object
+      summary: Get domain owner
+      tags:
+      - opns
   /ordfs/metadata/{path}:
     get:
       description: Get metadata about inscription content without downloading the
