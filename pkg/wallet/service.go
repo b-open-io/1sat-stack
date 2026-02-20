@@ -4,22 +4,24 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
-	"net/http"
 
 	"github.com/b-open-io/1sat-stack/pkg/logging"
 	arcadeconfig "github.com/bsv-blockchain/arcade/config"
+	sdkwallet "github.com/bsv-blockchain/go-sdk/wallet"
 	"github.com/bsv-blockchain/go-wallet-toolbox/pkg/defs"
 	"github.com/bsv-blockchain/go-wallet-toolbox/pkg/services"
 	"github.com/bsv-blockchain/go-wallet-toolbox/pkg/storage"
+	"github.com/bsv-blockchain/go-wallet-toolbox/pkg/storage/rpcserver"
 	toolboxwallet "github.com/bsv-blockchain/go-wallet-toolbox/pkg/wallet"
 	"github.com/bsv-blockchain/go-wallet-toolbox/pkg/wdk"
 )
 
 // Services holds initialized wallet services.
 type Services struct {
-	Provider *storage.Provider
-	Server   *storage.Server
-	Routes   *Routes
+	Provider  *storage.Provider
+	Wallet    sdkwallet.Interface
+	RPCServer *rpcserver.RPCServer
+	Routes    *Routes
 }
 
 // InitializeDeps holds dependencies for wallet service initialization.
@@ -102,24 +104,20 @@ func (c *Config) Initialize(
 		return nil, fmt.Errorf("failed to create server wallet: %w", err)
 	}
 
-	// Create storage server
-	serverOptions := storage.ServerOptions{
-		Port:     0, // Not used when embedding - we use Fiber's port
-		Monetize: false,
-		CalculateRequestPrice: func(_ *http.Request) (int, error) {
-			return 0, nil
-		},
-	}
-	server := storage.NewServer(walletLogger, provider, serverWallet, serverOptions)
+	// Create RPC handler directly — auth is handled by the global middleware,
+	// not by storage.Server's internal auth layer.
+	rpcProvider := rpcserver.NewRPCStorageProvider(walletLogger, provider)
+	rpcHandler := rpcserver.NewRPCHandler(walletLogger, "WalletStorage", rpcProvider)
 
 	svc := &Services{
-		Provider: provider,
-		Server:   server,
+		Provider:  provider,
+		Wallet:    serverWallet,
+		RPCServer: rpcHandler,
 	}
 
 	// Create routes if enabled
 	if c.Routes.Enabled {
-		svc.Routes = NewRoutes(server)
+		svc.Routes = NewRoutes(rpcHandler)
 	}
 
 	walletLogger.Info("wallet service initialized",
@@ -138,11 +136,7 @@ func createWalletServicesConfig(network defs.BSVNetwork, arcade *arcadeconfig.Se
 
 	// If Arcade is available, share its ARC configuration
 	if arcade != nil && arcade.Arcade != nil {
-		// Arcade is running embedded, so we can share the ARC config
-		// The wallet services will use the same ARC endpoint
 		config.ArcConfig.Enabled = true
-		// Note: arcade.Arcade contains the initialized Arcade instance
-		// We use the default ARC config which should match what Arcade uses
 	}
 
 	return config

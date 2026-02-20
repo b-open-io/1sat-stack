@@ -17,7 +17,7 @@ import (
 	"github.com/gofiber/fiber/v2/middleware/filesystem"
 )
 
-//go:embed ui/*
+//go:embed ui/dist/*
 var uiFS embed.FS
 
 // Routes handles admin HTTP routes
@@ -40,14 +40,9 @@ func NewRoutes(overlaySvc *overlay.Services, s store.Store, bsv21Sync *bsv21.Syn
 	}
 }
 
-// Register registers admin routes on a Fiber app group
+// Register registers admin routes on a Fiber app group.
+// Authorization is handled externally via AdminGuard middleware applied to the group.
 func (r *Routes) Register(group fiber.Router) {
-	// Apply auth middleware if bearer token is configured
-	if r.config.BearerToken != "" {
-		group.Use(r.authMiddleware())
-		r.logger.Info("admin bearer token authentication enabled")
-	}
-
 	// Whitelist endpoints (tokens always active)
 	group.Get("/whitelist", r.handleGetWhitelist)
 	group.Post("/whitelist", r.handleAddToWhitelist)
@@ -82,7 +77,7 @@ func (r *Routes) Register(group fiber.Router) {
 	dataRoutes.Register(group.Group("/data"))
 
 	// Serve static UI files
-	uiSubFS, err := fs.Sub(uiFS, "ui")
+	uiSubFS, err := fs.Sub(uiFS, "ui/dist")
 	if err != nil {
 		r.logger.Error("failed to create ui sub filesystem", "error", err)
 		return
@@ -105,24 +100,6 @@ func (r *Routes) Register(group fiber.Router) {
 	}))
 
 	r.logger.Debug("registered admin routes")
-}
-
-// authMiddleware validates bearer token authentication
-func (r *Routes) authMiddleware() fiber.Handler {
-	return func(c *fiber.Ctx) error {
-		auth := c.Get("Authorization")
-		expected := "Bearer " + r.config.BearerToken
-		if auth != expected {
-			r.logger.Warn("unauthorized admin access attempt",
-				"path", c.Path(),
-				"method", c.Method(),
-				"ip", c.IP())
-			return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{
-				"error": "unauthorized",
-			})
-		}
-		return c.Next()
-	}
 }
 
 // handleGetWhitelist returns the list of whitelisted BSV21 tokens

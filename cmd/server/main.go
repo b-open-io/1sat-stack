@@ -135,15 +135,20 @@ func main() {
 		return err
 	})
 	app.Use(cors.New(cors.Config{
-		AllowOrigins:     "*",
-		AllowMethods:     "GET,POST,OPTIONS",
-		AllowHeaders:     "Content-Type,Authorization,X-CallbackUrl,X-CallbackToken",
-		AllowCredentials: false, // Cannot use credentials with wildcard origin
-		Next: func(c *fiber.Ctx) bool {
-			// Skip Fiber CORS for wallet routes - go-wallet-toolbox has its own CORS middleware
-			path := c.Path()
-			return path == "/.well-known/auth" || path == "/1sat/wallet" || path == "/1sat/wallet/"
-		},
+		AllowOrigins: "*",
+		AllowMethods: "GET,POST,OPTIONS",
+		AllowHeaders: "Content-Type,Authorization,X-CallbackUrl,X-CallbackToken," +
+			"x-bsv-auth-version,x-bsv-auth-message-type,x-bsv-auth-identity-key," +
+			"x-bsv-auth-nonce,x-bsv-auth-your-nonce,x-bsv-auth-signature," +
+			"x-bsv-auth-request-id,x-bsv-auth-requested-certificates," +
+			"X-BSV-Payment,X-BSV-Payment-Version,X-BSV-Payment-Satoshis-Required," +
+			"X-BSV-Payment-Derivation-Prefix",
+		ExposeHeaders: "x-bsv-auth-version,x-bsv-auth-message-type,x-bsv-auth-identity-key," +
+			"x-bsv-auth-nonce,x-bsv-auth-your-nonce,x-bsv-auth-signature," +
+			"x-bsv-auth-request-id,x-bsv-auth-requested-certificates," +
+			"X-BSV-Payment-Satoshis-Required,X-BSV-Payment-Satoshis-Paid," +
+			"X-BSV-Payment-Derivation-Prefix",
+		AllowCredentials: false,
 	}))
 
 	// Register routes

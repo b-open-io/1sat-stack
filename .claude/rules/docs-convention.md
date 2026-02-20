@@ -1,8 +1,4 @@
-# AGENTS.md
-
-All project conventions, build commands, code style guidelines, and documentation rules are maintained in [CLAUDE.md](CLAUDE.md). Read that file for the canonical project guide.
-
-## Documentation Convention
+# Documentation Convention
 
 - `docs/plans/STATUS.md` is the master index of all plans. Update it when plan status changes.
 - Each plan lives in `docs/plans/<name>.md` with a `Status: **X**` line at the top.

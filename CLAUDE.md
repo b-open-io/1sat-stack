@@ -172,3 +172,14 @@ pkg/store/KEYS.md               # Package-level storage key reference
 - **Untested paths**: Write tests for edge cases and error paths
 - **Ignoring formatting**: Run `gofmt` before committing
 - **Global state**: Pass dependencies explicitly, not via globals
+
+## Project status
+
+See `docs/plans/STATUS.md` for the current state of all plans and initiatives.
+
+## Documentation layout
+
+- `docs/plans/STATUS.md` — Master index of all plans with current status
+- `docs/plans/*.md` — Individual plan documents
+- `docs/research/*.md` — Reference research
+- Convention rules are in `.claude/rules/docs-convention.md`

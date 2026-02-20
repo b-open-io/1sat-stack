@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/b-open-io/1sat-stack/admin"
+	"github.com/b-open-io/1sat-stack/pkg/auth"
 	"github.com/b-open-io/1sat-stack/pkg/beef"
 	"github.com/b-open-io/1sat-stack/pkg/bsv21"
 	"github.com/b-open-io/1sat-stack/pkg/indexer"
@@ -29,6 +30,7 @@ import (
 	"github.com/bsv-blockchain/go-chaintracks/chaintracks"
 	chaintracksconfig "github.com/bsv-blockchain/go-chaintracks/config"
 	chaintracksroutes "github.com/bsv-blockchain/go-chaintracks/routes/fiber"
+	sdkauth "github.com/bsv-blockchain/go-sdk/auth"
 	"github.com/bsv-blockchain/go-sdk/transaction"
 	p2p "github.com/bsv-blockchain/go-teranode-p2p-client"
 	"github.com/gofiber/fiber/v2"
@@ -83,6 +85,9 @@ type Config struct {
 
 	// Wallet service
 	Wallet wallet.Config `mapstructure:"wallet"`
+
+	// Auth middleware
+	Auth auth.Config `mapstructure:"auth"`
 
 	// JungleBus Sync subscriptions
 	JBSync JBSyncConfig `mapstructure:"jbsync"`
@@ -192,6 +197,9 @@ type Services struct {
 	Admin   *admin.Services
 	Wallet  *wallet.Services
 
+	// Auth middleware (nil when wallet is disabled)
+	AuthMiddleware *auth.Middleware
+
 	// JungleBus subscriptions
 	JBSubscribers []*jbsync.Subscriber
 
@@ -259,6 +267,7 @@ func (c *Config) SetDefaults(v *viper.Viper) {
 	c.Owner.SetDefaults(v, "owner")
 	c.Admin.SetDefaults(v, "admin")
 	c.Wallet.SetDefaults(v, "wallet")
+	c.Auth.SetDefaults(v, "auth")
 }
 
 // Initialize creates all services from the configuration
@@ -557,6 +566,15 @@ func (c *Config) Initialize(ctx context.Context, logger *slog.Logger) (*Services
 			return nil, fmt.Errorf("failed to initialize wallet: %w", err)
 		}
 		svc.Wallet = walletSvc
+
+		// Create global auth middleware using the server wallet
+		svc.AuthMiddleware = auth.NewMiddleware(
+			walletSvc.Wallet,
+			sdkauth.NewSessionManager(),
+			logger,
+			c.Auth.AllowUnauthenticated,
+		)
+		logger.Info("auth middleware initialized", "allowUnauthenticated", c.Auth.AllowUnauthenticated)
 	}
 
 	// Initialize JungleBus subscriptions from config (only those with autostart enabled)
@@ -586,6 +604,14 @@ func (c *Config) Initialize(ctx context.Context, logger *slog.Logger) (*Services
 
 // RegisterRoutes registers all HTTP routes on the Fiber app
 func (c *Config) RegisterRoutes(app *fiber.App, svc *Services) {
+	// Register global auth middleware first so it applies to all routes.
+	// Handles BRC-103/104 handshakes at /.well-known/auth and injects
+	// identity into the Fiber context for all other requests.
+	if svc.AuthMiddleware != nil {
+		app.Use(svc.AuthMiddleware.Handler())
+		slog.Debug("registered global auth middleware")
+	}
+
 	// Create API group with base path
 	api := app.Group(c.Server.BasePath)
 
@@ -690,13 +716,15 @@ func (c *Config) RegisterRoutes(app *fiber.App, svc *Services) {
 		slog.Debug("registered arc callback routes", "prefix", "/arc")
 	}
 
-	// Register Admin routes
+	// Register Admin routes (protected by AdminGuard)
 	if svc.Admin != nil && svc.Admin.Routes != nil {
 		prefix := c.Admin.Routes.Prefix
 		if prefix == "" {
 			prefix = "/admin"
 		}
-		adminGroup := api.Group(prefix)
+		adminGroup := api.Group(prefix,
+			auth.AdminGuard(c.Auth.AdminPubkeys, c.Admin.Routes.BearerToken, slog.Default()),
+		)
 		svc.Admin.Routes.Register(adminGroup)
 		capabilities = append(capabilities, "admin")
 		slog.Debug("registered admin routes", "prefix", prefix)
@@ -712,11 +740,6 @@ func (c *Config) RegisterRoutes(app *fiber.App, svc *Services) {
 		svc.Wallet.Routes.Register(walletGroup)
 		capabilities = append(capabilities, "wallet")
 		slog.Debug("registered wallet routes", "prefix", c.Server.BasePath+prefix)
-
-		// Also register at /.well-known/auth for BRC-100 authentication handshake
-		// The wallet middleware expects this route at the root level
-		svc.Wallet.Routes.RegisterWellKnown(app)
-		slog.Debug("registered wallet .well-known/auth route")
 	}
 
 	// Health check endpoint
