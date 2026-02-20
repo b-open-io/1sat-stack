@@ -40,51 +40,43 @@ func NewRoutes(overlaySvc *overlay.Services, s store.Store, bsv21Sync *bsv21.Syn
 	}
 }
 
-// Register registers admin routes on a Fiber app group.
-// Authorization is handled externally via AdminGuard middleware applied to the group.
-func (r *Routes) Register(group fiber.Router) {
-	// Whitelist endpoints (tokens always active)
-	group.Get("/whitelist", r.handleGetWhitelist)
-	group.Post("/whitelist", r.handleAddToWhitelist)
-	group.Delete("/whitelist/:token", r.handleRemoveFromWhitelist)
+// Register registers admin API routes on a guarded group, and static UI
+// files on an unguarded group so the browser can load the app before authenticating.
+func (r *Routes) Register(guardedGroup fiber.Router, publicGroup fiber.Router) {
+	// API routes (require auth via AdminGuard on guardedGroup)
+	guardedGroup.Get("/whitelist", r.handleGetWhitelist)
+	guardedGroup.Post("/whitelist", r.handleAddToWhitelist)
+	guardedGroup.Delete("/whitelist/:token", r.handleRemoveFromWhitelist)
 
-	// Blacklist endpoints (tokens never active)
-	group.Get("/blacklist", r.handleGetBlacklist)
-	group.Post("/blacklist", r.handleAddToBlacklist)
-	group.Delete("/blacklist/:token", r.handleRemoveFromBlacklist)
+	guardedGroup.Get("/blacklist", r.handleGetBlacklist)
+	guardedGroup.Post("/blacklist", r.handleAddToBlacklist)
+	guardedGroup.Delete("/blacklist/:token", r.handleRemoveFromBlacklist)
 
-	// Active topics endpoint
-	group.Get("/topics/active", r.handleGetActiveTopics)
+	guardedGroup.Get("/topics/active", r.handleGetActiveTopics)
 
-	// Topic remote configuration endpoints
-	group.Get("/topics/:name/remotes", r.handleGetTopicRemotes)
-	group.Put("/topics/:name/remotes", r.handleSetTopicRemotes)
-	group.Delete("/topics/:name/remotes", r.handleDeleteTopicRemotes)
+	guardedGroup.Get("/topics/:name/remotes", r.handleGetTopicRemotes)
+	guardedGroup.Put("/topics/:name/remotes", r.handleSetTopicRemotes)
+	guardedGroup.Delete("/topics/:name/remotes", r.handleDeleteTopicRemotes)
 
-	// Active lookup services endpoint
-	group.Get("/lookups/active", r.handleGetActiveLookups)
+	guardedGroup.Get("/lookups/active", r.handleGetActiveLookups)
 
-	// Progress endpoints
-	group.Get("/progress", r.handleGetProgress)
-	group.Put("/progress/:id", r.handleUpdateProgress)
-	group.Delete("/progress/:id", r.handleDeleteProgress)
+	guardedGroup.Get("/progress", r.handleGetProgress)
+	guardedGroup.Put("/progress/:id", r.handleUpdateProgress)
+	guardedGroup.Delete("/progress/:id", r.handleDeleteProgress)
 
-	// BSV21 worker endpoints
-	group.Get("/bsv21/workers", r.handleGetBSV21Workers)
+	guardedGroup.Get("/bsv21/workers", r.handleGetBSV21Workers)
 
-	// Data query routes
 	dataRoutes := NewDataRoutes(r.store, r.logger)
-	dataRoutes.Register(group.Group("/data"))
+	dataRoutes.Register(guardedGroup.Group("/data"))
 
-	// Serve static UI files
+	// Static UI files (no auth required — the UI itself handles authentication)
 	uiSubFS, err := fs.Sub(uiFS, "ui/dist")
 	if err != nil {
 		r.logger.Error("failed to create ui sub filesystem", "error", err)
 		return
 	}
 
-	// Serve index.html for root and any non-API routes
-	group.Get("/", func(c *fiber.Ctx) error {
+	publicGroup.Get("/", func(c *fiber.Ctx) error {
 		content, err := fs.ReadFile(uiSubFS, "index.html")
 		if err != nil {
 			return c.Status(fiber.StatusNotFound).SendString("Not found")
@@ -93,8 +85,7 @@ func (r *Routes) Register(group fiber.Router) {
 		return c.Send(content)
 	})
 
-	// Serve other static files
-	group.Use("/", filesystem.New(filesystem.Config{
+	publicGroup.Use("/", filesystem.New(filesystem.Config{
 		Root:   http.FS(uiSubFS),
 		Browse: false,
 	}))

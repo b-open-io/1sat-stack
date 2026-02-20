@@ -3,7 +3,7 @@ import { AuthFetch } from "@bsv/sdk";
 let authFetch: AuthFetch | null = null;
 let identityKey: string | null = null;
 
-const API_BASE = window.location.pathname.replace(/\/$/, "");
+const API_BASE = window.location.pathname.replace(/\/$/, "") + "/api";
 
 export function isWalletAvailable(): boolean {
   return typeof window.CWI !== "undefined" && window.CWI !== null;

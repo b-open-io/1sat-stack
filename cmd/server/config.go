@@ -716,16 +716,20 @@ func (c *Config) RegisterRoutes(app *fiber.App, svc *Services) {
 		slog.Debug("registered arc callback routes", "prefix", "/arc")
 	}
 
-	// Register Admin routes (protected by AdminGuard)
+	// Register Admin routes: static UI files are public, API endpoints are guarded.
+	// API routes are mounted under {prefix}/api/ with AdminGuard middleware.
+	// Static UI files are mounted directly at {prefix}/ without auth so the
+	// browser can load the app before performing the BRC-103/104 handshake.
 	if svc.Admin != nil && svc.Admin.Routes != nil {
 		prefix := c.Admin.Routes.Prefix
 		if prefix == "" {
 			prefix = "/admin"
 		}
-		adminGroup := api.Group(prefix,
+		guardedGroup := api.Group(prefix+"/api",
 			auth.AdminGuard(c.Auth.AdminPubkeys, c.Admin.Routes.BearerToken, slog.Default()),
 		)
-		svc.Admin.Routes.Register(adminGroup)
+		publicGroup := api.Group(prefix)
+		svc.Admin.Routes.Register(guardedGroup, publicGroup)
 		capabilities = append(capabilities, "admin")
 		slog.Debug("registered admin routes", "prefix", prefix)
 	}
