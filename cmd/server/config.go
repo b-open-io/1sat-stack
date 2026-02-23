@@ -11,11 +11,14 @@ import (
 
 	"github.com/b-open-io/1sat-stack/admin"
 	"github.com/b-open-io/1sat-stack/pkg/auth"
+	"github.com/b-open-io/1sat-stack/pkg/bap"
 	"github.com/b-open-io/1sat-stack/pkg/beef"
+	"github.com/b-open-io/1sat-stack/pkg/bsocial"
 	"github.com/b-open-io/1sat-stack/pkg/bsv21"
 	"github.com/b-open-io/1sat-stack/pkg/indexer"
 	"github.com/b-open-io/1sat-stack/pkg/jbsync"
 	"github.com/b-open-io/1sat-stack/pkg/logging"
+	"github.com/b-open-io/1sat-stack/pkg/opns"
 	"github.com/b-open-io/1sat-stack/pkg/ordfs"
 	"github.com/b-open-io/1sat-stack/pkg/overlay"
 	"github.com/b-open-io/1sat-stack/pkg/owner"
@@ -35,6 +38,8 @@ import (
 	p2p "github.com/bsv-blockchain/go-teranode-p2p-client"
 	"github.com/gofiber/fiber/v2"
 	"github.com/spf13/viper"
+	"go.mongodb.org/mongo-driver/v2/mongo"
+	mongooptions "go.mongodb.org/mongo-driver/v2/mongo/options"
 )
 
 // Config holds the complete server configuration
@@ -71,6 +76,18 @@ type Config struct {
 	// BSV21 token support
 	BSV21 bsv21.Config `mapstructure:"bsv21"`
 
+	// BAP identity overlay
+	BAP bap.Config `mapstructure:"bap"`
+
+	// BSocial overlay
+	BSocial bsocial.Config `mapstructure:"bsocial"`
+
+	// OPNS domain name overlay
+	OPNS opns.Config `mapstructure:"opns"`
+
+	// MongoDB (shared by BAP and BSocial)
+	MongoDB MongoDBConfig `mapstructure:"mongodb"`
+
 	// Overlay engine
 	Overlay overlay.Config `mapstructure:"overlay"`
 
@@ -88,15 +105,11 @@ type Config struct {
 
 	// Auth middleware
 	Auth auth.Config `mapstructure:"auth"`
-
-	// JungleBus Sync subscriptions
-	JBSync JBSyncConfig `mapstructure:"jbsync"`
 }
 
-// JBSyncConfig holds configuration for JungleBus sync subscriptions
-type JBSyncConfig struct {
-	// Subscribers is the list of subscription configurations
-	Subscribers []jbsync.SubscriberConfig `mapstructure:"subscribers"`
+// MongoDBConfig holds shared MongoDB connection configuration.
+type MongoDBConfig struct {
+	URL string `mapstructure:"url"`
 }
 
 // JungleBusConfig holds JungleBus client configuration
@@ -191,6 +204,9 @@ type Services struct {
 	TXO     *txo.Services
 	Indexer *indexer.Services
 	BSV21   *bsv21.Services
+	BAP     *bap.Services
+	BSocial *bsocial.Services
+	OPNS    *opns.Services
 	Overlay *overlay.Services
 	ORDFS   *ordfs.Services
 	Own     *owner.Services
@@ -199,6 +215,9 @@ type Services struct {
 
 	// Auth middleware (nil when wallet is disabled)
 	AuthMiddleware *auth.Middleware
+
+	// MongoDB client (shared by BAP and BSocial)
+	MongoDB *mongo.Client
 
 	// JungleBus subscriptions
 	JBSubscribers []*jbsync.Subscriber
@@ -259,9 +278,15 @@ func (c *Config) SetDefaults(v *viper.Viper) {
 	v.SetDefault("merkle.routes.enabled", true)
 	v.SetDefault("merkle.routes.prefix", "")
 
+	// MongoDB defaults
+	v.SetDefault("mongodb.url", "")
+
 	// Package configs
 	c.Indexer.SetDefaults(v, "indexer")
 	c.BSV21.SetDefaults(v, "bsv21")
+	c.BAP.SetDefaults(v, "bap")
+	c.BSocial.SetDefaults(v, "bsocial")
+	c.OPNS.SetDefaults(v, "opns")
 	c.Overlay.SetDefaults(v, "overlay")
 	c.ORDFS.SetDefaults(v, "ordfs")
 	c.Owner.SetDefaults(v, "owner")
@@ -445,6 +470,109 @@ func (c *Config) Initialize(ctx context.Context, logger *slog.Logger) (*Services
 		logger.Info("bsv21 initialized", "duration", time.Since(start).Round(time.Millisecond))
 	}
 
+	// Initialize MongoDB (shared by BAP and BSocial)
+	if c.MongoDB.URL != "" && (c.BAP.Mode != bap.ModeDisabled || c.BSocial.Mode != bsocial.ModeDisabled) {
+		start = time.Now()
+		mongoClient, err := mongo.Connect(mongooptions.Client().ApplyURI(c.MongoDB.URL))
+		if err != nil {
+			return nil, fmt.Errorf("failed to connect to mongodb: %w", err)
+		}
+		if err := mongoClient.Ping(ctx, nil); err != nil {
+			return nil, fmt.Errorf("failed to ping mongodb: %w", err)
+		}
+		svc.MongoDB = mongoClient
+		logger.Info("mongodb initialized", "duration", time.Since(start).Round(time.Millisecond))
+	}
+
+	// Initialize BAP
+	if c.BAP.Mode != bap.ModeDisabled && svc.MongoDB != nil {
+		start = time.Now()
+		bapDB := svc.MongoDB.Database("bap")
+		bapSvc, err := c.BAP.Initialize(ctx, logger, bapDB)
+		if err != nil {
+			return nil, fmt.Errorf("failed to initialize bap: %w", err)
+		}
+		svc.BAP = bapSvc
+
+		if svc.Overlay != nil {
+			svc.Overlay.RegisterLookupService("bap", svc.BAP.Lookup)
+
+			bapTopic := &overlay.Topic{
+				Name:    "tm_bap",
+				Manager: svc.BAP.TopicManager,
+			}
+			if err := svc.Overlay.ActivateTopic(ctx, bapTopic); err != nil {
+				logger.Error("failed to activate BAP topic", "error", err)
+			} else {
+				logger.Info("BAP topic (tm_bap) activated")
+			}
+
+			if c.BAP.Sync != nil && c.BAP.Sync.Enabled && svc.Beef != nil {
+				svc.BAP.Sync = overlay.NewOverlaySync(c.BAP.Sync, "tm_bap", svc.Store.Store, svc.Beef.Storage, svc.Overlay, logger)
+			}
+		}
+		logger.Info("bap initialized", "duration", time.Since(start).Round(time.Millisecond))
+	}
+
+	// Initialize BSocial
+	if c.BSocial.Mode != bsocial.ModeDisabled && svc.MongoDB != nil {
+		start = time.Now()
+		bsocialDB := svc.MongoDB.Database("bsocial")
+		bsocialSvc, err := c.BSocial.Initialize(ctx, logger, bsocialDB)
+		if err != nil {
+			return nil, fmt.Errorf("failed to initialize bsocial: %w", err)
+		}
+		svc.BSocial = bsocialSvc
+
+		if svc.Overlay != nil {
+			svc.Overlay.RegisterLookupService("bsocial", svc.BSocial.Lookup)
+
+			bsocialTopic := &overlay.Topic{
+				Name:    "tm_bsocial",
+				Manager: svc.BSocial.TopicManager,
+			}
+			if err := svc.Overlay.ActivateTopic(ctx, bsocialTopic); err != nil {
+				logger.Error("failed to activate BSocial topic", "error", err)
+			} else {
+				logger.Info("BSocial topic (tm_bsocial) activated")
+			}
+
+			if c.BSocial.Sync != nil && c.BSocial.Sync.Enabled && svc.Beef != nil {
+				svc.BSocial.Sync = overlay.NewOverlaySync(c.BSocial.Sync, "tm_bsocial", svc.Store.Store, svc.Beef.Storage, svc.Overlay, logger)
+			}
+		}
+		logger.Info("bsocial initialized", "duration", time.Since(start).Round(time.Millisecond))
+	}
+
+	// Initialize OPNS
+	if c.OPNS.Mode != opns.ModeDisabled && svc.Store != nil {
+		start = time.Now()
+		opnsSvc, err := c.OPNS.Initialize(ctx, logger, svc.Store.Store)
+		if err != nil {
+			return nil, fmt.Errorf("failed to initialize opns: %w", err)
+		}
+		svc.OPNS = opnsSvc
+
+		if svc.Overlay != nil {
+			svc.Overlay.RegisterLookupService("opns", svc.OPNS.Lookup)
+
+			opnsTopic := &overlay.Topic{
+				Name:    "tm_opns",
+				Manager: svc.OPNS.TopicManager,
+			}
+			if err := svc.Overlay.ActivateTopic(ctx, opnsTopic); err != nil {
+				logger.Error("failed to activate OPNS topic", "error", err)
+			} else {
+				logger.Info("OPNS topic (tm_opns) activated")
+			}
+
+			if c.OPNS.Sync != nil && c.OPNS.Sync.Enabled && svc.Beef != nil {
+				svc.OPNS.Sync = overlay.NewOverlaySync(c.OPNS.Sync, "tm_opns", svc.Store.Store, svc.Beef.Storage, svc.Overlay, logger)
+			}
+		}
+		logger.Info("opns initialized", "duration", time.Since(start).Round(time.Millisecond))
+	}
+
 	// Activate whitelisted topics after all factories are registered
 	if svc.Overlay != nil {
 		svc.Overlay.ActivateConfiguredTopics()
@@ -577,25 +705,79 @@ func (c *Config) Initialize(ctx context.Context, logger *slog.Logger) (*Services
 		logger.Info("auth middleware initialized", "allowUnauthenticated", c.Auth.AllowUnauthenticated)
 	}
 
-	// Initialize JungleBus subscriptions from config (only those with autostart enabled)
-	if svc.Store != nil && svc.JungleBus != nil && len(c.JBSync.Subscribers) > 0 {
+	// Initialize JungleBus subscribers from per-module subscription configs
+	if svc.Store != nil && svc.JungleBus != nil {
 		start = time.Now()
-		for i := range c.JBSync.Subscribers {
-			subCfg := &c.JBSync.Subscribers[i]
-			if !subCfg.AutoStart {
+
+		// BSV21 subscriber (if subscription_id configured)
+		if svc.BSV21 != nil && svc.BSV21.Sync != nil && c.BSV21.Sync != nil && c.BSV21.Sync.SubscriptionID != "" {
+			subCfg := c.BSV21.Sync.SubscriberConfig()
+			sub, err := jbsync.NewSubscriber(subCfg, svc.Store.Store, svc.Chaintracks, svc.JungleBus, logger)
+			if err != nil {
+				return nil, fmt.Errorf("failed to create bsv21 subscriber: %w", err)
+			}
+			svc.JBSubscribers = append(svc.JBSubscribers, sub)
+			logger.Info("BSV21 JungleBus subscriber initialized", "queue", "bsv21", "from_block", subCfg.FromBlock)
+		}
+
+		// BAP subscriber (if subscription_id configured)
+		if svc.BAP != nil && c.BAP.Sync != nil && c.BAP.Sync.SubscriptionID != "" {
+			subCfg := c.BAP.Sync.SubscriberConfig()
+			sub, err := jbsync.NewSubscriber(subCfg, svc.Store.Store, svc.Chaintracks, svc.JungleBus, logger)
+			if err != nil {
+				return nil, fmt.Errorf("failed to create bap subscriber: %w", err)
+			}
+			svc.JBSubscribers = append(svc.JBSubscribers, sub)
+			logger.Info("BAP JungleBus subscriber initialized", "queue", subCfg.QueueName, "from_block", subCfg.FromBlock)
+		}
+
+		// BSocial subscriber (if subscription_id configured)
+		if svc.BSocial != nil && c.BSocial.Sync != nil && c.BSocial.Sync.SubscriptionID != "" {
+			subCfg := c.BSocial.Sync.SubscriberConfig()
+			sub, err := jbsync.NewSubscriber(subCfg, svc.Store.Store, svc.Chaintracks, svc.JungleBus, logger)
+			if err != nil {
+				return nil, fmt.Errorf("failed to create bsocial subscriber: %w", err)
+			}
+			svc.JBSubscribers = append(svc.JBSubscribers, sub)
+			logger.Info("BSocial JungleBus subscriber initialized", "queue", subCfg.QueueName, "from_block", subCfg.FromBlock)
+		}
+
+		// OPNS subscriber (if subscription_id configured)
+		if svc.OPNS != nil && c.OPNS.Sync != nil && c.OPNS.Sync.SubscriptionID != "" {
+			subCfg := c.OPNS.Sync.SubscriberConfig()
+			sub, err := jbsync.NewSubscriber(subCfg, svc.Store.Store, svc.Chaintracks, svc.JungleBus, logger)
+			if err != nil {
+				return nil, fmt.Errorf("failed to create opns subscriber: %w", err)
+			}
+			svc.JBSubscribers = append(svc.JBSubscribers, sub)
+			logger.Info("OPNS JungleBus subscriber initialized", "queue", subCfg.QueueName, "from_block", subCfg.FromBlock)
+		}
+
+		// Ingest subscribers (multiple subscription_ids filling q:ingest)
+		for _, subID := range c.Indexer.Sync.SubscriptionIDs {
+			if subID == "" {
 				continue
+			}
+			subCfg := &jbsync.SubscriberConfig{
+				AutoStart:      true,
+				SubscriptionID: subID,
+				QueueName:      c.Indexer.Sync.QueueName,
+				FromBlock:      c.Indexer.Sync.FromBlock,
+				BatchSize:      c.Indexer.Sync.BatchSize,
+				ReorgDepth:     c.Indexer.Sync.ReorgDepth,
+				EnableMempool:  c.Indexer.Sync.EnableMempool,
 			}
 			sub, err := jbsync.NewSubscriber(subCfg, svc.Store.Store, svc.Chaintracks, svc.JungleBus, logger)
 			if err != nil {
-				return nil, fmt.Errorf("failed to create subscriber %s: %w", subCfg.SubscriptionID, err)
+				return nil, fmt.Errorf("failed to create ingest subscriber %s: %w", subID, err)
 			}
 			svc.JBSubscribers = append(svc.JBSubscribers, sub)
-			logger.Info("JungleBus subscriber initialized",
-				"subscription_id", subCfg.SubscriptionID,
-				"queue", subCfg.GetQueueName(),
-				"from_block", subCfg.FromBlock)
+			logger.Info("Ingest JungleBus subscriber initialized", "subscription_id", subID, "from_block", c.Indexer.Sync.FromBlock)
 		}
-		logger.Info("jbsync subscribers initialized", "count", len(svc.JBSubscribers), "duration", time.Since(start).Round(time.Millisecond))
+
+		if len(svc.JBSubscribers) > 0 {
+			logger.Info("JungleBus subscribers initialized", "count", len(svc.JBSubscribers), "duration", time.Since(start).Round(time.Millisecond))
+		}
 	}
 
 	logger.Info("all services initialized", "total_duration", time.Since(initStart).Round(time.Millisecond))
@@ -665,6 +847,39 @@ func (c *Config) RegisterRoutes(app *fiber.App, svc *Services) {
 		svc.BSV21.Routes.Register(bsv21Group)
 
 		capabilities = append(capabilities, "bsv21")
+	}
+
+	// Register BAP routes
+	if svc.BAP != nil && svc.BAP.Routes != nil {
+		prefix := c.BAP.Routes.Prefix
+		if prefix == "" {
+			prefix = "/bap"
+		}
+		bapGroup := api.Group(prefix)
+		svc.BAP.Routes.Register(bapGroup)
+		capabilities = append(capabilities, "bap")
+	}
+
+	// Register BSocial routes
+	if svc.BSocial != nil && svc.BSocial.Routes != nil {
+		prefix := c.BSocial.Routes.Prefix
+		if prefix == "" {
+			prefix = "/bsocial"
+		}
+		bsocialGroup := api.Group(prefix)
+		svc.BSocial.Routes.Register(bsocialGroup)
+		capabilities = append(capabilities, "bsocial")
+	}
+
+	// Register OPNS routes
+	if svc.OPNS != nil && svc.OPNS.Routes != nil {
+		prefix := c.OPNS.Routes.Prefix
+		if prefix == "" {
+			prefix = "/opns"
+		}
+		opnsGroup := api.Group(prefix)
+		svc.OPNS.Routes.Register(opnsGroup)
+		capabilities = append(capabilities, "opns")
 	}
 
 	// Register overlay routes
@@ -867,6 +1082,30 @@ func (svc *Services) Close() error {
 		}
 	}
 
+	if svc.OPNS != nil {
+		if err := svc.OPNS.Close(); err != nil {
+			errs = append(errs, fmt.Errorf("opns close: %w", err))
+		}
+	}
+
+	if svc.BSocial != nil {
+		if err := svc.BSocial.Close(); err != nil {
+			errs = append(errs, fmt.Errorf("bsocial close: %w", err))
+		}
+	}
+
+	if svc.BAP != nil {
+		if err := svc.BAP.Close(); err != nil {
+			errs = append(errs, fmt.Errorf("bap close: %w", err))
+		}
+	}
+
+	if svc.MongoDB != nil {
+		if err := svc.MongoDB.Disconnect(context.Background()); err != nil {
+			errs = append(errs, fmt.Errorf("mongodb close: %w", err))
+		}
+	}
+
 	if svc.BSV21 != nil {
 		if err := svc.BSV21.Close(); err != nil {
 			errs = append(errs, fmt.Errorf("bsv21 close: %w", err))
@@ -947,6 +1186,32 @@ func (svc *Services) StartSubscribers(ctx context.Context, logger *slog.Logger) 
 		logger.Info("started BSV21 sync services")
 	}
 
+	// Start overlay sync workers (BAP, BSocial, OPNS)
+	if svc.BAP != nil && svc.BAP.Sync != nil {
+		go func() {
+			if err := svc.BAP.Sync.Start(ctx); err != nil {
+				logger.Error("BAP sync error", "error", err)
+			}
+		}()
+		logger.Info("started BAP overlay sync")
+	}
+	if svc.BSocial != nil && svc.BSocial.Sync != nil {
+		go func() {
+			if err := svc.BSocial.Sync.Start(ctx); err != nil {
+				logger.Error("BSocial sync error", "error", err)
+			}
+		}()
+		logger.Info("started BSocial overlay sync")
+	}
+	if svc.OPNS != nil && svc.OPNS.Sync != nil {
+		go func() {
+			if err := svc.OPNS.Sync.Start(ctx); err != nil {
+				logger.Error("OPNS sync error", "error", err)
+			}
+		}()
+		logger.Info("started OPNS overlay sync")
+	}
+
 	// Start arcade event handlers (arcade listener + status handler)
 	if svc.Indexer != nil {
 		if err := svc.Indexer.StartEventHandlers(ctx); err != nil {
@@ -987,6 +1252,12 @@ func LoadConfig(configPath string) (*Config, error) {
 	v.SetEnvPrefix("ONESAT")
 	v.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
 	v.AutomaticEnv()
+
+	// Manually read indexer sync subscription_ids from env var (Viper doesn't reliably
+	// parse comma-separated env vars into string slices)
+	if ids := os.Getenv("ONESAT_INDEXER_SYNC_SUBSCRIPTION_IDS"); ids != "" {
+		v.SetDefault("indexer.sync.subscription_ids", strings.Split(ids, ","))
+	}
 
 	// Load config file
 	if configPath != "" {

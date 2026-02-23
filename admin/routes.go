@@ -29,6 +29,16 @@ type Routes struct {
 	logger    *slog.Logger
 }
 
+// TopicRequest is the request body for adding a token/topic to whitelist or blacklist
+type TopicRequest struct {
+	Topic string `json:"topic" example:"bsv21_token_id_here"`
+}
+
+// UpdateProgressRequest is the request body for updating a progress entry
+type UpdateProgressRequest struct {
+	Block uint32 `json:"block" example:"123456"`
+}
+
 // NewRoutes creates a new Routes instance
 func NewRoutes(overlaySvc *overlay.Services, s store.Store, bsv21Sync *bsv21.SyncServices, cfg *RoutesConfig, logger *slog.Logger) *Routes {
 	return &Routes{
@@ -100,6 +110,7 @@ func (r *Routes) Register(guardedGroup fiber.Router, publicGroup fiber.Router) {
 // @Produce json
 // @Success 200 {array} string "List of whitelisted tokens"
 // @Failure 500 {object} map[string]string "Internal server error"
+// @Security BearerAuth
 // @Router /admin/whitelist [get]
 func (r *Routes) handleGetWhitelist(c *fiber.Ctx) error {
 	members, err := r.store.SMembers(c.Context(), bsv21.KeyWhitelist)
@@ -122,10 +133,11 @@ func (r *Routes) handleGetWhitelist(c *fiber.Ctx) error {
 // @Tags admin
 // @Accept json
 // @Produce json
-// @Param body body object true "Token to add" example({"topic": "abc123..."})
+// @Param body body TopicRequest true "Token to add"
 // @Success 200 {object} map[string]string "success message"
 // @Failure 400 {object} map[string]string "Bad request"
 // @Failure 500 {object} map[string]string "Internal server error"
+// @Security BearerAuth
 // @Router /admin/whitelist [post]
 func (r *Routes) handleAddToWhitelist(c *fiber.Ctx) error {
 	var req struct {
@@ -165,6 +177,7 @@ func (r *Routes) handleAddToWhitelist(c *fiber.Ctx) error {
 // @Param token path string true "Token ID to remove"
 // @Success 200 {object} map[string]string "success message"
 // @Failure 500 {object} map[string]string "Internal server error"
+// @Security BearerAuth
 // @Router /admin/whitelist/{token} [delete]
 func (r *Routes) handleRemoveFromWhitelist(c *fiber.Ctx) error {
 	token := c.Params("token")
@@ -195,6 +208,7 @@ func (r *Routes) handleRemoveFromWhitelist(c *fiber.Ctx) error {
 // @Produce json
 // @Success 200 {array} string "List of blacklisted topics"
 // @Failure 500 {object} map[string]string "Internal server error"
+// @Security BearerAuth
 // @Router /admin/blacklist [get]
 func (r *Routes) handleGetBlacklist(c *fiber.Ctx) error {
 	members, err := r.store.SMembers(c.Context(), bsv21.KeyBlacklist)
@@ -217,10 +231,11 @@ func (r *Routes) handleGetBlacklist(c *fiber.Ctx) error {
 // @Tags admin
 // @Accept json
 // @Produce json
-// @Param body body object true "Topic to add" example({"topic": "tm_example"})
+// @Param body body TopicRequest true "Topic to add"
 // @Success 200 {object} map[string]string "success message"
 // @Failure 400 {object} map[string]string "Bad request"
 // @Failure 500 {object} map[string]string "Internal server error"
+// @Security BearerAuth
 // @Router /admin/blacklist [post]
 func (r *Routes) handleAddToBlacklist(c *fiber.Ctx) error {
 	var req struct {
@@ -260,6 +275,7 @@ func (r *Routes) handleAddToBlacklist(c *fiber.Ctx) error {
 // @Param topic path string true "Topic ID to remove"
 // @Success 200 {object} map[string]string "success message"
 // @Failure 500 {object} map[string]string "Internal server error"
+// @Security BearerAuth
 // @Router /admin/blacklist/{topic} [delete]
 func (r *Routes) handleRemoveFromBlacklist(c *fiber.Ctx) error {
 	topic := c.Params("topic")
@@ -289,6 +305,7 @@ func (r *Routes) handleRemoveFromBlacklist(c *fiber.Ctx) error {
 // @Tags admin
 // @Produce json
 // @Success 200 {array} string "List of active topics"
+// @Security BearerAuth
 // @Router /admin/topics/active [get]
 func (r *Routes) handleGetActiveTopics(c *fiber.Ctx) error {
 	if r.overlay == nil {
@@ -307,6 +324,7 @@ func (r *Routes) handleGetActiveTopics(c *fiber.Ctx) error {
 // @Tags admin
 // @Produce json
 // @Success 200 {array} string "List of active lookup services"
+// @Security BearerAuth
 // @Router /admin/lookups/active [get]
 func (r *Routes) handleGetActiveLookups(c *fiber.Ctx) error {
 	if r.overlay == nil {
@@ -331,6 +349,7 @@ type ProgressItem struct {
 // @Tags admin
 // @Produce json
 // @Success 200 {array} ProgressItem "List of progress entries"
+// @Security BearerAuth
 // @Router /admin/progress [get]
 func (r *Routes) handleGetProgress(c *fiber.Ctx) error {
 	if r.store == nil {
@@ -379,10 +398,11 @@ func (r *Routes) handleGetProgress(c *fiber.Ctx) error {
 // @Accept json
 // @Produce json
 // @Param id path string true "Progress ID"
-// @Param body body object true "Block height" example({"block": 123456})
+// @Param body body UpdateProgressRequest true "Block height"
 // @Success 200 {object} map[string]string "success message"
 // @Failure 400 {object} map[string]string "Bad request"
 // @Failure 500 {object} map[string]string "Internal server error"
+// @Security BearerAuth
 // @Router /admin/progress/{id} [put]
 func (r *Routes) handleUpdateProgress(c *fiber.Ctx) error {
 	if r.store == nil {
@@ -435,6 +455,7 @@ func (r *Routes) handleUpdateProgress(c *fiber.Ctx) error {
 // @Param id path string true "Progress ID"
 // @Success 200 {object} map[string]string "success message"
 // @Failure 500 {object} map[string]string "Internal server error"
+// @Security BearerAuth
 // @Router /admin/progress/{id} [delete]
 func (r *Routes) handleDeleteProgress(c *fiber.Ctx) error {
 	if r.store == nil {
@@ -473,6 +494,7 @@ func (r *Routes) handleDeleteProgress(c *fiber.Ctx) error {
 // @Param name path string true "Topic name"
 // @Success 200 {array} overlay.RemoteConfig "List of configured remotes"
 // @Failure 500 {object} map[string]string "Internal server error"
+// @Security BearerAuth
 // @Router /admin/topics/{name}/remotes [get]
 func (r *Routes) handleGetTopicRemotes(c *fiber.Ctx) error {
 	if r.overlay == nil {
@@ -514,6 +536,7 @@ func (r *Routes) handleGetTopicRemotes(c *fiber.Ctx) error {
 // @Success 200 {object} map[string]string "success message"
 // @Failure 400 {object} map[string]string "Bad request"
 // @Failure 500 {object} map[string]string "Internal server error"
+// @Security BearerAuth
 // @Router /admin/topics/{name}/remotes [put]
 func (r *Routes) handleSetTopicRemotes(c *fiber.Ctx) error {
 	if r.overlay == nil {
@@ -559,6 +582,7 @@ func (r *Routes) handleSetTopicRemotes(c *fiber.Ctx) error {
 // @Param name path string true "Topic name"
 // @Success 200 {object} map[string]string "success message"
 // @Failure 500 {object} map[string]string "Internal server error"
+// @Security BearerAuth
 // @Router /admin/topics/{name}/remotes [delete]
 func (r *Routes) handleDeleteTopicRemotes(c *fiber.Ctx) error {
 	if r.overlay == nil {
@@ -594,6 +618,7 @@ func (r *Routes) handleDeleteTopicRemotes(c *fiber.Ctx) error {
 // @Tags admin
 // @Produce json
 // @Success 200 {array} bsv21.WorkerStatus "List of active workers"
+// @Security BearerAuth
 // @Router /admin/bsv21/workers [get]
 func (r *Routes) handleGetBSV21Workers(c *fiber.Ctx) error {
 	if r.bsv21Sync == nil {

@@ -29,13 +29,15 @@ BSV21 is a fungible token protocol on BSV. The pipeline:
 ### Stage 1: Discovery
 
 JungleBus subscription receives all BSV21 transactions and queues them.
+The subscription ID is configured via `bsv21.sync.subscription_id` in config
+(set via `ONESAT_BSV21_SYNC_SUBSCRIPTION_ID` env var).
 
 ```
 JungleBus
      │
      │ OnTransaction(txn)
      ▼
-Subscriber
+Subscriber (pkg/jbsync)
      │
      └─→ q:bsv21  ← binary txid (32 bytes), score = HeightScore
 ```

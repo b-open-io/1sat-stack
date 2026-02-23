@@ -440,15 +440,27 @@ package jbsync
 
 // SubscriberConfig holds configuration for a JungleBus subscriber
 type SubscriberConfig struct {
+    AutoStart      bool   // Start immediately on creation
     SubscriptionID string // JungleBus subscription/topic ID (for progress tracking)
     QueueName      string // Queue to populate (e.g., "bsv21" → q:bsv21)
     FromBlock      uint64 // Minimum starting block height
-    JungleBusURL   string // JungleBus service URL
     BatchSize      int    // Transactions per batch write (default: 1000)
     ReorgDepth     uint32 // Blocks to wait before confirming progress (default: 6)
     EnableMempool  bool   // Subscribe to mempool transactions
 }
 ```
+
+**Per-module subscription ownership:** Each overlay module (BAP, BSocial, OPNS, BSV21) has a `subscription_id` field in its sync config. The indexer has `subscription_ids` (plural) for ingest subscriptions. Subscription IDs are authentication credentials and should be set via environment variables, not plaintext config:
+
+| Module | Env Var | Queue |
+|--------|---------|-------|
+| BSV21 | `ONESAT_BSV21_SYNC_SUBSCRIPTION_ID` | `q:bsv21` |
+| BAP | `ONESAT_BAP_SYNC_SUBSCRIPTION_ID` | `q:bap` |
+| BSocial | `ONESAT_BSOCIAL_SYNC_SUBSCRIPTION_ID` | `q:bsocial` |
+| OPNS | `ONESAT_OPNS_SYNC_SUBSCRIPTION_ID` | `q:opns` |
+| Indexer | `ONESAT_INDEXER_SYNC_SUBSCRIPTION_IDS` (comma-separated) | `q:ingest` |
+
+Each module's sync config also provides a `SubscriberConfig()` helper method that creates a `jbsync.SubscriberConfig` from the module's sync fields (subscription_id, from_block, batch_size, reorg_depth, etc.).
 
 #### 2.5 Subscriber
 

@@ -43,6 +43,20 @@ Create a composable server by copying and consolidating from sibling directories
 | pkg/merkle/ | DONE | MerkleService, Arc callback handling, Routes, Config |
 | Compile test | DONE | `go build ./...` passes |
 
+### Status: Phase 1c - Overlay Integration (COMPLETE)
+
+| Task | Status | Notes |
+|------|--------|-------|
+| pkg/bap/ (BAP identity overlay) | DONE | TopicManager, LookupService, Routes, Config |
+| pkg/bsocial/ (BSocial overlay) | DONE | TopicManager, LookupService, Routes, Config |
+| pkg/opns/ (OPNS domain name overlay) | DONE | TopicManager, LookupService, Routes, Config |
+| pkg/overlay/sync.go (generic overlay sync worker) | DONE | OverlaySync drains queue → BEEF → overlay submit |
+| Per-module JungleBus subscription config | DONE | Each overlay has `sync.subscription_id` (env var bindable) |
+| Indexer ingest subscription config | DONE | `indexer.sync.subscription_ids` (comma-separated env var) |
+| Server wiring (cmd/server/config.go) | DONE | Per-module subscriber creation, overlay topic/lookup registration |
+| MongoDB integration (shared by BAP/BSocial) | DONE | Shared client, per-overlay databases |
+| Compile test | DONE | `go build ./...` passes |
+
 ### Clarifications (from user discussion)
 
 1. **Upgrade as we copy** - Don't copy old patterns, apply docs/standards/CONFIG_GUIDE.md pattern as we go
@@ -139,6 +153,24 @@ Create a composable server by copying and consolidating from sibling directories
 │   │   ├── topics/          # BSV21 TopicManager
 │   │   ├── peer/            # Per-token peer config
 │   │   └── config/
+│   │
+│   ├── bap/                 # BAP identity overlay
+│   │   ├── lookup.go        # BAP LookupService
+│   │   ├── topic.go         # BAP TopicManager
+│   │   ├── routes.go        # HTTP handlers
+│   │   └── config.go        # Config + SetDefaults + Initialize
+│   │
+│   ├── bsocial/             # BSocial social data overlay
+│   │   ├── lookup.go        # BSocial LookupService
+│   │   ├── topic.go         # BSocial TopicManager
+│   │   ├── routes.go        # HTTP handlers
+│   │   └── config.go        # Config + SetDefaults + Initialize
+│   │
+│   ├── opns/                # OPNS domain name overlay
+│   │   ├── lookup.go        # OPNS LookupService
+│   │   ├── topic.go         # OPNS TopicManager
+│   │   ├── routes.go        # HTTP handlers
+│   │   └── config.go        # Config + SetDefaults + Initialize
 │   │
 │   └── ordfs/               # ORDFS content service
 │       ├── interface.go     # Optional OrdfsService interface
@@ -1158,6 +1190,8 @@ echo "  - docs/docs.go"
 ## Initialization Order
 
 1. Load config (Viper: YAML + env vars)
+   - Named config fields auto-bind to env vars via `ONESAT_` prefix (e.g., `bap.sync.subscription_id` → `ONESAT_BAP_SYNC_SUBSCRIPTION_ID`)
+   - `indexer.sync.subscription_ids` []string manually read from `ONESAT_INDEXER_SYNC_SUBSCRIPTION_IDS` (comma-separated)
 2. Initialize enabled packages in dependency order (all optional, config-driven):
    - Logger
    - **Shared external services:**
@@ -1167,13 +1201,24 @@ echo "  - docs/docs.go"
    - **Internal packages:**
      - Store (if enabled)
      - PubSub (if enabled)
+     - JungleBus client (shared by subscribers)
      - BeefStorage (if enabled, requires Store)
      - TxoStore (if enabled, requires Store)
-     - SSEManager (if enabled, requires PubSub)
-     - MerkleService (if enabled, requires Store, PubSub, Chaintracks)
-     - Indexer (if enabled, requires Store, BeefStorage)
-     - BSV21 (if enabled, requires Store, PubSub)
-     - ORDFS (if enabled, requires BeefStorage)
+     - Overlay engine (if enabled, requires TXO)
+     - BSV21 (if enabled, requires TXO, Overlay) → register topics + lookup
+     - MongoDB (shared by BAP and BSocial)
+     - BAP (if enabled, requires MongoDB, Overlay) → register topics + lookup + sync worker
+     - BSocial (if enabled, requires MongoDB, Overlay) → register topics + lookup + sync worker
+     - OPNS (if enabled, requires Store, Overlay) → register topics + lookup + sync worker
+     - ORDFS (if enabled, requires JungleBus)
+     - Indexer (if enabled, requires Store, BeefStorage, TXO)
+     - Owner (if enabled, requires TXO, Beef, Indexer)
+   - **JungleBus subscribers** (per-module subscription_ids → jbsync.Subscriber instances):
+     - BSV21 subscriber (if `bsv21.sync.subscription_id` set) → fills `q:bsv21`
+     - BAP subscriber (if `bap.sync.subscription_id` set) → fills `q:bap`
+     - BSocial subscriber (if `bsocial.sync.subscription_id` set) → fills `q:bsocial`
+     - OPNS subscriber (if `opns.sync.subscription_id` set) → fills `q:opns`
+     - Ingest subscribers (for each `indexer.sync.subscription_ids` entry) → fills `q:ingest`
 3. Register routes for initialized packages
-4. Start services
+4. Start services (sync workers, event handlers, subscribers)
 5. Start HTTP server

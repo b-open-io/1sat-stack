@@ -3,3 +3,4 @@ server.log
 *.exe
 stack
 .env
+config.yaml

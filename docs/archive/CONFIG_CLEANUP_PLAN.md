@@ -124,6 +124,41 @@ junglebus:
   url: https://junglebus.gorillapool.io
 ```
 
+### 5. Per-Module JungleBus Subscription Config ✅ DONE
+
+**Problem:** JungleBus subscription IDs are authentication credentials. The original `jbsync.subscribers` array in config.yaml exposed them as plaintext and Viper can't bind env vars to individual array element fields.
+
+**Decision:** Each overlay module gets a named `subscription_id` field in its sync config. As named fields, Viper automatically binds them to env vars (e.g. `ONESAT_BAP_SYNC_SUBSCRIPTION_ID`). The indexer's `sync` config gets a `subscription_ids` string slice for ingest subscriptions.
+
+```yaml
+# Per-overlay subscription (single named field, auto-binds to env var)
+bap:
+  sync:
+    subscription_id: ""  # Set via ONESAT_BAP_SYNC_SUBSCRIPTION_ID
+
+# Indexer ingest subscriptions (string slice, manually read from env var)
+indexer:
+  sync:
+    subscription_ids: []  # Set via ONESAT_INDEXER_SYNC_SUBSCRIPTION_IDS (comma-separated)
+```
+
+For the `subscription_ids` []string, Viper doesn't reliably parse comma-separated env vars into slices. In `LoadConfig`, we manually check for the env var and set it as a Viper default:
+
+```go
+if ids := os.Getenv("ONESAT_INDEXER_SYNC_SUBSCRIPTION_IDS"); ids != "" {
+    v.SetDefault("indexer.sync.subscription_ids", strings.Split(ids, ","))
+}
+```
+
+The `jbsync.subscribers` array section is removed from config.yaml entirely.
+
+**Env vars:**
+- `ONESAT_BSV21_SYNC_SUBSCRIPTION_ID` → fills `q:bsv21`
+- `ONESAT_BAP_SYNC_SUBSCRIPTION_ID` → fills `q:bap`
+- `ONESAT_BSOCIAL_SYNC_SUBSCRIPTION_ID` → fills `q:bsocial`
+- `ONESAT_OPNS_SYNC_SUBSCRIPTION_ID` → fills `q:opns`
+- `ONESAT_INDEXER_SYNC_SUBSCRIPTION_IDS` → fills `q:ingest` (comma-separated for multiple)
+
 ---
 
 ## Remaining Decisions (Not Yet Implemented)
@@ -245,14 +280,18 @@ bsv21:
 | `pubsub` | Was URL-based | Provider-based config | ✅ Done |
 | `beef` | Was URL-based chain | Provider-based chain, JungleBus injection | ✅ Done |
 | `txo` | Dual init, nested configs | Single init with deps params | ⏳ Pending |
-| `indexer` | Has `network` field | Deprecated for parsers | ⏳ Skip |
-| `bsv21` | Has network, whitelist/blacklist | Remove whitelist/blacklist, network via Initialize | ⏳ Pending |
-| `overlay` | Has ARC config, InitializeDeps | Remove ARC fields, convert to params | ⏳ Pending |
+| `indexer` | Has `network` field, added `subscription_ids` | subscription_ids for JB subs | ✅ Done |
+| `bsv21` | Has network, whitelist/blacklist, added `subscription_id` | Remove whitelist/blacklist, network via Initialize | ⏳ Pending |
+| `bap` | New overlay module | Per-module sync config with subscription_id | ✅ Done |
+| `bsocial` | New overlay module | Per-module sync config with subscription_id | ✅ Done |
+| `opns` | New overlay module | Per-module sync config with subscription_id | ✅ Done |
+| `overlay` | Has ARC config, InitializeDeps, added OverlaySync worker | Remove ARC fields, convert to params | ⏳ Pending |
 | `ordfs` | Clean | None | ✅ Done |
 | `owner` | Uses InitializeDeps | Convert to params | ⏳ Pending |
 | `merkle` | Many params | Already uses params | ✅ Done |
 | `fees` | Uses InitializeDeps | Convert to params | ⏳ Pending |
 | `worker` | Has config | Remove entirely | ⏳ Pending |
+| `jbsync` | Subscriber array removed | Per-module subscription_id fields replace array | ✅ Done |
 
 ---
 

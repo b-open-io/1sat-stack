@@ -41,14 +41,19 @@ type ArcadeConfig struct {
 	Ingest  bool `mapstructure:"ingest"`  // Ingest transactions on ACCEPTED status
 }
 
-// SyncConfig holds configuration for the ingest sync worker.
+// SyncConfig holds configuration for the ingest sync worker and JungleBus subscriptions.
 type SyncConfig struct {
-	Enabled     bool          `mapstructure:"enabled"`      // Enable the ingest sync worker
-	QueueName   string        `mapstructure:"queue_name"`   // Queue to consume from (default: "ingest")
-	Concurrency int           `mapstructure:"concurrency"`  // Worker concurrency (default: 8)
-	PageSize    uint32        `mapstructure:"page_size"`    // Batch fetch size (default: 100)
-	PollDelay   time.Duration `mapstructure:"poll_delay"`   // Sleep when queue empty (default: 1s)
-	StatusDelay time.Duration `mapstructure:"status_delay"` // Status log interval (default: 15s)
+	Enabled         bool          `mapstructure:"enabled"`          // Enable the ingest sync worker
+	SubscriptionIDs []string      `mapstructure:"subscription_ids"` // JungleBus subscription IDs (set via env var)
+	QueueName       string        `mapstructure:"queue_name"`       // Queue to consume from (default: "ingest")
+	FromBlock       uint64        `mapstructure:"from_block"`       // Starting block for JungleBus subscriptions
+	Concurrency     int           `mapstructure:"concurrency"`      // Worker concurrency (default: 8)
+	PageSize        uint32        `mapstructure:"page_size"`        // Batch fetch size (default: 100)
+	PollDelay       time.Duration `mapstructure:"poll_delay"`       // Sleep when queue empty (default: 1s)
+	StatusDelay     time.Duration `mapstructure:"status_delay"`     // Status log interval (default: 15s)
+	BatchSize       int           `mapstructure:"batch_size"`       // JungleBus batch size (default: 500)
+	ReorgDepth      uint32        `mapstructure:"reorg_depth"`      // JungleBus reorg depth (default: 6)
+	EnableMempool   bool          `mapstructure:"enable_mempool"`   // Enable mempool subscription
 }
 
 // RoutesConfig holds route configuration.
@@ -71,11 +76,16 @@ func (c *Config) SetDefaults(v *viper.Viper, prefix string) {
 
 	// Sync defaults
 	v.SetDefault(p+"sync.enabled", false)
+	v.SetDefault(p+"sync.subscription_ids", []string{})
 	v.SetDefault(p+"sync.queue_name", "ingest")
+	v.SetDefault(p+"sync.from_block", 783968)
 	v.SetDefault(p+"sync.concurrency", 8)
 	v.SetDefault(p+"sync.page_size", 100)
 	v.SetDefault(p+"sync.poll_delay", "1s")
 	v.SetDefault(p+"sync.status_delay", "15s")
+	v.SetDefault(p+"sync.batch_size", 500)
+	v.SetDefault(p+"sync.reorg_depth", 6)
+	v.SetDefault(p+"sync.enable_mempool", false)
 
 	// Arcade listener defaults
 	v.SetDefault(p+"arcade.enabled", false)

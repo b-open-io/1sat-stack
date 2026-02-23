@@ -25,6 +25,11 @@ const docTemplate = `{
     "paths": {
         "/admin/blacklist": {
             "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
                 "description": "Returns the list of blacklisted topics",
                 "produces": [
                     "application/json"
@@ -55,6 +60,11 @@ const docTemplate = `{
                 }
             },
             "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
                 "description": "Adds a topic to the blacklist",
                 "consumes": [
                     "application/json"
@@ -73,7 +83,7 @@ const docTemplate = `{
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "type": "object"
+                            "$ref": "#/definitions/admin.TopicRequest"
                         }
                     }
                 ],
@@ -110,6 +120,11 @@ const docTemplate = `{
         },
         "/admin/blacklist/{topic}": {
             "delete": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
                 "description": "Removes a topic from the blacklist",
                 "produces": [
                     "application/json"
@@ -151,6 +166,11 @@ const docTemplate = `{
         },
         "/admin/bsv21/workers": {
             "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
                 "description": "Returns the status of all active BSV21 token workers",
                 "produces": [
                     "application/json"
@@ -174,6 +194,11 @@ const docTemplate = `{
         },
         "/admin/lookups/active": {
             "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
                 "description": "Returns the list of currently active lookup services from the overlay engine",
                 "produces": [
                     "application/json"
@@ -197,6 +222,11 @@ const docTemplate = `{
         },
         "/admin/progress": {
             "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
                 "description": "Returns all sync progress entries (subscriptions, owners, peers)",
                 "produces": [
                     "application/json"
@@ -220,6 +250,11 @@ const docTemplate = `{
         },
         "/admin/progress/{id}": {
             "put": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
                 "description": "Updates a sync progress entry",
                 "consumes": [
                     "application/json"
@@ -245,7 +280,7 @@ const docTemplate = `{
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "type": "object"
+                            "$ref": "#/definitions/admin.UpdateProgressRequest"
                         }
                     }
                 ],
@@ -280,6 +315,11 @@ const docTemplate = `{
                 }
             },
             "delete": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
                 "description": "Deletes a sync progress entry",
                 "produces": [
                     "application/json"
@@ -321,6 +361,11 @@ const docTemplate = `{
         },
         "/admin/topics/active": {
             "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
                 "description": "Returns the list of currently active topics from the overlay engine",
                 "produces": [
                     "application/json"
@@ -344,6 +389,11 @@ const docTemplate = `{
         },
         "/admin/topics/{name}/remotes": {
             "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
                 "description": "Returns the configured remotes for a topic",
                 "produces": [
                     "application/json"
@@ -383,6 +433,11 @@ const docTemplate = `{
                 }
             },
             "put": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
                 "description": "Sets the configured remotes for a topic (overrides defaults)",
                 "consumes": [
                     "application/json"
@@ -446,6 +501,11 @@ const docTemplate = `{
                 }
             },
             "delete": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
                 "description": "Removes the remote config override, reverting to defaults",
                 "produces": [
                     "application/json"
@@ -487,6 +547,11 @@ const docTemplate = `{
         },
         "/admin/whitelist": {
             "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
                 "description": "Returns the list of whitelisted BSV21 tokens (always active)",
                 "produces": [
                     "application/json"
@@ -517,6 +582,11 @@ const docTemplate = `{
                 }
             },
             "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
                 "description": "Adds a BSV21 token to the whitelist (always active)",
                 "consumes": [
                     "application/json"
@@ -535,7 +605,7 @@ const docTemplate = `{
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "type": "object"
+                            "$ref": "#/definitions/admin.TopicRequest"
                         }
                     }
                 ],
@@ -572,6 +642,11 @@ const docTemplate = `{
         },
         "/admin/whitelist/{token}": {
             "delete": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
                 "description": "Removes a BSV21 token from the whitelist",
                 "produces": [
                     "application/json"
@@ -943,6 +1018,221 @@ const docTemplate = `{
                 }
             }
         },
+        "/bap/identity/get": {
+            "post": {
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "bap"
+                ],
+                "summary": "Get identity by ID",
+                "parameters": [
+                    {
+                        "description": "Identity request with idKey field",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "type": "object",
+                            "properties": {
+                                "idKey": {
+                                    "type": "string"
+                                }
+                            }
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/pkg_bap.Identity"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "type": "object",
+                            "properties": {
+                                "message": {
+                                    "type": "string"
+                                }
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "type": "object",
+                            "properties": {
+                                "message": {
+                                    "type": "string"
+                                }
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "type": "object",
+                            "properties": {
+                                "message": {
+                                    "type": "string"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/bap/identity/search": {
+            "get": {
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "bap"
+                ],
+                "summary": "Search identities",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Search query",
+                        "name": "q",
+                        "in": "query",
+                        "required": true
+                    },
+                    {
+                        "type": "integer",
+                        "default": 20,
+                        "description": "Results limit",
+                        "name": "limit",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "default": 0,
+                        "description": "Results offset",
+                        "name": "offset",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/pkg_bap.Identity"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "type": "object",
+                            "properties": {
+                                "message": {
+                                    "type": "string"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/bap/profile": {
+            "get": {
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "bap"
+                ],
+                "summary": "List profiles",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "default": 20,
+                        "description": "Results limit",
+                        "name": "limit",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "default": 0,
+                        "description": "Results offset",
+                        "name": "offset",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/pkg_bap.Profile"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "type": "object",
+                            "properties": {
+                                "message": {
+                                    "type": "string"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/bap/profile/{bapId}": {
+            "get": {
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "bap"
+                ],
+                "summary": "Get profile by BAP ID",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "BAP Identity ID",
+                        "name": "bapId",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "type": "object",
+                            "properties": {
+                                "message": {
+                                    "type": "string"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
         "/beef/{txid}": {
             "get": {
                 "description": "Retrieves the BEEF (BSV Envelope Format) for a specific transaction",
@@ -1051,6 +1341,62 @@ const docTemplate = `{
                             "type": "object",
                             "additionalProperties": {
                                 "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/bsocial/post/search": {
+            "get": {
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "bsocial"
+                ],
+                "summary": "Search posts",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Search query",
+                        "name": "q",
+                        "in": "query",
+                        "required": true
+                    },
+                    {
+                        "type": "integer",
+                        "default": 20,
+                        "description": "Results limit",
+                        "name": "limit",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "default": 0,
+                        "description": "Results offset",
+                        "name": "offset",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "type": "object"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "type": "object",
+                            "properties": {
+                                "message": {
+                                    "type": "string"
+                                }
                             }
                         }
                     }
@@ -1986,6 +2332,128 @@ const docTemplate = `{
                             "type": "object",
                             "additionalProperties": {
                                 "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/opns/mine/{name}": {
+            "get": {
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "opns"
+                ],
+                "summary": "Get domain mining status",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Domain name",
+                        "name": "name",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/pkg_opns.MineResult"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "type": "object",
+                            "properties": {
+                                "error": {
+                                    "type": "string"
+                                }
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "type": "object",
+                            "properties": {
+                                "error": {
+                                    "type": "string"
+                                }
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "type": "object",
+                            "properties": {
+                                "error": {
+                                    "type": "string"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/opns/owner/{name}": {
+            "get": {
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "opns"
+                ],
+                "summary": "Get domain owner",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Domain name",
+                        "name": "name",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/pkg_opns.OwnerResult"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "type": "object",
+                            "properties": {
+                                "error": {
+                                    "type": "string"
+                                }
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "type": "object",
+                            "properties": {
+                                "error": {
+                                    "type": "string"
+                                }
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "type": "object",
+                            "properties": {
+                                "error": {
+                                    "type": "string"
+                                }
                             }
                         }
                     }
@@ -3193,6 +3661,24 @@ const docTemplate = `{
                 }
             }
         },
+        "admin.TopicRequest": {
+            "type": "object",
+            "properties": {
+                "topic": {
+                    "type": "string",
+                    "example": "bsv21_token_id_here"
+                }
+            }
+        },
+        "admin.UpdateProgressRequest": {
+            "type": "object",
+            "properties": {
+                "block": {
+                    "type": "integer",
+                    "example": 123456
+                }
+            }
+        },
         "arcade.FeeAmount": {
             "type": "object",
             "properties": {
@@ -3472,6 +3958,64 @@ const docTemplate = `{
                 }
             }
         },
+        "pkg_bap.Address": {
+            "type": "object",
+            "properties": {
+                "address": {
+                    "type": "string"
+                },
+                "block": {
+                    "type": "integer"
+                },
+                "txId": {
+                    "type": "string"
+                }
+            }
+        },
+        "pkg_bap.Identity": {
+            "type": "object",
+            "properties": {
+                "_": {
+                    "type": "string"
+                },
+                "addresses": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/pkg_bap.Address"
+                    }
+                },
+                "currentAddress": {
+                    "type": "string"
+                },
+                "firstSeen": {
+                    "type": "integer"
+                },
+                "idKey": {
+                    "type": "string"
+                },
+                "identity": {
+                    "type": "object",
+                    "additionalProperties": {}
+                },
+                "rootAddress": {
+                    "type": "string"
+                }
+            }
+        },
+        "pkg_bap.Profile": {
+            "type": "object",
+            "properties": {
+                "_id": {
+                    "type": "string"
+                },
+                "data": {
+                    "type": "array",
+                    "items": {
+                        "type": "integer"
+                    }
+                }
+            }
+        },
         "pkg_bsv21.BalanceResponse": {
             "type": "object",
             "properties": {
@@ -3689,6 +4233,28 @@ const docTemplate = `{
                 }
             }
         },
+        "pkg_opns.MineResult": {
+            "type": "object",
+            "properties": {
+                "domain": {
+                    "type": "string"
+                },
+                "outpoint": {
+                    "$ref": "#/definitions/transaction.Outpoint"
+                }
+            }
+        },
+        "pkg_opns.OwnerResult": {
+            "type": "object",
+            "properties": {
+                "address": {
+                    "type": "string"
+                },
+                "outpoint": {
+                    "$ref": "#/definitions/transaction.Outpoint"
+                }
+            }
+        },
         "pkg_ordfs.Response": {
             "type": "object",
             "properties": {
@@ -3798,6 +4364,14 @@ const docTemplate = `{
                     }
                 }
             }
+        }
+    },
+    "securityDefinitions": {
+        "BearerAuth": {
+            "description": "Enter \"Bearer {token}\" (with quotes around the full value)",
+            "type": "apiKey",
+            "name": "Authorization",
+            "in": "header"
         }
     },
     "tags": [

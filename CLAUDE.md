@@ -30,7 +30,10 @@ golangci-lint run                        # Lint (if configured)
 | `pkg/txo/` | Indexed output storage, implements engine.Storage |
 | `pkg/beef/` | BEEF transaction storage (filesystem + JungleBus fallback) |
 | `pkg/bsv21/` | BSV21 fungible token service + sync pipeline |
-| `pkg/overlay/` | Overlay engine coordination, topic/lookup management |
+| `pkg/bap/` | BAP identity attestation overlay |
+| `pkg/bsocial/` | BSocial social data overlay |
+| `pkg/opns/` | OPNS domain name overlay |
+| `pkg/overlay/` | Overlay engine coordination, topic/lookup management, generic sync worker |
 | `pkg/parse/` | Output-level script parsers (P2PKH, inscription, BSV21, etc.) |
 | `pkg/topic/` | Topic managers (admission logic for overlay engine) |
 | `pkg/lookup/` | Lookup services (indexing/querying for overlay engine) |
