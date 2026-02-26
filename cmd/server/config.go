@@ -679,7 +679,15 @@ func (c *Config) Initialize(ctx context.Context, logger *slog.Logger) (*Services
 	if c.Wallet.Mode != wallet.ModeDisabled {
 		walletDeps := &wallet.InitializeDeps{
 			Network: c.Network,
-			Arcade:  svc.Arcade,
+		}
+		if svc.Chaintracks != nil {
+			walletDeps.Chaintracks = svc.Chaintracks
+		}
+		if svc.Arcade != nil && svc.Arcade.ArcadeService != nil {
+			walletDeps.Arcade = svc.Arcade.ArcadeService
+		}
+		if svc.Beef != nil && svc.Beef.Storage != nil {
+			walletDeps.BeefStorage = svc.Beef.Storage
 		}
 		walletSvc, err := c.Wallet.Initialize(ctx, logger, walletDeps)
 		if err != nil {
