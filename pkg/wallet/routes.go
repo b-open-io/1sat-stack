@@ -1,31 +1,33 @@
 package wallet
 
 import (
+	"log/slog"
 	"net/http"
 
-	"github.com/bsv-blockchain/go-wallet-toolbox/pkg/storage"
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/middleware/adaptor"
 )
 
 // Routes holds the wallet HTTP routes.
 type Routes struct {
-	server  *storage.Server
-	handler http.Handler // cached handler to share session manager across routes
+	services *Services
+	logger   *slog.Logger
+	handler  http.Handler // cached handler to share auth context across routes
 }
 
 // NewRoutes creates a new Routes instance.
-func NewRoutes(server *storage.Server) *Routes {
-	// Cache the handler so we use the same auth middleware (and session manager)
-	// across all routes. This is critical for BRC-100 auth to work properly.
+// Uses the wallet service's RPCHandler which doesn't include auth middleware,
+// allowing 1sat-stack's global auth middleware to handle authentication.
+func NewRoutes(services *Services, logger *slog.Logger) *Routes {
 	return &Routes{
-		server:  server,
-		handler: server.Handler(),
+		services: services,
+		logger:   logger,
+		handler:  services.RPCHandler(logger),
 	}
 }
 
 // Register registers the wallet routes on the given Fiber router.
-// The wallet-toolbox server exposes a JSON-RPC endpoint.
+// The wallet-toolbox RPC server exposes a JSON-RPC endpoint.
 // NOTE: We pass the handler directly without stripping prefix because the
 // request path is included in the BRC-100 signature. Stripping it would cause
 // signature verification to fail.
@@ -42,7 +44,6 @@ func (r *Routes) Register(router fiber.Router) {
 // to be at the root of the server, not under a prefix.
 func (r *Routes) RegisterWellKnown(app *fiber.App) {
 	// The auth middleware intercepts /.well-known/auth internally, so we pass it through as-is.
-	// The underlying go-wallet-toolbox handler includes its own CORS middleware (AllowAllCORSMiddleware),
-	// so we don't add CORS headers here to avoid duplicate header values.
+	// The underlying handler relies on 1sat-stack's global auth middleware.
 	app.All("/.well-known/auth", adaptor.HTTPHandler(r.handler))
 }

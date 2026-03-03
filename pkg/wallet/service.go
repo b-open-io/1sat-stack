@@ -14,6 +14,7 @@ import (
 	"github.com/bsv-blockchain/go-wallet-toolbox/pkg/defs"
 	"github.com/bsv-blockchain/go-wallet-toolbox/pkg/monitor"
 	"github.com/bsv-blockchain/go-wallet-toolbox/pkg/storage"
+	"github.com/bsv-blockchain/go-wallet-toolbox/pkg/storage/rpcserver"
 	toolboxwallet "github.com/bsv-blockchain/go-wallet-toolbox/pkg/wallet"
 	"github.com/bsv-blockchain/go-wallet-toolbox/pkg/wdk"
 )
@@ -30,10 +31,10 @@ type Services struct {
 
 // InitializeDeps holds dependencies for wallet service initialization.
 type InitializeDeps struct {
-	Network     string                     // "main" or "test"
-	Chaintracks chaintracks.Chaintracks    // local chain header ops + reorg/tip events
+	Network     string                      // "main" or "test"
+	Chaintracks chaintracks.Chaintracks     // local chain header ops + reorg/tip events
 	Arcade      arcadeservice.ArcadeService // local broadcasting
-	BeefStorage *beef.Storage              // local RawTx/MerklePath lookups
+	BeefStorage *beef.Storage               // local RawTx/MerklePath lookups
 }
 
 // Initialize creates a wallet service from the configuration.
@@ -161,7 +162,7 @@ func (c *Config) Initialize(
 
 	// Create routes if enabled
 	if c.Routes.Enabled {
-		svc.Routes = NewRoutes(server)
+		svc.Routes = NewRoutes(svc, walletLogger)
 	}
 
 	walletLogger.Info("wallet service initialized",
@@ -171,6 +172,18 @@ func (c *Config) Initialize(
 	)
 
 	return svc, nil
+}
+
+// RPCHandler returns an http.Handler for wallet RPC endpoints without auth middleware.
+// This allows 1sat-stack's global auth middleware to handle authentication.
+func (s *Services) RPCHandler(logger *slog.Logger) http.Handler {
+	provider := rpcserver.NewRPCStorageProvider(logger, s.Provider)
+	rpcServer := rpcserver.NewRPCHandler(logger, "remote_storage", provider)
+
+	mux := http.NewServeMux()
+	rpcServer.Register(mux)
+
+	return mux
 }
 
 // Close closes the wallet service.

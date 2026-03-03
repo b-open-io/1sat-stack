@@ -1007,6 +1007,8 @@ func (c *Config) RegisterRoutes(app *fiber.App, svc *Services) {
 		}
 		walletGroup := api.Group(prefix)
 		svc.Wallet.Routes.Register(walletGroup)
+		// Register /.well-known/auth at app root for BRC-103/104 handshake
+		svc.Wallet.Routes.RegisterWellKnown(app)
 		capabilities = append(capabilities, "wallet")
 		slog.Debug("registered wallet routes", "prefix", c.Server.BasePath+prefix)
 	}
