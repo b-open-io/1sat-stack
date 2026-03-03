@@ -10,6 +10,7 @@ import (
 	"github.com/b-open-io/1sat-stack/pkg/logging"
 	arcadeservice "github.com/bsv-blockchain/arcade/service"
 	"github.com/bsv-blockchain/go-chaintracks/chaintracks"
+	sdk "github.com/bsv-blockchain/go-sdk/wallet"
 	"github.com/bsv-blockchain/go-wallet-toolbox/pkg/defs"
 	"github.com/bsv-blockchain/go-wallet-toolbox/pkg/monitor"
 	"github.com/bsv-blockchain/go-wallet-toolbox/pkg/storage"
@@ -21,6 +22,7 @@ import (
 type Services struct {
 	Provider       *storage.Provider
 	Server         *storage.Server
+	Wallet         sdk.Interface
 	Routes         *Routes
 	Monitor        *monitor.Daemon
 	WalletServices wdk.Services
@@ -152,6 +154,7 @@ func (c *Config) Initialize(
 	svc := &Services{
 		Provider:       provider,
 		Server:         server,
+		Wallet:         serverWallet,
 		Monitor:        monitorDaemon,
 		WalletServices: walletServices,
 	}

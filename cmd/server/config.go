@@ -20,6 +20,7 @@ import (
 	"github.com/b-open-io/1sat-stack/pkg/opns"
 	"github.com/b-open-io/1sat-stack/pkg/ordfs"
 	"github.com/b-open-io/1sat-stack/pkg/overlay"
+	"github.com/b-open-io/1sat-stack/pkg/paymail"
 	"github.com/b-open-io/1sat-stack/pkg/owner"
 	"github.com/b-open-io/1sat-stack/pkg/pubsub"
 	"github.com/b-open-io/1sat-stack/pkg/store"
@@ -100,6 +101,9 @@ type Config struct {
 
 	// Wallet service
 	Wallet wallet.Config `mapstructure:"wallet"`
+
+	// Paymail service
+	Paymail paymail.Config `mapstructure:"paymail"`
 }
 
 // MongoDBConfig holds shared MongoDB connection configuration.
@@ -207,6 +211,7 @@ type Services struct {
 	Own     *owner.Services
 	Admin   *admin.Services
 	Wallet  *wallet.Services
+	Paymail *paymail.Services
 
 	// MongoDB client (shared by BAP and BSocial)
 	MongoDB *mongo.Client
@@ -284,6 +289,7 @@ func (c *Config) SetDefaults(v *viper.Viper) {
 	c.Owner.SetDefaults(v, "owner")
 	c.Admin.SetDefaults(v, "admin")
 	c.Wallet.SetDefaults(v, "wallet")
+	c.Paymail.SetDefaults(v, "paymail")
 
 }
 
@@ -332,15 +338,6 @@ func (c *Config) Initialize(ctx context.Context, logger *slog.Logger) (*Services
 	svc.JungleBus = jbClient
 	logger.Info("junglebus client initialized", "url", c.JungleBus.URL, "duration", time.Since(start).Round(time.Millisecond))
 
-	// Initialize beef storage (pass JungleBus client for fallback lookups)
-	start = time.Now()
-	beefSvc, err := c.Beef.Initialize(ctx, logger, nil, svc.JungleBus)
-	if err != nil {
-		return nil, fmt.Errorf("failed to initialize beef: %w", err)
-	}
-	svc.Beef = beefSvc
-	logger.Info("beef initialized", "duration", time.Since(start).Round(time.Millisecond))
-
 	// Initialize P2P client (shared by chaintracks and arcade)
 	if c.Chaintracks.Mode == chaintracksconfig.ModeEmbedded || c.Arcade.Mode == arcadeconfig.ModeEmbedded {
 		start = time.Now()
@@ -354,7 +351,7 @@ func (c *Config) Initialize(ctx context.Context, logger *slog.Logger) (*Services
 		logger.Info("p2p client initialized", "network", c.P2P.Network, "duration", time.Since(start).Round(time.Millisecond))
 	}
 
-	// Initialize Chaintracks
+	// Initialize Chaintracks (primitive for blockchain state - must be before beef)
 	if c.Chaintracks.Mode != "" && c.Chaintracks.Mode != "disabled" {
 		start = time.Now()
 		chaintracker, err := c.Chaintracks.Initialize(ctx, "1sat-stack", svc.P2PClient)
@@ -365,6 +362,15 @@ func (c *Config) Initialize(ctx context.Context, logger *slog.Logger) (*Services
 		svc.ChaintracksRoutes = chaintracksroutes.NewRoutes(ctx, chaintracker)
 		logger.Info("chaintracks initialized", "mode", c.Chaintracks.Mode, "duration", time.Since(start).Round(time.Millisecond))
 	}
+
+	// Initialize beef storage (pass JungleBus client for fallback lookups)
+	start = time.Now()
+	beefSvc, err := c.Beef.Initialize(ctx, logger, svc.Chaintracks, svc.JungleBus)
+	if err != nil {
+		return nil, fmt.Errorf("failed to initialize beef: %w", err)
+	}
+	svc.Beef = beefSvc
+	logger.Info("beef initialized", "duration", time.Since(start).Round(time.Millisecond))
 
 	// Initialize Arcade
 	if c.Arcade.Mode != "" && c.Arcade.Mode != "disabled" {
@@ -558,8 +564,9 @@ func (c *Config) Initialize(ctx context.Context, logger *slog.Logger) (*Services
 				logger.Info("OPNS topic (tm_opns) activated")
 			}
 
-			if c.OPNS.Sync != nil && c.OPNS.Sync.Enabled && svc.Beef != nil {
-				svc.OPNS.Sync = overlay.NewOverlaySync(c.OPNS.Sync, "tm_opns", svc.Store.Store, svc.Beef.Storage, svc.Overlay, logger)
+			if c.OPNS.Crawl.Enabled && svc.Beef != nil {
+				c.OPNS.Crawl.JungleBusURL = c.JungleBus.URL
+				svc.OPNS.Crawl = opns.NewGenesisCrawl(c.OPNS.Crawl, svc.Beef.Storage, svc.Overlay, logger)
 			}
 		}
 		logger.Info("opns initialized", "duration", time.Since(start).Round(time.Millisecond))
@@ -696,6 +703,28 @@ func (c *Config) Initialize(ctx context.Context, logger *slog.Logger) (*Services
 		svc.Wallet = walletSvc
 	}
 
+	// Initialize Paymail service (requires wallet + OpNS + ORDFS + Arcade)
+	if c.Paymail.Mode != paymail.ModeDisabled {
+		paymailDeps := &paymail.InitializeDeps{}
+		if svc.OPNS != nil && svc.OPNS.Lookup != nil {
+			paymailDeps.OpnsLookup = svc.OPNS.Lookup
+		}
+		if svc.ORDFS != nil && svc.ORDFS.Ordfs != nil {
+			paymailDeps.Ordfs = svc.ORDFS.Ordfs
+		}
+		if svc.Arcade != nil && svc.Arcade.ArcadeService != nil {
+			paymailDeps.Arcade = svc.Arcade.ArcadeService
+		}
+		if svc.Wallet != nil && svc.Wallet.Wallet != nil {
+			paymailDeps.Wallet = svc.Wallet.Wallet
+		}
+		paymailSvc, err := c.Paymail.Initialize(ctx, logger, paymailDeps)
+		if err != nil {
+			return nil, fmt.Errorf("failed to initialize paymail: %w", err)
+		}
+		svc.Paymail = paymailSvc
+	}
+
 	// Initialize JungleBus subscribers from per-module subscription configs
 	if svc.Store != nil && svc.JungleBus != nil {
 		start = time.Now()
@@ -731,17 +760,6 @@ func (c *Config) Initialize(ctx context.Context, logger *slog.Logger) (*Services
 			}
 			svc.JBSubscribers = append(svc.JBSubscribers, sub)
 			logger.Info("BSocial JungleBus subscriber initialized", "queue", subCfg.QueueName, "from_block", subCfg.FromBlock)
-		}
-
-		// OPNS subscriber (if subscription_id configured)
-		if svc.OPNS != nil && c.OPNS.Sync != nil && c.OPNS.Sync.SubscriptionID != "" {
-			subCfg := c.OPNS.Sync.SubscriberConfig()
-			sub, err := jbsync.NewSubscriber(subCfg, svc.Store.Store, svc.Chaintracks, svc.JungleBus, logger)
-			if err != nil {
-				return nil, fmt.Errorf("failed to create opns subscriber: %w", err)
-			}
-			svc.JBSubscribers = append(svc.JBSubscribers, sub)
-			logger.Info("OPNS JungleBus subscriber initialized", "queue", subCfg.QueueName, "from_block", subCfg.FromBlock)
 		}
 
 		// Ingest subscribers (multiple subscription_ids filling q:ingest)
@@ -941,6 +959,22 @@ func (c *Config) RegisterRoutes(app *fiber.App, svc *Services) {
 		// The wallet middleware expects this route at the root level
 		svc.Wallet.Routes.RegisterWellKnown(app)
 		slog.Debug("registered wallet .well-known/auth route")
+	}
+
+	// Register Paymail routes
+	if svc.Paymail != nil && svc.Paymail.Routes != nil {
+		prefix := c.Paymail.Routes.Prefix
+		if prefix == "" {
+			prefix = "/v1/bsvalias"
+		}
+		paymailGroup := api.Group(prefix)
+		svc.Paymail.Routes.Register(paymailGroup)
+		capabilities = append(capabilities, "paymail")
+		slog.Debug("registered paymail routes", "prefix", c.Server.BasePath+prefix)
+
+		// Register /.well-known/bsvalias at app root for capability discovery
+		svc.Paymail.Routes.RegisterWellKnown(app)
+		slog.Debug("registered paymail .well-known/bsvalias route")
 	}
 
 	// Health check endpoint
@@ -1185,13 +1219,13 @@ func (svc *Services) StartSubscribers(ctx context.Context, logger *slog.Logger) 
 		}()
 		logger.Info("started BSocial overlay sync")
 	}
-	if svc.OPNS != nil && svc.OPNS.Sync != nil {
+	if svc.OPNS != nil && svc.OPNS.Crawl != nil {
 		go func() {
-			if err := svc.OPNS.Sync.Start(ctx); err != nil {
-				logger.Error("OPNS sync error", "error", err)
+			if err := svc.OPNS.Crawl.Start(ctx); err != nil {
+				logger.Error("OPNS crawl error", "error", err)
 			}
 		}()
-		logger.Info("started OPNS overlay sync")
+		logger.Info("started OPNS genesis crawl")
 	}
 
 	// Start arcade event handlers (arcade listener + status handler)

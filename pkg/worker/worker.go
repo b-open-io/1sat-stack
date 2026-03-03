@@ -3,6 +3,7 @@ package worker
 import (
 	"context"
 	"log/slog"
+	"runtime/debug"
 	"sync"
 	"time"
 
@@ -177,6 +178,7 @@ func (w *Worker) Start(ctx context.Context) error {
 								"key", w.key,
 								"id", id,
 								"panic", r,
+								"stack", string(debug.Stack()),
 							)
 						}
 						<-w.limiter

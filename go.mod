@@ -8,7 +8,7 @@ replace github.com/bsv-blockchain/teranode => github.com/bsv-blockchain/teranode
 
 replace github.com/bsv-blockchain/go-overlay-services => github.com/bsv-blockchain/go-overlay-services v1.2.3-0.20260212235430-f647e9bb2e9d
 
-replace github.com/bitcoin-sv/go-templates => github.com/b-open-io/go-templates v0.0.0-20260212223630-3e3d3fdff4e9
+replace github.com/bitcoin-sv/go-templates => github.com/b-open-io/go-templates v0.0.0-20260302230614-be91c94f1d27
 
 replace github.com/b-open-io/go-junglebus => github.com/b-open-io/go-junglebus v0.3.5-0.20260212191545-39c1c23d7559
 

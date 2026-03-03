@@ -496,6 +496,10 @@ func (s *Storage) BuildFullBeef(ctx context.Context, txid *chainhash.Hash) ([]by
 		}
 	}
 
+	if !beef.IsValid(false) {
+		return nil, fmt.Errorf("incomplete BEEF for %s: missing merkle proofs in ancestor chain", txid.String())
+	}
+
 	return beef.AtomicBytes(txid)
 }
 
