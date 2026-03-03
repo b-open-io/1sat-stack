@@ -12,6 +12,7 @@ export default function Lookups({ showToast }: Props) {
   const load = useCallback(async () => {
     try {
       const res = await apiFetch("/lookups/active");
+      if (!res.ok) throw new Error((await res.json()).error || res.statusText);
       setLookups(await res.json());
     } catch {
       showToast("Failed to load lookups", "error");

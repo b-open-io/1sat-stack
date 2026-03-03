@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback } from "react";
-import { isWalletAvailable, initAuthFetch, fetchIdentityKey, getIdentityKey } from "./api";
+import { isWalletAvailable, connectWallet, getIdentityKey, getSetupStatus } from "./api";
 import { useToast } from "./useToast";
 import Whitelist from "./sections/Whitelist";
 import Blacklist from "./sections/Blacklist";
@@ -8,27 +8,40 @@ import Topics from "./sections/Topics";
 import Lookups from "./sections/Lookups";
 import ZSetLookup from "./sections/ZSetLookup";
 import Progress from "./sections/Progress";
+import SetupWizard from "./sections/SetupWizard";
 import "./styles.css";
 
+type SetupStatus = "loading" | "needed" | "complete";
+
 export default function App() {
-  const [walletReady, setWalletReady] = useState(false);
-  const [identityKey, setIdentityKey] = useState<string | null>(null);
+  const [walletDetected, setWalletDetected] = useState(false);
   const [walletChecked, setWalletChecked] = useState(false);
+  const [connected, setConnected] = useState(false);
+  const [connecting, setConnecting] = useState(false);
+  const [identityKey, setIdentityKey] = useState<string | null>(null);
+  const [setupStatus, setSetupStatus] = useState<SetupStatus>("loading");
   const { toast, showToast } = useToast();
 
+  // Check setup status on mount
   useEffect(() => {
-    // Yours Wallet may inject window.CWI asynchronously after page load.
-    // Poll briefly to give it time to appear.
+    getSetupStatus()
+      .then((s) => setSetupStatus(s.configured ? "complete" : "needed"))
+      .catch(() => setSetupStatus("needed"));
+  }, []);
+
+  // Poll briefly for wallet injection
+  useEffect(() => {
+    if (isWalletAvailable()) {
+      setWalletDetected(true);
+      setWalletChecked(true);
+      return;
+    }
     let attempts = 0;
-    const interval = setInterval(async () => {
+    const interval = setInterval(() => {
       attempts++;
       if (isWalletAvailable()) {
         clearInterval(interval);
-        if (initAuthFetch()) {
-          setWalletReady(true);
-          const key = await fetchIdentityKey();
-          setIdentityKey(key);
-        }
+        setWalletDetected(true);
         setWalletChecked(true);
       } else if (attempts >= 20) {
         clearInterval(interval);
@@ -37,6 +50,19 @@ export default function App() {
     }, 250);
     return () => clearInterval(interval);
   }, []);
+
+  const handleConnect = useCallback(async () => {
+    setConnecting(true);
+    try {
+      const key = await connectWallet();
+      setIdentityKey(key);
+      setConnected(true);
+    } catch (e: any) {
+      showToast(e.message || "Failed to connect wallet", "error");
+    } finally {
+      setConnecting(false);
+    }
+  }, [showToast]);
 
   const copyIdentity = useCallback(() => {
     const key = getIdentityKey();
@@ -53,16 +79,20 @@ export default function App() {
         <div className="identity-bar">
           {!walletChecked ? (
             <span>Detecting wallet...</span>
-          ) : walletReady ? (
+          ) : connected ? (
             <>
               <span className="status" />
-              <span>Authenticated</span>
+              <span>Connected</span>
               {identityKey && (
                 <span className="pubkey" title={`Click to copy: ${identityKey}`} onClick={copyIdentity}>
                   {identityKey}
                 </span>
               )}
             </>
+          ) : walletDetected ? (
+            <button onClick={handleConnect} disabled={connecting}>
+              {connecting ? "Connecting..." : "Connect Wallet"}
+            </button>
           ) : (
             <>
               <span className="status disconnected" />
@@ -72,22 +102,40 @@ export default function App() {
         </div>
       </header>
 
-      {walletChecked && !walletReady && (
+      {walletChecked && !walletDetected && (
         <div className="wallet-warning">
           No compatible wallet detected. Install Yours Wallet (or another wallet that injects <code>window.CWI</code>) to authenticate.
-          Requests will be sent without authentication.
         </div>
       )}
 
-      <div className="grid">
-        <Whitelist showToast={showToast} />
-        <Blacklist showToast={showToast} />
-        <Workers showToast={showToast} />
-        <Topics showToast={showToast} />
-        <Lookups showToast={showToast} />
-        <ZSetLookup showToast={showToast} />
-        <Progress showToast={showToast} />
-      </div>
+      {walletChecked && walletDetected && !connected && !connecting && (
+        <div className="wallet-warning">
+          Connect your wallet to access admin functions.
+        </div>
+      )}
+
+      {setupStatus === "loading" && (
+        <div className="wallet-warning">Checking setup status...</div>
+      )}
+
+      {connected && setupStatus === "needed" && (
+        <SetupWizard
+          onComplete={() => setSetupStatus("complete")}
+          showToast={showToast}
+        />
+      )}
+
+      {connected && setupStatus === "complete" && (
+        <div className="grid">
+          <Whitelist showToast={showToast} />
+          <Blacklist showToast={showToast} />
+          <Workers showToast={showToast} />
+          <Topics showToast={showToast} />
+          <Lookups showToast={showToast} />
+          <ZSetLookup showToast={showToast} />
+          <Progress showToast={showToast} />
+        </div>
+      )}
 
       {toast && <div className={`toast ${toast.type}`}>{toast.message}</div>}
     </div>

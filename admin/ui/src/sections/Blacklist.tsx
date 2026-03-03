@@ -13,6 +13,7 @@ export default function Blacklist({ showToast }: Props) {
   const load = useCallback(async () => {
     try {
       const res = await apiFetch("/blacklist");
+      if (!res.ok) throw new Error((await res.json()).error || res.statusText);
       setTokens(await res.json());
     } catch {
       showToast("Failed to load blacklist", "error");

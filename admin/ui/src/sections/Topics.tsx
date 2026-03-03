@@ -12,6 +12,7 @@ export default function Topics({ showToast }: Props) {
   const load = useCallback(async () => {
     try {
       const res = await apiFetch("/topics/active");
+      if (!res.ok) throw new Error((await res.json()).error || res.statusText);
       setTopics(await res.json());
     } catch {
       showToast("Failed to load topics", "error");

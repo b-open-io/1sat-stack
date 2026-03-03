@@ -13,6 +13,7 @@ export default function Whitelist({ showToast }: Props) {
   const load = useCallback(async () => {
     try {
       const res = await apiFetch("/whitelist");
+      if (!res.ok) throw new Error((await res.json()).error || res.statusText);
       setTokens(await res.json());
     } catch {
       showToast("Failed to load whitelist", "error");

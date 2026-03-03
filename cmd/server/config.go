@@ -958,6 +958,7 @@ func (c *Config) RegisterRoutes(app *fiber.App, svc *Services) {
 	}
 
 	// Register Admin routes: static UI files are public, API endpoints are guarded.
+	// Setup routes (status, setup) need identity but not AdminGuard.
 	// API routes are mounted under {prefix}/api/ with AdminGuard middleware.
 	// Static UI files are mounted directly at {prefix}/ without auth so the
 	// browser can load the app before performing the BRC-103/104 handshake.
@@ -967,10 +968,11 @@ func (c *Config) RegisterRoutes(app *fiber.App, svc *Services) {
 			prefix = "/admin"
 		}
 		guardedGroup := api.Group(prefix+"/api",
-			auth.AdminGuard(c.Auth.AdminPubkeys, c.Admin.Routes.BearerToken, slog.Default()),
+			auth.AdminGuard(svc.Store.Store, slog.Default()),
 		)
+		setupGroup := api.Group(prefix + "/api")
 		publicGroup := api.Group(prefix)
-		svc.Admin.Routes.Register(guardedGroup, publicGroup)
+		svc.Admin.Routes.Register(guardedGroup, publicGroup, setupGroup)
 		capabilities = append(capabilities, "admin")
 		slog.Debug("registered admin routes", "prefix", prefix)
 	}

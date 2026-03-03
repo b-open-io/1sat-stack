@@ -1,41 +1,43 @@
 package auth
 
 import (
+	"context"
 	"log/slog"
-	"strings"
 
+	"github.com/b-open-io/1sat-stack/pkg/store"
 	"github.com/gofiber/fiber/v2"
 )
 
-// AdminGuard returns a Fiber middleware that restricts access to admin endpoints.
-// It checks two authorization methods in order:
-//  1. BRC-103/104 identity — if the request has an authenticated identity
-//     (set by the global auth middleware) and that identity's public key
-//     is in the adminPubkeys allowlist, access is granted.
-//  2. Bearer token — if a bearerToken is configured and the request's
-//     Authorization header matches, access is granted.
-//
-// If neither check passes, the request gets a 401.
-func AdminGuard(adminPubkeys []string, bearerToken string, logger *slog.Logger) fiber.Handler {
-	// Build a set for O(1) lookup
-	allowed := make(map[string]struct{}, len(adminPubkeys))
-	for _, pk := range adminPubkeys {
-		allowed[pk] = struct{}{}
-	}
+// KeyAdminPubkeys is the store key for the set of admin identity public keys.
+var KeyAdminPubkeys = []byte("s:admin:pubkeys")
 
+// AdminGuard returns a Fiber middleware that restricts access to admin endpoints.
+// It checks the BRC-103/104 identity against the admin pubkey set in the store.
+func AdminGuard(s store.Store, logger *slog.Logger) fiber.Handler {
 	return func(c *fiber.Ctx) error {
-		// Check BRC-103/104 identity
-		if identity := GetIdentity(c); identity != nil {
-			if _, ok := allowed[identity.ToDERHex()]; ok {
-				return c.Next()
-			}
+		identity := GetIdentity(c)
+		if identity == nil {
+			logger.Warn("unauthorized admin access attempt: no identity",
+				"path", c.Path(),
+				"method", c.Method(),
+				"ip", c.IP())
+			return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{
+				"error": "unauthorized",
+			})
 		}
 
-		// Fall back to bearer token
-		if bearerToken != "" {
-			if strings.TrimPrefix(c.Get("Authorization"), "Bearer ") == bearerToken {
-				return c.Next()
-			}
+		pubkey := []byte(identity.ToDERHex())
+		ctx := context.Background()
+
+		isMember, err := s.SIsMember(ctx, KeyAdminPubkeys, pubkey)
+		if err != nil {
+			logger.Error("failed to check admin membership", "error", err)
+			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+				"error": "internal error",
+			})
+		}
+		if isMember {
+			return c.Next()
 		}
 
 		logger.Warn("unauthorized admin access attempt",
@@ -46,4 +48,13 @@ func AdminGuard(adminPubkeys []string, bearerToken string, logger *slog.Logger) 
 			"error": "unauthorized",
 		})
 	}
+}
+
+// IsSetup checks whether any admin identities have been configured.
+func IsSetup(ctx context.Context, s store.Store) (bool, error) {
+	members, err := s.SMembers(ctx, KeyAdminPubkeys)
+	if err != nil {
+		return false, err
+	}
+	return len(members) > 0, nil
 }

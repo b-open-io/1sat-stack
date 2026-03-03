@@ -239,7 +239,15 @@ ordfs:
   routes:
     enabled: true
 
+# Auth middleware - BRC-103/104 mutual authentication
+auth:
+  allow_unauthenticated: true  # Allow requests without auth (set false to require auth)
+
 # Admin API - progress management, diagnostics
+# Admin access is controlled by BRC-103/104 identity pubkeys stored in the DB.
+# Use the setup wizard to register the first admin identity.
 admin:
+  mode: enabled
   routes:
-    bearer_token: ""        # ONESAT_ADMIN_ROUTES_BEARER_TOKEN
+    enabled: true
+    prefix: /admin

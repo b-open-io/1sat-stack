@@ -25,9 +25,8 @@ type Config struct {
 
 // RoutesConfig holds route configuration
 type RoutesConfig struct {
-	Enabled     bool   `mapstructure:"enabled"`
-	Prefix      string `mapstructure:"prefix"`
-	BearerToken string `mapstructure:"bearer_token"`
+	Enabled bool   `mapstructure:"enabled"`
+	Prefix  string `mapstructure:"prefix"`
 }
 
 // Services holds admin service instances

@@ -18,6 +18,7 @@ export default function Progress({ showToast }: Props) {
   const load = useCallback(async () => {
     try {
       const res = await apiFetch("/progress");
+      if (!res.ok) throw new Error((await res.json()).error || res.statusText);
       setItems(await res.json());
     } catch {
       showToast("Failed to load progress", "error");

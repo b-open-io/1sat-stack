@@ -9,6 +9,7 @@ import (
 	"sort"
 	"strconv"
 
+	"github.com/b-open-io/1sat-stack/pkg/auth"
 	"github.com/b-open-io/1sat-stack/pkg/bsv21"
 	"github.com/b-open-io/1sat-stack/pkg/overlay"
 	"github.com/b-open-io/1sat-stack/pkg/store"
@@ -50,9 +51,14 @@ func NewRoutes(overlaySvc *overlay.Services, s store.Store, bsv21Sync *bsv21.Syn
 	}
 }
 
-// Register registers admin API routes on a guarded group, and static UI
-// files on an unguarded group so the browser can load the app before authenticating.
-func (r *Routes) Register(guardedGroup fiber.Router, publicGroup fiber.Router) {
+// Register registers admin API routes on a guarded group, setup routes on a
+// setup group (identity required but no AdminGuard), and static UI files on
+// an unguarded group so the browser can load the app before authenticating.
+func (r *Routes) Register(guardedGroup fiber.Router, publicGroup fiber.Router, setupGroup fiber.Router) {
+	// Setup routes (require identity but not AdminGuard)
+	setupGroup.Get("/status", r.handleGetSetupStatus)
+	setupGroup.Post("/setup", r.handleSetup)
+
 	// API routes (require auth via AdminGuard on guardedGroup)
 	guardedGroup.Get("/whitelist", r.handleGetWhitelist)
 	guardedGroup.Post("/whitelist", r.handleAddToWhitelist)
@@ -645,4 +651,71 @@ func (r *Routes) handleGetBSV21Workers(c *fiber.Ctx) error {
 	})
 
 	return c.JSON(workers)
+}
+
+// handleGetSetupStatus returns whether the admin has been configured.
+// @Summary Get setup status
+// @Description Returns whether any admin identities have been configured
+// @Tags admin
+// @Produce json
+// @Success 200 {object} map[string]bool "configured status"
+// @Failure 500 {object} map[string]string "Internal server error"
+// @Router /admin/status [get]
+func (r *Routes) handleGetSetupStatus(c *fiber.Ctx) error {
+	configured, err := auth.IsSetup(c.Context(), r.store)
+	if err != nil {
+		r.logger.Error("failed to check setup status", "error", err)
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"error": "internal error",
+		})
+	}
+	return c.JSON(fiber.Map{
+		"configured": configured,
+	})
+}
+
+// handleSetup performs first-run admin setup by adding the authenticated
+// identity as the initial admin. Rejects if already configured.
+// @Summary Perform admin setup
+// @Description Adds the authenticated identity as the first admin
+// @Tags admin
+// @Produce json
+// @Success 200 {object} map[string]string "success message"
+// @Failure 401 {object} map[string]string "Unauthorized"
+// @Failure 409 {object} map[string]string "Already configured"
+// @Failure 500 {object} map[string]string "Internal server error"
+// @Router /admin/setup [post]
+func (r *Routes) handleSetup(c *fiber.Ctx) error {
+	identity := auth.GetIdentity(c)
+	if identity == nil {
+		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{
+			"error": "unauthorized",
+		})
+	}
+
+	configured, err := auth.IsSetup(c.Context(), r.store)
+	if err != nil {
+		r.logger.Error("failed to check setup status", "error", err)
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"error": "internal error",
+		})
+	}
+	if configured {
+		return c.Status(fiber.StatusConflict).JSON(fiber.Map{
+			"error": "admin already configured",
+		})
+	}
+
+	pubkey := []byte(identity.ToDERHex())
+	if err := r.store.SAdd(c.Context(), auth.KeyAdminPubkeys, pubkey); err != nil {
+		r.logger.Error("failed to add initial admin", "error", err)
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"error": "internal error",
+		})
+	}
+
+	r.logger.Info("admin setup complete", "pubkey", string(pubkey))
+	return c.JSON(fiber.Map{
+		"message": "admin configured",
+	})
 }

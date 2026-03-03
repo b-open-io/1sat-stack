@@ -27,6 +27,7 @@ export default function Workers({ showToast }: Props) {
   const load = useCallback(async () => {
     try {
       const res = await apiFetch("/bsv21/workers");
+      if (!res.ok) throw new Error((await res.json()).error || res.statusText);
       setWorkers(await res.json());
     } catch {
       showToast("Failed to load workers", "error");
