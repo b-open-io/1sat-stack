@@ -50,6 +50,7 @@ func (r *DataRoutes) Register(group fiber.Router) {
 	zset.Get("/score/:key/:member", r.handleZSetScore)
 	zset.Get("/card/:key", r.handleZSetCard)
 	zset.Get("/sum/:key", r.handleZSetSum)
+	zset.Delete("/rem/:key/:member", r.handleZSetRem)
 
 	// Search
 	group.Post("/search", r.handleSearch)
@@ -383,6 +384,44 @@ func (r *DataRoutes) handleZSetScore(c *fiber.Ctx) error {
 		"member": renderValue(memberBytes),
 		"score":  score,
 		"exists": true,
+	})
+}
+
+func (r *DataRoutes) handleZSetRem(c *fiber.Ctx) error {
+	key := c.Params("key")
+	member := c.Params("member")
+	if key == "" || member == "" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": "key and member are required",
+		})
+	}
+
+	// Try as txid (64-char hex, byte-reversed) first, then raw hex, then string
+	var memberBytes []byte
+	if len(member) == 64 {
+		if h, err := chainhash.NewHashFromHex(member); err == nil {
+			memberBytes = h[:]
+		}
+	}
+	if memberBytes == nil {
+		if b, err := hex.DecodeString(member); err == nil {
+			memberBytes = b
+		} else {
+			memberBytes = []byte(member)
+		}
+	}
+
+	if err := r.store.ZRem(c.Context(), []byte(key), memberBytes); err != nil {
+		r.logger.Error("failed to remove member", "key", key, "member", member, "error", err)
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"error": "failed to remove member",
+		})
+	}
+
+	return c.JSON(fiber.Map{
+		"key":     key,
+		"member":  renderValue(memberBytes),
+		"removed": true,
 	})
 }
 

@@ -64,6 +64,8 @@ import (
 // @tag.description Administrative endpoints (requires auth)
 // @tag.name overlay-admin
 // @tag.description Overlay admin endpoints (requires auth)
+// @tag.name paymail
+// @tag.description BSV paymail protocol endpoints (BRC-29)
 
 func main() {
 	// Load .env file if present (optional, won't error if missing)
