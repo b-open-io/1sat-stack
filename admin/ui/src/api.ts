@@ -9,6 +9,11 @@ const API_BASE =
   (adminIdx >= 0 ? window.location.pathname.substring(0, adminIdx + "/admin".length) : "") +
   "/api";
 
+const SETUP_BASE =
+  window.location.origin +
+  (adminIdx >= 0 ? window.location.pathname.substring(0, adminIdx + "/admin".length) : "") +
+  "/setup";
+
 export function isWalletAvailable(): boolean {
   return typeof window.CWI !== "undefined" && window.CWI !== null;
 }
@@ -42,13 +47,19 @@ export async function apiFetch(
 }
 
 export async function getSetupStatus(): Promise<{ configured: boolean }> {
-  const res = await fetch(`${API_BASE}/status`);
+  const res = await fetch(`${SETUP_BASE}/status`);
   if (!res.ok) throw new Error("Failed to check setup status");
   return res.json();
 }
 
 export async function performSetup(): Promise<{ message: string }> {
-  const res = await apiFetch("/setup", { method: "POST" });
+  const url = `${SETUP_BASE}/setup`;
+  let res: Response;
+  if (authFetch) {
+    res = await authFetch.fetch(url, { method: "POST" });
+  } else {
+    res = await fetch(url, { method: "POST" });
+  }
   if (!res.ok) {
     const data = await res.json().catch(() => ({}));
     throw new Error(data.error || "Setup failed");

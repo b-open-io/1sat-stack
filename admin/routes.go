@@ -53,13 +53,13 @@ func NewRoutes(overlaySvc *overlay.Services, s store.Store, bsv21Sync *bsv21.Syn
 	}
 }
 
-// Register registers admin API routes on a guarded group, setup routes on a
-// setup group (identity required but no AdminGuard), and static UI files on
-// an unguarded group so the browser can load the app before authenticating.
-func (r *Routes) Register(guardedGroup fiber.Router, publicGroup fiber.Router, setupGroup fiber.Router) {
-	// Setup routes (require identity but not AdminGuard)
-	setupGroup.Get("/status", r.handleGetSetupStatus)
-	setupGroup.Post("/setup", r.handleSetup)
+// Register registers admin API routes on a guarded group and static UI files
+// on an unguarded group so the browser can load the app before authenticating.
+// Setup routes use /setup/ prefix to avoid Fiber's group middleware bleed from guardedGroup.
+func (r *Routes) Register(guardedGroup fiber.Router, publicGroup fiber.Router) {
+	// Setup routes (public - no AdminGuard)
+	publicGroup.Get("/setup/status", r.handleGetSetupStatus)
+	publicGroup.Post("/setup", r.handleSetup)
 
 	// API routes (require auth via AdminGuard on guardedGroup)
 	guardedGroup.Get("/whitelist", r.handleGetWhitelist)

@@ -21,8 +21,8 @@ import (
 	"github.com/b-open-io/1sat-stack/pkg/opns"
 	"github.com/b-open-io/1sat-stack/pkg/ordfs"
 	"github.com/b-open-io/1sat-stack/pkg/overlay"
-	"github.com/b-open-io/1sat-stack/pkg/paymail"
 	"github.com/b-open-io/1sat-stack/pkg/owner"
+	"github.com/b-open-io/1sat-stack/pkg/paymail"
 	"github.com/b-open-io/1sat-stack/pkg/pubsub"
 	"github.com/b-open-io/1sat-stack/pkg/store"
 	"github.com/b-open-io/1sat-stack/pkg/txo"
@@ -993,9 +993,8 @@ func (c *Config) RegisterRoutes(app *fiber.App, svc *Services) {
 		guardedGroup := api.Group(prefix+"/api",
 			auth.AdminGuard(svc.Store.Store, slog.Default()),
 		)
-		setupGroup := api.Group(prefix + "/api")
 		publicGroup := api.Group(prefix)
-		svc.Admin.Routes.Register(guardedGroup, publicGroup, setupGroup)
+		svc.Admin.Routes.Register(guardedGroup, publicGroup)
 		capabilities = append(capabilities, "admin")
 		slog.Debug("registered admin routes", "prefix", prefix)
 	}
