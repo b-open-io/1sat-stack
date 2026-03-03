@@ -4,7 +4,7 @@
 
 We need external users to send payments into BRC-100 wallets hosted in 1sat-stack. The approach:
 - **OpNS names** serve as human-readable aliases (e.g., `alice`)
-- **MAP metadata on OpNS tokens** provides the identity binding — the token's MAP `idKey` field contains the wallet's identity public key
+- **MAP metadata on OpNS tokens** provides the identity binding — the token's MAP `opns.idKey` field contains the wallet's identity public key
 - **BRC-29 address derivation** with the "anyone" counterparty generates unique payment addresses server-side using only the public key
 - **Delivery** can use Paymail (BRC-28), MessageBox (BRC-31), or both — the delivery mechanism is independent of the identity resolution
 
@@ -14,13 +14,13 @@ OpNS works like DNS. The OpNS token is the zone record. MAP fields are the recor
 
 ```
 alice (OpNS token)
-  └── MAP: { app: "opns", type: "id", idKey: "03abc..." }
-                                         └── identity public key
+  └── MAP: { "opns.idKey": "03abc..." }
+                              └── identity public key
 ```
 
 To resolve a name for payment:
 1. Look up `alice` via ORDFS/overlay → get the OpNS token
-2. Read the MAP `idKey` field → that's the BRC-100 identity public key
+2. Read the MAP `opns.idKey` field → that's the BRC-100 identity public key
 3. Use identity key for BRC-29 payment derivation
 
 ### Key Design Decisions
@@ -28,7 +28,7 @@ To resolve a name for payment:
 1. **OpNS is the only alias source** — no database-backed alias registration
 2. **Identity binding is on-chain via MAP metadata** — no special derivation scheme, no P2PK scripts, no server-side registration required for the binding itself
 3. **OpNS tokens use standard P2PKH** — the token sits at a normal ordinals address in the wallet's existing `ordinals` basket
-4. **Payment derivation uses the identity key from MAP** (not the locking script address) — the MAP `idKey` field IS the identity
+4. **Payment derivation uses the identity key from MAP** (not the locking script address) — the MAP `opns.idKey` field IS the identity
 5. **Activation = re-inscribe with MAP data** — the user transfers the OpNS ordinal to self with MAP metadata declaring the identity key, then submits to the OpNS overlay
 6. **Deactivation = re-inscribe without MAP data** (or transfer away) — removes the identity binding
 7. **Delivery protocol is orthogonal** — paymail and/or messagebox can both use the same identity resolution
@@ -79,7 +79,7 @@ In `buildTransferOrdinals`, when `map` is provided, append MAP data to the outpu
 
 An `opnsRegister` action that:
 1. Gets the wallet's identity public key
-2. Transfers the OpNS ordinal to self with MAP data: `{ app: "opns", type: "id", idKey: identityPubKeyHex }`
+2. Transfers the OpNS ordinal to self with MAP data: `{ 'opns.idKey': identityPubKeyHex }`
 3. After signing, submits the transaction to the OpNS overlay topic
 
 ```typescript
@@ -93,7 +93,7 @@ const params = await buildTransferOrdinals(ctx, {
   transfers: [{
     ordinal,
     counterparty: 'self',  // transfer to self
-    map: { app: 'opns', type: 'id', idKey: identityPubKey }
+    map: { 'opns.idKey': identityPubKey }
   }],
   inputBEEF,
 })
@@ -104,26 +104,26 @@ const params = await buildTransferOrdinals(ctx, {
 await ctx.services.overlay.submit(signResult.tx, ['tm_opns'])
 ```
 
-An `opnsDeregister` action would be similar but without the MAP data (or with the `idKey` field removed).
+An `opnsDeregister` action would transfer to self with MAP data `{ 'opns.idKey': '' }` to explicitly clear the binding.
 
 **Reference files:**
 - `1sat-sdk/packages/actions/src/tokens/index.ts` — BSV21 overlay submission pattern
 - `1sat-sdk/packages/client/src/services/OverlayClient.ts` — `submit(beef, topics)` method
 
-### Step 3: OpNS Indexer — Index MAP idKey
+### Step 3: OpNS Indexer — Index MAP opns.idKey
 
 **File:** `1sat-stack/pkg/opns/lookup.go`
 
-Update `OutputAdmittedByTopic()` to detect and store the MAP `idKey` field when present on OpNS outputs.
+Update `OutputAdmittedByTopic()` to detect and store the MAP `opns.idKey` field when present on OpNS outputs.
 
 1. After detecting an OpNS inscription, parse MAP data from the output script
-2. If MAP contains `app: "opns"` and `idKey: "<pubkey>"`, emit an event: `idkey:{pubkeyHex}`
+2. If MAP contains `opns.idKey` with a non-empty value, emit an event: `idkey:{pubkeyHex}`
 3. Update `OwnerResult` to include the identity key:
    ```go
    type OwnerResult struct {
        Outpoint    *transaction.Outpoint `json:"outpoint"`
        Address     string                `json:"address,omitempty"`
-       IdentityKey string                `json:"identityKey,omitempty"` // from MAP idKey
+       IdentityKey string                `json:"identityKey,omitempty"` // from MAP opns.idKey
    }
    ```
 4. Update `Owner()` to return the identity key when resolving domain ownership
@@ -160,7 +160,7 @@ In-memory store with TTL for pending payment references:
 ```go
 type PendingPayment struct {
     Reference        string    // unique random ID
-    IdentityPubKey   string    // from OpNS MAP idKey (for InternalizeAction)
+    IdentityPubKey   string    // from OpNS MAP opns.idKey (for InternalizeAction)
     DerivationPrefix string    // random base64
     DerivationSuffix string    // random base64
     Satoshis         uint64
@@ -247,13 +247,13 @@ The MAP approach resolves all the above issues:
 
 1. **Unit test: BRC-29 payment derivation roundtrip** — derive payment address server-side (anyone + identity pubkey), derive payment private key wallet-side (identity privkey + anyone pubkey), confirm address matches
 
-2. **Unit test: MAP script building** — verify `appendMapToScript` produces correct `<P2PKH> OP_RETURN MAP SET app opns type id idKey <pubkey>` output
+2. **Unit test: MAP script building** — verify `MAP.set()` from `@bopen-io/templates` produces correct `OP_RETURN MAP SET opns.idKey <pubkey>` output
 
-3. **Integration test: OpNS register action** — create OpNS ordinal, register with MAP idKey, verify overlay indexes the identity key, verify `Owner()` returns the identity key
+3. **Integration test: OpNS register action** — create OpNS ordinal, register with MAP `opns.idKey`, verify overlay indexes the identity key, verify `Owner()` returns the identity key
 
 4. **Integration test: Paymail endpoints** — register OpNS name with identity key, call capability discovery, request payment destination, build test transaction to the returned address, submit via receive-beef, confirm wallet internalized the payment
 
-5. **Integration test: Deactivation** — re-inscribe without MAP idKey, verify overlay removes the identity binding, verify paymail resolution fails
+5. **Integration test: Deactivation** — re-inscribe with empty MAP `opns.idKey`, verify overlay removes the identity binding, verify paymail resolution fails
 
 ---
 
@@ -263,5 +263,4 @@ The MAP approach resolves all the above issues:
 - **Multi-output payments** — current design returns a single output per destination request
 - **Paymail domain policy** — which domains the server should accept (allowlist vs. accept any domain that DNS-routes to us)
 - **User management layer** — profile info, preferences, access control (separate from identity binding)
-- **MAP field schema** — exact MAP field names (`idKey` vs `identityKey` vs other) need to be standardized
-- **Trust model** — should the server trust any MAP idKey, or validate that the identity key actually corresponds to a known wallet?
+- **Trust model** — should the server trust any MAP `opns.idKey`, or validate that the identity key actually corresponds to a known wallet?
