@@ -8,11 +8,13 @@ replace github.com/bsv-blockchain/teranode => github.com/bsv-blockchain/teranode
 
 replace github.com/bsv-blockchain/go-overlay-services => github.com/bsv-blockchain/go-overlay-services v1.2.3-0.20260212235430-f647e9bb2e9d
 
-replace github.com/bitcoin-sv/go-templates => github.com/b-open-io/go-templates v0.0.0-20260212223630-3e3d3fdff4e9
+replace github.com/bitcoin-sv/go-templates => github.com/b-open-io/go-templates v0.0.0-20260302230614-be91c94f1d27
 
 replace github.com/b-open-io/go-junglebus => github.com/b-open-io/go-junglebus v0.3.5-0.20260212191545-39c1c23d7559
 
-replace github.com/bsv-blockchain/go-wallet-toolbox => github.com/bsv-blockchain/go-wallet-toolbox v0.172.2-0.20260220000909-c9b10fee8863
+replace github.com/bsv-blockchain/go-wallet-toolbox => github.com/bsv-blockchain/go-wallet-toolbox v0.176.1-0.20260224033718-3a16e3ca1636
+
+replace github.com/bsv-blockchain/arcade => ../arcade
 
 require (
 	github.com/b-open-io/go-junglebus v0.3.5-0.20260212191545-39c1c23d7559
@@ -24,7 +26,7 @@ require (
 	github.com/bsv-blockchain/go-overlay-services v1.2.3-0.20260212235430-f647e9bb2e9d
 	github.com/bsv-blockchain/go-sdk v1.2.18
 	github.com/bsv-blockchain/go-teranode-p2p-client v0.1.1
-	github.com/bsv-blockchain/go-wallet-toolbox v0.172.1
+	github.com/bsv-blockchain/go-wallet-toolbox v0.176.1-0.20260224033718-3a16e3ca1636
 	github.com/dgraph-io/badger/v4 v4.9.1
 	github.com/gofiber/fiber/v2 v2.52.11
 	github.com/joho/godotenv v1.6.0-pre.2
@@ -108,6 +110,8 @@ require (
 	github.com/flynn/noise v1.1.0 // indirect
 	github.com/fsnotify/fsnotify v1.9.0 // indirect
 	github.com/fxamacker/cbor/v2 v2.9.0 // indirect
+	github.com/go-co-op/gocron-gorm-lock/v2 v2.1.0 // indirect
+	github.com/go-co-op/gocron/v2 v2.19.1 // indirect
 	github.com/go-logr/logr v1.4.3 // indirect
 	github.com/go-logr/stdr v1.2.2 // indirect
 	github.com/go-openapi/jsonpointer v0.22.4 // indirect
@@ -167,6 +171,7 @@ require (
 	github.com/jellydator/ttlcache/v3 v3.4.0 // indirect
 	github.com/jinzhu/inflection v1.0.0 // indirect
 	github.com/jinzhu/now v1.1.5 // indirect
+	github.com/jonboulle/clockwork v0.5.0 // indirect
 	github.com/josharian/intern v1.0.0 // indirect
 	github.com/jpillora/backoff v1.0.0 // indirect
 	github.com/json-iterator/go v1.1.12 // indirect
@@ -262,6 +267,7 @@ require (
 	github.com/quic-go/webtransport-go v0.10.0 // indirect
 	github.com/rcrowley/go-metrics v0.0.0-20250401214520-65e299d6c5c9 // indirect
 	github.com/remyoudompheng/bigfft v0.0.0-20230129092748-24d4a6f8daec // indirect
+	github.com/robfig/cron/v3 v3.0.1 // indirect
 	github.com/rs/zerolog v1.34.0 // indirect
 	github.com/sagikazarmark/locafero v0.12.0 // indirect
 	github.com/segmentio/asm v1.2.0 // indirect

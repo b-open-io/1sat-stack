@@ -10,14 +10,11 @@ import (
 	"github.com/b-open-io/1sat-stack/pkg/types"
 	"github.com/bitcoin-sv/go-templates/template/inscription"
 	"github.com/bitcoin-sv/go-templates/template/opns"
-	"github.com/bitcoin-sv/go-templates/template/ordlock"
 	"github.com/bsv-blockchain/go-overlay-services/pkg/core/engine"
 	"github.com/bsv-blockchain/go-sdk/chainhash"
 	"github.com/bsv-blockchain/go-sdk/overlay"
 	"github.com/bsv-blockchain/go-sdk/overlay/lookup"
-	"github.com/bsv-blockchain/go-sdk/script"
 	"github.com/bsv-blockchain/go-sdk/transaction"
-	"github.com/bsv-blockchain/go-sdk/transaction/template/p2pkh"
 )
 
 // Key prefixes for OPNS ZSets and SSets.
@@ -47,7 +44,7 @@ func NewLookupService(s store.Store) *LookupService {
 }
 
 // OutputAdmittedByTopic processes a newly admitted OpNS output and indexes events.
-// Events follow the taxonomy: opns:{domain}, mine:{domain}, origin:{outpoint}, p2pkh:{address}, list:{domain}
+// Events follow the taxonomy: opns:{domain}, mine:{prefix}
 func (l *LookupService) OutputAdmittedByTopic(ctx context.Context, payload *engine.OutputAdmittedByTopic) error {
 	_, tx, txid, err := transaction.ParseBeef(payload.AtomicBEEF)
 	if err != nil {
@@ -64,73 +61,14 @@ func (l *LookupService) OutputAdmittedByTopic(ctx context.Context, payload *engi
 	}
 
 	txOut := tx.Outputs[payload.OutputIndex]
-	outputEvents := make([]string, 0, 5)
-	var domain string
-
-	// Track ordinal origin: find which input's ordinal maps to this output
-	if txOut.Satoshis == 1 {
-		satsOut := uint64(0)
-		for _, output := range tx.Outputs[:payload.OutputIndex] {
-			satsOut += output.Satoshis
-		}
-
-		satsIn := uint64(0)
-		for _, input := range tx.Inputs {
-			sourceOut := input.SourceTxOutput()
-			if sourceOut == nil {
-				break
-			}
-			if satsIn < satsOut {
-				satsIn += sourceOut.Satoshis
-				continue
-			} else if satsIn == satsOut && sourceOut.Satoshis == 1 {
-				// This input carries the ordinal to our output -- inherit events
-				inputOutpoint := &transaction.Outpoint{
-					Txid:  *input.SourceTXID,
-					Index: input.SourceTxOutIndex,
-				}
-				inputEvents, err := l.store.SMembers(ctx, outpointEventsKey(inputOutpoint))
-				if err != nil {
-					return fmt.Errorf("failed to load input events: %w", err)
-				}
-				for _, evt := range inputEvents {
-					evtStr := string(evt)
-					if strings.HasPrefix(evtStr, "opns:") {
-						domain = strings.TrimPrefix(evtStr, "opns:")
-						outputEvents = append(outputEvents, evtStr)
-					} else if strings.HasPrefix(evtStr, "origin:") {
-						outputEvents = append(outputEvents, evtStr)
-					}
-				}
-				break
-			} else {
-				// New ordinal origin -- this output is the origin
-				outputEvents = append(outputEvents, "origin:"+outpoint.OrdinalString())
-				break
-			}
-		}
-	}
+	outputEvents := make([]string, 0, 2)
 
 	// Decode OpNS contract state (mine event)
 	if o := opns.Decode(txOut.LockingScript); o != nil {
 		outputEvents = append(outputEvents, "mine:"+o.Domain)
 	} else if insc := inscription.Decode(txOut.LockingScript); insc != nil && insc.File.Type == "application/op-ns" {
-		// Inscription claiming a domain
-		domain = string(insc.File.Content)
-		outputEvents = append(outputEvents, "opns:"+domain)
-		// Extract address from inscription prefix or suffix
-		if p := p2pkh.Decode(script.NewFromBytes(insc.ScriptPrefix), true); p != nil {
-			outputEvents = append(outputEvents, fmt.Sprintf("p2pkh:%s", p.AddressString))
-		} else if p := p2pkh.Decode(script.NewFromBytes(insc.ScriptSuffix), true); p != nil {
-			outputEvents = append(outputEvents, fmt.Sprintf("p2pkh:%s", p.AddressString))
-		}
-	}
-
-	// Detect p2pkh lock or ordlock listing
-	if p := p2pkh.Decode(txOut.LockingScript, true); p != nil {
-		outputEvents = append(outputEvents, fmt.Sprintf("p2pkh:%s", p.AddressString))
-	} else if ol := ordlock.Decode(txOut.LockingScript); ol != nil && domain != "" {
-		outputEvents = append(outputEvents, fmt.Sprintf("list:%s", domain))
+		// Inscription claiming a domain — record origin (permanent)
+		outputEvents = append(outputEvents, "opns:"+string(insc.File.Content))
 	}
 
 	if len(outputEvents) == 0 {
@@ -163,7 +101,7 @@ func (l *LookupService) OutputAdmittedByTopic(ctx context.Context, payload *engi
 	return nil
 }
 
-// OutputSpent removes a spent output from all event ZSets.
+// OutputSpent handles spent outputs. Only removes mine: events (opns: origins are permanent).
 func (l *LookupService) OutputSpent(ctx context.Context, payload *engine.OutputSpent) error {
 	if payload.Outpoint == nil {
 		return nil
@@ -178,14 +116,17 @@ func (l *LookupService) OutputSpent(ctx context.Context, payload *engine.OutputS
 
 	opBytes := payload.Outpoint.Bytes()
 
-	// Remove from each event ZSet
+	// Only remove mine: events (opns: events are permanent origins)
 	for _, evt := range events {
-		if err := l.store.ZRem(ctx, eventKey(string(evt)), opBytes); err != nil {
-			slog.Warn("failed to remove from event ZSet on spend",
-				"event", string(evt),
-				"outpoint", payload.Outpoint.OrdinalString(),
-				"error", err,
-			)
+		evtStr := string(evt)
+		if strings.HasPrefix(evtStr, "mine:") {
+			if err := l.store.ZRem(ctx, eventKey(evtStr), opBytes); err != nil {
+				slog.Warn("failed to remove mine event on spend",
+					"event", evtStr,
+					"outpoint", payload.Outpoint.OrdinalString(),
+					"error", err,
+				)
+			}
 		}
 	}
 
@@ -220,13 +161,17 @@ func (l *LookupService) OutputEvicted(ctx context.Context, outpoint *transaction
 
 	opBytes := outpoint.Bytes()
 
+	// Only remove mine: events (opns: events are permanent origins)
 	for _, evt := range events {
-		if err := l.store.ZRem(ctx, eventKey(string(evt)), opBytes); err != nil {
-			slog.Warn("failed to remove from event ZSet on eviction",
-				"event", string(evt),
-				"outpoint", outpoint.OrdinalString(),
-				"error", err,
-			)
+		evtStr := string(evt)
+		if strings.HasPrefix(evtStr, "mine:") {
+			if err := l.store.ZRem(ctx, eventKey(evtStr), opBytes); err != nil {
+				slog.Warn("failed to remove mine event on eviction",
+					"event", evtStr,
+					"outpoint", outpoint.OrdinalString(),
+					"error", err,
+				)
+			}
 		}
 	}
 
@@ -264,15 +209,9 @@ func (l *LookupService) GetMetaData() *overlay.MetaData {
 	}
 }
 
-// OwnerResult represents the owner of an OpNS domain.
-type OwnerResult struct {
-	Outpoint *transaction.Outpoint `json:"outpoint"`
-	Address  string                `json:"address"`
-}
-
-// Owner looks up the current owner of a domain.
-// Returns the outpoint holding the domain and its p2pkh address.
-func (l *LookupService) Owner(ctx context.Context, domain string) (*OwnerResult, error) {
+// Origin returns the current outpoint for a registered OpNS domain.
+// Callers use ORDFS to resolve this outpoint to the full ordinal state.
+func (l *LookupService) Origin(ctx context.Context, domain string) (*transaction.Outpoint, error) {
 	key := eventKey("opns:" + domain)
 	members, err := l.store.ZRange(ctx, key, store.ScoreRange{})
 	if err != nil {
@@ -282,32 +221,13 @@ func (l *LookupService) Owner(ctx context.Context, domain string) (*OwnerResult,
 	if len(members) == 0 {
 		return nil, nil
 	}
-	if len(members) > 1 {
-		return nil, fmt.Errorf("multiple outputs found for domain %s", domain)
-	}
 
 	outpoint := transaction.NewOutpointFromBytes(members[0].Member)
 	if outpoint == nil {
 		return nil, fmt.Errorf("failed to decode outpoint for domain %s", domain)
 	}
 
-	// Look up p2pkh address from the outpoint's events
-	events, err := l.store.SMembers(ctx, outpointEventsKey(outpoint))
-	if err != nil {
-		return nil, fmt.Errorf("failed to load events for outpoint %s: %w", outpoint.OrdinalString(), err)
-	}
-
-	for _, evt := range events {
-		evtStr := string(evt)
-		if strings.HasPrefix(evtStr, "p2pkh:") {
-			return &OwnerResult{
-				Outpoint: outpoint,
-				Address:  strings.TrimPrefix(evtStr, "p2pkh:"),
-			}, nil
-		}
-	}
-
-	return nil, nil
+	return outpoint, nil
 }
 
 // MineResult represents the mining status of an OpNS domain.

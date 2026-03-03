@@ -2,7 +2,6 @@ package opns
 
 import (
 	"context"
-	"log/slog"
 
 	"github.com/bitcoin-sv/go-templates/template/opns"
 	"github.com/bsv-blockchain/go-overlay-services/pkg/core/engine"
@@ -31,9 +30,6 @@ func (tm *TopicManager) IdentifyAdmissibleOutputs(ctx context.Context, beef *tra
 		return
 	}
 
-	slog.Debug("Identifying admissible outputs for txid: " + txid.String())
-
-	ancillaryTxids := make(map[string]struct{})
 	for _, vin := range previousCoins {
 		if int(vin) >= len(tx.Inputs) {
 			continue
@@ -49,47 +45,9 @@ func (tm *TopicManager) IdentifyAdmissibleOutputs(ctx context.Context, beef *tra
 
 		if o := opns.Decode(txout.LockingScript); o != nil || txin.SourceTXID.IsEqual(&opns.GENESIS.Txid) {
 			// This input spends an OpNS contract output or the genesis output
+			// Outputs: 0=left mine, 1=right mine, 2=name ordinal
 			admit.CoinsToRetain = append(admit.CoinsToRetain, vin)
 			admit.OutputsToAdmit = []uint32{0, 1, 2}
-		} else if txout.Satoshis == 1 {
-			// Track ordinals: count satoshis in prior inputs to find the ordinal position
-			satsIn := uint64(0)
-			missingInput := false
-			for _, input := range tx.Inputs[:vin] {
-				sourceTxOut := input.SourceTxOutput()
-				if sourceTxOut == nil {
-					missingInput = true
-					break
-				}
-				satsIn += sourceTxOut.Satoshis
-			}
-			if missingInput {
-				continue
-			}
-
-			// Find the output that receives this ordinal
-			satsOut := uint64(0)
-			for vout, output := range tx.Outputs {
-				if satsOut < satsIn {
-					satsOut += output.Satoshis
-					continue
-				} else if satsOut == satsIn {
-					if output.Satoshis == 0 {
-						continue
-					} else if output.Satoshis == 1 {
-						// Add ancillary txids for all prior inputs
-						for _, input := range tx.Inputs[:vin] {
-							if _, ok := ancillaryTxids[input.SourceTXID.String()]; !ok {
-								ancillaryTxids[input.SourceTXID.String()] = struct{}{}
-								admit.AncillaryTxids = append(admit.AncillaryTxids, input.SourceTXID)
-							}
-						}
-						admit.CoinsToRetain = append(admit.CoinsToRetain, vin)
-						admit.OutputsToAdmit = append(admit.OutputsToAdmit, uint32(vout))
-					}
-				}
-				break
-			}
 		}
 	}
 	return

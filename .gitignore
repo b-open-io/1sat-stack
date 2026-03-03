@@ -4,3 +4,4 @@ server.log
 stack
 .env
 config.yaml
+bin/

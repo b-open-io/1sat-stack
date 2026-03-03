@@ -407,13 +407,6 @@ definitions:
       outpoint:
         $ref: '#/definitions/transaction.Outpoint'
     type: object
-  pkg_opns.OwnerResult:
-    properties:
-      address:
-        type: string
-      outpoint:
-        $ref: '#/definitions/transaction.Outpoint'
-    type: object
   pkg_ordfs.Response:
     properties:
       content:
@@ -443,6 +436,29 @@ definitions:
         type: integer
       count:
         type: integer
+    type: object
+  pkg_paymail.paymentDestinationRequest:
+    properties:
+      satoshis:
+        type: integer
+    type: object
+  pkg_paymail.receiveBeefRequest:
+    properties:
+      beef:
+        type: string
+      metadata:
+        type: string
+      reference:
+        type: string
+    type: object
+  pkg_paymail.receiveTransactionRequest:
+    properties:
+      hex:
+        type: string
+      metadata:
+        type: string
+      reference:
+        type: string
     type: object
   pkg_txo.IndexedOutputResponse:
     description: Transaction output with indexing metadata
@@ -501,6 +517,25 @@ info:
   title: 1Sat Stack API
   version: "1.0"
 paths:
+  /.well-known/bsvalias:
+    get:
+      description: Returns the .well-known/bsvalias capability document listing supported
+        paymail features
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            properties:
+              bsvalias:
+                type: string
+              capabilities:
+                type: object
+            type: object
+      summary: BSV alias capability discovery
+      tags:
+      - paymail
   /admin/blacklist:
     get:
       description: Returns the list of blacklisted topics
@@ -2060,45 +2095,6 @@ paths:
       summary: Get domain mining status
       tags:
       - opns
-  /opns/owner/{name}:
-    get:
-      parameters:
-      - description: Domain name
-        in: path
-        name: name
-        required: true
-        type: string
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            $ref: '#/definitions/pkg_opns.OwnerResult'
-        "400":
-          description: Bad Request
-          schema:
-            properties:
-              error:
-                type: string
-            type: object
-        "404":
-          description: Not Found
-          schema:
-            properties:
-              error:
-                type: string
-            type: object
-        "500":
-          description: Internal Server Error
-          schema:
-            properties:
-              error:
-                type: string
-            type: object
-      summary: Get domain owner
-      tags:
-      - opns
   /ordfs/metadata/{path}:
     get:
       description: Get metadata about inscription content without downloading the
@@ -2895,6 +2891,228 @@ paths:
       summary: Get TXOs by transaction ID
       tags:
       - txos
+  /v1/bsvalias/id/{paymail}:
+    get:
+      description: Returns the identity public key for a paymail address
+      parameters:
+      - description: Paymail address (alias@domain)
+        in: path
+        name: paymail
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            properties:
+              bsvalias:
+                type: string
+              handle:
+                type: string
+              pubkey:
+                type: string
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            properties:
+              error:
+                type: string
+            type: object
+        "404":
+          description: Not Found
+          schema:
+            properties:
+              error:
+                type: string
+            type: object
+      summary: Get public key for paymail address
+      tags:
+      - paymail
+  /v1/bsvalias/p2p-payment-destination/{paymail}:
+    post:
+      consumes:
+      - application/json
+      description: Generates a BRC-29 payment destination with output script and reference
+      parameters:
+      - description: Paymail address (alias@domain)
+        in: path
+        name: paymail
+        required: true
+        type: string
+      - description: Payment request
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/pkg_paymail.paymentDestinationRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            properties:
+              outputs:
+                items:
+                  properties:
+                    satoshis:
+                      type: integer
+                    script:
+                      type: string
+                  type: object
+                type: array
+              reference:
+                type: string
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            properties:
+              error:
+                type: string
+            type: object
+        "404":
+          description: Not Found
+          schema:
+            properties:
+              error:
+                type: string
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            properties:
+              error:
+                type: string
+            type: object
+      summary: Get P2P payment destination
+      tags:
+      - paymail
+  /v1/bsvalias/receive-beef/{paymail}:
+    post:
+      consumes:
+      - application/json
+      description: Receives a BEEF-encoded transaction payment, verifies it, broadcasts
+        via Arcade, and internalizes into wallet
+      parameters:
+      - description: Paymail address (alias@domain)
+        in: path
+        name: paymail
+        required: true
+        type: string
+      - description: BEEF payment
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/pkg_paymail.receiveBeefRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            properties:
+              note:
+                type: string
+              txid:
+                type: string
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            properties:
+              error:
+                type: string
+            type: object
+        "404":
+          description: Not Found
+          schema:
+            properties:
+              error:
+                type: string
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            properties:
+              error:
+                type: string
+            type: object
+        "502":
+          description: Bad Gateway
+          schema:
+            properties:
+              error:
+                type: string
+            type: object
+      summary: Receive BEEF payment
+      tags:
+      - paymail
+  /v1/bsvalias/receive-transaction/{paymail}:
+    post:
+      consumes:
+      - application/json
+      description: Receives a raw hex transaction payment, verifies it, broadcasts
+        via Arcade, and internalizes into wallet
+      parameters:
+      - description: Paymail address (alias@domain)
+        in: path
+        name: paymail
+        required: true
+        type: string
+      - description: Transaction payment
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/pkg_paymail.receiveTransactionRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            properties:
+              note:
+                type: string
+              txid:
+                type: string
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            properties:
+              error:
+                type: string
+            type: object
+        "404":
+          description: Not Found
+          schema:
+            properties:
+              error:
+                type: string
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            properties:
+              error:
+                type: string
+            type: object
+        "502":
+          description: Bad Gateway
+          schema:
+            properties:
+              error:
+                type: string
+            type: object
+      summary: Receive raw transaction payment
+      tags:
+      - paymail
 securityDefinitions:
   BearerAuth:
     description: Enter "Bearer {token}" (with quotes around the full value)
@@ -2929,3 +3147,5 @@ tags:
   name: admin
 - description: Overlay admin endpoints (requires auth)
   name: overlay-admin
+- description: BSV paymail protocol endpoints (BRC-29)
+  name: paymail

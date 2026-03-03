@@ -1,0 +1,412 @@
+package paymail
+
+import (
+	"encoding/base64"
+	"encoding/hex"
+	"fmt"
+	"log/slog"
+	"strings"
+
+	"github.com/bsv-blockchain/arcade/models"
+	ec "github.com/bsv-blockchain/go-sdk/primitives/ec"
+	"github.com/bsv-blockchain/go-sdk/transaction"
+	"github.com/bsv-blockchain/go-sdk/wallet"
+	"github.com/gofiber/fiber/v2"
+)
+
+// Routes provides HTTP handlers for paymail endpoints.
+type Routes struct {
+	service *Service
+	logger  *slog.Logger
+}
+
+// NewRoutes creates a new Routes instance.
+func NewRoutes(service *Service, logger *slog.Logger) *Routes {
+	if logger == nil {
+		logger = slog.Default()
+	}
+	return &Routes{
+		service: service,
+		logger:  logger,
+	}
+}
+
+// Register registers paymail routes with the Fiber router.
+func (r *Routes) Register(router fiber.Router) {
+	router.Get("/id/:paymail", r.PKI)
+	router.Post("/p2p-payment-destination/:paymail", r.PaymentDestination)
+	router.Post("/receive-beef/:paymail", r.ReceiveBeef)
+	router.Post("/receive-transaction/:paymail", r.ReceiveTransaction)
+}
+
+// RegisterWellKnown registers the /.well-known/bsvalias capability discovery endpoint.
+func (r *Routes) RegisterWellKnown(app *fiber.App) {
+	app.Get("/.well-known/bsvalias", r.Capabilities)
+}
+
+// parsePaymail splits "alias@domain" and returns the alias portion.
+func parsePaymail(paymailAddr string) (alias string, domain string, err error) {
+	parts := strings.SplitN(paymailAddr, "@", 2)
+	if len(parts) != 2 || parts[0] == "" || parts[1] == "" {
+		return "", "", fmt.Errorf("invalid paymail address: %s", paymailAddr)
+	}
+	return parts[0], parts[1], nil
+}
+
+// Capabilities returns the BSV alias capability discovery document.
+// @Summary BSV alias capability discovery
+// @Description Returns the .well-known/bsvalias capability document listing supported paymail features
+// @Tags paymail
+// @Produce json
+// @Success 200 {object} object{bsvalias=string,capabilities=object}
+// @Router /.well-known/bsvalias [get]
+func (r *Routes) Capabilities(c *fiber.Ctx) error {
+	host := c.Hostname()
+	scheme := c.Protocol()
+	baseURL := fmt.Sprintf("%s://%s", scheme, host)
+
+	return c.JSON(fiber.Map{
+		"bsvalias": "1.0",
+		"capabilities": fiber.Map{
+			"6745385c3fc0": false,
+			"pki":          baseURL + "/v1/bsvalias/id/{alias}@{domain.tld}",
+			"2a40af698840": baseURL + "/v1/bsvalias/p2p-payment-destination/{alias}@{domain.tld}",
+			"5c55a7fdb7bb": baseURL + "/v1/bsvalias/receive-beef/{alias}@{domain.tld}",
+			"5f1323cddf31": baseURL + "/v1/bsvalias/receive-transaction/{alias}@{domain.tld}",
+		},
+	})
+}
+
+// PKI returns the public key infrastructure response for a paymail address.
+// @Summary Get public key for paymail address
+// @Description Returns the identity public key for a paymail address
+// @Tags paymail
+// @Produce json
+// @Param paymail path string true "Paymail address (alias@domain)"
+// @Success 200 {object} object{bsvalias=string,handle=string,pubkey=string}
+// @Failure 400 {object} object{error=string}
+// @Failure 404 {object} object{error=string}
+// @Router /v1/bsvalias/id/{paymail} [get]
+func (r *Routes) PKI(c *fiber.Ctx) error {
+	paymailAddr := c.Params("paymail")
+	alias, _, err := parsePaymail(paymailAddr)
+	if err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": err.Error()})
+	}
+
+	// Resolve identity key for the alias
+	identityKey, err := r.service.ResolveIdentityKey(c.Context(), alias)
+	if err != nil {
+		r.logger.Warn("PKI lookup failed", "alias", alias, "error", err)
+		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "paymail not found"})
+	}
+
+	return c.JSON(fiber.Map{
+		"bsvalias": "1.0",
+		"handle":   paymailAddr,
+		"pubkey":   identityKey.ToDERHex(),
+	})
+}
+
+// paymentDestinationRequest is the JSON body for the destinations endpoint.
+type paymentDestinationRequest struct {
+	Satoshis uint64 `json:"satoshis"`
+}
+
+// PaymentDestination generates a BRC-29 payment destination for a paymail address.
+// @Summary Get P2P payment destination
+// @Description Generates a BRC-29 payment destination with output script and reference
+// @Tags paymail
+// @Accept json
+// @Produce json
+// @Param paymail path string true "Paymail address (alias@domain)"
+// @Param body body paymentDestinationRequest true "Payment request"
+// @Success 200 {object} object{reference=string,outputs=[]object{satoshis=int,script=string}}
+// @Failure 400 {object} object{error=string}
+// @Failure 404 {object} object{error=string}
+// @Failure 500 {object} object{error=string}
+// @Router /v1/bsvalias/p2p-payment-destination/{paymail} [post]
+func (r *Routes) PaymentDestination(c *fiber.Ctx) error {
+	paymailAddr := c.Params("paymail")
+	alias, _, err := parsePaymail(paymailAddr)
+	if err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": err.Error()})
+	}
+
+	var req paymentDestinationRequest
+	if err := c.BodyParser(&req); err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid request body"})
+	}
+
+	identityKey, err := r.service.ResolveIdentityKey(c.Context(), alias)
+	if err != nil {
+		r.logger.Warn("payment destination lookup failed", "alias", alias, "error", err)
+		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "paymail not found"})
+	}
+
+	pending, err := r.service.DerivePaymentDestination(identityKey, req.Satoshis)
+	if err != nil {
+		r.logger.Error("failed to derive payment destination", "alias", alias, "error", err)
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "derivation failed"})
+	}
+
+	return c.JSON(fiber.Map{
+		"reference": pending.Reference,
+		"outputs": []fiber.Map{
+			{
+				"satoshis": pending.Satoshis,
+				"script":   pending.OutputScript,
+			},
+		},
+	})
+}
+
+// receiveBeefRequest is the JSON body for the receive-beef endpoint.
+type receiveBeefRequest struct {
+	Beef      string `json:"beef"`
+	Reference string `json:"reference"`
+	Metadata  string `json:"metadata,omitempty"`
+}
+
+// ReceiveBeef processes an incoming BEEF transaction payment.
+// @Summary Receive BEEF payment
+// @Description Receives a BEEF-encoded transaction payment, verifies it, broadcasts via Arcade, and internalizes into wallet
+// @Tags paymail
+// @Accept json
+// @Produce json
+// @Param paymail path string true "Paymail address (alias@domain)"
+// @Param body body receiveBeefRequest true "BEEF payment"
+// @Success 200 {object} object{txid=string,note=string}
+// @Failure 400 {object} object{error=string}
+// @Failure 404 {object} object{error=string}
+// @Failure 500 {object} object{error=string}
+// @Failure 502 {object} object{error=string}
+// @Router /v1/bsvalias/receive-beef/{paymail} [post]
+func (r *Routes) ReceiveBeef(c *fiber.Ctx) error {
+	paymailAddr := c.Params("paymail")
+	alias, _, err := parsePaymail(paymailAddr)
+	if err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": err.Error()})
+	}
+
+	var req receiveBeefRequest
+	if err := c.BodyParser(&req); err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid request body"})
+	}
+
+	if req.Reference == "" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "missing reference"})
+	}
+
+	// Look up pending payment
+	pending := r.service.Store().Get(req.Reference)
+	if pending == nil {
+		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "destination not found or expired"})
+	}
+
+	// Parse BEEF
+	beefBytes, err := hex.DecodeString(req.Beef)
+	if err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid beef hex"})
+	}
+
+	_, tx, txid, err := transaction.ParseBeef(beefBytes)
+	if err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": fmt.Sprintf("invalid BEEF: %v", err)})
+	}
+
+	// Verify payment: find the output matching our expected script and amount
+	outputIndex, err := verifyPayment(tx, pending)
+	if err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": err.Error()})
+	}
+
+	// Broadcast through Arcade synchronously — sender gets immediate feedback
+	status, err := r.service.Arcade().SubmitTransaction(c.Context(), beefBytes, nil)
+	if err != nil {
+		r.logger.Error("arcade broadcast failed", "alias", alias, "error", err)
+		return c.Status(fiber.StatusBadGateway).JSON(fiber.Map{"error": fmt.Sprintf("broadcast failed: %v", err)})
+	}
+	if status != nil && status.Status == models.StatusRejected {
+		r.logger.Warn("arcade rejected transaction", "alias", alias, "extraInfo", status.ExtraInfo)
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "transaction rejected by network"})
+	}
+
+	// Internalize the payment into the wallet
+	err = r.internalizePayment(c, alias, beefBytes, uint32(outputIndex), pending)
+	if err != nil {
+		r.logger.Error("failed to internalize payment", "alias", alias, "txid", txid.String(), "error", err)
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to process payment"})
+	}
+
+	// Clean up the pending payment
+	r.service.Store().Delete(req.Reference)
+
+	return c.JSON(fiber.Map{
+		"txid": txid.String(),
+		"note": "Payment received and internalized",
+	})
+}
+
+// receiveTransactionRequest is the JSON body for the receive-transaction endpoint.
+type receiveTransactionRequest struct {
+	Hex       string `json:"hex"`
+	Reference string `json:"reference"`
+	Metadata  string `json:"metadata,omitempty"`
+}
+
+// ReceiveTransaction processes an incoming raw transaction payment.
+// @Summary Receive raw transaction payment
+// @Description Receives a raw hex transaction payment, verifies it, broadcasts via Arcade, and internalizes into wallet
+// @Tags paymail
+// @Accept json
+// @Produce json
+// @Param paymail path string true "Paymail address (alias@domain)"
+// @Param body body receiveTransactionRequest true "Transaction payment"
+// @Success 200 {object} object{txid=string,note=string}
+// @Failure 400 {object} object{error=string}
+// @Failure 404 {object} object{error=string}
+// @Failure 500 {object} object{error=string}
+// @Failure 502 {object} object{error=string}
+// @Router /v1/bsvalias/receive-transaction/{paymail} [post]
+func (r *Routes) ReceiveTransaction(c *fiber.Ctx) error {
+	paymailAddr := c.Params("paymail")
+	alias, _, err := parsePaymail(paymailAddr)
+	if err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": err.Error()})
+	}
+
+	var req receiveTransactionRequest
+	if err := c.BodyParser(&req); err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid request body"})
+	}
+
+	if req.Reference == "" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "missing reference"})
+	}
+
+	// Look up pending payment
+	pending := r.service.Store().Get(req.Reference)
+	if pending == nil {
+		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "destination not found or expired"})
+	}
+
+	// Parse raw transaction
+	tx, err := transaction.NewTransactionFromHex(req.Hex)
+	if err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid transaction hex"})
+	}
+
+	// Verify payment
+	outputIndex, err := verifyPayment(tx, pending)
+	if err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": err.Error()})
+	}
+
+	// Broadcast through Arcade synchronously
+	txBytes := tx.Bytes()
+	status, err := r.service.Arcade().SubmitTransaction(c.Context(), txBytes, nil)
+	if err != nil {
+		r.logger.Error("arcade broadcast failed", "alias", alias, "error", err)
+		return c.Status(fiber.StatusBadGateway).JSON(fiber.Map{"error": fmt.Sprintf("broadcast failed: %v", err)})
+	}
+	if status != nil && status.Status == models.StatusRejected {
+		r.logger.Warn("arcade rejected transaction", "alias", alias, "extraInfo", status.ExtraInfo)
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "transaction rejected by network"})
+	}
+
+	// Internalize the payment into the wallet
+	err = r.internalizePayment(c, alias, txBytes, uint32(outputIndex), pending)
+	if err != nil {
+		r.logger.Error("failed to internalize raw tx payment", "alias", alias, "error", err)
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to process payment"})
+	}
+
+	// Clean up
+	r.service.Store().Delete(req.Reference)
+
+	txid := tx.TxID()
+	return c.JSON(fiber.Map{
+		"txid": txid.String(),
+		"note": "Payment received and internalized",
+	})
+}
+
+// verifyPayment checks that the transaction contains an output matching the pending payment.
+func verifyPayment(tx *transaction.Transaction, pending *PendingPayment) (int, error) {
+	for i, output := range tx.Outputs {
+		scriptHex := hex.EncodeToString(*output.LockingScript)
+		if scriptHex == pending.OutputScript {
+			if output.Satoshis == pending.Satoshis || pending.Satoshis == 0 {
+				return i, nil
+			}
+		}
+	}
+	return -1, fmt.Errorf("no output matches the expected payment destination")
+}
+
+// internalizePayment calls InternalizeAction on the wallet to record the payment.
+func (r *Routes) internalizePayment(
+	c *fiber.Ctx,
+	alias string,
+	beefBytes []byte,
+	outputIndex uint32,
+	pending *PendingPayment,
+) error {
+	// Decode derivation prefix/suffix from base64 to bytes
+	prefixBytes, err := base64.StdEncoding.DecodeString(pending.DerivationPrefix)
+	if err != nil {
+		return fmt.Errorf("invalid derivation prefix: %w", err)
+	}
+	suffixBytes, err := base64.StdEncoding.DecodeString(pending.DerivationSuffix)
+	if err != nil {
+		return fmt.Errorf("invalid derivation suffix: %w", err)
+	}
+
+	// The sender identity key is the anyone key (since BRC-29 uses anyone counterparty)
+	senderIdentityKey := r.service.AnyoneDeriverIdentityKey()
+
+	// Decode the recipient's identity key
+	identityKeyBytes, err := hex.DecodeString(pending.IdentityPubKey)
+	if err != nil {
+		return fmt.Errorf("invalid identity key: %w", err)
+	}
+	identityPubKey, err := ec.PublicKeyFromBytes(identityKeyBytes)
+	if err != nil {
+		return fmt.Errorf("invalid identity public key: %w", err)
+	}
+
+	_ = identityPubKey // The wallet knows its own identity key
+
+	args := wallet.InternalizeActionArgs{
+		Tx:          beefBytes,
+		Description: fmt.Sprintf("Paymail payment to %s", alias),
+		Labels:      []string{"paymail", "incoming"},
+		Outputs: []wallet.InternalizeOutput{
+			{
+				OutputIndex: outputIndex,
+				Protocol:    wallet.InternalizeProtocolWalletPayment,
+				PaymentRemittance: &wallet.Payment{
+					DerivationPrefix:  prefixBytes,
+					DerivationSuffix:  suffixBytes,
+					SenderIdentityKey: senderIdentityKey,
+				},
+			},
+		},
+	}
+
+	result, err := r.service.Wallet().InternalizeAction(c.Context(), args, "paymail")
+	if err != nil {
+		return fmt.Errorf("InternalizeAction failed: %w", err)
+	}
+	if !result.Accepted {
+		return fmt.Errorf("wallet rejected the payment")
+	}
+
+	r.logger.Info("payment internalized",
+		"alias", alias,
+		"satoshis", pending.Satoshis,
+		"outputIndex", outputIndex,
+	)
+	return nil
+}
