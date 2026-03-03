@@ -682,6 +682,25 @@ func (c *Config) Initialize(ctx context.Context, logger *slog.Logger) (*Services
 		if svc.BSV21 != nil {
 			adminDeps.BSV21Sync = svc.BSV21.Sync
 		}
+		// Wire OpNS crawl trigger if dependencies are available
+		if svc.OPNS != nil && svc.Beef != nil && svc.Overlay != nil {
+			adminDeps.TriggerOpnsCrawl = func(triggerCtx context.Context) error {
+				if svc.OPNS.Crawl != nil {
+					return fmt.Errorf("crawl already running")
+				}
+				crawlCfg := c.OPNS.Crawl
+				crawlCfg.Enabled = true
+				crawlCfg.JungleBusURL = c.JungleBus.URL
+				svc.OPNS.Crawl = opns.NewGenesisCrawl(crawlCfg, svc.Beef.Storage, svc.Overlay, logger)
+				go func() {
+					if err := svc.OPNS.Crawl.Start(ctx); err != nil {
+						logger.Error("OpNS crawl error", "error", err)
+					}
+					svc.OPNS.Crawl = nil
+				}()
+				return nil
+			}
+		}
 		adminSvc, err := c.Admin.Initialize(ctx, logger, adminDeps)
 		if err != nil {
 			return nil, fmt.Errorf("failed to initialize admin: %w", err)

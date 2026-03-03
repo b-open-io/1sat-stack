@@ -34,11 +34,16 @@ type Services struct {
 	Routes *Routes
 }
 
+// OpnsCrawlFunc is a callback to trigger the OpNS genesis crawl.
+// Returns nil if already running or started successfully.
+type OpnsCrawlFunc func(ctx context.Context) error
+
 // InitializeDeps holds dependencies for admin initialization
 type InitializeDeps struct {
-	Overlay   *overlay.Services
-	Store     store.Store
-	BSV21Sync *bsv21.SyncServices
+	Overlay       *overlay.Services
+	Store         store.Store
+	BSV21Sync     *bsv21.SyncServices
+	TriggerOpnsCrawl OpnsCrawlFunc
 }
 
 // SetDefaults sets default configuration values
@@ -62,7 +67,7 @@ func (c *Config) Initialize(ctx context.Context, logger *slog.Logger, deps *Init
 
 	// Create routes if enabled
 	if c.Routes.Enabled && deps.Store != nil {
-		svc.Routes = NewRoutes(deps.Overlay, deps.Store, deps.BSV21Sync, &c.Routes, logger)
+		svc.Routes = NewRoutes(deps.Overlay, deps.Store, deps.BSV21Sync, deps.TriggerOpnsCrawl, &c.Routes, logger)
 	}
 
 	logger.Info("admin service initialized", "mode", c.Mode)

@@ -8,6 +8,7 @@ import Topics from "./sections/Topics";
 import Lookups from "./sections/Lookups";
 import ZSetLookup from "./sections/ZSetLookup";
 import Progress from "./sections/Progress";
+import OpNS from "./sections/OpNS";
 import SetupWizard from "./sections/SetupWizard";
 import "./styles.css";
 
@@ -133,6 +134,7 @@ export default function App() {
           <Topics showToast={showToast} />
           <Lookups showToast={showToast} />
           <ZSetLookup showToast={showToast} />
+          <OpNS showToast={showToast} identityKey={identityKey} />
           <Progress showToast={showToast} />
         </div>
       )}

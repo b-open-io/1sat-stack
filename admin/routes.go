@@ -23,11 +23,12 @@ var uiFS embed.FS
 
 // Routes handles admin HTTP routes
 type Routes struct {
-	overlay   *overlay.Services
-	store     store.Store
-	bsv21Sync *bsv21.SyncServices
-	config    *RoutesConfig
-	logger    *slog.Logger
+	overlay          *overlay.Services
+	store            store.Store
+	bsv21Sync        *bsv21.SyncServices
+	triggerOpnsCrawl OpnsCrawlFunc
+	config           *RoutesConfig
+	logger           *slog.Logger
 }
 
 // TopicRequest is the request body for adding a token/topic to whitelist or blacklist
@@ -41,13 +42,14 @@ type UpdateProgressRequest struct {
 }
 
 // NewRoutes creates a new Routes instance
-func NewRoutes(overlaySvc *overlay.Services, s store.Store, bsv21Sync *bsv21.SyncServices, cfg *RoutesConfig, logger *slog.Logger) *Routes {
+func NewRoutes(overlaySvc *overlay.Services, s store.Store, bsv21Sync *bsv21.SyncServices, triggerCrawl OpnsCrawlFunc, cfg *RoutesConfig, logger *slog.Logger) *Routes {
 	return &Routes{
-		overlay:   overlaySvc,
-		store:     s,
-		bsv21Sync: bsv21Sync,
-		config:    cfg,
-		logger:    logger,
+		overlay:          overlaySvc,
+		store:            s,
+		bsv21Sync:        bsv21Sync,
+		triggerOpnsCrawl: triggerCrawl,
+		config:           cfg,
+		logger:           logger,
 	}
 }
 
@@ -81,6 +83,8 @@ func (r *Routes) Register(guardedGroup fiber.Router, publicGroup fiber.Router, s
 	guardedGroup.Delete("/progress/:id", r.handleDeleteProgress)
 
 	guardedGroup.Get("/bsv21/workers", r.handleGetBSV21Workers)
+
+	guardedGroup.Post("/opns/crawl", r.handleTriggerOpnsCrawl)
 
 	dataRoutes := NewDataRoutes(r.store, r.logger)
 	dataRoutes.Register(guardedGroup.Group("/data"))
@@ -717,5 +721,25 @@ func (r *Routes) handleSetup(c *fiber.Ctx) error {
 	r.logger.Info("admin setup complete", "pubkey", string(pubkey))
 	return c.JSON(fiber.Map{
 		"message": "admin configured",
+	})
+}
+
+// handleTriggerOpnsCrawl triggers the OpNS genesis crawl.
+func (r *Routes) handleTriggerOpnsCrawl(c *fiber.Ctx) error {
+	if r.triggerOpnsCrawl == nil {
+		return c.Status(fiber.StatusServiceUnavailable).JSON(fiber.Map{
+			"error": "OpNS crawl not available — ensure opns and beef services are enabled",
+		})
+	}
+
+	if err := r.triggerOpnsCrawl(c.Context()); err != nil {
+		r.logger.Error("failed to trigger OpNS crawl", "error", err)
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"error": err.Error(),
+		})
+	}
+
+	return c.JSON(fiber.Map{
+		"message": "OpNS crawl started",
 	})
 }
