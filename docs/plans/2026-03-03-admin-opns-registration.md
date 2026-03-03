@@ -1,64 +1,80 @@
-# Admin UI: OpNS Name Publishing + Registration
+# OpNS Name Publishing: SDK + Server Changes
 
 ## Context
 
-The admin UI is a React + TypeScript SPA (Vite build, Go `embed.FS` at `/1sat/admin/`) with BRC-103/104 wallet authentication via Yours Wallet (`window.CWI`). It has a first-run SetupWizard, API key fallback for dev/agent access, and sections for managing overlays, tokens, and sync progress.
+The admin UI is a React + TypeScript SPA with BRC-103/104 wallet auth and API key fallback. The 1sat-sdk has `opnsRegister`/`opnsDeregister` actions for publishing names. The server has paymail, OpNS overlay, and OrdFS services.
 
-The 1sat-sdk has `opnsRegister`/`opnsDeregister` actions that publish OpNS names by binding an identity key via MAP metadata (`opns.idKey`). Once published, the server's paymail plugin can receive payments for that name.
+Before we can publish OpNS names from the admin UI, we need consistent ordinal handling across the SDK and server. Currently, the SDK's sweep and transfer actions hardcode all ordinals into the `1sat` basket regardless of content type, and the paymail receive endpoint treats all incoming outputs as wallet payments.
 
-## Goals
+## Work Items
 
-1. **Publish OpNS names** from the admin UI using the SDK's `opnsRegister` action via CWI
-2. **Trigger OpNS genesis crawl** on demand (one-time sync, not config-driven)
-3. **Eventually: OpNS mining** as a paid service (server-side PoW)
+### 1. SDK: Content-type-aware basket routing in `sweepOrdinals`
 
-## Current State
+**File:** `1sat-sdk/packages/actions/src/sweep/index.ts`
 
-### Implemented
-- React admin UI with 8 sections (Whitelist, Blacklist, Workers, Topics, Lookups, ZSetLookup, Progress, OpNS)
-- BRC-103/104 auth via `pkg/auth/` with go-bsv-middleware + Yours Wallet
-- API key fallback (`X-Api-Key` header) for dev/agent access
-- SetupWizard for first admin identity enrollment
-- OpNS section skeleton with:
-  - Crawl trigger button (`POST /admin/api/opns/crawl`)
-  - Discover My Names button (placeholder — calls CWI `listOutputs`)
-  - Publish button per name (placeholder — not yet wired to SDK action)
-- SDK dependencies installed (`@1sat/actions`, `@1sat/types`, `@bsv/sdk`)
+Currently hardcodes `basket: ORDINALS_BASKET` (`'1sat'`) for all ordinals (line 453). The caller already provides `contentType`, `origin`, and `name` per input.
 
-### Open Questions (to work through iteratively)
+Changes:
+- Reject `application/bsv-20` inputs with an error (sweeping tokens through ordinal path burns them)
+- Route `application/op-ns` to basket `opns`
+- Default to basket `1sat` for everything else
+- Extensible — easy to add more content-type routings later
 
-- **Name discovery**: How to find which OpNS names the connected wallet owns. The overlay doesn't track current ownership. Options: wallet `listOutputs`, 1sat indexer owner endpoint, or a combination.
-- **BEEF sourcing**: The `opnsRegister` action needs `inputBEEF` for the ordinal. Does this come from `listOutputs` with `include: 'entire transactions'`, or from the server's BEEF storage?
-- **Action context**: The SDK action needs `OneSatContext` with `.wallet` (CWI) and `.services` (overlay client). Need to build a bridge from CWI to this context.
-- **Mining**: Server-side PoW registration as a paid service. Requires OpNS contract unlocking via go-templates, wallet funding, and overlay submission. Deferred until publish flow works.
+### 2. SDK: Content-type guard in `buildTransferOrdinals`
 
-## Architecture
+**File:** `1sat-sdk/packages/actions/src/ordinals/index.ts`
 
-### Auth
-- **Wallet auth**: BRC-103/104 mutual authentication via go-bsv-middleware. Yours Wallet extension provides identity. Session-based (shared SessionManager).
-- **API key**: `X-Api-Key` header bypasses wallet auth. For dev/agent access. Configured via `auth.api_key` or `ONESAT_AUTH_API_KEY` env var.
-- **Admin guard**: Checks identity against `s:admin:pubkeys` store set. API key auth bypasses the guard.
+Currently hardcodes `basket: ORDINALS_BASKET` (line 293). Source output tags include `type:{contentType}`.
 
-### Admin UI
-- React 19 + TypeScript + Vite, built to `admin/ui/dist/`, embedded in Go binary
-- `window.CWI` for wallet interaction (extension-only for now)
-- `AuthFetch` from `@bsv/sdk` for signed API requests
-- Section components follow a consistent pattern: `showToast` prop, `apiFetch` for API calls
+Changes:
+- Reject transfers where source output has `type:application/bsv-20` tag (prevents token burns)
+- Preserve existing basket from source output rather than hardcoding (if source was in `opns` basket, keep it there)
+- Note: this requires the source `WalletOutput` to carry basket info — need to verify what `listOutputs` returns
 
-### OpNS Crawl
-- `pkg/opns/crawl.go` — `GenesisCrawl` walks mine tree from genesis via JungleBus
-- Triggered via `POST /admin/api/opns/crawl` (admin guard required)
-- Creates crawl on demand if not already running, starts in background goroutine
+### 3. Server: Ordinal-aware paymail receive
+
+**File:** `1sat-stack/pkg/paymail/routes.go` (`internalizePayment` at line 349)
+
+Currently internalizes everything as `InternalizeProtocolWalletPayment`. The paymail service already has `ordfs` and `opns` dependencies wired in.
+
+Changes:
+- Detect 1-sat outputs in the received transaction
+- For 1-sat outputs, look up origin + metadata from OrdFS
+- Route by content type:
+  - `application/op-ns` → `InternalizeProtocolBasketInsertion` with basket `opns`, tags from OrdFS (`origin:`, `type:`, `name:`)
+  - `application/bsv-20` → placeholder/TODO for BSV-21 overlay submission (don't wire yet, just note it)
+  - Other 1-sat → `InternalizeProtocolBasketInsertion` with basket `1sat`, tags from OrdFS
+- `> 1 sat` → existing `wallet payment` path unchanged
+- Use `BasketInsertion` struct from go-sdk (`Basket`, `CustomInstructions`, `Tags`)
+- `customInstructions` still carries BRC-29 derivation info for spending
+
+### 4. SDK: Add `OPNS_BASKET` constant
+
+**File:** `1sat-sdk/packages/types/src/constants.ts`
+
+Add `OPNS_BASKET = 'opns'` alongside existing `ORDINALS_BASKET`, `BSV21_BASKET`, `LOCK_BASKET`.
+
+## Deferred
+
+- **BSV-21 paymail routing** — needs overlay submission, not just basket insertion. Noted in code, wired later.
+- **OpNS name publishing from admin UI** — depends on names being in the wallet with correct baskets first
+- **OpNS mining as a paid service** — server-side PoW, deferred until publish flow works
+- **OrdFS lookup in sweep** — caller is expected to provide metadata; sweep trusts input data
 
 ## Key Files
 
-- `admin/ui/src/sections/OpNS.tsx` — OpNS admin section component
-- `admin/ui/src/api.ts` — API client with AuthFetch
-- `admin/ui/src/App.tsx` — Main app, wallet connection, section grid
-- `admin/routes.go` — Admin API routes + crawl trigger handler
-- `admin/config.go` — Admin deps including `OpnsCrawlFunc` callback
-- `pkg/auth/middleware.go` — BRC-103/104 middleware with API key bypass
-- `pkg/auth/admin.go` — AdminGuard middleware
-- `pkg/opns/crawl.go` — Genesis crawl worker
-- `cmd/server/config.go` — Service wiring
-- `1sat-sdk/packages/actions/src/opns/index.ts` — SDK `opnsRegister` action
+### SDK (1sat-sdk)
+- `packages/actions/src/sweep/index.ts` — sweep ordinals action
+- `packages/actions/src/ordinals/index.ts` — transfer ordinals action
+- `packages/actions/src/opns/index.ts` — opnsRegister/opnsDeregister actions
+- `packages/types/src/constants.ts` — basket/protocol constants
+- `packages/wallet/src/indexers/OpNSIndexer.ts` — wallet indexer (address sync path)
+
+### Server (1sat-stack)
+- `pkg/paymail/routes.go` — paymail receive endpoints + internalizePayment
+- `pkg/paymail/service.go` — paymail service with OrdFS + OpNS dependencies
+- `pkg/ordfs/` — OrdFS client for origin/metadata lookups
+- `pkg/opns/lookup.go` — OpNS overlay lookup service
+
+### Go SDK (go-sdk)
+- `wallet/interfaces.go` — `BasketInsertion`, `InternalizeProtocol`, `InternalizeOutput`

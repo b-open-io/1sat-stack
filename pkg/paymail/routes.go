@@ -3,12 +3,13 @@ package paymail
 import (
 	"encoding/base64"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"log/slog"
 	"strings"
 
+	"github.com/b-open-io/1sat-stack/pkg/ordfs"
 	"github.com/bsv-blockchain/arcade/models"
-	ec "github.com/bsv-blockchain/go-sdk/primitives/ec"
 	"github.com/bsv-blockchain/go-sdk/transaction"
 	"github.com/bsv-blockchain/go-sdk/wallet"
 	"github.com/gofiber/fiber/v2"
@@ -353,7 +354,6 @@ func (r *Routes) internalizePayment(
 	outputIndex uint32,
 	pending *PendingPayment,
 ) error {
-	// Decode derivation prefix/suffix from base64 to bytes
 	prefixBytes, err := base64.StdEncoding.DecodeString(pending.DerivationPrefix)
 	if err != nil {
 		return fmt.Errorf("invalid derivation prefix: %w", err)
@@ -363,26 +363,71 @@ func (r *Routes) internalizePayment(
 		return fmt.Errorf("invalid derivation suffix: %w", err)
 	}
 
-	// The sender identity key is the anyone key (since BRC-29 uses anyone counterparty)
 	senderIdentityKey := r.service.AnyoneDeriverIdentityKey()
-
-	// Decode the recipient's identity key
-	identityKeyBytes, err := hex.DecodeString(pending.IdentityPubKey)
-	if err != nil {
-		return fmt.Errorf("invalid identity key: %w", err)
-	}
-	identityPubKey, err := ec.PublicKeyFromBytes(identityKeyBytes)
-	if err != nil {
-		return fmt.Errorf("invalid identity public key: %w", err)
-	}
-
-	_ = identityPubKey // The wallet knows its own identity key
 
 	args := wallet.InternalizeActionArgs{
 		Tx:          beefBytes,
 		Description: fmt.Sprintf("Paymail payment to %s", alias),
 		Labels:      []string{"paymail", "incoming"},
-		Outputs: []wallet.InternalizeOutput{
+	}
+
+	if pending.Satoshis == 1 {
+		_, tx, _, err := transaction.ParseBeef(beefBytes)
+		if err != nil {
+			return fmt.Errorf("failed to parse BEEF: %w", err)
+		}
+		if int(outputIndex) >= len(tx.Outputs) {
+			return fmt.Errorf("output index %d out of range", outputIndex)
+		}
+
+		contentType, content, _, _ := ordfs.ParseOutputForContent(tx.Outputs[outputIndex])
+
+		basket := "1sat"
+		switch contentType {
+		case "application/op-ns":
+			basket = "opns"
+		case "application/bsv-20":
+			// TODO: BSV-21 tokens need overlay submission, not just basket insertion
+			r.logger.Warn("received BSV-21 token via paymail, treating as generic ordinal",
+				"alias", alias,
+				"outputIndex", outputIndex,
+			)
+		}
+
+		tags := []string{}
+		if contentType != "" {
+			tags = append(tags, "type:"+contentType)
+		}
+		if contentType == "application/op-ns" && content != nil {
+			var nameData struct {
+				Name string `json:"name"`
+			}
+			if json.Unmarshal(content, &nameData) == nil && nameData.Name != "" {
+				tags = append(tags, "name:"+nameData.Name)
+			}
+		}
+
+		args.Outputs = []wallet.InternalizeOutput{
+			{
+				OutputIndex: outputIndex,
+				Protocol:    wallet.InternalizeProtocolBasketInsertion,
+				InsertionRemittance: &wallet.BasketInsertion{
+					Basket: basket,
+					CustomInstructions: fmt.Sprintf(`{"protocolID":[2,"3241645161d8"],"keyID":"%s %s"}`,
+						pending.DerivationPrefix, pending.DerivationSuffix),
+					Tags: tags,
+				},
+			},
+		}
+
+		r.logger.Info("ordinal payment internalized",
+			"alias", alias,
+			"basket", basket,
+			"contentType", contentType,
+			"outputIndex", outputIndex,
+		)
+	} else {
+		args.Outputs = []wallet.InternalizeOutput{
 			{
 				OutputIndex: outputIndex,
 				Protocol:    wallet.InternalizeProtocolWalletPayment,
@@ -392,7 +437,7 @@ func (r *Routes) internalizePayment(
 					SenderIdentityKey: senderIdentityKey,
 				},
 			},
-		},
+		}
 	}
 
 	result, err := r.service.Wallet().InternalizeAction(c.Context(), args, "paymail")
@@ -403,10 +448,12 @@ func (r *Routes) internalizePayment(
 		return fmt.Errorf("wallet rejected the payment")
 	}
 
-	r.logger.Info("payment internalized",
-		"alias", alias,
-		"satoshis", pending.Satoshis,
-		"outputIndex", outputIndex,
-	)
+	if pending.Satoshis != 1 {
+		r.logger.Info("payment internalized",
+			"alias", alias,
+			"satoshis", pending.Satoshis,
+			"outputIndex", outputIndex,
+		)
+	}
 	return nil
 }
