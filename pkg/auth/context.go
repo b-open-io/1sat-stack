@@ -10,6 +10,7 @@ import (
 type contextKey string
 
 const identityContextKey contextKey = "auth.identity"
+const apiKeyAuthContextKey contextKey = "auth.apikey"
 
 // withIdentity stores the authenticated identity in the context.
 func withIdentity(ctx context.Context, identity *ec.PublicKey) context.Context {
@@ -30,7 +31,23 @@ func GetIdentity(c *fiber.Ctx) *ec.PublicKey {
 	return identity
 }
 
-// IsAuthenticated returns true if the Fiber context contains an authenticated identity.
+// withApiKeyAuth stores the API key auth flag in the context.
+func withApiKeyAuth(ctx context.Context) context.Context {
+	return context.WithValue(ctx, apiKeyAuthContextKey, true)
+}
+
+// IsApiKeyAuth returns true if the request was authenticated via API key.
+func IsApiKeyAuth(c *fiber.Ctx) bool {
+	val := c.UserContext().Value(apiKeyAuthContextKey)
+	if val == nil {
+		return false
+	}
+	b, ok := val.(bool)
+	return ok && b
+}
+
+// IsAuthenticated returns true if the Fiber context contains an authenticated identity
+// or was authenticated via API key.
 func IsAuthenticated(c *fiber.Ctx) bool {
-	return GetIdentity(c) != nil
+	return GetIdentity(c) != nil || IsApiKeyAuth(c)
 }

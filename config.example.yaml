@@ -242,6 +242,7 @@ ordfs:
 # Auth middleware - BRC-103/104 mutual authentication
 auth:
   allow_unauthenticated: true  # Allow requests without auth (set false to require auth)
+  # api_key: ""                # ONESAT_AUTH_API_KEY - static key for dev/agent access (bypasses wallet auth)
 
 # Admin API - progress management, diagnostics
 # Admin access is controlled by BRC-103/104 identity pubkeys stored in the DB.

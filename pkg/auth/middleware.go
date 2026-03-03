@@ -18,10 +18,12 @@ import (
 )
 
 // Middleware is a Fiber middleware that performs BRC-103/104 mutual authentication
-// using go-bsv-middleware under the hood.
+// using go-bsv-middleware under the hood. Supports optional API key bypass for
+// development and agent access.
 type Middleware struct {
 	authFactory *middleware.AuthMiddlewareFactory
 	logger      *slog.Logger
+	apiKey      string
 }
 
 // NewMiddleware creates a new auth middleware.
@@ -32,6 +34,7 @@ func NewMiddleware(
 	sessionManager auth.SessionManager,
 	logger *slog.Logger,
 	allowUnauthenticated bool,
+	apiKey string,
 ) *Middleware {
 	if logger == nil {
 		logger = slog.Default()
@@ -46,12 +49,21 @@ func NewMiddleware(
 	return &Middleware{
 		authFactory: authFactory,
 		logger:      logger,
+		apiKey:      apiKey,
 	}
 }
 
 // Handler returns the Fiber handler function.
 func (m *Middleware) Handler() fiber.Handler {
 	return func(c *fiber.Ctx) error {
+		// API key bypass: skip BRC-103/104 if a valid key is provided.
+		if m.apiKey != "" {
+			if key := c.Get("X-Api-Key"); key == m.apiKey {
+				c.SetUserContext(withApiKeyAuth(c.UserContext()))
+				return c.Next()
+			}
+		}
+
 		// Build a net/http request from the Fiber context.
 		httpReq, err := buildHTTPRequest(c)
 		if err != nil {

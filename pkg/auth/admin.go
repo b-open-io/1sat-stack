@@ -12,9 +12,14 @@ import (
 var KeyAdminPubkeys = []byte("s:admin:pubkeys")
 
 // AdminGuard returns a Fiber middleware that restricts access to admin endpoints.
-// It checks the BRC-103/104 identity against the admin pubkey set in the store.
+// It checks the BRC-103/104 identity against the admin pubkey set in the store,
+// or allows through if authenticated via API key.
 func AdminGuard(s store.Store, logger *slog.Logger) fiber.Handler {
 	return func(c *fiber.Ctx) error {
+		if IsApiKeyAuth(c) {
+			return c.Next()
+		}
+
 		identity := GetIdentity(c)
 		if identity == nil {
 			logger.Warn("unauthorized admin access attempt: no identity",

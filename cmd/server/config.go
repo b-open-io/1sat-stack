@@ -716,8 +716,12 @@ func (c *Config) Initialize(ctx context.Context, logger *slog.Logger) (*Services
 			sdkauth.NewSessionManager(),
 			logger,
 			c.Auth.AllowUnauthenticated,
+			c.Auth.ApiKey,
 		)
-		logger.Info("auth middleware initialized", "allowUnauthenticated", c.Auth.AllowUnauthenticated)
+		logger.Info("auth middleware initialized",
+			"allowUnauthenticated", c.Auth.AllowUnauthenticated,
+			"apiKeyConfigured", c.Auth.ApiKey != "",
+		)
 	}
 
 	// Initialize Paymail service (requires wallet + OpNS + ORDFS + Arcade)
