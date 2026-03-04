@@ -54,16 +54,11 @@ export async function getSetupStatus(): Promise<{ configured: boolean }> {
 
 export async function performSetup(): Promise<{ message: string }> {
   const url = SETUP_BASE;
-  console.log("performSetup: url=", url, "authFetch=", authFetch ? "present" : "null");
   let res: Response;
   if (authFetch) {
-    console.log("performSetup: calling authFetch.fetch");
     res = await authFetch.fetch(url, { method: "POST" });
-    console.log("performSetup: authFetch.fetch returned", res.status);
   } else {
-    console.log("performSetup: falling back to plain fetch");
     res = await fetch(url, { method: "POST" });
-    console.log("performSetup: plain fetch returned", res.status);
   }
   if (!res.ok) {
     const data = await res.json().catch(() => ({}));
