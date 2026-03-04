@@ -1,16 +1,36 @@
 import { useState, useCallback } from "react";
-import { apiFetch } from "../api";
 import { toast } from "sonner";
 import { toastError } from "@/lib/utils";
+import { adminServices } from "@/lib/services";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { PrivateKey } from "@bsv/sdk";
+import type { WalletOutput } from "@bsv/sdk";
+import type { IndexedOutput } from "@1sat/types";
+import {
+  sweepOrdinals,
+  prepareSweepInputs,
+  opnsRegister,
+  opnsDeregister,
+  type OneSatContext,
+} from "@1sat/actions";
 
-interface OpnsName {
-  txid: string;
-  vout: number;
+// ============================================================================
+// Types
+// ============================================================================
+
+interface DiscoveredName {
+  outpoint: string;
   name: string;
+  satoshis: number;
+}
+
+interface WalletName {
+  output: WalletOutput;
+  name: string;
+  published: boolean;
 }
 
 interface NameLookupResult {
@@ -29,25 +49,322 @@ interface Props {
   identityKey: string | null;
 }
 
-export default function OpNSPage({ identityKey }: Props) {
-  const [names, setNames] = useState<OpnsName[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [publishing, setPublishing] = useState<string | null>(null);
-  const [crawling, setCrawling] = useState(false);
+// ============================================================================
+// Helpers
+// ============================================================================
 
+function getServerBase(): string {
+  const adminIdx = window.location.pathname.indexOf("/admin");
+  const basePath = adminIdx >= 0 ? window.location.pathname.substring(0, adminIdx) : "";
+  return `${window.location.origin}${basePath}`;
+}
+
+function buildContext(): OneSatContext {
+  const cwi = window.CWI;
+  if (!cwi) throw new Error("No wallet connected");
+  return {
+    wallet: cwi,
+    services: adminServices as any,
+    chain: "main",
+  };
+}
+
+function parseNameFromTags(tags?: string[]): string {
+  if (!tags) return "unknown";
+  const nameTag = tags.find(t => t.startsWith("name:"));
+  if (nameTag) return nameTag.slice(5);
+  const inscTag = tags.find(t => t.startsWith("insc:"));
+  if (inscTag) {
+    try {
+      return JSON.parse(inscTag.slice(5))?.name ?? "unknown";
+    } catch { /* ignore */ }
+  }
+  return "unknown";
+}
+
+function parseNameFromCustomInstructions(ci?: string): string {
+  if (!ci) return "unknown";
+  try {
+    return JSON.parse(ci).name ?? "unknown";
+  } catch {
+    return "unknown";
+  }
+}
+
+function isPublished(tags?: string[]): boolean {
+  return tags?.includes("opns:published") ?? false;
+}
+
+// ============================================================================
+// Component
+// ============================================================================
+
+export default function OpNSPage({ identityKey }: Props) {
+  // Import section state
+  const [wif, setWif] = useState("");
+  const [importAddress, setImportAddress] = useState<string | null>(null);
+  const [discoveredNames, setDiscoveredNames] = useState<DiscoveredName[]>([]);
+  const [syncing, setSyncing] = useState(false);
+  const [syncProgress, setSyncProgress] = useState<string | null>(null);
+  const [sweeping, setSweeping] = useState<string | null>(null);
+
+  // Wallet inventory state
+  const [walletNames, setWalletNames] = useState<WalletName[]>([]);
+  const [loadingWallet, setLoadingWallet] = useState(false);
+  const [publishing, setPublishing] = useState<string | null>(null);
+
+  // Lookup card state
   const [lookupQuery, setLookupQuery] = useState("");
   const [lookupResult, setLookupResult] = useState<NameLookupResult | null>(null);
   const [lookupLoading, setLookupLoading] = useState(false);
 
+  // Mine card state
   const [mineQuery, setMineQuery] = useState("");
   const [mineResult, setMineResult] = useState<MineResult | null>(null);
   const [mineTaken, setMineTaken] = useState(false);
   const [mineLoading, setMineLoading] = useState(false);
 
+  // Crawl state
+  const [crawling, setCrawling] = useState(false);
+
+  // ========== Import from External Wallet ==========
+
+  const discoverExternalNames = useCallback(async () => {
+    if (!wif.trim()) {
+      toastError("Paste a WIF private key");
+      return;
+    }
+
+    setSyncing(true);
+    setSyncProgress("Deriving address...");
+    setDiscoveredNames([]);
+    setImportAddress(null);
+
+    try {
+      const pk = PrivateKey.fromWif(wif.trim());
+      const address = pk.toPublicKey().toAddress();
+      setImportAddress(address);
+
+      // Trigger owner sync via SSE
+      setSyncProgress("Syncing address...");
+      const base = getServerBase();
+      await new Promise<void>((resolve, reject) => {
+        const es = new EventSource(`${base}/owner/${address}/txos?refresh=true&limit=1`);
+        es.onmessage = (ev) => {
+          try {
+            const msg = JSON.parse(ev.data);
+            if (msg.phase === "done" || msg.phase === "error") {
+              es.close();
+              if (msg.phase === "error") {
+                reject(new Error(msg.error || "Sync failed"));
+              } else {
+                resolve();
+              }
+            } else if (msg.phase === "fetch" || msg.phase === "ingest") {
+              setSyncProgress(`${msg.phase}: ${msg.processed ?? 0}/${msg.total ?? "?"}`);
+            }
+          } catch {
+            // Not JSON progress, might be txo data — ignore
+          }
+        };
+        es.onerror = () => {
+          es.close();
+          resolve(); // SSE close on complete is normal
+        };
+      });
+
+      // Search for OPNS names on this address
+      setSyncProgress("Searching for OPNS names...");
+      const searchUrl = new URL(`${base}/txo/search`);
+      searchUrl.searchParams.set("key", `own:${address}`);
+      searchUrl.searchParams.append("key", "type:application/op-ns");
+      searchUrl.searchParams.set("join", "intersect");
+      searchUrl.searchParams.set("unspent", "true");
+      searchUrl.searchParams.set("tags", "insc");
+
+      const res = await fetch(searchUrl.toString());
+      if (!res.ok) throw new Error(`Search failed: ${res.statusText}`);
+
+      const results: IndexedOutput[] = await res.json();
+      const names: DiscoveredName[] = results.map((r) => {
+        let name = "unknown";
+        if (r.data?.insc) {
+          try {
+            const inscData = typeof r.data.insc === "string" ? JSON.parse(r.data.insc) : r.data.insc;
+            name = inscData?.name ?? inscData?.file?.name ?? "unknown";
+          } catch { /* ignore */ }
+        }
+        return {
+          outpoint: r.outpoint,
+          name,
+          satoshis: r.satoshis ?? 1,
+        };
+      });
+
+      setDiscoveredNames(names);
+      setSyncProgress(null);
+      if (names.length === 0) {
+        toast.info("No OPNS names found on this address");
+      } else {
+        toast.success(`Found ${names.length} OPNS name(s)`);
+      }
+    } catch (e: any) {
+      console.error("[OpNS] discover error:", e);
+      toastError(e.message || "Failed to discover names");
+      setSyncProgress(null);
+    } finally {
+      setSyncing(false);
+    }
+  }, [wif]);
+
+  const sweepName = useCallback(async (name: DiscoveredName) => {
+    if (!wif.trim()) {
+      toastError("WIF required for sweep");
+      return;
+    }
+
+    setSweeping(name.outpoint);
+    try {
+      const ctx = buildContext();
+
+      // Prepare sweep input by fetching BEEF and extracting locking script
+      const utxos: IndexedOutput[] = [{
+        outpoint: name.outpoint,
+        score: 0,
+        satoshis: name.satoshis,
+      }];
+      const sweepInputs = await prepareSweepInputs(ctx, utxos);
+
+      // Add metadata for proper basket/tag assignment
+      const result = await sweepOrdinals.execute(ctx, {
+        inputs: sweepInputs.map(si => ({
+          ...si,
+          contentType: "application/op-ns",
+          name: name.name,
+        })),
+        wif: wif.trim(),
+      });
+
+      if (result.error) {
+        throw new Error(result.error);
+      }
+
+      toast.success(`Swept "${name.name}" — txid: ${result.txid?.slice(0, 8)}...`);
+      setDiscoveredNames(prev => prev.filter(n => n.outpoint !== name.outpoint));
+    } catch (e: any) {
+      console.error("[OpNS] sweep error:", e);
+      toastError(e.message || "Sweep failed");
+    } finally {
+      setSweeping(null);
+    }
+  }, [wif]);
+
+  // ========== Wallet Inventory ==========
+
+  const loadWalletNames = useCallback(async () => {
+    setLoadingWallet(true);
+    try {
+      const cwi = window.CWI;
+      if (!cwi) {
+        toastError("No wallet connected");
+        return;
+      }
+
+      const result = await cwi.listOutputs({
+        basket: "opns",
+        include: "entire transactions",
+        includeTags: true,
+        includeCustomInstructions: true,
+      });
+
+      const names: WalletName[] = (result.outputs ?? []).map((o: WalletOutput) => ({
+        output: o,
+        name: parseNameFromCustomInstructions(o.customInstructions) !== "unknown"
+          ? parseNameFromCustomInstructions(o.customInstructions)
+          : parseNameFromTags(o.tags),
+        published: isPublished(o.tags),
+      }));
+
+      setWalletNames(names);
+      if (names.length === 0) {
+        toast.info("No OPNS names in wallet");
+      }
+    } catch (e: any) {
+      console.error("[OpNS] loadWalletNames error:", e);
+      toastError(e.message || "Failed to load wallet names");
+    } finally {
+      setLoadingWallet(false);
+    }
+  }, []);
+
+  const publishName = useCallback(async (wn: WalletName) => {
+    setPublishing(wn.output.outpoint);
+    try {
+      const ctx = buildContext();
+      const cwi = window.CWI;
+      if (!cwi) throw new Error("No wallet connected");
+
+      const listResult = await cwi.listOutputs({
+        basket: "opns",
+        include: "entire transactions",
+        includeTags: true,
+        includeCustomInstructions: true,
+      });
+
+      const result = await opnsRegister.execute(ctx, {
+        ordinal: wn.output,
+        inputBEEF: listResult.BEEF ? Array.from(listResult.BEEF) : [],
+      });
+
+      if (result.error) throw new Error(result.error);
+      toast.success(`Published "${wn.name}" — txid: ${result.txid?.slice(0, 8)}...`);
+      await loadWalletNames();
+    } catch (e: any) {
+      console.error("[OpNS] publish error:", e);
+      toastError(e.message || "Publish failed");
+    } finally {
+      setPublishing(null);
+    }
+  }, [loadWalletNames]);
+
+  const unpublishName = useCallback(async (wn: WalletName) => {
+    setPublishing(wn.output.outpoint);
+    try {
+      const ctx = buildContext();
+      const cwi = window.CWI;
+      if (!cwi) throw new Error("No wallet connected");
+
+      const listResult = await cwi.listOutputs({
+        basket: "opns",
+        include: "entire transactions",
+        includeTags: true,
+        includeCustomInstructions: true,
+      });
+
+      const result = await opnsDeregister.execute(ctx, {
+        ordinal: wn.output,
+        inputBEEF: listResult.BEEF ? Array.from(listResult.BEEF) : [],
+      });
+
+      if (result.error) throw new Error(result.error);
+      toast.success(`Unpublished "${wn.name}" — txid: ${result.txid?.slice(0, 8)}...`);
+      await loadWalletNames();
+    } catch (e: any) {
+      console.error("[OpNS] unpublish error:", e);
+      toastError(e.message || "Unpublish failed");
+    } finally {
+      setPublishing(null);
+    }
+  }, [loadWalletNames]);
+
+  // ========== Lookup & Mine ==========
+
   const triggerCrawl = useCallback(async () => {
     setCrawling(true);
     try {
-      const res = await apiFetch("/opns/crawl", { method: "POST" });
+      const adminIdx = window.location.pathname.indexOf("/admin");
+      const basePath = adminIdx >= 0 ? window.location.pathname.substring(0, adminIdx + "/admin".length) : "";
+      const res = await fetch(`${window.location.origin}${basePath}/api/opns/crawl`, { method: "POST" });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || res.statusText);
       toast.success(data.message || "Crawl started");
@@ -55,43 +372,6 @@ export default function OpNSPage({ identityKey }: Props) {
       toastError(e.message || "Failed to start crawl");
     } finally {
       setCrawling(false);
-    }
-  }, []);
-
-  const discoverNames = useCallback(async () => {
-    setLoading(true);
-    try {
-      const cwi = (window as any).CWI;
-      if (!cwi) {
-        toastError("No wallet connected");
-        return;
-      }
-
-      const result = await cwi.listOutputs({
-        basket: "default",
-        include: "locking scripts",
-      });
-
-      toast.info(`listOutputs returned ${result?.outputs?.length ?? 0} outputs — inspect console`);
-      console.log("[OpNS] listOutputs result:", result);
-      setNames([]);
-    } catch (e: any) {
-      console.error("[OpNS] discoverNames error:", e);
-      toastError(e.message || "Failed to discover names");
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  const publishName = useCallback(async (name: OpnsName) => {
-    setPublishing(name.name);
-    try {
-      toastError("Publish not yet wired up — see console for context");
-      console.log("[OpNS] publish requested for:", name);
-    } catch (e: any) {
-      toastError(e.message || "Publish failed");
-    } finally {
-      setPublishing(null);
     }
   }, []);
 
@@ -103,9 +383,8 @@ export default function OpNSPage({ identityKey }: Props) {
 
     setLookupLoading(true);
     try {
-      const adminIdx = window.location.pathname.indexOf("/admin");
-      const basePath = adminIdx >= 0 ? window.location.pathname.substring(0, adminIdx) : "";
-      const res = await fetch(`${window.location.origin}${basePath}/opns/origin/${encodeURIComponent(lookupQuery.trim())}`);
+      const base = getServerBase();
+      const res = await fetch(`${base}/opns/origin/${encodeURIComponent(lookupQuery.trim())}`);
       if (res.status === 404) {
         setLookupResult(null);
         toast.info("Name not registered");
@@ -140,9 +419,8 @@ export default function OpNSPage({ identityKey }: Props) {
     setMineResult(null);
     setMineTaken(false);
     try {
-      const adminIdx = window.location.pathname.indexOf("/admin");
-      const basePath = adminIdx >= 0 ? window.location.pathname.substring(0, adminIdx) : "";
-      const res = await fetch(`${window.location.origin}${basePath}/opns/mine/${encodeURIComponent(mineQuery.trim())}`);
+      const base = getServerBase();
+      const res = await fetch(`${base}/opns/mine/${encodeURIComponent(mineQuery.trim())}`);
       if (res.status === 404) {
         setMineTaken(true);
         return;
@@ -165,7 +443,7 @@ export default function OpNSPage({ identityKey }: Props) {
       case "active": return "bg-success/20 text-success";
       case "pending": return "bg-warning/20 text-warning";
       case "expired": return "bg-destructive/20 text-destructive";
-      default: return "";
+      default: return "bg-muted/20 text-muted-foreground";
     }
   };
 
@@ -173,9 +451,133 @@ export default function OpNSPage({ identityKey }: Props) {
     <div className="space-y-6">
       <div className="rounded-lg border border-border bg-gradient-to-br from-secondary to-card p-8 text-center">
         <h2 className="text-2xl font-semibold mb-1">OpNS Name Management</h2>
-        <p className="text-muted-foreground text-sm">Discover, lookup, and publish OpNS names</p>
+        <p className="text-muted-foreground text-sm">Import, manage, and publish OpNS names</p>
       </div>
 
+      {/* Import from External Wallet */}
+      <Card>
+        <CardHeader className="pb-2">
+          <CardTitle>Import from External Wallet</CardTitle>
+          <CardDescription>Paste a WIF to discover OPNS names on that address, then sweep them into your BRC-100 wallet</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="flex gap-2 mb-4">
+            <Input
+              type="password"
+              value={wif}
+              onChange={(e) => setWif(e.target.value)}
+              placeholder="Paste WIF private key"
+              onKeyDown={(e) => e.key === "Enter" && discoverExternalNames()}
+            />
+            <Button onClick={discoverExternalNames} disabled={syncing || !wif.trim()}>
+              {syncing ? "Syncing..." : "Discover"}
+            </Button>
+          </div>
+
+          {importAddress && (
+            <div className="text-xs text-muted-foreground font-mono mb-3">
+              Address: {importAddress}
+            </div>
+          )}
+
+          {syncProgress && (
+            <div className="text-xs text-muted-foreground mb-3">{syncProgress}</div>
+          )}
+
+          {discoveredNames.length > 0 && (
+            <div className="space-y-2">
+              {discoveredNames.map((n) => (
+                <div key={n.outpoint} className="flex items-center justify-between rounded-md bg-secondary p-3">
+                  <div>
+                    <span className="font-mono text-sm">{n.name}</span>
+                    <span className="text-xs text-muted-foreground ml-2">{n.outpoint.slice(0, 12)}...</span>
+                  </div>
+                  <Button
+                    size="sm"
+                    onClick={() => sweepName(n)}
+                    disabled={sweeping === n.outpoint}
+                  >
+                    {sweeping === n.outpoint ? "Sweeping..." : "Sweep"}
+                  </Button>
+                </div>
+              ))}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* My Wallet Names */}
+      <Card>
+        <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+          <div>
+            <CardTitle>My Wallet Names</CardTitle>
+            <CardDescription>OPNS names in your BRC-100 wallet</CardDescription>
+          </div>
+          <div className="flex items-center gap-2">
+            <Badge variant="secondary">{walletNames.length} name{walletNames.length !== 1 ? "s" : ""}</Badge>
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={loadWalletNames}
+              disabled={loadingWallet || !identityKey}
+            >
+              {loadingWallet ? "Loading..." : "Refresh"}
+            </Button>
+          </div>
+        </CardHeader>
+        <CardContent>
+          {identityKey && (
+            <div className="text-xs text-muted-foreground font-mono mb-3">
+              Identity: {identityKey.slice(0, 8)}...{identityKey.slice(-8)}
+            </div>
+          )}
+
+          <div className="space-y-2">
+            {walletNames.length === 0 ? (
+              <p className="text-center py-8 text-muted-foreground">
+                {identityKey
+                  ? 'Click "Refresh" to load names from your wallet'
+                  : "Connect wallet to view names"}
+              </p>
+            ) : (
+              walletNames.map((wn) => (
+                <div key={wn.output.outpoint} className="flex items-center justify-between rounded-md bg-secondary p-3">
+                  <div className="flex items-center gap-2">
+                    <span className="font-mono text-sm">{wn.name}</span>
+                    {wn.published && (
+                      <Badge className="border-0 uppercase text-xs bg-success/20 text-success">
+                        published
+                      </Badge>
+                    )}
+                  </div>
+                  <div className="flex gap-2">
+                    {!wn.published ? (
+                      <Button
+                        size="sm"
+                        onClick={() => publishName(wn)}
+                        disabled={publishing === wn.output.outpoint}
+                      >
+                        {publishing === wn.output.outpoint ? "Publishing..." : "Publish"}
+                      </Button>
+                    ) : (
+                      <Button
+                        size="sm"
+                        variant="secondary"
+                        onClick={() => unpublishName(wn)}
+                        disabled={publishing === wn.output.outpoint}
+                      >
+                        {publishing === wn.output.outpoint ? "Unpublishing..." : "Unpublish"}
+                      </Button>
+                    )}
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Lookup & Mine Cards */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
         <Card>
           <CardHeader className="pb-2">
@@ -260,63 +662,18 @@ export default function OpNSPage({ identityKey }: Props) {
         </Card>
 
         <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle>My Wallet Names</CardTitle>
-            <div className="flex items-center gap-2">
-              <Badge variant="secondary">{names.length} name{names.length !== 1 ? "s" : ""}</Badge>
-              <Button
-                variant="secondary"
-                size="sm"
-                onClick={discoverNames}
-                disabled={loading || !identityKey}
-              >
-                {loading ? "Searching..." : "Discover"}
-              </Button>
-            </div>
+          <CardHeader className="pb-2">
+            <CardTitle>OpNS Tree Sync</CardTitle>
           </CardHeader>
           <CardContent>
-            <CardDescription className="mb-4">Find OpNS names in your wallet to publish</CardDescription>
-
-            {identityKey && (
-              <div className="text-xs text-muted-foreground font-mono mb-3">
-                Identity: {identityKey.slice(0, 8)}...{identityKey.slice(-8)}
-              </div>
-            )}
-
-            <div className="mb-4">
-              <Button
-                variant="secondary"
-                size="sm"
-                onClick={triggerCrawl}
-                disabled={crawling}
-              >
-                {crawling ? "Starting..." : "Sync OpNS Tree"}
-              </Button>
-              <span className="text-xs text-muted-foreground ml-2">Populate the name tree</span>
-            </div>
-
-            <div className="space-y-2">
-              {names.length === 0 ? (
-                <p className="text-center py-8 text-muted-foreground">
-                  {identityKey
-                    ? 'Click "Discover" to find OpNS ordinals in your wallet'
-                    : "Connect wallet to discover names"}
-                </p>
-              ) : (
-                names.map((n) => (
-                  <div key={`${n.txid}_${n.vout}`} className="flex items-center justify-between rounded-md bg-secondary p-3">
-                    <span className="font-mono text-sm">{n.name}</span>
-                    <Button
-                      size="sm"
-                      onClick={() => publishName(n)}
-                      disabled={publishing === n.name}
-                    >
-                      {publishing === n.name ? "Publishing..." : "Publish"}
-                    </Button>
-                  </div>
-                ))
-              )}
-            </div>
+            <CardDescription className="mb-4">Trigger a genesis crawl to populate the OPNS name tree</CardDescription>
+            <Button
+              variant="secondary"
+              onClick={triggerCrawl}
+              disabled={crawling}
+            >
+              {crawling ? "Starting..." : "Sync OpNS Tree"}
+            </Button>
           </CardContent>
         </Card>
       </div>

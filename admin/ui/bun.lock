@@ -4,7 +4,7 @@
     "": {
       "name": "1sat-admin-ui",
       "dependencies": {
-        "@1sat/actions": "^0.0.9",
+        "@1sat/actions": "0.0.11",
         "@1sat/types": "^0.0.7",
         "@bsv/sdk": "^2.0.4",
         "class-variance-authority": "^0.7.1",
@@ -30,7 +30,7 @@
     },
   },
   "packages": {
-    "@1sat/actions": ["@1sat/actions@0.0.9", "", { "dependencies": { "@1sat/client": "^0.0.7", "@1sat/types": "^0.0.7", "@bopen-io/templates": "^1.1.8" }, "peerDependencies": { "@bsv/sdk": "^2.0.4" } }, "sha512-bVnVqb11fBSZK34+A1sUzIzKzK+n6sTw5+FXRlZT/1/JcWjBlinqaic2vJlgACyFL6nN15me+J+Gsh6K6SeZMQ=="],
+    "@1sat/actions": ["@1sat/actions@0.0.11", "", { "dependencies": { "@1sat/client": "^0.0.7", "@1sat/types": "^0.0.8", "@bopen-io/templates": "^1.1.9" }, "peerDependencies": { "@bsv/sdk": "^2.0.4" } }, "sha512-giWqs0FRHOR6KeSh1RP/ysk+3xthuKH7qleQHgEwrn4VTB8iUb22EsjrOVgROMqaGwYLo4VE5vmAsw8EXyfMOQ=="],
 
     "@1sat/client": ["@1sat/client@0.0.7", "", { "dependencies": { "@1sat/types": "^0.0.6", "@bsv/wallet-toolbox": "^2.0.20" }, "peerDependencies": { "@bsv/sdk": "^2.0.4" } }, "sha512-Mqscn6edar/jcV4KGoObJlStUjYlwui1Tn8KOCH8BB16YsdSvb1JjNFHSEBqAjCmXVXHdcXARhB0hchUZQHitA=="],
 
@@ -779,6 +779,8 @@
     "ws": ["ws@8.19.0", "", { "peerDependencies": { "bufferutil": "^4.0.1", "utf-8-validate": ">=5.0.2" }, "optionalPeers": ["bufferutil", "utf-8-validate"] }, "sha512-blAT2mjOEIi0ZzruJfIhb3nps74PRWTCz1IjglWEEpQl5XS/UNama6u2/rjFkDDouqr4L67ry+1aGIALViWjDg=="],
 
     "yallist": ["yallist@3.1.1", "", {}, "sha512-a4UGQaWPH59mOXUYnAG2ewncQS4i4F43Tv3JoAM+s2VDAmS9NsK8GpDMLrCHPksFT7h3K6TOoUNn2pb7RoXx4g=="],
+
+    "@1sat/actions/@1sat/types": ["@1sat/types@0.0.8", "", { "peerDependencies": { "@bsv/sdk": "^2.0.4" } }, "sha512-twuD5rrtqS2saJMiRR62B+sdR+nEeSkNbFhq2hfpw5+DgGzEiwFX8lUp+gIpMVzzMKcSFPiBNAhpUaROcBFD1Q=="],
 
     "@1sat/client/@1sat/types": ["@1sat/types@0.0.6", "", { "peerDependencies": { "@bsv/sdk": "^2.0.4" } }, "sha512-nP56DbA3xsqfdYNOX200I4OruUU3cAacUKjecFE8O6wQQtBGwoBhk4mRyXaw2QXGJV9G5xmpwcrbglZkcoBXdw=="],
 
