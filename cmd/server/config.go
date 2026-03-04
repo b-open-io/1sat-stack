@@ -218,8 +218,9 @@ type Services struct {
 	Wallet  *wallet.Services
 	Paymail *paymail.Services
 
-	// Auth middleware (nil when wallet is disabled)
-	AuthMiddleware *auth.Middleware
+	// Auth middlewares (nil when wallet is disabled)
+	AuthMiddleware       *auth.Middleware // AllowUnauthenticated=true
+	WalletAuthMiddleware *auth.Middleware // AllowUnauthenticated=false
 
 	// MongoDB client (shared by BAP and BSocial)
 	MongoDB *mongo.Client
@@ -729,18 +730,32 @@ func (c *Config) Initialize(ctx context.Context, logger *slog.Logger) (*Services
 		}
 		svc.Wallet = walletSvc
 
-		// Create global auth middleware using the server wallet
+		// Create shared session manager for all auth
+		sessionManager := sdkauth.NewSessionManager()
+
+		// Create global auth middleware (allows unauthenticated for general routes)
 		svc.AuthMiddleware = auth.NewMiddleware(
 			walletSvc.Wallet,
-			sdkauth.NewSessionManager(),
+			sessionManager,
 			logger,
-			c.Auth.AllowUnauthenticated,
+			true, // AllowUnauthenticated
 			c.Auth.ApiKey,
 		)
+
+		// Create wallet auth middleware (requires authentication)
+		svc.WalletAuthMiddleware = auth.NewMiddleware(
+			walletSvc.Wallet,
+			sessionManager, // Shared session manager
+			logger,
+			false, // AllowUnauthenticated = false
+			c.Auth.ApiKey,
+		)
+
 		logger.Info("auth middleware initialized",
 			"allowUnauthenticated", c.Auth.AllowUnauthenticated,
 			"apiKeyConfigured", c.Auth.ApiKey != "",
 		)
+
 	}
 
 	// Initialize Paymail service (requires wallet + OpNS + ORDFS + Arcade)
@@ -999,15 +1014,18 @@ func (c *Config) RegisterRoutes(app *fiber.App, svc *Services) {
 		slog.Debug("registered admin routes", "prefix", prefix)
 	}
 
-	// Register Wallet routes
+	// Register Wallet routes (with auth required)
 	if svc.Wallet != nil && svc.Wallet.Routes != nil {
 		prefix := c.Wallet.Routes.Prefix
 		if prefix == "" {
 			prefix = "/wallet"
 		}
-		walletGroup := api.Group(prefix)
+		// Use wallet auth middleware that requires authentication
+		// (shares session manager with global auth)
+		walletGroup := api.Group(prefix, svc.WalletAuthMiddleware.Handler())
 		svc.Wallet.Routes.Register(walletGroup)
 		// Register /.well-known/auth at app root for BRC-103/104 handshake
+		// Note: well-known auth endpoint uses global auth (allows handshake)
 		svc.Wallet.Routes.RegisterWellKnown(app)
 		capabilities = append(capabilities, "wallet")
 		slog.Debug("registered wallet routes", "prefix", c.Server.BasePath+prefix)
