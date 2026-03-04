@@ -1,16 +1,18 @@
 import { useState } from "react";
 import { apiFetch } from "../api";
+import { toast } from "sonner";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { ScrollArea } from "@/components/ui/scroll-area";
 
 interface ZSetItem {
   value: string;
   score: number;
 }
 
-interface Props {
-  showToast: (msg: string, type?: "success" | "error") => void;
-}
-
-export default function ZSetLookup({ showToast }: Props) {
+export default function ZSetLookup() {
   const [input, setInput] = useState("");
   const [key, setKey] = useState("");
   const [items, setItems] = useState<ZSetItem[]>([]);
@@ -20,7 +22,7 @@ export default function ZSetLookup({ showToast }: Props) {
 
   async function lookup() {
     const val = input.trim();
-    if (!val) { showToast("Please enter a sorted set key", "error"); return; }
+    if (!val) { toast.error("Please enter a sorted set key"); return; }
     setVisible(true);
     setLoading(true);
     try {
@@ -33,42 +35,53 @@ export default function ZSetLookup({ showToast }: Props) {
     } catch (e: any) {
       setItems([]);
       setCount(0);
-      showToast(e.message, "error");
+      toast.error(e.message);
     } finally {
       setLoading(false);
     }
   }
 
   return (
-    <div className="card full-width">
-      <div className="card-header">
-        <h2>Sorted Set Lookup</h2>
-      </div>
-      <p className="card-description">Look up any sorted set by key (e.g., q:tok:abc123, z:ev:own:address)</p>
-      <div className="input-group">
-        <input type="text" value={input} onChange={e => setInput(e.target.value)}
-          onKeyDown={e => e.key === "Enter" && lookup()}
-          placeholder="Enter sorted set key (e.g., q:tok:abc123...)" />
-        <button onClick={lookup}>Lookup</button>
-      </div>
-      {visible && (
-        <div>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "0.5rem" }}>
-            <span className="item-name">{key}</span>
-            <span className="badge">{count} item{count !== 1 ? "s" : ""}</span>
-          </div>
-          <div className="item-list">
-            {loading ? <div className="loading">Loading...</div> :
-              items.length === 0 ? <div className="empty-state">No items found</div> :
-              items.map((item, i) => (
-                <div key={i} className="list-item">
-                  <span className="item-name" style={{ wordBreak: "break-all" }}>{item.value}</span>
-                  <span className="badge" style={{ whiteSpace: "nowrap" }}>score: {item.score}</span>
-                </div>
-              ))}
-          </div>
+    <Card>
+      <CardHeader className="pb-2">
+        <CardTitle>Sorted Set Lookup</CardTitle>
+      </CardHeader>
+      <CardContent>
+        <CardDescription className="mb-4">Look up any sorted set by key (e.g., q:tok:abc123, z:ev:own:address)</CardDescription>
+        <div className="flex gap-2 mb-4">
+          <Input
+            value={input}
+            onChange={e => setInput(e.target.value)}
+            onKeyDown={e => e.key === "Enter" && lookup()}
+            placeholder="Enter sorted set key (e.g., q:tok:abc123...)"
+          />
+          <Button onClick={lookup}>Lookup</Button>
         </div>
-      )}
-    </div>
+        {visible && (
+          <div>
+            <div className="flex items-center justify-between mb-2">
+              <span className="font-mono text-sm">{key}</span>
+              <Badge variant="secondary">{count} item{count !== 1 ? "s" : ""}</Badge>
+            </div>
+            <ScrollArea className="max-h-[400px]">
+              {loading ? (
+                <p className="text-center py-8 text-muted-foreground">Loading...</p>
+              ) : items.length === 0 ? (
+                <p className="text-center py-8 text-muted-foreground">No items found</p>
+              ) : (
+                <div className="space-y-2">
+                  {items.map((item, i) => (
+                    <div key={i} className="flex items-center justify-between rounded-md bg-secondary p-3">
+                      <span className="font-mono text-sm break-all mr-2">{item.value}</span>
+                      <Badge variant="secondary" className="shrink-0">score: {item.score}</Badge>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </ScrollArea>
+          </div>
+        )}
+      </CardContent>
+    </Card>
   );
 }

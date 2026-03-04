@@ -1,6 +1,10 @@
 import { useState, useCallback } from "react";
 import { apiFetch } from "../api";
-import { useToast } from "../useToast";
+import { toast } from "sonner";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 
 interface OpnsName {
   txid: string;
@@ -20,15 +24,11 @@ interface Props {
 }
 
 export default function OpNSPage({ identityKey }: Props) {
-  const { showToast } = useToast();
-  
-  // Wallet names section
   const [names, setNames] = useState<OpnsName[]>([]);
   const [loading, setLoading] = useState(false);
   const [publishing, setPublishing] = useState<string | null>(null);
   const [crawling, setCrawling] = useState(false);
-  
-  // Name lookup section
+
   const [lookupQuery, setLookupQuery] = useState("");
   const [lookupResult, setLookupResult] = useState<NameLookupResult | null>(null);
   const [lookupLoading, setLookupLoading] = useState(false);
@@ -39,20 +39,20 @@ export default function OpNSPage({ identityKey }: Props) {
       const res = await apiFetch("/opns/crawl", { method: "POST" });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || res.statusText);
-      showToast(data.message || "Crawl started");
+      toast.success(data.message || "Crawl started");
     } catch (e: any) {
-      showToast(e.message || "Failed to start crawl", "error");
+      toast.error(e.message || "Failed to start crawl");
     } finally {
       setCrawling(false);
     }
-  }, [showToast]);
+  }, []);
 
   const discoverNames = useCallback(async () => {
     setLoading(true);
     try {
       const cwi = (window as any).CWI;
       if (!cwi) {
-        showToast("No wallet connected", "error");
+        toast.error("No wallet connected");
         return;
       }
 
@@ -61,39 +61,38 @@ export default function OpNSPage({ identityKey }: Props) {
         include: "locking scripts",
       });
 
-      showToast(`listOutputs returned ${result?.outputs?.length ?? 0} outputs — inspect console`);
+      toast.info(`listOutputs returned ${result?.outputs?.length ?? 0} outputs — inspect console`);
       console.log("[OpNS] listOutputs result:", result);
       setNames([]);
     } catch (e: any) {
       console.error("[OpNS] discoverNames error:", e);
-      showToast(e.message || "Failed to discover names", "error");
+      toast.error(e.message || "Failed to discover names");
     } finally {
       setLoading(false);
     }
-  }, [showToast]);
+  }, []);
 
   const publishName = useCallback(async (name: OpnsName) => {
     setPublishing(name.name);
     try {
-      showToast("Publish not yet wired up — see console for context", "error");
+      toast.error("Publish not yet wired up — see console for context");
       console.log("[OpNS] publish requested for:", name);
     } catch (e: any) {
-      showToast(e.message || "Publish failed", "error");
+      toast.error(e.message || "Publish failed");
     } finally {
       setPublishing(null);
     }
-  }, [showToast]);
+  }, []);
 
   const lookupName = useCallback(async () => {
     if (!lookupQuery.trim()) {
-      showToast("Enter a name to lookup", "error");
+      toast.error("Enter a name to lookup");
       return;
     }
-    
+
     setLookupLoading(true);
     try {
       // TODO: Wire up to actual OpNS lookup endpoint once available
-      // For now, simulate a lookup to show the UI structure
       const mockResult: NameLookupResult = {
         name: lookupQuery,
         origin: "Genesis Block",
@@ -101,135 +100,135 @@ export default function OpNSPage({ identityKey }: Props) {
         status: "pending",
       };
       setLookupResult(mockResult);
-      showToast(`Found name: ${lookupQuery}`);
+      toast.success(`Found name: ${lookupQuery}`);
     } catch (e: any) {
-      showToast(e.message || "Failed to lookup name", "error");
+      toast.error(e.message || "Failed to lookup name");
       setLookupResult(null);
     } finally {
       setLookupLoading(false);
     }
-  }, [lookupQuery, showToast]);
+  }, [lookupQuery]);
+
+  const statusColor = (status: string) => {
+    switch (status) {
+      case "active": return "bg-success/20 text-success";
+      case "pending": return "bg-warning/20 text-warning";
+      case "expired": return "bg-destructive/20 text-destructive";
+      default: return "";
+    }
+  };
 
   return (
-    <div className="page">
-      <div className="opns-hero">
-        <h2>OpNS Name Management</h2>
-        <p>Discover, lookup, and publish OpNS names</p>
+    <div className="space-y-6">
+      <div className="rounded-lg border border-border bg-gradient-to-br from-secondary to-card p-8 text-center">
+        <h2 className="text-2xl font-semibold mb-1">OpNS Name Management</h2>
+        <p className="text-muted-foreground text-sm">Discover, lookup, and publish OpNS names</p>
       </div>
 
-      <div className="grid-2">
-        {/* Name Lookup Section */}
-        <div className="card">
-          <div className="card-header">
-            <h3>Lookup Name in System</h3>
-          </div>
-          <p className="card-description">
-            Find an existing OpNS name and view its origin
-          </p>
-          <div style={{ display: "flex", gap: "0.5rem", marginBottom: "1rem" }}>
-            <input
-              type="text"
-              value={lookupQuery}
-              onChange={(e) => setLookupQuery(e.target.value)}
-              placeholder="Enter name (e.g., myname)"
-              style={{ flex: 1 }}
-              onKeyDown={(e) => e.key === "Enter" && lookupName()}
-            />
-            <button
-              className="primary"
-              onClick={lookupName}
-              disabled={lookupLoading}
-            >
-              {lookupLoading ? "Searching..." : "Lookup"}
-            </button>
-          </div>
-          
-          {lookupResult && (
-            <div className="lookup-result">
-              <div className="lookup-row">
-                <span className="lookup-label">Name:</span>
-                <span className="lookup-value">{lookupResult.name}</span>
-              </div>
-              <div className="lookup-row">
-                <span className="lookup-label">Origin:</span>
-                <span className="lookup-value">{lookupResult.origin}</span>
-              </div>
-              <div className="lookup-row">
-                <span className="lookup-label">Owner:</span>
-                <span className="lookup-value">{lookupResult.owner}</span>
-              </div>
-              <div className="lookup-row">
-                <span className="lookup-label">Status:</span>
-                <span className={`lookup-status ${lookupResult.status}`}>
-                  {lookupResult.status}
-                </span>
-              </div>
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle>Lookup Name in System</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <CardDescription className="mb-4">Find an existing OpNS name and view its origin</CardDescription>
+            <div className="flex gap-2 mb-4">
+              <Input
+                value={lookupQuery}
+                onChange={(e) => setLookupQuery(e.target.value)}
+                placeholder="Enter name (e.g., myname)"
+                onKeyDown={(e) => e.key === "Enter" && lookupName()}
+              />
+              <Button onClick={lookupName} disabled={lookupLoading}>
+                {lookupLoading ? "Searching..." : "Lookup"}
+              </Button>
             </div>
-          )}
-        </div>
 
-        {/* My Names Section */}
-        <div className="card">
-          <div className="card-header">
-            <h3>My Wallet Names</h3>
-            <div>
-              <span className="badge">{names.length} name{names.length !== 1 ? "s" : ""}</span>
-              <button
-                className="secondary"
+            {lookupResult && (
+              <div className="rounded-md border border-border bg-secondary p-4 space-y-2">
+                <div className="flex justify-between text-sm">
+                  <span className="text-muted-foreground">Name:</span>
+                  <span className="font-mono">{lookupResult.name}</span>
+                </div>
+                <div className="flex justify-between text-sm">
+                  <span className="text-muted-foreground">Origin:</span>
+                  <span className="font-mono">{lookupResult.origin}</span>
+                </div>
+                <div className="flex justify-between text-sm">
+                  <span className="text-muted-foreground">Owner:</span>
+                  <span className="font-mono">{lookupResult.owner}</span>
+                </div>
+                <div className="flex justify-between text-sm items-center">
+                  <span className="text-muted-foreground">Status:</span>
+                  <Badge className={`border-0 uppercase text-xs ${statusColor(lookupResult.status)}`}>
+                    {lookupResult.status}
+                  </Badge>
+                </div>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle>My Wallet Names</CardTitle>
+            <div className="flex items-center gap-2">
+              <Badge variant="secondary">{names.length} name{names.length !== 1 ? "s" : ""}</Badge>
+              <Button
+                variant="secondary"
+                size="sm"
                 onClick={discoverNames}
                 disabled={loading || !identityKey}
-                style={{ marginLeft: "0.5rem" }}
               >
                 {loading ? "Searching..." : "Discover"}
-              </button>
+              </Button>
             </div>
-          </div>
-          <p className="card-description">
-            Find OpNS names in your wallet to publish
-          </p>
+          </CardHeader>
+          <CardContent>
+            <CardDescription className="mb-4">Find OpNS names in your wallet to publish</CardDescription>
 
-          {identityKey && (
-            <div style={{ fontSize: "0.75rem", color: "#888", marginBottom: "0.75rem", fontFamily: "monospace" }}>
-              Identity: {identityKey.slice(0, 8)}...{identityKey.slice(-8)}
-            </div>
-          )}
-
-          <div style={{ marginBottom: "0.75rem" }}>
-            <button
-              className="secondary"
-              onClick={triggerCrawl}
-              disabled={crawling}
-            >
-              {crawling ? "Starting..." : "Sync OpNS Tree"}
-            </button>
-            <span style={{ fontSize: "0.75rem", color: "#888", marginLeft: "0.5rem" }}>
-              Populate the name tree
-            </span>
-          </div>
-
-          <div className="item-list">
-            {names.length === 0 ? (
-              <div className="empty-state">
-                {identityKey
-                  ? 'Click "Discover" to find OpNS ordinals in your wallet'
-                  : "Connect wallet to discover names"}
+            {identityKey && (
+              <div className="text-xs text-muted-foreground font-mono mb-3">
+                Identity: {identityKey.slice(0, 8)}...{identityKey.slice(-8)}
               </div>
-            ) : (
-              names.map((n) => (
-                <div key={`${n.txid}_${n.vout}`} className="list-item">
-                  <span className="item-name">{n.name}</span>
-                  <button
-                    className="primary"
-                    onClick={() => publishName(n)}
-                    disabled={publishing === n.name}
-                  >
-                    {publishing === n.name ? "Publishing..." : "Publish"}
-                  </button>
-                </div>
-              ))
             )}
-          </div>
-        </div>
+
+            <div className="mb-4">
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={triggerCrawl}
+                disabled={crawling}
+              >
+                {crawling ? "Starting..." : "Sync OpNS Tree"}
+              </Button>
+              <span className="text-xs text-muted-foreground ml-2">Populate the name tree</span>
+            </div>
+
+            <div className="space-y-2">
+              {names.length === 0 ? (
+                <p className="text-center py-8 text-muted-foreground">
+                  {identityKey
+                    ? 'Click "Discover" to find OpNS ordinals in your wallet'
+                    : "Connect wallet to discover names"}
+                </p>
+              ) : (
+                names.map((n) => (
+                  <div key={`${n.txid}_${n.vout}`} className="flex items-center justify-between rounded-md bg-secondary p-3">
+                    <span className="font-mono text-sm">{n.name}</span>
+                    <Button
+                      size="sm"
+                      onClick={() => publishName(n)}
+                      disabled={publishing === n.name}
+                    >
+                      {publishing === n.name ? "Publishing..." : "Publish"}
+                    </Button>
+                  </div>
+                ))
+              )}
+            </div>
+          </CardContent>
+        </Card>
       </div>
     </div>
   );

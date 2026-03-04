@@ -1,11 +1,13 @@
 import { useState, useEffect, useCallback } from "react";
 import { apiFetch } from "../api";
+import { toast } from "sonner";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { ScrollArea } from "@/components/ui/scroll-area";
 
-interface Props {
-  showToast: (msg: string, type?: "success" | "error") => void;
-}
-
-export default function Whitelist({ showToast }: Props) {
+export default function Whitelist() {
   const [tokens, setTokens] = useState<string[]>([]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(true);
@@ -16,17 +18,17 @@ export default function Whitelist({ showToast }: Props) {
       if (!res.ok) throw new Error((await res.json()).error || res.statusText);
       setTokens(await res.json());
     } catch {
-      showToast("Failed to load whitelist", "error");
+      toast.error("Failed to load whitelist");
     } finally {
       setLoading(false);
     }
-  }, [showToast]);
+  }, []);
 
   useEffect(() => { load(); }, [load]);
 
   async function add() {
     const val = input.trim();
-    if (!val) { showToast("Please enter a token ID", "error"); return; }
+    if (!val) { toast.error("Please enter a token ID"); return; }
     try {
       const res = await apiFetch("/whitelist", {
         method: "POST",
@@ -35,10 +37,10 @@ export default function Whitelist({ showToast }: Props) {
       });
       if (!res.ok) throw new Error((await res.json()).error || "Failed");
       setInput("");
-      showToast(`Added "${val}" to whitelist`);
+      toast.success(`Added "${val}" to whitelist`);
       load();
     } catch (e: any) {
-      showToast(e.message, "error");
+      toast.error(e.message);
     }
   }
 
@@ -46,36 +48,51 @@ export default function Whitelist({ showToast }: Props) {
     try {
       const res = await apiFetch(`/whitelist/${encodeURIComponent(tokenId)}`, { method: "DELETE" });
       if (!res.ok) throw new Error((await res.json()).error || "Failed");
-      showToast(`Removed "${tokenId}" from whitelist`);
+      toast.success(`Removed "${tokenId}" from whitelist`);
       load();
     } catch (e: any) {
-      showToast(e.message, "error");
+      toast.error(e.message);
     }
   }
 
   return (
-    <div className="card">
-      <div className="card-header">
-        <h2>BSV21 Token Whitelist</h2>
-        <span className="badge success">{tokens.length} token{tokens.length !== 1 ? "s" : ""}</span>
-      </div>
-      <p className="card-description">BSV21 tokens that are always active, regardless of balance</p>
-      <div className="input-group">
-        <input type="text" value={input} onChange={e => setInput(e.target.value)}
-          onKeyDown={e => e.key === "Enter" && add()}
-          placeholder="Enter token ID (e.g., abc123...)" />
-        <button onClick={add}>Add</button>
-      </div>
-      <div className="item-list">
-        {loading ? <div className="loading">Loading...</div> :
-          tokens.length === 0 ? <div className="empty-state">No tokens</div> :
-          tokens.map(t => (
-            <div key={t} className="list-item">
-              <span className="item-name">{t}</span>
-              <button onClick={() => remove(t)}>Remove</button>
+    <Card>
+      <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+        <CardTitle>Token Whitelist</CardTitle>
+        <Badge className="bg-success/20 text-success border-0">
+          {tokens.length} token{tokens.length !== 1 ? "s" : ""}
+        </Badge>
+      </CardHeader>
+      <CardContent>
+        <CardDescription className="mb-4">Tokens that are always active, regardless of balance</CardDescription>
+        <div className="flex gap-2 mb-4">
+          <Input
+            value={input}
+            onChange={e => setInput(e.target.value)}
+            onKeyDown={e => e.key === "Enter" && add()}
+            placeholder="Enter token ID (e.g., abc123...)"
+          />
+          <Button onClick={add}>Add</Button>
+        </div>
+        <ScrollArea className="max-h-[400px]">
+          {loading ? (
+            <p className="text-center py-8 text-muted-foreground">Loading...</p>
+          ) : tokens.length === 0 ? (
+            <p className="text-center py-8 text-muted-foreground">No tokens</p>
+          ) : (
+            <div className="space-y-2">
+              {tokens.map(t => (
+                <div key={t} className="flex items-center justify-between rounded-md bg-secondary p-3">
+                  <span className="font-mono text-sm truncate mr-2">{t}</span>
+                  <Button variant="ghost" size="sm" onClick={() => remove(t)} className="text-destructive hover:text-destructive shrink-0">
+                    Remove
+                  </Button>
+                </div>
+              ))}
             </div>
-          ))}
-      </div>
-    </div>
+          )}
+        </ScrollArea>
+      </CardContent>
+    </Card>
   );
 }
