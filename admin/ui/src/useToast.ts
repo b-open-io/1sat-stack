@@ -19,7 +19,6 @@ export function useToast() {
     } catch (_) { /* console may be patched by devtools/extensions */ }
     if (timerRef.current) clearTimeout(timerRef.current);
     setToast({ message, type });
-    timerRef.current = setTimeout(() => setToast(null), 3000);
   }, []);
 
   return { toast, showToast };
