@@ -93,15 +93,25 @@ export default function OpNSPage({ identityKey }: Props) {
 
     setLookupLoading(true);
     try {
-      // TODO: Wire up to actual OpNS lookup endpoint once available
-      const mockResult: NameLookupResult = {
-        name: lookupQuery,
-        origin: "Genesis Block",
+      const adminIdx = window.location.pathname.indexOf("/admin");
+      const basePath = adminIdx >= 0 ? window.location.pathname.substring(0, adminIdx) : "";
+      const res = await fetch(`${window.location.origin}${basePath}/opns/origin/${encodeURIComponent(lookupQuery.trim())}`);
+      if (res.status === 404) {
+        setLookupResult(null);
+        toast.info("Name not registered");
+        return;
+      }
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error || res.statusText);
+      }
+      const data = await res.json();
+      setLookupResult({
+        name: data.name,
+        origin: data.outpoint,
         owner: "Unknown",
-        status: "pending",
-      };
-      setLookupResult(mockResult);
-      toast.success(`Found name: ${lookupQuery}`);
+        status: "active",
+      });
     } catch (e: any) {
       toastError(e.message || "Failed to lookup name");
       setLookupResult(null);
