@@ -173,41 +173,47 @@ export default function OpNSPage({ identityKey }: Props) {
         };
       });
 
-      // Search for OPNS names on this address
+      // Search for OPNS outputs on this address
       setSyncProgress("Searching for OPNS names...");
       const searchUrl = new URL(`${base}/txo/search`);
       searchUrl.searchParams.set("key", `own:${address}`);
       searchUrl.searchParams.append("key", "type:application/op-ns");
       searchUrl.searchParams.set("join", "intersect");
       searchUrl.searchParams.set("unspent", "true");
-      searchUrl.searchParams.set("tags", "insc");
 
       const res = await fetch(searchUrl.toString());
       if (!res.ok) throw new Error(`Search failed: ${res.statusText}`);
 
       const results: IndexedOutput[] = await res.json();
-      const names: DiscoveredName[] = results.map((r) => {
-        let name = "unknown";
-        if (r.data?.insc) {
-          try {
-            const inscData = typeof r.data.insc === "string" ? JSON.parse(r.data.insc) : r.data.insc;
-            name = inscData?.name ?? inscData?.file?.name ?? "unknown";
-          } catch { /* ignore */ }
+      if (results.length === 0) {
+        setDiscoveredNames([]);
+        setSyncProgress(null);
+        toast.info("No OPNS names found on this address");
+        return;
+      }
+
+      // Fetch name content from ORDFS for each outpoint (seq=0 returns original inscription)
+      setSyncProgress(`Resolving ${results.length} name(s)...`);
+      const names: DiscoveredName[] = [];
+      for (let i = 0; i < results.length; i++) {
+        const r = results[i];
+        setSyncProgress(`Resolving name ${i + 1}/${results.length}...`);
+        try {
+          const ordfsRes = await fetch(`${base}/ordfs/${r.outpoint}?seq=0`);
+          if (!ordfsRes.ok) {
+            names.push({ outpoint: r.outpoint, name: "unknown", satoshis: r.satoshis ?? 1 });
+            continue;
+          }
+          const name = await ordfsRes.text();
+          names.push({ outpoint: r.outpoint, name: name || "unknown", satoshis: r.satoshis ?? 1 });
+        } catch {
+          names.push({ outpoint: r.outpoint, name: "unknown", satoshis: r.satoshis ?? 1 });
         }
-        return {
-          outpoint: r.outpoint,
-          name,
-          satoshis: r.satoshis ?? 1,
-        };
-      });
+      }
 
       setDiscoveredNames(names);
       setSyncProgress(null);
-      if (names.length === 0) {
-        toast.info("No OPNS names found on this address");
-      } else {
-        toast.success(`Found ${names.length} OPNS name(s)`);
-      }
+      toast.success(`Found ${names.length} OPNS name(s)`);
     } catch (e: any) {
       console.error("[OpNS] discover error:", e);
       toastError(e.message || "Failed to discover names");
