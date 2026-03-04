@@ -10,6 +10,11 @@ export function useToast() {
   const timerRef = useRef<ReturnType<typeof setTimeout>>(undefined);
 
   const showToast = useCallback((message: string, type: "success" | "error" = "success") => {
+    if (type === "error") {
+      console.error("[toast]", message);
+    } else {
+      console.log("[toast]", message);
+    }
     if (timerRef.current) clearTimeout(timerRef.current);
     setToast({ message, type });
     timerRef.current = setTimeout(() => setToast(null), 3000);

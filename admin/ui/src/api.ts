@@ -23,9 +23,7 @@ export async function connectWallet(): Promise<string> {
   await window.CWI!.waitForAuthentication({});
   const result = await window.CWI!.getPublicKey({ identityKey: true });
   identityKey = result.publicKey;
-  console.log("Creating AuthFetch with wallet:", window.CWI);
   authFetch = new AuthFetch(window.CWI!);
-  console.log("AuthFetch created:", authFetch);
   return identityKey;
 }
 
@@ -55,18 +53,13 @@ export async function getSetupStatus(): Promise<{ configured: boolean }> {
 }
 
 export async function performSetup(): Promise<{ message: string }> {
-  console.log("performSetup called, authFetch:", authFetch);
-  const url = SETUP_BASE;  // SETUP_BASE already includes /setup
-  console.log("Setup URL:", url);
+  const url = SETUP_BASE;
   let res: Response;
   if (authFetch) {
-    console.log("Using authFetch");
     res = await authFetch.fetch(url, { method: "POST" });
   } else {
-    console.log("authFetch is null, using regular fetch");
     res = await fetch(url, { method: "POST" });
   }
-  console.log("Response:", res.status);
   if (!res.ok) {
     const data = await res.json().catch(() => ({}));
     throw new Error(data.error || "Setup failed");
