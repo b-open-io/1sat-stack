@@ -39,6 +39,12 @@ func (r *Routes) Register(router fiber.Router) {
 	router.All("/", adaptor.HTTPHandler(r.handler))
 }
 
+// Handler returns the underlying HTTP handler for manual registration.
+// Useful when you need to wrap the handler with additional middleware.
+func (r *Routes) Handler() http.Handler {
+	return r.handler
+}
+
 // RegisterWellKnown registers the /.well-known/auth endpoint at the app root level.
 // This is required for BRC-100 authentication handshake, which expects this route
 // to be at the root of the server, not under a prefix.

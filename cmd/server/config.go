@@ -38,6 +38,7 @@ import (
 	"github.com/bsv-blockchain/go-sdk/transaction"
 	p2p "github.com/bsv-blockchain/go-teranode-p2p-client"
 	"github.com/gofiber/fiber/v2"
+	"github.com/gofiber/fiber/v2/middleware/adaptor"
 	"github.com/spf13/viper"
 	"go.mongodb.org/mongo-driver/v2/mongo"
 	mongooptions "go.mongodb.org/mongo-driver/v2/mongo/options"
@@ -218,9 +219,9 @@ type Services struct {
 	Wallet  *wallet.Services
 	Paymail *paymail.Services
 
-	// Auth middlewares (nil when wallet is disabled)
-	AuthMiddleware       *auth.Middleware // AllowUnauthenticated=true
-	WalletAuthMiddleware *auth.Middleware // AllowUnauthenticated=false
+	// Auth middleware (nil when wallet is disabled)
+	// Used for routes that require authentication (wallet, admin)
+	AuthMiddleware *auth.Middleware
 
 	// MongoDB client (shared by BAP and BSocial)
 	MongoDB *mongo.Client
@@ -733,19 +734,10 @@ func (c *Config) Initialize(ctx context.Context, logger *slog.Logger) (*Services
 		// Create shared session manager for all auth
 		sessionManager := sdkauth.NewSessionManager()
 
-		// Create global auth middleware (allows unauthenticated for general routes)
+		// Create auth middleware (requires authentication)
 		svc.AuthMiddleware = auth.NewMiddleware(
 			walletSvc.Wallet,
 			sessionManager,
-			logger,
-			true, // AllowUnauthenticated
-			c.Auth.ApiKey,
-		)
-
-		// Create wallet auth middleware (requires authentication)
-		svc.WalletAuthMiddleware = auth.NewMiddleware(
-			walletSvc.Wallet,
-			sessionManager, // Shared session manager
 			logger,
 			false, // AllowUnauthenticated = false
 			c.Auth.ApiKey,
@@ -850,14 +842,6 @@ func (c *Config) Initialize(ctx context.Context, logger *slog.Logger) (*Services
 
 // RegisterRoutes registers all HTTP routes on the Fiber app
 func (c *Config) RegisterRoutes(app *fiber.App, svc *Services) {
-	// Register global auth middleware first so it applies to all routes.
-	// Handles BRC-103/104 handshakes at /.well-known/auth and injects
-	// identity into the Fiber context for all other requests.
-	if svc.AuthMiddleware != nil {
-		app.Use(svc.AuthMiddleware.Handler())
-		slog.Debug("registered global auth middleware")
-	}
-
 	// Create API group with base path
 	api := app.Group(c.Server.BasePath)
 
@@ -1020,13 +1004,12 @@ func (c *Config) RegisterRoutes(app *fiber.App, svc *Services) {
 		if prefix == "" {
 			prefix = "/wallet"
 		}
-		// Use wallet auth middleware that requires authentication
-		// (shares session manager with global auth)
-		walletGroup := api.Group(prefix, svc.WalletAuthMiddleware.Handler())
+		// Apply auth middleware to wallet routes (requires authentication)
+		walletGroup := api.Group(prefix, svc.AuthMiddleware.Handler())
 		svc.Wallet.Routes.Register(walletGroup)
 		// Register /.well-known/auth at app root for BRC-103/104 handshake
-		// Note: well-known auth endpoint uses global auth (allows handshake)
-		svc.Wallet.Routes.RegisterWellKnown(app)
+		// Auth middleware handles handshake internally
+		app.All("/.well-known/auth", svc.AuthMiddleware.Handler(), adaptor.HTTPHandler(svc.Wallet.Routes.Handler()))
 		capabilities = append(capabilities, "wallet")
 		slog.Debug("registered wallet routes", "prefix", c.Server.BasePath+prefix)
 	}
