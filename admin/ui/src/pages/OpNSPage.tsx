@@ -20,6 +20,11 @@ interface NameLookupResult {
   status: "active" | "pending" | "expired";
 }
 
+interface MineResult {
+  outpoint: string;
+  domain: string;
+}
+
 interface Props {
   identityKey: string | null;
 }
@@ -33,6 +38,11 @@ export default function OpNSPage({ identityKey }: Props) {
   const [lookupQuery, setLookupQuery] = useState("");
   const [lookupResult, setLookupResult] = useState<NameLookupResult | null>(null);
   const [lookupLoading, setLookupLoading] = useState(false);
+
+  const [mineQuery, setMineQuery] = useState("");
+  const [mineResult, setMineResult] = useState<MineResult | null>(null);
+  const [mineTaken, setMineTaken] = useState(false);
+  const [mineLoading, setMineLoading] = useState(false);
 
   const triggerCrawl = useCallback(async () => {
     setCrawling(true);
@@ -120,6 +130,36 @@ export default function OpNSPage({ identityKey }: Props) {
     }
   }, [lookupQuery]);
 
+  const lookupMine = useCallback(async () => {
+    if (!mineQuery.trim()) {
+      toastError("Enter a name to check");
+      return;
+    }
+
+    setMineLoading(true);
+    setMineResult(null);
+    setMineTaken(false);
+    try {
+      const adminIdx = window.location.pathname.indexOf("/admin");
+      const basePath = adminIdx >= 0 ? window.location.pathname.substring(0, adminIdx) : "";
+      const res = await fetch(`${window.location.origin}${basePath}/opns/mine/${encodeURIComponent(mineQuery.trim())}`);
+      if (res.status === 404) {
+        setMineTaken(true);
+        return;
+      }
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error || res.statusText);
+      }
+      const data = await res.json();
+      setMineResult(data);
+    } catch (e: any) {
+      toastError(e.message || "Failed to check mine status");
+    } finally {
+      setMineLoading(false);
+    }
+  }, [mineQuery]);
+
   const statusColor = (status: string) => {
     switch (status) {
       case "active": return "bg-success/20 text-success";
@@ -136,7 +176,7 @@ export default function OpNSPage({ identityKey }: Props) {
         <p className="text-muted-foreground text-sm">Discover, lookup, and publish OpNS names</p>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
         <Card>
           <CardHeader className="pb-2">
             <CardTitle>Lookup Name in System</CardTitle>
@@ -174,6 +214,45 @@ export default function OpNSPage({ identityKey }: Props) {
                   <Badge className={`border-0 uppercase text-xs ${statusColor(lookupResult.status)}`}>
                     {lookupResult.status}
                   </Badge>
+                </div>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle>Mine Lookup</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <CardDescription className="mb-4">Check if a name can be mined and find the parent mine output</CardDescription>
+            <div className="flex gap-2 mb-4">
+              <Input
+                value={mineQuery}
+                onChange={(e) => setMineQuery(e.target.value)}
+                placeholder="Enter name to check"
+                onKeyDown={(e) => e.key === "Enter" && lookupMine()}
+              />
+              <Button onClick={lookupMine} disabled={mineLoading}>
+                {mineLoading ? "Checking..." : "Check"}
+              </Button>
+            </div>
+
+            {mineTaken && (
+              <div className="rounded-md border border-border bg-secondary p-4 text-sm text-muted-foreground">
+                Name already mined or no mine data found.
+              </div>
+            )}
+
+            {mineResult && (
+              <div className="rounded-md border border-border bg-secondary p-4 space-y-2">
+                <div className="flex justify-between text-sm">
+                  <span className="text-muted-foreground">Mined Prefix:</span>
+                  <span className="font-mono">{mineResult.domain}</span>
+                </div>
+                <div className="flex justify-between text-sm">
+                  <span className="text-muted-foreground">Outpoint:</span>
+                  <span className="font-mono text-xs break-all">{mineResult.outpoint}</span>
                 </div>
               </div>
             )}
