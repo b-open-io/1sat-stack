@@ -1,10 +1,8 @@
 package auth
 
 import (
-	"bufio"
 	"io"
 	"log/slog"
-	"net"
 	"net/http"
 	"net/url"
 	"strings"
@@ -14,7 +12,6 @@ import (
 	"github.com/bsv-blockchain/go-sdk/auth"
 	"github.com/bsv-blockchain/go-sdk/wallet"
 	"github.com/gofiber/fiber/v2"
-	"github.com/valyala/fasthttp/fasthttputil"
 )
 
 // Middleware is a Fiber middleware that performs BRC-103/104 mutual authentication
@@ -54,6 +51,15 @@ func NewMiddleware(
 }
 
 // Handler returns the Fiber handler function.
+//
+// The auth middleware wraps a "next" http.Handler that executes the Fiber chain.
+// When auth succeeds, "next" runs the downstream Fiber handlers and writes their
+// response into the http.ResponseWriter the auth middleware provides. The auth
+// middleware then signs the buffered response, adds x-bsv-auth-* headers, and
+// flushes. We copy the final signed response back to Fiber.
+//
+// When auth handles the request itself (handshake, 401), "next" is never called
+// and the auth middleware writes directly to the recorder.
 func (m *Middleware) Handler() fiber.Handler {
 	return func(c *fiber.Ctx) error {
 		// API key bypass: skip BRC-103/104 if a valid key is provided.
@@ -64,54 +70,60 @@ func (m *Middleware) Handler() fiber.Handler {
 			}
 		}
 
-		// Build a net/http request from the Fiber context.
 		httpReq, err := buildHTTPRequest(c)
 		if err != nil {
 			m.logger.Error("failed to build http request for auth", "error", err)
 			return c.SendStatus(fiber.StatusInternalServerError)
 		}
 
-		// captureHandler is the "next" handler in the net/http chain.
-		// When the auth middleware decides the request is authenticated (or allowed),
-		// it calls next.ServeHTTP — our captureHandler fires and grabs the identity
-		// from the request context.
-		var (
-			captured    bool
-			capturedReq *http.Request
-		)
-		captureHandler := http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
-			captured = true
-			capturedReq = r
+		// "next" is called by the auth middleware after successful authentication.
+		// It runs the Fiber chain and writes the response into w so the auth
+		// middleware can sign it.
+		var fiberErr error
+		nextHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			// Extract identity from the auth-enriched request context.
+			identity, _ := middleware.ShouldGetIdentity(r.Context())
+			if identity != nil && !middleware.IsUnknownIdentity(identity) {
+				c.SetUserContext(withIdentity(c.UserContext(), identity))
+			}
+
+			// Run the rest of the Fiber chain.
+			fiberErr = c.Next()
+
+			// Copy Fiber's response into the http.ResponseWriter so the auth
+			// middleware can read it back, sign it, and flush with auth headers.
+			c.Response().Header.VisitAll(func(key, value []byte) {
+				w.Header().Set(string(key), string(value))
+			})
+			w.WriteHeader(c.Response().StatusCode())
+			w.Write(c.Response().Body()) //nolint:errcheck
 		})
 
-		// Wrap our capture handler with the auth middleware.
-		authHandler := m.authFactory.HTTPHandler(captureHandler)
+		// Wrap nextHandler with the auth middleware and run it.
+		authHandler := m.authFactory.HTTPHandler(nextHandler)
 
-		// Run it through a pipe so we can capture the response if the auth
-		// middleware writes one directly (handshake responses, 401s, etc.).
 		rec := &responseRecorder{
 			header: make(http.Header),
 			body:   &strings.Builder{},
 		}
 		authHandler.ServeHTTP(rec, httpReq)
 
-		if captured {
-			// Auth succeeded and called next — extract identity and continue Fiber chain.
-			identity, _ := middleware.ShouldGetIdentity(capturedReq.Context())
-			if identity != nil && !middleware.IsUnknownIdentity(identity) {
-				c.SetUserContext(withIdentity(c.UserContext(), identity))
-			}
-			return c.Next()
-		}
-
-		// Auth middleware handled the response itself (handshake, 401, etc.).
-		// Copy it back to Fiber.
+		// Copy the final response (including auth signature headers) to Fiber.
+		// Reset Fiber's response first to avoid duplicating what "next" wrote.
+		c.Response().Reset()
 		for key, vals := range rec.header {
 			for _, v := range vals {
 				c.Response().Header.Add(key, v)
 			}
 		}
-		c.Status(rec.statusCode)
+		statusCode := rec.statusCode
+		if statusCode == 0 {
+			statusCode = http.StatusOK
+		}
+		c.Status(statusCode)
+		if fiberErr != nil {
+			return fiberErr
+		}
 		return c.SendString(rec.body.String())
 	}
 }
@@ -197,8 +209,3 @@ func (r *responseRecorder) WriteHeader(statusCode int) {
 
 // Flush implements http.Flusher (no-op for buffered recorder).
 func (r *responseRecorder) Flush() {}
-
-// Hijack implements http.Hijacker to satisfy interfaces some middleware may check.
-func (r *responseRecorder) Hijack() (net.Conn, *bufio.ReadWriter, error) {
-	return fasthttputil.NewPipeConns().Conn1(), nil, nil
-}
