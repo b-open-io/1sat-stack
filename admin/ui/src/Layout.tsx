@@ -11,6 +11,7 @@ import { SidebarProvider, SidebarInset, SidebarTrigger } from "@/components/ui/s
 import { Separator } from "@/components/ui/separator";
 import { AppSidebar } from "@/components/app-sidebar";
 import SetupWizard from "./sections/SetupWizard";
+import { Button } from "@/components/ui/button";
 
 type SetupStatus = "loading" | "needed" | "complete";
 
@@ -70,6 +71,48 @@ export default function Layout({ children }: { children?: React.ReactNode }) {
     }
   }, []);
 
+  // Setup not complete — show only the setup flow, no sidebar/nav
+  if (setupStatus !== "complete") {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center p-6">
+        <div className="w-full max-w-lg space-y-4">
+          <h1 className="text-2xl font-semibold text-center">
+            <span className="text-primary">1Sat</span> Stack
+          </h1>
+
+          {setupStatus === "loading" && (
+            <p className="text-center text-sm text-muted-foreground">
+              Checking setup status...
+            </p>
+          )}
+
+          {setupStatus === "needed" && !connected && (
+            <div className="text-center space-y-4">
+              <p className="text-sm text-muted-foreground">
+                No admin has been configured. Connect your wallet to set up this server.
+              </p>
+              {walletChecked && !walletDetected && (
+                <p className="text-sm text-destructive">
+                  No compatible wallet detected. Install Yours Wallet to continue.
+                </p>
+              )}
+              {walletDetected && (
+                <Button onClick={handleConnect} disabled={connecting} size="lg">
+                  {connecting ? "Connecting..." : "Connect Wallet"}
+                </Button>
+              )}
+            </div>
+          )}
+
+          {setupStatus === "needed" && connected && (
+            <SetupWizard onComplete={() => setSetupStatus("complete")} />
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  // Setup complete — normal admin layout
   return (
     <SidebarProvider>
       <AppSidebar
@@ -91,8 +134,7 @@ export default function Layout({ children }: { children?: React.ReactNode }) {
         <main className="flex-1 p-6">
           {walletChecked && !walletDetected && (
             <div className="mb-4 rounded-lg border border-destructive bg-destructive/10 px-4 py-3 text-sm">
-              No compatible wallet detected. Install Yours Wallet (or another
-              wallet that injects <code>window.CWI</code>) to authenticate.
+              No compatible wallet detected. Install Yours Wallet to authenticate.
             </div>
           )}
 
@@ -102,17 +144,7 @@ export default function Layout({ children }: { children?: React.ReactNode }) {
             </div>
           )}
 
-          {setupStatus === "loading" && (
-            <div className="mb-4 rounded-lg border border-border bg-muted/20 px-4 py-3 text-sm text-muted-foreground">
-              Checking setup status...
-            </div>
-          )}
-
-          {connected && setupStatus === "needed" && (
-            <SetupWizard onComplete={() => setSetupStatus("complete")} />
-          )}
-
-          {connected && setupStatus === "complete" && (children || <Outlet />)}
+          {connected && (children || <Outlet />)}
         </main>
       </SidebarInset>
     </SidebarProvider>
