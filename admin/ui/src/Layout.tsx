@@ -7,6 +7,7 @@ import {
   getSetupStatus,
 } from "./api";
 import { toast } from "sonner";
+import { toastError } from "@/lib/utils";
 import { SidebarProvider, SidebarInset, SidebarTrigger } from "@/components/ui/sidebar";
 import { Separator } from "@/components/ui/separator";
 import { AppSidebar } from "@/components/app-sidebar";
@@ -26,7 +27,10 @@ export default function Layout({ children }: { children?: React.ReactNode }) {
   useEffect(() => {
     getSetupStatus()
       .then((s) => setSetupStatus(s.configured ? "complete" : "needed"))
-      .catch(() => setSetupStatus("needed"));
+      .catch((e) => {
+        console.error("Setup status check failed:", e);
+        setSetupStatus("needed");
+      });
   }, []);
 
   useEffect(() => {
@@ -57,7 +61,7 @@ export default function Layout({ children }: { children?: React.ReactNode }) {
       setIdentityKey(key);
       setConnected(true);
     } catch (e: any) {
-      toast.error(e.message || "Failed to connect wallet");
+      toastError(e.message || "Failed to connect wallet");
     } finally {
       setConnecting(false);
     }

@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { performSetup, getIdentityKey } from "../api";
 import { toast } from "sonner";
+import { toastError } from "@/lib/utils";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 
@@ -19,7 +20,7 @@ export default function SetupWizard({ onComplete }: Props) {
       toast.success("Admin identity configured");
       onComplete();
     } catch (e: any) {
-      toast.error(e.message || "Setup failed");
+      toastError(e.message || "Setup failed");
     } finally {
       setSubmitting(false);
     }

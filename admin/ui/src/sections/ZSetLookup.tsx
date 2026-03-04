@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { apiFetch } from "../api";
-import { toast } from "sonner";
+import { toastError } from "@/lib/utils";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -22,7 +22,7 @@ export default function ZSetLookup() {
 
   async function lookup() {
     const val = input.trim();
-    if (!val) { toast.error("Please enter a sorted set key"); return; }
+    if (!val) { toastError("Please enter a sorted set key"); return; }
     setVisible(true);
     setLoading(true);
     try {
@@ -35,7 +35,7 @@ export default function ZSetLookup() {
     } catch (e: any) {
       setItems([]);
       setCount(0);
-      toast.error(e.message);
+      toastError(e.message);
     } finally {
       setLoading(false);
     }

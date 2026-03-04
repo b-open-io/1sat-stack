@@ -1,6 +1,7 @@
 import { useState, useCallback } from "react";
 import { apiFetch } from "../api";
 import { toast } from "sonner";
+import { toastError } from "@/lib/utils";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -41,7 +42,7 @@ export default function OpNSPage({ identityKey }: Props) {
       if (!res.ok) throw new Error(data.error || res.statusText);
       toast.success(data.message || "Crawl started");
     } catch (e: any) {
-      toast.error(e.message || "Failed to start crawl");
+      toastError(e.message || "Failed to start crawl");
     } finally {
       setCrawling(false);
     }
@@ -52,7 +53,7 @@ export default function OpNSPage({ identityKey }: Props) {
     try {
       const cwi = (window as any).CWI;
       if (!cwi) {
-        toast.error("No wallet connected");
+        toastError("No wallet connected");
         return;
       }
 
@@ -66,7 +67,7 @@ export default function OpNSPage({ identityKey }: Props) {
       setNames([]);
     } catch (e: any) {
       console.error("[OpNS] discoverNames error:", e);
-      toast.error(e.message || "Failed to discover names");
+      toastError(e.message || "Failed to discover names");
     } finally {
       setLoading(false);
     }
@@ -75,10 +76,10 @@ export default function OpNSPage({ identityKey }: Props) {
   const publishName = useCallback(async (name: OpnsName) => {
     setPublishing(name.name);
     try {
-      toast.error("Publish not yet wired up — see console for context");
+      toastError("Publish not yet wired up — see console for context");
       console.log("[OpNS] publish requested for:", name);
     } catch (e: any) {
-      toast.error(e.message || "Publish failed");
+      toastError(e.message || "Publish failed");
     } finally {
       setPublishing(null);
     }
@@ -86,7 +87,7 @@ export default function OpNSPage({ identityKey }: Props) {
 
   const lookupName = useCallback(async () => {
     if (!lookupQuery.trim()) {
-      toast.error("Enter a name to lookup");
+      toastError("Enter a name to lookup");
       return;
     }
 
@@ -102,7 +103,7 @@ export default function OpNSPage({ identityKey }: Props) {
       setLookupResult(mockResult);
       toast.success(`Found name: ${lookupQuery}`);
     } catch (e: any) {
-      toast.error(e.message || "Failed to lookup name");
+      toastError(e.message || "Failed to lookup name");
       setLookupResult(null);
     } finally {
       setLookupLoading(false);

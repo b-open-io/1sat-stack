@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { apiFetch } from "../api";
 import { toast } from "sonner";
+import { toastError } from "@/lib/utils";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -18,7 +19,7 @@ export default function Whitelist() {
       if (!res.ok) throw new Error((await res.json()).error || res.statusText);
       setTokens(await res.json());
     } catch {
-      toast.error("Failed to load whitelist");
+      toastError("Failed to load whitelist");
     } finally {
       setLoading(false);
     }
@@ -28,7 +29,7 @@ export default function Whitelist() {
 
   async function add() {
     const val = input.trim();
-    if (!val) { toast.error("Please enter a token ID"); return; }
+    if (!val) { toastError("Please enter a token ID"); return; }
     try {
       const res = await apiFetch("/whitelist", {
         method: "POST",
@@ -40,7 +41,7 @@ export default function Whitelist() {
       toast.success(`Added "${val}" to whitelist`);
       load();
     } catch (e: any) {
-      toast.error(e.message);
+      toastError(e.message);
     }
   }
 
@@ -51,7 +52,7 @@ export default function Whitelist() {
       toast.success(`Removed "${tokenId}" from whitelist`);
       load();
     } catch (e: any) {
-      toast.error(e.message);
+      toastError(e.message);
     }
   }
 

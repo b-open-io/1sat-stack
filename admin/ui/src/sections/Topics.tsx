@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import { apiFetch } from "../api";
-import { toast } from "sonner";
+import { toastError } from "@/lib/utils";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -16,7 +16,7 @@ export default function Topics() {
       if (!res.ok) throw new Error((await res.json()).error || res.statusText);
       setTopics(await res.json());
     } catch {
-      toast.error("Failed to load topics");
+      toastError("Failed to load topics");
     } finally {
       setLoading(false);
     }

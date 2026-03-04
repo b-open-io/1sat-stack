@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { apiFetch } from "../api";
 import { toast } from "sonner";
+import { toastError } from "@/lib/utils";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -23,7 +24,7 @@ export default function Progress() {
       if (!res.ok) throw new Error((await res.json()).error || res.statusText);
       setItems(await res.json());
     } catch {
-      toast.error("Failed to load progress");
+      toastError("Failed to load progress");
     } finally {
       setLoading(false);
     }
@@ -35,7 +36,7 @@ export default function Progress() {
     const el = inputRefs.current[id];
     if (!el) return;
     const block = parseFloat(el.value);
-    if (isNaN(block)) { toast.error("Please enter a valid block height"); return; }
+    if (isNaN(block)) { toastError("Please enter a valid block height"); return; }
     try {
       const res = await apiFetch(`/progress/${encodeURIComponent(id)}`, {
         method: "PUT",
@@ -45,7 +46,7 @@ export default function Progress() {
       if (!res.ok) throw new Error((await res.json()).error || "Failed");
       toast.success(`Updated "${id}" to block ${Math.floor(block).toLocaleString()}`);
     } catch (e: any) {
-      toast.error(e.message);
+      toastError(e.message);
       load();
     }
   }
@@ -58,7 +59,7 @@ export default function Progress() {
       toast.success(`Deleted "${id}"`);
       load();
     } catch (e: any) {
-      toast.error(e.message);
+      toastError(e.message);
     }
   }
 
