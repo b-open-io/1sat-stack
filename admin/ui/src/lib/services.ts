@@ -52,5 +52,17 @@ export const adminServices = {
       const map = mapHeader ? JSON.parse(mapHeader) : undefined;
       return { contentType, origin, map };
     },
+
+    async bulkMetadata(outpoints: string[]): Promise<Record<string, any>> {
+      const res = await fetch(`${getServerBase()}/ordfs/metadata`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ outpoints }),
+      });
+      if (!res.ok) {
+        throw new Error(`Bulk metadata failed: ${res.statusText}`);
+      }
+      return res.json();
+    },
   },
 };

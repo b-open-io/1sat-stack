@@ -3,6 +3,7 @@ package txo
 import (
 	"strings"
 
+	"github.com/b-open-io/1sat-stack/pkg/store"
 	"github.com/bsv-blockchain/go-sdk/chainhash"
 	"github.com/bsv-blockchain/go-sdk/transaction"
 	"github.com/gofiber/fiber/v2"
@@ -233,6 +234,7 @@ func (r *Routes) TxosByTxid(c *fiber.Ctx) error {
 // @Tags txos
 // @Produce json
 // @Param key query []string true "Search key(s) (e.g., ev:own:address, tp:tm_bsv21, own:address)"
+// @Param join query string false "Join type for multiple keys: union (default), intersect, difference"
 // @Param from query number false "Starting score for pagination"
 // @Param rev query bool false "Reverse order"
 // @Param limit query int false "Maximum number of results" default(100)
@@ -266,6 +268,13 @@ func (r *Routes) Search(c *fiber.Ctx) error {
 	}
 	cfg.Limit = uint32(c.QueryInt("limit", 100))
 	cfg.Reverse = c.QueryBool("rev", false)
+
+	switch c.Query("join", "") {
+	case "intersect":
+		cfg.JoinType = store.JoinIntersect
+	case "difference":
+		cfg.JoinType = store.JoinDifference
+	}
 
 	if tagsQuery := c.Query("tags", ""); tagsQuery != "" {
 		cfg.IncludeTags = strings.Split(tagsQuery, ",")

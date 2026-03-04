@@ -9,6 +9,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"sync"
 
 	"github.com/bsv-blockchain/go-sdk/chainhash"
 	"github.com/bsv-blockchain/go-sdk/transaction"
@@ -41,8 +42,9 @@ func NewRoutes(deps *RoutesDeps) *Routes {
 
 // Register registers the routes on a Fiber router
 func (r *Routes) Register(router fiber.Router) {
-	// Metadata endpoint - returns metadata without content bytes
+	// Metadata endpoints
 	router.Get("/metadata/*", r.HandleMetadata)
+	router.Post("/metadata", r.HandleBulkMetadata)
 
 	// Preview endpoints - render HTML content
 	router.Get("/preview/:b64HtmlData", r.HandlePreview)
@@ -299,6 +301,103 @@ func (r *Routes) HandleMetadata(c *fiber.Ctx) error {
 		result["parent"] = resp.Parent.String()
 	}
 	return c.JSON(result)
+}
+
+// HandleBulkMetadata returns metadata for multiple outpoints
+// @Summary Bulk metadata lookup
+// @Description Get metadata for multiple outpoints in a single request
+// @Tags ordfs
+// @Accept json
+// @Produce json
+// @Param body body object true "Outpoints to look up" SchemaExample({"outpoints":["txid_0","txid_1"]})
+// @Success 200 {object} map[string]interface{} "Map of outpoint to metadata (null if not found)"
+// @Failure 400 {object} map[string]string "Bad request"
+// @Failure 500 {object} map[string]string "Internal error"
+// @Router /ordfs/metadata [post]
+func (r *Routes) HandleBulkMetadata(c *fiber.Ctx) error {
+	var body struct {
+		Outpoints []string `json:"outpoints"`
+	}
+	if err := c.BodyParser(&body); err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": "invalid JSON body",
+		})
+	}
+
+	if len(body.Outpoints) == 0 {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": "outpoints array is required",
+		})
+	}
+	if len(body.Outpoints) > 100 {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": "maximum 100 outpoints per request",
+		})
+	}
+
+	type result struct {
+		outpoint string
+		data     any
+		err      error
+	}
+
+	results := make([]result, len(body.Outpoints))
+	var wg sync.WaitGroup
+
+	for i, op := range body.Outpoints {
+		wg.Add(1)
+		go func(idx int, outpointStr string) {
+			defer wg.Done()
+
+			req, err := parseContentPath(outpointStr)
+			if err != nil {
+				results[idx] = result{outpoint: outpointStr, err: fmt.Errorf("invalid outpoint: %w", err)}
+				return
+			}
+			req.Content = false
+			req.Map = true
+
+			resp, err := r.ordfs.Load(c.Context(), req)
+			if err != nil {
+				if errors.Is(err, ErrNotFound) {
+					results[idx] = result{outpoint: outpointStr, data: nil}
+					return
+				}
+				results[idx] = result{outpoint: outpointStr, err: err}
+				return
+			}
+
+			entry := fiber.Map{
+				"contentType":   resp.ContentType,
+				"contentLength": resp.ContentLength,
+				"sequence":      resp.Sequence,
+			}
+			if resp.Origin != nil {
+				entry["origin"] = resp.Origin.String()
+			}
+			if resp.Outpoint != nil {
+				entry["outpoint"] = resp.Outpoint.String()
+			}
+			if resp.Map != nil {
+				entry["map"] = resp.Map
+			}
+			results[idx] = result{outpoint: outpointStr, data: entry}
+		}(i, op)
+	}
+
+	wg.Wait()
+
+	response := make(fiber.Map, len(results))
+	for _, r := range results {
+		if r.err != nil {
+			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+				"error": fmt.Sprintf("failed to load %s: %v", r.outpoint, r.err),
+			})
+		}
+		response[r.outpoint] = r.data
+	}
+
+	return c.JSON(response)
 }
 
 // HandlePreview renders base64-encoded HTML content

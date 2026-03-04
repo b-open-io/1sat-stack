@@ -2,7 +2,7 @@
 
 | Plan | Status | Description |
 |------|--------|-------------|
-| [Admin & OpNS Registration](./2026-03-03-admin-opns-registration.md) | **BLOCKED** | Admin setup button not working - needs browser debugging |
+| [Admin & OpNS Registration](./2026-03-03-admin-opns-registration.md) | **In Progress** | Admin setup working, OPNS crawl complete, lookups wired up |
 
 ## Completed Plans
 
