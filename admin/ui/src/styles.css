@@ -300,3 +300,148 @@ button.secondary:hover {
 .item-list::-webkit-scrollbar-thumb:hover {
   background: var(--text-secondary);
 }
+
+/* Navigation styles */
+.nav-links {
+  display: flex;
+  gap: 1.5rem;
+  align-items: center;
+}
+
+.nav-links a {
+  color: var(--text-secondary);
+  text-decoration: none;
+  font-size: 0.875rem;
+  padding: 0.25rem 0.5rem;
+  border-radius: 0.25rem;
+  transition: all 0.2s;
+}
+
+.nav-links a:hover {
+  color: var(--text-primary);
+  background: var(--bg-card);
+}
+
+.nav-links a.active {
+  color: var(--accent);
+  background: rgba(233, 69, 96, 0.1);
+}
+
+/* Page styles */
+.page {
+  padding: 0;
+}
+
+.opns-hero {
+  text-align: center;
+  padding: 2rem 1rem;
+  margin-bottom: 2rem;
+  background: linear-gradient(135deg, var(--bg-card) 0%, var(--bg-secondary) 100%);
+  border-radius: 0.75rem;
+  border: 1px solid var(--border);
+}
+
+.opns-hero h2 {
+  font-size: 1.5rem;
+  margin-bottom: 0.5rem;
+  color: var(--text-primary);
+}
+
+.opns-hero p {
+  color: var(--text-secondary);
+  font-size: 0.875rem;
+}
+
+.admin-header {
+  text-align: center;
+  padding: 1rem;
+  margin-bottom: 2rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.admin-header h2 {
+  font-size: 1.25rem;
+  margin-bottom: 0.25rem;
+  color: var(--text-primary);
+}
+
+.admin-header p {
+  color: var(--text-secondary);
+  font-size: 0.875rem;
+}
+
+/* 2-column grid */
+.grid-2 {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 1.5rem;
+}
+
+@media (max-width: 768px) {
+  .grid-2 {
+    grid-template-columns: 1fr;
+  }
+  
+  .nav-links {
+    gap: 0.75rem;
+  }
+  
+  .nav-links a {
+    font-size: 0.8rem;
+  }
+}
+
+/* Lookup result styles */
+.lookup-result {
+  background: var(--bg-card);
+  border-radius: 0.5rem;
+  padding: 1rem;
+  margin-top: 1rem;
+  border: 1px solid var(--border);
+}
+
+.lookup-row {
+  display: flex;
+  justify-content: space-between;
+  padding: 0.5rem 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.lookup-row:last-child {
+  border-bottom: none;
+}
+
+.lookup-label {
+  color: var(--text-secondary);
+  font-size: 0.875rem;
+}
+
+.lookup-value {
+  color: var(--text-primary);
+  font-family: "Monaco", "Menlo", monospace;
+  font-size: 0.875rem;
+}
+
+.lookup-status {
+  font-size: 0.75rem;
+  padding: 0.125rem 0.5rem;
+  border-radius: 1rem;
+  text-transform: uppercase;
+  font-weight: 500;
+}
+
+.lookup-status.active {
+  background: rgba(74, 222, 128, 0.2);
+  color: var(--success);
+}
+
+.lookup-status.pending {
+  background: rgba(251, 191, 36, 0.2);
+  color: var(--warning);
+}
+
+.lookup-status.expired {
+  background: rgba(233, 69, 96, 0.2);
+  color: var(--accent);
+}
+
