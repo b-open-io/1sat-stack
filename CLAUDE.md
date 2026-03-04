@@ -53,7 +53,7 @@ golangci-lint run                        # Lint (if configured)
 ## Storage Keys
 
 All keys documented in `pkg/store/KEYS.md`.
-Key prefixes: `h:` (hash), `z:` (sorted set), `s:` (set), `q:` (queue).
+Application keys are type-agnostic. Namespace prefixes: `ev:` (event), `tp:` (topic), `q:` (queue), `tm_` (topic manager). Badger handles type discrimination internally.
 
 ## Code Style
 

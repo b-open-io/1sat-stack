@@ -33,10 +33,10 @@ func expandPath(path string) string {
 
 // Key prefixes for different data types
 var (
-	prefixSet        = []byte("set:")
-	prefixHash       = []byte("hash:")
-	prefixZSetScore  = []byte("zset:score:")
-	prefixZSetMember = []byte("zset:member:")
+	prefixSet        = []byte("s:")
+	prefixHash       = []byte("h:")
+	prefixZSetScore  = []byte("zs:")
+	prefixZSetMember = []byte("zm:")
 )
 
 // ErrKeyNotFound is returned when a key doesn't exist
@@ -798,9 +798,9 @@ func (s *BadgerStore) ZKeys(ctx context.Context, prefix []byte) ([]string, error
 
 // kvKey builds a simple KV key with prefix
 func kvKey(key []byte) []byte {
-	buf := make([]byte, 3+len(key))
-	copy(buf, "kv:")
-	copy(buf[3:], key)
+	buf := make([]byte, 2+len(key))
+	copy(buf, "k:")
+	copy(buf[2:], key)
 	return buf
 }
 
@@ -858,8 +858,8 @@ func (s *BadgerStore) Scan(ctx context.Context, prefix []byte, limit int) ([]KV,
 			item := it.Item()
 			k := item.Key()
 
-			// Strip the "kv:" prefix from the key
-			key := bytes.Clone(k[3:])
+			// Strip the "k:" prefix from the key
+			key := bytes.Clone(k[2:])
 
 			var value []byte
 			err := item.Value(func(val []byte) error {

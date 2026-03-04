@@ -9,7 +9,7 @@ import (
 )
 
 // KeyAdminPubkeys is the store key for the set of admin identity public keys.
-var KeyAdminPubkeys = []byte("s:admin:pubkeys")
+var KeyAdminPubkeys = []byte("admin:pubkeys")
 
 // AdminGuard returns a Fiber middleware that restricts access to admin endpoints.
 // It checks the BRC-103/104 identity against the admin pubkey set in the store,

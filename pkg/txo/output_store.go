@@ -16,8 +16,8 @@ import (
 
 // Bulk lookup hash keys
 var (
-	hashSats = []byte(PfxHash + "sats") // h:sats → {outpoint:36} → satoshis (uint64)
-	hashSpnd = []byte(PfxHash + "spnd") // h:spnd → {outpoint:36} → spend txid (32 bytes)
+	hashSats = KeySatoshis
+	hashSpnd = KeySpends
 )
 
 // Hash field prefixes (within h:{outpoint})
@@ -508,26 +508,19 @@ func (s *OutputStore) Search(ctx context.Context, cfg *OutputSearchCfg) ([]store
 	return unspent, nil
 }
 
-// prefixKey adds the appropriate z: prefix based on key type.
-// Keys starting with "ev:", "tp:", or "z:" are handled specially.
-// All other keys default to "ev:" prefix.
+// prefixKey ensures a key has an application namespace prefix.
+// Keys starting with "ev:" or "tp:" pass through as-is.
+// All other keys default to "ev:" prefix for backwards compatibility.
 func prefixKey(key string) []byte {
-	// Already has full prefix
-	if len(key) >= 2 && key[:2] == PfxZSet {
-		return []byte(key)
-	}
-
-	// Has type prefix, add z:
 	if len(key) >= 3 {
 		switch key[:3] {
 		case PfxEvent: // "ev:"
-			return []byte(PfxZSet + key)
+			return []byte(key)
 		case PfxTopic: // "tp:"
-			return []byte(PfxZSet + key)
+			return []byte(key)
 		}
 	}
 
-	// Default to event prefix for backwards compatibility
 	return KeyEvent(key)
 }
 

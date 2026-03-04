@@ -87,7 +87,7 @@ func (m *TokenManager) GetTokenStatus(ctx context.Context, tokenId string) (*Tok
 	isBlacklisted, _ := m.store.SIsMember(ctx, KeyBlacklist, []byte(tokenId))
 
 	// Output count in topic - always calculate for reporting
-	topicKey := []byte("z:tp:tm_" + tokenId)
+	topicKey := []byte("tp:tm_" + tokenId)
 	outputCount, err := m.store.ZCard(ctx, topicKey)
 	if err != nil {
 		return nil, fmt.Errorf("failed to count outputs: %w", err)
