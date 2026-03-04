@@ -53,7 +53,7 @@ export async function getSetupStatus(): Promise<{ configured: boolean }> {
 }
 
 export async function performSetup(): Promise<{ message: string }> {
-  const url = `${SETUP_BASE}/setup`;
+  const url = SETUP_BASE;  // SETUP_BASE already includes /setup
   let res: Response;
   if (authFetch) {
     res = await authFetch.fetch(url, { method: "POST" });
