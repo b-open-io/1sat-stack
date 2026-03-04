@@ -1004,12 +1004,19 @@ func (c *Config) RegisterRoutes(app *fiber.App, svc *Services) {
 		if prefix == "" {
 			prefix = "/wallet"
 		}
-		// Apply auth middleware to wallet routes (requires authentication)
-		walletGroup := api.Group(prefix, svc.AuthMiddleware.Handler())
-		svc.Wallet.Routes.Register(walletGroup)
+		// Compose auth middleware with wallet handler at HTTP layer,
+		// then adapt to Fiber once. This ensures auth context flows correctly
+		// to the RPC handler without context conversion issues.
+		walletHandler := svc.Wallet.Routes.Handler()
+		authWrappedHandler := svc.AuthMiddleware.HTTPHandler(walletHandler)
+
+		// Register wallet routes with auth-wrapped handler
+		api.Group(prefix).All("/", adaptor.HTTPHandler(authWrappedHandler))
+
 		// Register /.well-known/auth at app root for BRC-103/104 handshake
-		// Auth middleware handles handshake internally
-		app.All("/.well-known/auth", svc.AuthMiddleware.Handler(), adaptor.HTTPHandler(svc.Wallet.Routes.Handler()))
+		// (auth middleware handles the handshake internally)
+		app.All("/.well-known/auth", adaptor.HTTPHandler(authWrappedHandler))
+
 		capabilities = append(capabilities, "wallet")
 		slog.Debug("registered wallet routes", "prefix", c.Server.BasePath+prefix)
 	}

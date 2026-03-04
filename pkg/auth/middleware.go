@@ -116,6 +116,13 @@ func (m *Middleware) Handler() fiber.Handler {
 	}
 }
 
+// HTTPHandler wraps an http.Handler with auth middleware.
+// Use this when you want to compose at the HTTP layer before adapting to Fiber.
+// The auth context will flow directly to the wrapped handler without conversion.
+func (m *Middleware) HTTPHandler(next http.Handler) http.Handler {
+	return m.authFactory.HTTPHandler(next)
+}
+
 // buildHTTPRequest converts a Fiber context into a net/http.Request.
 func buildHTTPRequest(c *fiber.Ctx) (*http.Request, error) {
 	reqURI := string(c.Request().RequestURI())
