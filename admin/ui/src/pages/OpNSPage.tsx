@@ -199,7 +199,7 @@ export default function OpNSPage({ identityKey }: Props) {
         const r = results[i];
         setSyncProgress(`Resolving name ${i + 1}/${results.length}...`);
         try {
-          const ordfsRes = await fetch(`${base}/ordfs/${r.outpoint}?seq=0`);
+          const ordfsRes = await fetch(`${window.location.origin}/content/${r.outpoint}?seq=0`);
           if (!ordfsRes.ok) {
             names.push({ outpoint: r.outpoint, name: "unknown", satoshis: r.satoshis ?? 1 });
             continue;
