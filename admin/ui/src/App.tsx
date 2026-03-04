@@ -31,9 +31,15 @@ function AppContent() {
   );
 }
 
+const adminIdx = window.location.pathname.indexOf("/admin");
+const basename =
+  adminIdx >= 0
+    ? window.location.pathname.substring(0, adminIdx + "/admin".length)
+    : "/";
+
 export default function App() {
   return (
-    <BrowserRouter>
+    <BrowserRouter basename={basename}>
       <TooltipProvider>
         <AppContent />
         <Toaster position="bottom-right" theme="dark" />
