@@ -1,6 +1,42 @@
 # OpNS Name Publishing: SDK + Server Changes
 
-## Context
+**Status: BLOCKED** 🔴 — Admin setup flow not working
+
+---
+
+## Current Blocker
+
+The "Confirm Admin Identity" button in the admin UI does not make a network request. This blocks admin setup, which is required for admin permissions to publish OpNS names.
+
+**Symptoms**:
+- Button text changes to "Configuring..." and disables
+- No network request appears in browser dev tools
+- Likely JavaScript error or auth initialization issue
+
+**Decision needed**: Fix admin setup first, or skip to OpNS/Paymail testing without admin.
+
+---
+
+## Prerequisites Completed ✅
+
+### Wallet Extension (yours-wallet)
+All wallet authentication and popup issues resolved:
+- Auth flow fixed: `verifyAccess()` checks `isLocked`, `lockWallet()` doesn't remove `passKey`
+- Popup behavior fixed: No double popups, proper close after unlock
+- Session sharing: Wallet and server share proper auth session
+
+### Server Auth & Routes (1sat-stack)
+- Setup routes moved to `/admin/setup/*` to avoid AdminGuard
+- Auth middleware refactored for proper HTTP-layer composition
+- Wallet routes use `HTTPHandler()` for correct auth context flow
+
+### Current Status
+Wallet connects successfully. Admin UI shows "Connected" with identity key.
+But **"Confirm Admin Identity" button doesn't trigger network request**.
+
+---
+
+## Original Plan
 
 The admin UI is a React + TypeScript SPA with BRC-103/104 wallet auth and API key fallback. The 1sat-sdk has `opnsRegister`/`opnsDeregister` actions for publishing names. The server has paymail, OpNS overlay, and OrdFS services.
 
@@ -78,3 +114,36 @@ Add `OPNS_BASKET = 'opns'` alongside existing `ORDINALS_BASKET`, `BSV21_BASKET`,
 
 ### Go SDK (go-sdk)
 - `wallet/interfaces.go` — `BasketInsertion`, `InternalizeProtocol`, `InternalizeOutput`
+
+---
+
+## Next Steps
+
+### Option 1: Fix Admin Setup First (Recommended)
+1. Debug why `performSetup()` in `admin/ui/src/api.ts` doesn't make the POST request
+2. Check browser console for JavaScript errors
+3. Verify `authFetch` is initialized after wallet connect
+4. Fix the issue and complete admin setup
+5. Then proceed with OpNS work items above
+
+### Option 2: Skip to OpNS Testing
+1. Test OpNS lookup functionality (read-only, doesn't need admin)
+2. Test Paymail receive with existing wallet
+3. Return to admin setup later when write operations are needed
+
+**Note**: Admin permissions may be required for some OpNS management operations.
+
+---
+
+## Debugging the Admin Setup Issue
+
+**Files to check**:
+- `admin/ui/src/api.ts:55-67` — `performSetup()` function
+- `admin/ui/src/sections/SetupWizard.tsx:13-24` — `handleSetup()` handler
+- Browser console for JavaScript errors
+- Network tab to confirm no request is made
+
+**Likely causes**:
+- `authFetch` not initialized (should be set in `connectWallet()`)
+- JavaScript error before fetch call
+- Wrong URL construction (`${SETUP_BASE}/setup` = `/admin/setup/setup` but endpoint is `/admin/setup`)
