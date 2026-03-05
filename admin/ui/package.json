@@ -9,7 +9,8 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "@1sat/actions": "0.0.12",
+    "@1sat/actions": "0.0.13",
+    "@1sat/client": "^0.0.8",
     "@1sat/types": "^0.0.9",
     "@bsv/sdk": "^2.0.4",
     "class-variance-authority": "^0.7.1",

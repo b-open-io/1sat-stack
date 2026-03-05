@@ -1,7 +1,7 @@
 import { useState, useCallback } from "react";
 import { toast } from "sonner";
 import { toastError } from "@/lib/utils";
-import { adminServices } from "@/lib/services";
+import { getServices } from "@/lib/services";
 import { apiFetch } from "@/api";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -66,7 +66,7 @@ function buildContext(): OneSatContext {
   if (!cwi) throw new Error("No wallet connected");
   return {
     wallet: cwi,
-    services: adminServices as any,
+    services: getServices(),
     chain: "main",
   };
 }
