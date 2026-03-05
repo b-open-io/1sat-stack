@@ -28,8 +28,10 @@ func ParseOrigin(ctx *ParseContext) *ParseResult {
 		return nil
 	}
 
+	seq := 0
 	resp, err := ctx.Ordfs.Load(ctx.Ctx, &ordfs.Request{
 		Outpoint: ctx.Outpoint,
+		Seq:      &seq,
 		Content:  false,
 		Map:      true,
 	})
