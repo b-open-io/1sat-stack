@@ -47,10 +47,6 @@ interface MineResult {
   domain: string;
 }
 
-interface Props {
-  identityKey: string | null;
-}
-
 // ============================================================================
 // Helpers
 // ============================================================================
@@ -101,7 +97,7 @@ function isPublished(tags?: string[]): boolean {
 // Component
 // ============================================================================
 
-export default function OpNSPage({ identityKey }: Props) {
+export default function OpNSPage() {
   // Import section state
   const [wif, setWif] = useState("");
   const [importAddress, setImportAddress] = useState<string | null>(null);
@@ -518,25 +514,17 @@ export default function OpNSPage({ identityKey }: Props) {
               variant="secondary"
               size="sm"
               onClick={loadWalletNames}
-              disabled={loadingWallet || !identityKey}
+              disabled={loadingWallet}
             >
               {loadingWallet ? "Loading..." : "Refresh"}
             </Button>
           </div>
         </CardHeader>
         <CardContent>
-          {identityKey && (
-            <div className="text-xs text-muted-foreground font-mono mb-3">
-              Identity: {identityKey.slice(0, 8)}...{identityKey.slice(-8)}
-            </div>
-          )}
-
           <div className="space-y-2">
             {walletNames.length === 0 ? (
               <p className="text-center py-8 text-muted-foreground">
-                {identityKey
-                  ? 'Click "Refresh" to load names from your wallet'
-                  : "Connect wallet to view names"}
+                Click "Refresh" to load names from your wallet
               </p>
             ) : (
               walletNames.map((wn) => (
