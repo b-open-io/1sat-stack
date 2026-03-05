@@ -194,15 +194,20 @@ export default function OpNSPage({ identityKey }: Props) {
         return;
       }
 
-      // Extract names from indexed name: events
-      const names: DiscoveredName[] = results.map(r => {
-        const nameEvent = r.events?.find((e: string) => e.startsWith("name:"));
-        return {
-          outpoint: r.outpoint,
-          name: nameEvent ? nameEvent.slice(5) : "unknown",
-          satoshis: r.satoshis ?? 1,
-        };
-      });
+      // Resolve names by fetching inscribed content from ORDFS via origin
+      setSyncProgress(`Resolving ${results.length} name(s)...`);
+      const names: DiscoveredName[] = [];
+      for (const r of results) {
+        const originEvent = r.events?.find((e: string) => e.startsWith("origin:"));
+        const origin = originEvent ? originEvent.slice(7) : r.outpoint;
+        try {
+          const contentRes = await fetch(`${window.location.origin}/content/${origin}`);
+          const name = contentRes.ok ? await contentRes.text() : "unknown";
+          names.push({ outpoint: r.outpoint, name: name || "unknown", satoshis: r.satoshis ?? 1 });
+        } catch {
+          names.push({ outpoint: r.outpoint, name: "unknown", satoshis: r.satoshis ?? 1 });
+        }
+      }
 
       setDiscoveredNames(names);
       setSyncProgress(null);
