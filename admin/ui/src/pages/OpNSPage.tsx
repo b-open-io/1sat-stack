@@ -173,62 +173,36 @@ export default function OpNSPage({ identityKey }: Props) {
         };
       });
 
-      // Search for all 1-sat inscription outputs on this address
-      setSyncProgress("Searching for inscriptions...");
+      // Search for unspent OPNS outputs owned by this address
+      setSyncProgress("Searching for OPNS names...");
       const searchUrl = new URL(`${base}/txo/search`);
-      searchUrl.searchParams.set("key", `own:${address}`);
+      searchUrl.searchParams.append("key", `own:${address}`);
+      searchUrl.searchParams.append("key", "type:application/op-ns");
+      searchUrl.searchParams.set("join", "intersect");
       searchUrl.searchParams.set("unspent", "true");
-      searchUrl.searchParams.set("tags", "insc");
+      searchUrl.searchParams.set("events", "true");
+      searchUrl.searchParams.set("sats", "true");
 
       const res = await fetch(searchUrl.toString());
       if (!res.ok) throw new Error(`Search failed: ${res.statusText}`);
 
       const results: IndexedOutput[] = await res.json();
-      if (results.length === 0) {
-        setDiscoveredNames([]);
-        setSyncProgress(null);
-        toast.info("No inscriptions found on this address");
-        return;
-      }
-
-      // Use bulk metadata to identify which outputs are OPNS names
-      setSyncProgress(`Checking ${results.length} inscription(s) via bulk metadata...`);
-      const outpoints = results.map(r => r.outpoint);
-      const metadata = await adminServices.ordfs.bulkMetadata(outpoints);
-
-      // Filter to only OPNS content types
-      const opnsResults = results.filter(r => {
-        const meta = metadata[r.outpoint];
-        return meta && meta.contentType === "application/op-ns";
-      });
-
-      if (opnsResults.length === 0) {
+      if (!results || results.length === 0) {
         setDiscoveredNames([]);
         setSyncProgress(null);
         toast.info("No OPNS names found on this address");
         return;
       }
 
-      // Fetch name content for each OPNS output using origin from bulk metadata
-      setSyncProgress(`Resolving ${opnsResults.length} name(s)...`);
-      const names: DiscoveredName[] = [];
-      for (let i = 0; i < opnsResults.length; i++) {
-        const r = opnsResults[i];
-        const meta = metadata[r.outpoint];
-        const origin = meta?.origin ?? r.outpoint;
-        setSyncProgress(`Resolving name ${i + 1}/${opnsResults.length}...`);
-        try {
-          const ordfsRes = await fetch(`${window.location.origin}/content/${origin}`);
-          if (!ordfsRes.ok) {
-            names.push({ outpoint: r.outpoint, name: "unknown", satoshis: r.satoshis ?? 1 });
-            continue;
-          }
-          const name = await ordfsRes.text();
-          names.push({ outpoint: r.outpoint, name: name || "unknown", satoshis: r.satoshis ?? 1 });
-        } catch {
-          names.push({ outpoint: r.outpoint, name: "unknown", satoshis: r.satoshis ?? 1 });
-        }
-      }
+      // Extract names from indexed name: events
+      const names: DiscoveredName[] = results.map(r => {
+        const nameEvent = r.events?.find((e: string) => e.startsWith("name:"));
+        return {
+          outpoint: r.outpoint,
+          name: nameEvent ? nameEvent.slice(5) : "unknown",
+          satoshis: r.satoshis ?? 1,
+        };
+      });
 
       setDiscoveredNames(names);
       setSyncProgress(null);
