@@ -87,17 +87,15 @@ func (s *LocalWalletServices) PostFromBEEF(ctx context.Context, b *transaction.B
 			continue
 		}
 
-		efHex, err := tx.EFHex()
+		efBytes, err := tx.EF()
 		if err != nil {
-			return nil, fmt.Errorf("failed to get EF hex for %s: %w", txID, err)
+			return nil, fmt.Errorf("failed to get EF bytes for %s: %w", txID, err)
 		}
 
-		efBytes, err := transaction.NewTransactionFromHex(efHex)
-		if err != nil {
-			return nil, fmt.Errorf("failed to parse EF hex for %s: %w", txID, err)
-		}
-
-		status, err := s.arcade.SubmitTransaction(ctx, efBytes.Bytes(), nil)
+		status, err := s.arcade.SubmitTransaction(ctx, efBytes, &models.SubmitOptions{
+			SkipFeeValidation:    true,
+			SkipScriptValidation: true,
+		})
 		if err != nil {
 			results = append(results, &wdk.PostFromBEEFServiceResult{
 				Name:  "LocalArcade",
