@@ -84,6 +84,7 @@ func (c *Config) Initialize(
 	// Create GORM storage provider
 	providerOptions := []storage.ProviderOption{
 		storage.WithDBConfig(c.DB),
+		storage.WithFeeModel(c.FeeModel),
 		storage.WithLogger(walletLogger),
 		storage.WithBackgroundBroadcasterContext(ctx),
 	}

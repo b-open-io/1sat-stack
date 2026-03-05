@@ -92,14 +92,16 @@ func (s *LocalWalletServices) PostFromBEEF(ctx context.Context, b *transaction.B
 			return nil, fmt.Errorf("failed to get EF bytes for %s: %w", txID, err)
 		}
 
-		status, err := s.arcade.SubmitTransaction(ctx, efBytes, &models.SubmitOptions{
-			SkipFeeValidation:    true,
-			SkipScriptValidation: true,
-		})
+		status, err := s.arcade.SubmitTransaction(ctx, efBytes, nil)
 		if err != nil {
 			results = append(results, &wdk.PostFromBEEFServiceResult{
-				Name:  "LocalArcade",
-				Error: fmt.Errorf("arcade broadcast failed for %s: %w", txID, err),
+				Name: "LocalArcade",
+				PostedBEEFResult: &wdk.PostedBEEF{
+					TxIDResults: []wdk.PostedTxID{{
+						TxID:   txID,
+						Result: wdk.PostedTxIDResultError,
+					}},
+				},
 			})
 			continue
 		}
@@ -347,7 +349,6 @@ func mapArcadeStatus(status *models.TransactionStatus, txID string) wdk.PostedTx
 		return wdk.PostedTxID{
 			TxID:   txID,
 			Result: wdk.PostedTxIDResultError,
-			Error:  fmt.Errorf("nil status from arcade"),
 		}
 	}
 
@@ -368,10 +369,8 @@ func mapArcadeStatus(status *models.TransactionStatus, txID string) wdk.PostedTx
 		result.DoubleSpend = true
 	case models.StatusRejected:
 		result.Result = wdk.PostedTxIDResultError
-		result.Error = fmt.Errorf("transaction rejected: %s", status.ExtraInfo)
 	default:
 		result.Result = wdk.PostedTxIDResultError
-		result.Error = fmt.Errorf("unknown arcade status: %s", status.Status)
 	}
 
 	if len(status.MerklePath) > 0 {

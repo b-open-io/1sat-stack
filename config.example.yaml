@@ -224,6 +224,9 @@ wallet:
   mode: disabled
   server_private_key: ""    # ONESAT_WALLET_SERVER_PRIVATE_KEY (hex-encoded)
   # name: "1sat-wallet"    # Storage name identifier
+  fee_model:
+    type: "sat/kb"
+    value: 100
   db:
     engine: sqlite
     sqlite:

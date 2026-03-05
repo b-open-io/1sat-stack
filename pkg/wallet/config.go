@@ -17,11 +17,12 @@ const (
 
 // Config holds wallet service configuration.
 type Config struct {
-	Mode             string        `mapstructure:"mode"`               // disabled, embedded
-	ServerPrivateKey string        `mapstructure:"server_private_key"` // Server private key for BRC-100 auth
-	Name             string        `mapstructure:"name"`               // Storage name identifier
-	DB               defs.Database `mapstructure:"db"`                 // Database configuration
-	Routes           RoutesConfig  `mapstructure:"routes"`
+	Mode             string         `mapstructure:"mode"`               // disabled, embedded
+	ServerPrivateKey string         `mapstructure:"server_private_key"` // Server private key for BRC-100 auth
+	Name             string         `mapstructure:"name"`               // Storage name identifier
+	FeeModel         defs.FeeModel  `mapstructure:"fee_model"`          // Fee model configuration
+	DB               defs.Database  `mapstructure:"db"`                 // Database configuration
+	Routes           RoutesConfig   `mapstructure:"routes"`
 }
 
 // RoutesConfig holds route configuration
@@ -40,6 +41,8 @@ func (c *Config) SetDefaults(v *viper.Viper, prefix string) {
 	v.SetDefault(p+"mode", ModeDisabled)
 	v.SetDefault(p+"name", "1sat-wallet")
 	v.SetDefault(p+"server_private_key", "")
+	v.SetDefault(p+"fee_model.type", string(defs.SatPerKB))
+	v.SetDefault(p+"fee_model.value", 100)
 	v.SetDefault(p+"routes.enabled", true)
 	v.SetDefault(p+"routes.prefix", "/wallet")
 
