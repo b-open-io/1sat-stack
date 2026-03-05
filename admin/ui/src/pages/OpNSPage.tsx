@@ -241,14 +241,8 @@ export default function OpNSPage({ identityKey }: Props) {
       }];
       const sweepInputs = await prepareSweepInputs(ctx, utxos);
 
-      // Add metadata for proper basket/tag assignment
       const result = await sweepOrdinals.execute(ctx, {
-        inputs: sweepInputs.map(si => ({
-          ...si,
-          contentType: "application/op-ns",
-          name: name.name,
-          origin: name.origin,
-        })),
+        inputs: sweepInputs,
         wif: wif.trim(),
       });
 
