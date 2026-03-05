@@ -92,6 +92,7 @@ indexer:
     - bsv21        # BSV21 fungible tokens
     - ordlock      # Ordinal lock scripts
     - cosign       # Co-signing scripts
+    - origin       # Origin resolution for transferred ordinals
   sync:
     enabled: true
     subscription_ids: []    # ONESAT_INDEXER_SYNC_SUBSCRIPTION_IDS (comma-separated)

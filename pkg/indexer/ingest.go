@@ -82,6 +82,27 @@ func (cfg *IngestCtx) IngestTx(ctx context.Context, tx *transaction.Transaction)
 		return nil, err
 	}
 
+	// Log parse results before save
+	if cfg.Verbose {
+		eventCount := 0
+		ownerCount := 0
+		for _, o := range idxCtx.Outputs {
+			if o != nil {
+				eventCount += len(o.Events)
+				ownerCount += len(o.Owners)
+			}
+		}
+		cfg.Logger.Debug("parsed",
+			"txid", idxCtx.TxidHex,
+			"height", idxCtx.Height,
+			"outputs", len(idxCtx.Outputs),
+			"spends", len(idxCtx.Spends),
+			"events", eventCount,
+			"owners", ownerCount,
+			"hasOrdfs", idxCtx.Ordfs != nil,
+		)
+	}
+
 	if err := idxCtx.Save(); err != nil {
 		return nil, err
 	}
