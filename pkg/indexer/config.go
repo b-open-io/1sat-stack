@@ -7,6 +7,7 @@ import (
 
 	"github.com/b-open-io/1sat-stack/pkg/beef"
 	"github.com/b-open-io/1sat-stack/pkg/logging"
+	"github.com/b-open-io/1sat-stack/pkg/ordfs"
 	"github.com/b-open-io/1sat-stack/pkg/pubsub"
 	"github.com/b-open-io/1sat-stack/pkg/store"
 	"github.com/b-open-io/1sat-stack/pkg/txo"
@@ -115,6 +116,7 @@ type InitializeDeps struct {
 	Store       store.Store
 	BeefStorage *beef.Storage
 	OutputStore *txo.OutputStore
+	Ordfs       *ordfs.Ordfs
 }
 
 // ArcadeListenerDeps holds dependencies for arcade listener initialization.
@@ -155,6 +157,7 @@ func (c *Config) Initialize(
 
 	// Create the IngestCtx with configured tags
 	svc.Indexer = NewIngestCtx(deps.OutputStore, deps.BeefStorage, indexerLogger).
+		WithOrdfs(deps.Ordfs).
 		WithTags(c.Tags). // nil tags = use parse.DefaultTags
 		WithVerbose(c.Verbose)
 

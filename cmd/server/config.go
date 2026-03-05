@@ -601,11 +601,15 @@ func (c *Config) Initialize(ctx context.Context, logger *slog.Logger) (*Services
 	// Initialize indexer services (shared IngestCtx used by owner sync and ingest sync)
 	if c.Indexer.Mode != indexer.ModeDisabled && svc.TXO != nil && svc.Beef != nil {
 		start = time.Now()
-		indexerSvc, err := c.Indexer.Initialize(ctx, logger, &indexer.InitializeDeps{
+		indexerDeps := &indexer.InitializeDeps{
 			Store:       svc.Store.Store,
 			BeefStorage: svc.Beef.Storage,
 			OutputStore: svc.TXO.OutputStore,
-		})
+		}
+		if svc.ORDFS != nil {
+			indexerDeps.Ordfs = svc.ORDFS.Ordfs
+		}
+		indexerSvc, err := c.Indexer.Initialize(ctx, logger, indexerDeps)
 		if err != nil {
 			return nil, fmt.Errorf("failed to initialize indexer: %w", err)
 		}

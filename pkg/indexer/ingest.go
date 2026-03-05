@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/b-open-io/1sat-stack/pkg/beef"
+	"github.com/b-open-io/1sat-stack/pkg/ordfs"
 	"github.com/b-open-io/1sat-stack/pkg/txo"
 	"github.com/bsv-blockchain/go-sdk/chainhash"
 	"github.com/bsv-blockchain/go-sdk/transaction"
@@ -17,6 +18,7 @@ type IngestCtx struct {
 	Tags        []string // Which parse tags to run (nil = all defaults)
 	Store       *txo.OutputStore
 	BeefStorage *beef.Storage
+	Ordfs       *ordfs.Ordfs
 	Logger      *slog.Logger
 	Verbose     bool
 }
@@ -36,6 +38,12 @@ func NewIngestCtx(store *txo.OutputStore, beefStorage *beef.Storage, logger *slo
 // WithTags sets the parse tags to run
 func (cfg *IngestCtx) WithTags(tags []string) *IngestCtx {
 	cfg.Tags = tags
+	return cfg
+}
+
+// WithOrdfs sets the ORDFS service for origin resolution
+func (cfg *IngestCtx) WithOrdfs(o *ordfs.Ordfs) *IngestCtx {
+	cfg.Ordfs = o
 	return cfg
 }
 
@@ -94,7 +102,7 @@ func (cfg *IngestCtx) IngestTx(ctx context.Context, tx *transaction.Transaction)
 // ParseTx parses a transaction and its inputs without saving.
 // Note: Expects tx.Inputs[].SourceTransaction to be pre-populated (e.g., via BuildFullBeefTx).
 func (cfg *IngestCtx) ParseTx(ctx context.Context, tx *transaction.Transaction) (*IndexContext, error) {
-	idxCtx := NewIndexContext(ctx, cfg.Store, tx, cfg.Tags)
+	idxCtx := NewIndexContext(ctx, cfg.Store, cfg.Ordfs, tx, cfg.Tags)
 	if err := idxCtx.ParseTxn(); err != nil {
 		return nil, err
 	}

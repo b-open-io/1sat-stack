@@ -1,6 +1,9 @@
 package parse
 
 import (
+	"context"
+
+	"github.com/b-open-io/1sat-stack/pkg/ordfs"
 	"github.com/b-open-io/1sat-stack/pkg/types"
 	"github.com/bsv-blockchain/go-sdk/transaction"
 )
@@ -19,6 +22,8 @@ type ParseContext struct {
 	Outpoint      *transaction.Outpoint // The outpoint being parsed
 	LockingScript []byte                // Raw locking script
 	Satoshis      uint64                // Output value
+	Ctx           context.Context       // For parsers that need network calls (optional)
+	Ordfs         *ordfs.Ordfs          // Origin resolution via ORDFS (optional)
 
 	// Accumulated results from parsers (keyed by tag)
 	Results map[string]*ParseResult
@@ -43,6 +48,7 @@ var Parsers = map[string]ParserFunc{
 	TagBAP:         ParseBAP,
 	TagSigma:       ParseSigma,
 	Tag1Sat:        Parse1Sat,
+	TagOrigin:      ParseOrigin,
 }
 
 // DefaultTags is the recommended order of tags for comprehensive parsing
@@ -60,16 +66,28 @@ var DefaultTags = []string{
 	TagAIP,         // AIP signatures
 	TagBAP,         // BAP identity
 	TagSigma,       // SIGMA signatures
+	TagOrigin,      // Origin resolution for transferred 1-sat outputs (must come after insc)
+}
+
+// ParseOptions holds optional parameters for Parse.
+type ParseOptions struct {
+	Ctx   context.Context
+	Ordfs *ordfs.Ordfs
 }
 
 // Parse runs the specified parsers on an output and returns the results.
 // If tags is nil or empty, all default parsers are run.
-func Parse(outpoint *transaction.Outpoint, lockingScript []byte, satoshis uint64, tags []string) map[string]*ParseResult {
+func Parse(outpoint *transaction.Outpoint, lockingScript []byte, satoshis uint64, tags []string, opts *ParseOptions) map[string]*ParseResult {
 	ctx := &ParseContext{
 		Outpoint:      outpoint,
 		LockingScript: lockingScript,
 		Satoshis:      satoshis,
 		Results:       make(map[string]*ParseResult),
+	}
+
+	if opts != nil {
+		ctx.Ctx = opts.Ctx
+		ctx.Ordfs = opts.Ordfs
 	}
 
 	// Use default tags if none specified

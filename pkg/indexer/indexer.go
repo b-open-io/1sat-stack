@@ -3,6 +3,7 @@ package indexer
 import (
 	"context"
 
+	"github.com/b-open-io/1sat-stack/pkg/ordfs"
 	"github.com/b-open-io/1sat-stack/pkg/parse"
 	"github.com/b-open-io/1sat-stack/pkg/txo"
 	"github.com/b-open-io/1sat-stack/pkg/types"
@@ -22,11 +23,12 @@ type IndexContext struct {
 	Spends  []*txo.IndexedOutput // Spent outputs with their events
 	Tags    []string             // Which parse tags to run (nil = all defaults)
 	Store   *txo.OutputStore
+	Ordfs   *ordfs.Ordfs
 	Ctx     context.Context
 }
 
 // NewIndexContext creates a new IndexContext for the given transaction
-func NewIndexContext(ctx context.Context, store *txo.OutputStore, tx *transaction.Transaction, tags []string) *IndexContext {
+func NewIndexContext(ctx context.Context, store *txo.OutputStore, o *ordfs.Ordfs, tx *transaction.Transaction, tags []string) *IndexContext {
 	if tx == nil {
 		return nil
 	}
@@ -38,6 +40,7 @@ func NewIndexContext(ctx context.Context, store *txo.OutputStore, tx *transactio
 		TxidHex: txid.String(),
 		Tags:    tags,
 		Store:   store,
+		Ordfs:   o,
 		Ctx:     ctx,
 	}
 
@@ -66,6 +69,11 @@ func (idxCtx *IndexContext) ParseTxn() error {
 
 // ParseOutputs parses all outputs of the transaction using parse.Parse directly
 func (idxCtx *IndexContext) ParseOutputs() error {
+	opts := &parse.ParseOptions{
+		Ctx:   idxCtx.Ctx,
+		Ordfs: idxCtx.Ordfs,
+	}
+
 	for vout, txout := range idxCtx.Tx.Outputs {
 		outpoint := &transaction.Outpoint{
 			Txid:  *idxCtx.Txid,
@@ -81,8 +89,7 @@ func (idxCtx *IndexContext) ParseOutputs() error {
 			Data:        make(map[string]any),
 		}
 
-		// Call parse.Parse directly
-		results := parse.Parse(outpoint, txout.LockingScript.Bytes(), txout.Satoshis, idxCtx.Tags)
+		results := parse.Parse(outpoint, txout.LockingScript.Bytes(), txout.Satoshis, idxCtx.Tags, opts)
 
 		// Collect events and owners from parse results
 		for tag, result := range results {
@@ -132,8 +139,8 @@ func (idxCtx *IndexContext) ParseSpends() error {
 			Index: txin.SourceTxOutIndex,
 		}
 
-		// Parse the spent output to derive events
-		results := parse.Parse(outpoint, spentOutput.LockingScript.Bytes(), spentOutput.Satoshis, idxCtx.Tags)
+		// Parse the spent output to derive events (no origin resolution needed for spends)
+		results := parse.Parse(outpoint, spentOutput.LockingScript.Bytes(), spentOutput.Satoshis, idxCtx.Tags, nil)
 
 		sats := spentOutput.Satoshis
 		spend := &txo.IndexedOutput{
