@@ -15,26 +15,26 @@ const TagSigma = "sigma"
 // ParseBitcom parses bitcom protocol structure from the parse context.
 // This should be called first - subsequent parsers (B, MAP, AIP, BAP, Sigma)
 // read from the parsed bitcom data.
-func ParseBitcom(ctx *ParseContext) *ParseResult {
+func ParseBitcom(ctx *ParseContext) (*ParseResult, error) {
 	scr := script.NewFromBytes(ctx.LockingScript)
 	bc := bitcom.Decode(scr)
 	if bc == nil || len(bc.Protocols) == 0 {
-		return nil
+		return nil, nil
 	}
 
 	return &ParseResult{
 		Tag:    TagBitcom,
 		Data:   bc,
 		Events: []string{},
-	}
+	}, nil
 }
 
 // ParseB parses B protocol data from previously parsed bitcom.
 // Requires ParseBitcom to have been called first.
-func ParseB(ctx *ParseContext) *ParseResult {
+func ParseB(ctx *ParseContext) (*ParseResult, error) {
 	bc := GetData[bitcom.Bitcom](ctx, TagBitcom)
 	if bc == nil {
-		return nil
+		return nil, nil
 	}
 
 	for _, proto := range bc.Protocols {
@@ -48,19 +48,19 @@ func ParseB(ctx *ParseContext) *ParseResult {
 				if b.MediaType != "" {
 					result.Events = append(result.Events, "type:"+string(b.MediaType))
 				}
-				return result
+				return result, nil
 			}
 		}
 	}
-	return nil
+	return nil, nil
 }
 
 // ParseMAP parses MAP protocol data from previously parsed bitcom.
 // Requires ParseBitcom to have been called first.
-func ParseMAP(ctx *ParseContext) *ParseResult {
+func ParseMAP(ctx *ParseContext) (*ParseResult, error) {
 	bc := GetData[bitcom.Bitcom](ctx, TagBitcom)
 	if bc == nil {
-		return nil
+		return nil, nil
 	}
 
 	for _, proto := range bc.Protocols {
@@ -77,24 +77,24 @@ func ParseMAP(ctx *ParseContext) *ParseResult {
 				if app, ok := m.Data["app"]; ok {
 					result.Events = append(result.Events, "map:app:"+app)
 				}
-				return result
+				return result, nil
 			}
 		}
 	}
-	return nil
+	return nil, nil
 }
 
 // ParseAIP parses AIP signatures from previously parsed bitcom.
 // Requires ParseBitcom to have been called first.
-func ParseAIP(ctx *ParseContext) *ParseResult {
+func ParseAIP(ctx *ParseContext) (*ParseResult, error) {
 	bc := GetData[bitcom.Bitcom](ctx, TagBitcom)
 	if bc == nil {
-		return nil
+		return nil, nil
 	}
 
 	aips := bitcom.DecodeAIP(bc)
 	if len(aips) == 0 {
-		return nil
+		return nil, nil
 	}
 
 	result := &ParseResult{
@@ -107,20 +107,20 @@ func ParseAIP(ctx *ParseContext) *ParseResult {
 			result.Events = append(result.Events, "signer:"+a.Address)
 		}
 	}
-	return result
+	return result, nil
 }
 
 // ParseBAP parses BAP protocol data from previously parsed bitcom.
 // Requires ParseBitcom to have been called first.
-func ParseBAP(ctx *ParseContext) *ParseResult {
+func ParseBAP(ctx *ParseContext) (*ParseResult, error) {
 	bc := GetData[bitcom.Bitcom](ctx, TagBitcom)
 	if bc == nil {
-		return nil
+		return nil, nil
 	}
 
 	bap := bitcom.DecodeBAP(bc)
 	if bap == nil {
-		return nil
+		return nil, nil
 	}
 
 	result := &ParseResult{
@@ -131,20 +131,20 @@ func ParseBAP(ctx *ParseContext) *ParseResult {
 	if bap.IDKey != "" {
 		result.Events = append(result.Events, "bap:id:"+bap.IDKey)
 	}
-	return result
+	return result, nil
 }
 
 // ParseSigma parses SIGMA signatures from previously parsed bitcom.
 // Requires ParseBitcom to have been called first.
-func ParseSigma(ctx *ParseContext) *ParseResult {
+func ParseSigma(ctx *ParseContext) (*ParseResult, error) {
 	bc := GetData[bitcom.Bitcom](ctx, TagBitcom)
 	if bc == nil {
-		return nil
+		return nil, nil
 	}
 
 	sigmas := bitcom.DecodeSIGMA(bc)
 	if len(sigmas) == 0 {
-		return nil
+		return nil, nil
 	}
 
 	result := &ParseResult{
@@ -157,5 +157,5 @@ func ParseSigma(ctx *ParseContext) *ParseResult {
 			result.Events = append(result.Events, "signer:"+s.SignerAddress)
 		}
 	}
-	return result
+	return result, nil
 }

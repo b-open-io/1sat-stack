@@ -11,11 +11,11 @@ const TagShrug = "shrug"
 
 // ParseShrug parses a shrug token from the parse context.
 // Returns nil if the output does not contain a valid shrug.
-func ParseShrug(ctx *ParseContext) *ParseResult {
+func ParseShrug(ctx *ParseContext) (*ParseResult, error) {
 	scr := script.NewFromBytes(ctx.LockingScript)
 	s := shrug.Decode(scr)
 	if s == nil {
-		return nil
+		return nil, nil
 	}
 
 	result := &ParseResult{
@@ -47,5 +47,5 @@ func ParseShrug(ctx *ParseContext) *ParseResult {
 		}
 	}
 
-	return result
+	return result, nil
 }

@@ -10,16 +10,16 @@ const TagLock = "lock"
 
 // ParseLock parses a lock contract from the parse context.
 // Returns nil if the script is not a valid lock contract.
-func ParseLock(ctx *ParseContext) *ParseResult {
+func ParseLock(ctx *ParseContext) (*ParseResult, error) {
 	scr := script.NewFromBytes(ctx.LockingScript)
 	lock := lockup.Decode(scr, true)
 	if lock == nil {
-		return nil
+		return nil, nil
 	}
 
 	pkHash := types.PKHashFromBytes(lock.Address.PublicKeyHash)
 	if pkHash == nil {
-		return nil
+		return nil, nil
 	}
 
 	return &ParseResult{
@@ -27,5 +27,5 @@ func ParseLock(ctx *ParseContext) *ParseResult {
 		Data:   lock,
 		Events: []string{"lock"},
 		Owners: []*types.PKHash{pkHash},
-	}
+	}, nil
 }

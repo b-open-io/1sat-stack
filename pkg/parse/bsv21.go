@@ -22,11 +22,11 @@ type BSV21 struct {
 // Returns nil if the output does not contain a valid BSV21 token.
 // Emits a "bsv21:{tokenId}" event for indexing. Validated token lookups
 // (balance, history, unspent) are handled separately by the BSV21 overlay.
-func ParseBSV21(ctx *ParseContext) *ParseResult {
+func ParseBSV21(ctx *ParseContext) (*ParseResult, error) {
 	scr := script.NewFromBytes(ctx.LockingScript)
 	b := bsv21.Decode(scr)
 	if b == nil {
-		return nil
+		return nil, nil
 	}
 
 	// Build BSV21 data
@@ -47,11 +47,11 @@ func ParseBSV21(ctx *ParseContext) *ParseResult {
 		}
 	case string(bsv21.OpTransfer), string(bsv21.OpBurn), string(bsv21.OpMint), string(bsv21.OpAuth):
 		if _, err := transaction.OutpointFromString(b.Id); err != nil {
-			return nil
+			return nil, nil
 		}
 		bsvData.Id = b.Id
 	default:
-		return nil
+		return nil, nil
 	}
 
 	var events []string
@@ -63,5 +63,5 @@ func ParseBSV21(ctx *ParseContext) *ParseResult {
 		Tag:    TagBSV21,
 		Data:   bsvData,
 		Events: events,
-	}
+	}, nil
 }

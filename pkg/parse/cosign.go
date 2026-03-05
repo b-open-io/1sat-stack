@@ -10,11 +10,11 @@ const TagCosign = "cosign"
 
 // ParseCosign parses a cosign locking script from the parse context.
 // Returns nil if the script is not a valid cosign.
-func ParseCosign(ctx *ParseContext) *ParseResult {
+func ParseCosign(ctx *ParseContext) (*ParseResult, error) {
 	scr := script.NewFromBytes(ctx.LockingScript)
 	c := cosign.Decode(scr)
 	if c == nil {
-		return nil
+		return nil, nil
 	}
 
 	result := &ParseResult{
@@ -29,5 +29,5 @@ func ParseCosign(ctx *ParseContext) *ParseResult {
 		result.Owners = append(result.Owners, pkHash)
 	}
 
-	return result
+	return result, nil
 }

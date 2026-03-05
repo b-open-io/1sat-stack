@@ -1,6 +1,7 @@
 package ordfs
 
 import (
+	"context"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
@@ -115,7 +116,9 @@ func (r *Routes) HandleContent(c *fiber.Ctx) error {
 		}
 	}
 
-	resp, err := r.ordfs.Load(c.Context(), req)
+	loadCtx, loadCancel := context.WithTimeout(c.Context(), ResolveTimeout)
+	defer loadCancel()
+	resp, err := r.ordfs.Load(loadCtx, req)
 	if err != nil {
 		r.logger.Debug("failed to load content", "path", path, "error", err)
 		if errors.Is(err, ErrNotFound) {
@@ -194,7 +197,9 @@ func (r *Routes) handleDirectory(c *fiber.Ctx, resp *Response, pp *pointerPath, 
 		}
 	}
 
-	fileResp, err := r.ordfs.Load(c.Context(), fileReq)
+	fileCtx, fileCancel := context.WithTimeout(c.Context(), ResolveTimeout)
+	defer fileCancel()
+	fileResp, err := r.ordfs.Load(fileCtx, fileReq)
 	if err != nil {
 		if errors.Is(err, ErrNotFound) {
 			return c.Status(fiber.StatusNotFound).JSON(fiber.Map{
@@ -275,7 +280,9 @@ func (r *Routes) HandleMetadata(c *fiber.Ctx) error {
 	req.Content = false // Don't load content bytes
 	req.Map = true
 
-	resp, err := r.ordfs.Load(c.Context(), req)
+	metaCtx, metaCancel := context.WithTimeout(c.Context(), ResolveTimeout)
+	defer metaCancel()
+	resp, err := r.ordfs.Load(metaCtx, req)
 	if err != nil {
 		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{
 			"error": err.Error(),
@@ -357,7 +364,9 @@ func (r *Routes) HandleBulkMetadata(c *fiber.Ctx) error {
 			req.Content = false
 			req.Map = true
 
-			resp, err := r.ordfs.Load(c.Context(), req)
+			bulkCtx, bulkCancel := context.WithTimeout(c.Context(), ResolveTimeout)
+			defer bulkCancel()
+			resp, err := r.ordfs.Load(bulkCtx, req)
 			if err != nil {
 				if errors.Is(err, ErrNotFound) {
 					results[idx] = result{outpoint: outpointStr, data: nil}

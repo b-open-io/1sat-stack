@@ -70,8 +70,10 @@ func (s *Service) ResolveIdentityKey(ctx context.Context, alias string) (*ec.Pub
 	}
 
 	// Load latest state via ORDFS (seq=-1 means latest)
+	resolveCtx, resolveCancel := context.WithTimeout(ctx, ordfs.ResolveTimeout)
+	defer resolveCancel()
 	seq := -1
-	resp, err := s.ordfs.Load(ctx, &ordfs.Request{
+	resp, err := s.ordfs.Load(resolveCtx, &ordfs.Request{
 		Outpoint: outpoint,
 		Seq:      &seq,
 		Map:      true,

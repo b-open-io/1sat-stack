@@ -23,7 +23,7 @@ const (
 	lockTTL             = 15 * time.Second
 	lockRefreshInterval = 5 * time.Second
 	lockCheckInterval   = 10 * time.Second
-	resolveTimeout      = 60 * time.Second
+	ResolveTimeout      = 60 * time.Second // Default timeout for web-facing resolve calls
 	cacheTTL            = 30 * 24 * time.Hour
 )
 
@@ -710,8 +710,6 @@ func (o *Ordfs) forwardCrawl(ctx context.Context, origin, startOutpoint *transac
 
 // Resolve resolves an outpoint to a specific sequence in the ordinal chain
 func (o *Ordfs) Resolve(ctx context.Context, requestedOutpoint *transaction.Outpoint, seq int) (*Resolution, error) {
-	ctx, cancel := context.WithTimeout(ctx, resolveTimeout)
-	defer cancel()
 
 	// Check for known origin
 	knownOriginStr := o.cache.HGet(ctx, "origins", requestedOutpoint.String()).Val()

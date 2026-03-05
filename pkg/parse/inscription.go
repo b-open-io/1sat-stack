@@ -13,16 +13,16 @@ const TagInscription = "insc"
 
 // ParseInscription parses an inscription from the parse context.
 // Returns nil if the output does not contain a valid inscription.
-func ParseInscription(ctx *ParseContext) *ParseResult {
+func ParseInscription(ctx *ParseContext) (*ParseResult, error) {
 	// 1sat ordinals require exactly 1 satoshi
 	if ctx.Satoshis != 1 {
-		return nil
+		return nil, nil
 	}
 
 	scr := script.NewFromBytes(ctx.LockingScript)
 	insc := inscription.Decode(scr)
 	if insc == nil {
-		return nil
+		return nil, nil
 	}
 
 	result := &ParseResult{
@@ -64,5 +64,5 @@ func ParseInscription(ctx *ParseContext) *ParseResult {
 		}
 	}
 
-	return result
+	return result, nil
 }

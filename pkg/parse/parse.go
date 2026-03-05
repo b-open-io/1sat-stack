@@ -2,6 +2,7 @@ package parse
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/b-open-io/1sat-stack/pkg/ordfs"
 	"github.com/b-open-io/1sat-stack/pkg/types"
@@ -30,7 +31,7 @@ type ParseContext struct {
 }
 
 // ParserFunc is a function that parses a script and returns a ParseResult
-type ParserFunc func(ctx *ParseContext) *ParseResult
+type ParserFunc func(ctx *ParseContext) (*ParseResult, error)
 
 // All available parsers mapped by tag
 var Parsers = map[string]ParserFunc{
@@ -77,7 +78,7 @@ type ParseOptions struct {
 
 // Parse runs the specified parsers on an output and returns the results.
 // If tags is nil or empty, all default parsers are run.
-func Parse(outpoint *transaction.Outpoint, lockingScript []byte, satoshis uint64, tags []string, opts *ParseOptions) map[string]*ParseResult {
+func Parse(outpoint *transaction.Outpoint, lockingScript []byte, satoshis uint64, tags []string, opts *ParseOptions) (map[string]*ParseResult, error) {
 	ctx := &ParseContext{
 		Outpoint:      outpoint,
 		LockingScript: lockingScript,
@@ -98,13 +99,17 @@ func Parse(outpoint *transaction.Outpoint, lockingScript []byte, satoshis uint64
 	// Run each parser in order
 	for _, tag := range tags {
 		if parser, ok := Parsers[tag]; ok {
-			if result := parser(ctx); result != nil {
+			result, err := parser(ctx)
+			if err != nil {
+				return nil, fmt.Errorf("parser %s failed for %s: %w", tag, outpoint.String(), err)
+			}
+			if result != nil {
 				ctx.Results[result.Tag] = result
 			}
 		}
 	}
 
-	return ctx.Results
+	return ctx.Results, nil
 }
 
 // GetData retrieves parsed data by tag from results, with type assertion.

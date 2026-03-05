@@ -10,16 +10,16 @@ const TagOrdLock = "ordlock"
 
 // ParseOrdLock parses an ordlock listing from the parse context.
 // Returns nil if the output does not contain a valid ordlock.
-func ParseOrdLock(ctx *ParseContext) *ParseResult {
+func ParseOrdLock(ctx *ParseContext) (*ParseResult, error) {
 	// OrdLock requires exactly 1 satoshi
 	if ctx.Satoshis != 1 {
-		return nil
+		return nil, nil
 	}
 
 	scr := script.NewFromBytes(ctx.LockingScript)
 	ol := ordlock.Decode(scr)
 	if ol == nil {
-		return nil
+		return nil, nil
 	}
 
 	result := &ParseResult{
@@ -36,5 +36,5 @@ func ParseOrdLock(ctx *ParseContext) *ParseResult {
 		}
 	}
 
-	return result
+	return result, nil
 }

@@ -3,7 +3,7 @@ package parse
 import (
 	"encoding/json"
 	"errors"
-	"log/slog"
+	"fmt"
 	"strings"
 
 	"github.com/b-open-io/1sat-stack/pkg/ordfs"
@@ -17,9 +17,9 @@ const TagOrigin = "origin"
 // ParseOrigin handles two responsibilities for 1-sat outputs:
 // 1. Owner extraction from composite scripts (P2PKH prefix on scripts > 25 bytes)
 // 2. Origin/type/name resolution via ORDFS for non-inscription outputs
-func ParseOrigin(ctx *ParseContext) *ParseResult {
+func ParseOrigin(ctx *ParseContext) (*ParseResult, error) {
 	if ctx.Results[Tag1Sat] == nil {
-		return nil
+		return nil, nil
 	}
 
 	var owners []*types.PKHash
@@ -47,11 +47,10 @@ func ParseOrigin(ctx *ParseContext) *ParseResult {
 			Map:      true,
 		})
 		if err != nil {
-			if !errors.Is(err, ordfs.ErrNotFound) {
-				slog.Warn("origin resolution failed",
-					"outpoint", ctx.Outpoint.String(),
-					"error", err,
-				)
+			if errors.Is(err, ordfs.ErrNotFound) {
+				// Not found is expected for outputs without ordinal history
+			} else {
+				return nil, fmt.Errorf("origin resolution failed for %s: %w", ctx.Outpoint.String(), err)
 			}
 		} else {
 			if resp.Origin != nil {
@@ -80,13 +79,13 @@ func ParseOrigin(ctx *ParseContext) *ParseResult {
 	}
 
 	if len(owners) == 0 && len(events) == 0 {
-		return nil
+		return nil, nil
 	}
 
 	return &ParseResult{
 		Tag:    TagOrigin,
 		Owners: owners,
 		Events: events,
-	}
+	}, nil
 }
 

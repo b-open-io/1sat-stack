@@ -89,7 +89,10 @@ func (idxCtx *IndexContext) ParseOutputs() error {
 			Data:        make(map[string]any),
 		}
 
-		results := parse.Parse(outpoint, txout.LockingScript.Bytes(), txout.Satoshis, idxCtx.Tags, opts)
+		results, err := parse.Parse(outpoint, txout.LockingScript.Bytes(), txout.Satoshis, idxCtx.Tags, opts)
+		if err != nil {
+			return err
+		}
 
 		// Collect events and owners from parse results
 		for tag, result := range results {
@@ -140,7 +143,10 @@ func (idxCtx *IndexContext) ParseSpends() error {
 		}
 
 		// Parse the spent output to derive events (no origin resolution needed for spends)
-		results := parse.Parse(outpoint, spentOutput.LockingScript.Bytes(), spentOutput.Satoshis, idxCtx.Tags, nil)
+		results, err := parse.Parse(outpoint, spentOutput.LockingScript.Bytes(), spentOutput.Satoshis, idxCtx.Tags, nil)
+		if err != nil {
+			return err
+		}
 
 		sats := spentOutput.Satoshis
 		spend := &txo.IndexedOutput{
