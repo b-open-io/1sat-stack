@@ -149,6 +149,12 @@ func (s *OwnerSync) syncWithProgress(ctx context.Context, owner string, progress
 	}
 
 	total := len(toProcess)
+	s.logger.Info("OwnerSync: starting ingest",
+		"owner", owner,
+		"jbTotal", len(addTxns),
+		"filtered", total,
+		"fromHeight", lastHeight,
+	)
 	sendProgress(SyncProgress{Phase: "ingest", Total: total, Processed: 0})
 
 	limiter := make(chan struct{}, s.concurrency)
@@ -156,6 +162,7 @@ func (s *OwnerSync) syncWithProgress(ctx context.Context, owner string, progress
 	var mu sync.Mutex
 	var firstErr error
 	var processed int
+	var dispatched int
 	var newMaxHeight float64 = lastHeight
 
 	ctx, cancel := context.WithCancel(ctx)
@@ -164,9 +171,21 @@ func (s *OwnerSync) syncWithProgress(ctx context.Context, owner string, progress
 	for _, item := range toProcess {
 		// Stop if context cancelled
 		if ctx.Err() != nil {
+			s.logger.Warn("OwnerSync: context cancelled, stopping dispatch",
+				"owner", owner,
+				"dispatched", dispatched,
+				"total", total,
+			)
 			break
 		}
 
+		dispatched++
+		s.logger.Debug("OwnerSync: dispatching",
+			"txid", item.txid,
+			"height", item.blockHeight,
+			"n", dispatched,
+			"total", total,
+		)
 		wg.Add(1)
 		limiter <- struct{}{}
 
@@ -177,7 +196,7 @@ func (s *OwnerSync) syncWithProgress(ctx context.Context, owner string, progress
 			}()
 
 			if _, err := s.indexer.IngestTxid(ctx, txid); err != nil {
-				s.logger.Error("OwnerSync: error ingesting txid", "txid", txid, "error", err)
+				s.logger.Error("OwnerSync: error ingesting txid", "txid", txid, "height", blockHeight, "error", err)
 				mu.Lock()
 				if firstErr == nil {
 					firstErr = err
@@ -203,6 +222,14 @@ func (s *OwnerSync) syncWithProgress(ctx context.Context, owner string, progress
 
 	wg.Wait()
 
+	s.logger.Info("OwnerSync: ingest complete",
+		"owner", owner,
+		"dispatched", dispatched,
+		"processed", processed,
+		"total", total,
+		"hasError", firstErr != nil,
+	)
+
 	if firstErr != nil {
 		sendProgress(SyncProgress{Phase: "error", Error: firstErr.Error()})
 		return firstErr
@@ -217,6 +244,5 @@ func (s *OwnerSync) syncWithProgress(ctx context.Context, owner string, progress
 	}
 
 	sendProgress(SyncProgress{Phase: "done", Height: uint32(newMaxHeight)})
-	s.logger.Debug("OwnerSync complete", "owner", owner, "processed", processed)
 	return nil
 }
