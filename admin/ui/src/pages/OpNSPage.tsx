@@ -2,6 +2,7 @@ import { useState, useCallback } from "react";
 import { toast } from "sonner";
 import { toastError } from "@/lib/utils";
 import { adminServices } from "@/lib/services";
+import { apiFetch } from "@/api";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -25,6 +26,7 @@ interface DiscoveredName {
   outpoint: string;
   name: string;
   satoshis: number;
+  origin?: string;
 }
 
 interface WalletName {
@@ -203,9 +205,9 @@ export default function OpNSPage({ identityKey }: Props) {
         try {
           const contentRes = await fetch(`${window.location.origin}/content/${origin}`);
           const name = contentRes.ok ? await contentRes.text() : "unknown";
-          names.push({ outpoint: r.outpoint, name: name || "unknown", satoshis: r.satoshis ?? 1 });
+          names.push({ outpoint: r.outpoint, name: name || "unknown", satoshis: r.satoshis ?? 1, origin });
         } catch {
-          names.push({ outpoint: r.outpoint, name: "unknown", satoshis: r.satoshis ?? 1 });
+          names.push({ outpoint: r.outpoint, name: "unknown", satoshis: r.satoshis ?? 1, origin });
         }
       }
 
@@ -245,6 +247,7 @@ export default function OpNSPage({ identityKey }: Props) {
           ...si,
           contentType: "application/op-ns",
           name: name.name,
+          origin: name.origin,
         })),
         wif: wif.trim(),
       });
@@ -366,9 +369,7 @@ export default function OpNSPage({ identityKey }: Props) {
   const triggerCrawl = useCallback(async () => {
     setCrawling(true);
     try {
-      const adminIdx = window.location.pathname.indexOf("/admin");
-      const basePath = adminIdx >= 0 ? window.location.pathname.substring(0, adminIdx + "/admin".length) : "";
-      const res = await fetch(`${window.location.origin}${basePath}/api/opns/crawl`, { method: "POST" });
+      const res = await apiFetch("/opns/crawl", { method: "POST" });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || res.statusText);
       toast.success(data.message || "Crawl started");
