@@ -14,6 +14,8 @@ import (
 	"github.com/b-open-io/go-junglebus"
 )
 
+const defaultSyncConcurrency = 16
+
 // SyncProgress reports the state of an owner sync operation.
 type SyncProgress struct {
 	Phase     string `json:"phase"`               // "fetch", "ingest", "done", "error"
@@ -51,7 +53,7 @@ func NewOwnerSync(
 		beefStorage: beefStorage,
 		indexer:     idx,
 		outputStore: outputStore,
-		concurrency: 1,
+		concurrency: defaultSyncConcurrency,
 		logger:      logger,
 	}
 	s.syncDedup = dedup.NewLoader(func(owner string) (struct{}, error) {

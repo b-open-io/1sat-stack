@@ -53,23 +53,15 @@ func ParseInscription(ctx *ParseContext) *ParseResult {
 		result.Events = append(result.Events, "parent:"+insc.Parent.String())
 	}
 
-	// Extract owner - check prefix first (standard: P2PKH before envelope),
-	// then fall back to suffix (P2PKH after OP_ENDIF)
-	var owner *types.PKHash
-	if len(insc.ScriptPrefix) > 0 {
-		prefix := script.NewFromBytes(insc.ScriptPrefix)
-		if addr := p2pkh.Decode(prefix, true); addr != nil {
-			owner = types.PKHashFromBytes(addr.PublicKeyHash)
-		}
-	}
-	if owner == nil && len(insc.ScriptSuffix) > 0 {
+	// Check suffix for P2PKH owner (some inscriptions place P2PKH after OP_ENDIF)
+	if len(insc.ScriptSuffix) > 0 {
 		suffix := script.NewFromBytes(insc.ScriptSuffix)
 		if addr := p2pkh.Decode(suffix, true); addr != nil {
-			owner = types.PKHashFromBytes(addr.PublicKeyHash)
+			owner := types.PKHashFromBytes(addr.PublicKeyHash)
+			if owner != nil {
+				result.Owners = append(result.Owners, owner)
+			}
 		}
-	}
-	if owner != nil {
-		result.Owners = append(result.Owners, owner)
 	}
 
 	return result
