@@ -4,6 +4,7 @@ import (
 	"embed"
 	"encoding/binary"
 	"io/fs"
+	"strings"
 	"log/slog"
 	"net/http"
 	"sort"
@@ -98,6 +99,9 @@ func (r *Routes) Register(guardedGroup fiber.Router, publicGroup fiber.Router, a
 	}
 
 	publicGroup.Get("/", func(c *fiber.Ctx) error {
+		if !strings.HasSuffix(c.OriginalURL(), "/") {
+			return c.Redirect(c.OriginalURL()+"/", fiber.StatusMovedPermanently)
+		}
 		content, err := fs.ReadFile(uiSubFS, "index.html")
 		if err != nil {
 			return c.Status(fiber.StatusNotFound).SendString("Not found")
