@@ -20,8 +20,6 @@ const navItems = [
 ];
 
 interface AppSidebarProps {
-  walletDetected: boolean;
-  walletChecked: boolean;
   connected: boolean;
   connecting: boolean;
   identityKey: string | null;
@@ -30,8 +28,6 @@ interface AppSidebarProps {
 }
 
 export function AppSidebar({
-  walletDetected,
-  walletChecked,
   connected,
   connecting,
   identityKey,
@@ -74,11 +70,7 @@ export function AppSidebar({
       </SidebarContent>
 
       <SidebarFooter className="p-4 border-t border-sidebar-border">
-        {!walletChecked ? (
-          <span className="text-xs text-sidebar-muted-foreground">
-            Detecting wallet...
-          </span>
-        ) : connected ? (
+        {connected ? (
           <div className="flex items-center gap-2">
             <span className="inline-block w-2 h-2 rounded-full bg-success" />
             <span className="text-xs text-sidebar-foreground">Connected</span>
@@ -92,7 +84,7 @@ export function AppSidebar({
               </span>
             )}
           </div>
-        ) : walletDetected ? (
+        ) : (
           <button
             onClick={onConnect}
             disabled={connecting}
@@ -100,13 +92,6 @@ export function AppSidebar({
           >
             {connecting ? "Connecting..." : "Connect Wallet"}
           </button>
-        ) : (
-          <div className="flex items-center gap-2">
-            <span className="inline-block w-2 h-2 rounded-full bg-destructive" />
-            <span className="text-xs text-sidebar-muted-foreground">
-              No wallet detected
-            </span>
-          </div>
         )}
       </SidebarFooter>
     </Sidebar>

@@ -1,5 +1,7 @@
-import { AuthFetch } from "@bsv/sdk";
+import { AuthFetch, WalletClient } from "@bsv/sdk";
+import type { WalletInterface } from "@bsv/sdk";
 
+let wallet: WalletInterface | null = null;
 let authFetch: AuthFetch | null = null;
 let identityKey: string | null = null;
 
@@ -14,21 +16,29 @@ const SETUP_BASE =
   (adminIdx >= 0 ? window.location.pathname.substring(0, adminIdx + "/admin".length) : "") +
   "/setup";
 
-export function isWalletAvailable(): boolean {
-  return typeof window.CWI !== "undefined" && window.CWI !== null;
+export async function connectWallet(): Promise<string> {
+  const client = new WalletClient("auto");
+  await client.connectToSubstrate();
+  wallet = client;
+  await wallet.waitForAuthentication({});
+  const result = await wallet.getPublicKey({ identityKey: true });
+  identityKey = result.publicKey;
+  authFetch = new AuthFetch(wallet);
+  return identityKey;
 }
 
-export async function connectWallet(): Promise<string> {
-  if (!isWalletAvailable()) throw new Error("No wallet detected");
-  await window.CWI!.waitForAuthentication({});
-  const result = await window.CWI!.getPublicKey({ identityKey: true });
-  identityKey = result.publicKey;
-  authFetch = new AuthFetch(window.CWI!);
-  return identityKey;
+export function getWallet(): WalletInterface | null {
+  return wallet;
 }
 
 export function getIdentityKey(): string | null {
   return identityKey;
+}
+
+export function disconnectWallet(): void {
+  wallet = null;
+  authFetch = null;
+  identityKey = null;
 }
 
 export async function apiFetch(

@@ -1,8 +1,8 @@
 import { useEffect, useState, useCallback } from "react";
 import { Outlet } from "react-router-dom";
 import {
-  isWalletAvailable,
   connectWallet,
+  disconnectWallet,
   getIdentityKey,
   getSetupStatus,
   checkAccess,
@@ -22,8 +22,6 @@ type SetupStatus = "loading" | "needed" | "complete";
 type AccessStatus = "unknown" | "checking" | "approved" | "none" | "requested";
 
 export default function Layout({ children }: { children?: React.ReactNode }) {
-  const [walletDetected, setWalletDetected] = useState(false);
-  const [walletChecked, setWalletChecked] = useState(false);
   const [connected, setConnected] = useState(false);
   const [connecting, setConnecting] = useState(false);
   const [identityKey, setIdentityKey] = useState<string | null>(null);
@@ -39,27 +37,6 @@ export default function Layout({ children }: { children?: React.ReactNode }) {
         console.error("Setup status check failed:", e);
         setSetupStatus("needed");
       });
-  }, []);
-
-  useEffect(() => {
-    if (isWalletAvailable()) {
-      setWalletDetected(true);
-      setWalletChecked(true);
-      return;
-    }
-    let attempts = 0;
-    const interval = setInterval(() => {
-      attempts++;
-      if (isWalletAvailable()) {
-        clearInterval(interval);
-        setWalletDetected(true);
-        setWalletChecked(true);
-      } else if (attempts >= 20) {
-        clearInterval(interval);
-        setWalletChecked(true);
-      }
-    }, 250);
-    return () => clearInterval(interval);
   }, []);
 
   const handleConnect = useCallback(async () => {
@@ -129,16 +106,9 @@ export default function Layout({ children }: { children?: React.ReactNode }) {
               <p className="text-sm text-muted-foreground">
                 No admin has been configured. Connect your wallet to set up this server.
               </p>
-              {walletChecked && !walletDetected && (
-                <p className="text-sm text-destructive">
-                  No compatible wallet detected. Install Yours Wallet to continue.
-                </p>
-              )}
-              {walletDetected && (
-                <Button onClick={handleConnect} disabled={connecting} size="lg">
-                  {connecting ? "Connecting..." : "Connect Wallet"}
-                </Button>
-              )}
+              <Button onClick={handleConnect} disabled={connecting} size="lg">
+                {connecting ? "Connecting..." : "Connect Wallet"}
+              </Button>
             </div>
           )}
 
@@ -154,8 +124,6 @@ export default function Layout({ children }: { children?: React.ReactNode }) {
   return (
     <SidebarProvider>
       <AppSidebar
-        walletDetected={walletDetected}
-        walletChecked={walletChecked}
         connected={connected}
         connecting={connecting}
         identityKey={identityKey}
@@ -170,13 +138,7 @@ export default function Layout({ children }: { children?: React.ReactNode }) {
         </header>
 
         <main className="flex-1 p-6">
-          {walletChecked && !walletDetected && (
-            <div className="mb-4 rounded-lg border border-destructive bg-destructive/10 px-4 py-3 text-sm">
-              No compatible wallet detected. Install Yours Wallet to authenticate.
-            </div>
-          )}
-
-          {walletChecked && walletDetected && !connected && !connecting && (
+          {!connected && !connecting && (
             <div className="mb-4 rounded-lg border border-destructive bg-destructive/10 px-4 py-3 text-sm">
               Connect your wallet to access admin functions.
             </div>
