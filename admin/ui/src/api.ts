@@ -1,9 +1,11 @@
 import { AuthFetch, WalletClient } from "@bsv/sdk";
 import type { WalletInterface } from "@bsv/sdk";
+import { createWebCWI } from "@1sat/wallet";
 
 let wallet: WalletInterface | null = null;
 let authFetch: AuthFetch | null = null;
 let identityKey: string | null = null;
+let destroyCWI: (() => void) | null = null;
 
 const adminIdx = window.location.pathname.indexOf("/admin");
 const API_BASE =
@@ -35,7 +37,22 @@ export function getIdentityKey(): string | null {
   return identityKey;
 }
 
+export async function connectOneSatWallet(): Promise<string> {
+  const { wallet: w, destroy } = createWebCWI();
+  wallet = w;
+  destroyCWI = destroy;
+  await w.waitForAuthentication({});
+  const result = await w.getPublicKey({ identityKey: true });
+  identityKey = result.publicKey;
+  authFetch = new AuthFetch(w);
+  return identityKey;
+}
+
 export function disconnectWallet(): void {
+  if (destroyCWI) {
+    destroyCWI();
+    destroyCWI = null;
+  }
   wallet = null;
   authFetch = null;
   identityKey = null;

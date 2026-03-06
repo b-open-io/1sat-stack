@@ -2,6 +2,7 @@ import { useEffect, useState, useCallback } from "react";
 import { Outlet } from "react-router-dom";
 import {
   connectWallet,
+  connectOneSatWallet,
   disconnectWallet,
   getIdentityKey,
   getSetupStatus,
@@ -47,6 +48,19 @@ export default function Layout({ children }: { children?: React.ReactNode }) {
       setConnected(true);
     } catch (e: any) {
       toastError(e.message || "Failed to connect wallet");
+    } finally {
+      setConnecting(false);
+    }
+  }, []);
+
+  const handleConnectOneSat = useCallback(async () => {
+    setConnecting(true);
+    try {
+      const key = await connectOneSatWallet();
+      setIdentityKey(key);
+      setConnected(true);
+    } catch (e: any) {
+      toastError(e.message || "Failed to connect 1Sat Wallet");
     } finally {
       setConnecting(false);
     }
@@ -128,6 +142,7 @@ export default function Layout({ children }: { children?: React.ReactNode }) {
         connecting={connecting}
         identityKey={identityKey}
         onConnect={handleConnect}
+        onConnectOneSat={handleConnectOneSat}
         onCopyIdentity={copyIdentity}
       />
       <SidebarInset>

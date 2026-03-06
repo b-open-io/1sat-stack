@@ -1,5 +1,11 @@
-import { Globe, Coins, Settings, Users } from "lucide-react";
+import { Globe, Coins, Settings, Users, ChevronDown } from "lucide-react";
 import { useLocation, Link } from "react-router-dom";
+import {
+  DropdownMenu,
+  DropdownMenuTrigger,
+  DropdownMenuContent,
+  DropdownMenuItem,
+} from "@/components/ui/dropdown-menu";
 import {
   Sidebar,
   SidebarContent,
@@ -24,6 +30,7 @@ interface AppSidebarProps {
   connecting: boolean;
   identityKey: string | null;
   onConnect: () => void;
+  onConnectOneSat: () => void;
   onCopyIdentity: () => void;
 }
 
@@ -32,6 +39,7 @@ export function AppSidebar({
   connecting,
   identityKey,
   onConnect,
+  onConnectOneSat,
   onCopyIdentity,
 }: AppSidebarProps) {
   const location = useLocation();
@@ -85,13 +93,33 @@ export function AppSidebar({
             )}
           </div>
         ) : (
-          <button
-            onClick={onConnect}
-            disabled={connecting}
-            className="w-full px-3 py-2 text-sm font-medium rounded-md bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
-          >
-            {connecting ? "Connecting..." : "Connect Wallet"}
-          </button>
+          <div className="flex w-full">
+            <button
+              onClick={onConnect}
+              disabled={connecting}
+              className="flex-1 px-3 py-2 text-sm font-medium rounded-l-md bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
+            >
+              {connecting ? "Connecting..." : "Connect Wallet"}
+            </button>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <button
+                  disabled={connecting}
+                  className="px-1.5 py-2 rounded-r-md border-l border-primary-foreground/20 bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
+                >
+                  <ChevronDown className="size-4" />
+                </button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem onClick={onConnect}>
+                  Auto-detect
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={onConnectOneSat}>
+                  1Sat Wallet
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </div>
         )}
       </SidebarFooter>
     </Sidebar>
