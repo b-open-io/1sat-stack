@@ -3,6 +3,7 @@ package ordfs
 import (
 	"bytes"
 	"context"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -147,7 +148,7 @@ func (o *Ordfs) loadSpend(ctx context.Context, outpoint *transaction.Outpoint) (
 	if len(spendBytes) == 0 {
 		return nil, nil
 	}
-	return chainhash.NewHash(spendBytes)
+	return chainhash.NewHashFromHex(hex.EncodeToString(spendBytes))
 }
 
 // parseOutput parses a transaction output for inscription or B protocol content
@@ -688,11 +689,9 @@ func (o *Ordfs) forwardCrawl(ctx context.Context, origin, startOutpoint *transac
 			break // End of chain
 		}
 
-		o.logger.Warn("forward crawl step", "currentOutpoint", currentOutpoint.String(), "spendTxid", spendTxid.String(), "seq", currentSeq)
-
 		spendTx, err := o.loadTx(ctx, spendTxid.String())
 		if err != nil {
-			return nil, 0, fmt.Errorf("failed to load spending tx %s (spending %s): %w", spendTxid.String(), currentOutpoint.String(), err)
+			return nil, 0, fmt.Errorf("failed to load spending tx: %w", err)
 		}
 
 		nextOutpoint, err := o.calculateOrdinalOutput(ctx, spendTx, currentOutpoint)
