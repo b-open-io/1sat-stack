@@ -38,7 +38,9 @@ export function getIdentityKey(): string | null {
 }
 
 export async function connectOneSatWallet(): Promise<string> {
-  const { wallet: w, destroy } = createWebCWI();
+  const { wallet: w, destroy } = createWebCWI({
+    walletUrl: import.meta.env.VITE_ONESAT_WALLET_URL || undefined,
+  });
   wallet = w;
   destroyCWI = destroy;
   await w.waitForAuthentication({});

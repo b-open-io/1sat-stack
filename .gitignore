@@ -2,6 +2,7 @@
 server.log
 *.exe
 stack
-.env
+/.env
+.env.local
 config.yaml
 bin/
