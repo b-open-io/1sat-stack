@@ -39,7 +39,7 @@ func (c *Config) SetDefaults(v *viper.Viper, prefix string) {
 
 	v.SetDefault(p+"mode", ModeDisabled)
 	v.SetDefault(p+"routes.enabled", true)
-	v.SetDefault(p+"routes.prefix", "/v1/bsvalias")
+	v.SetDefault(p+"routes.prefix", "/bsvalias")
 }
 
 // InitializeDeps holds dependencies for paymail initialization.
@@ -90,7 +90,7 @@ func (c *Config) Initialize(
 	}
 
 	if c.Routes.Enabled {
-		svc.Routes = NewRoutes(service, logger)
+		svc.Routes = NewRoutes(service, logger, "")
 	}
 
 	logger.Info("paymail service initialized", "mode", c.Mode)

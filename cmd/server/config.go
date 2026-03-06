@@ -1030,12 +1030,14 @@ func (c *Config) RegisterRoutes(app *fiber.App, svc *Services) {
 	if svc.Paymail != nil && svc.Paymail.Routes != nil {
 		prefix := c.Paymail.Routes.Prefix
 		if prefix == "" {
-			prefix = "/v1/bsvalias"
+			prefix = "/bsvalias"
 		}
+		fullPrefix := c.Server.BasePath + prefix
+		svc.Paymail.Routes.SetPathPrefix(fullPrefix)
 		paymailGroup := api.Group(prefix)
 		svc.Paymail.Routes.Register(paymailGroup)
 		capabilities = append(capabilities, "paymail")
-		slog.Debug("registered paymail routes", "prefix", c.Server.BasePath+prefix)
+		slog.Debug("registered paymail routes", "prefix", fullPrefix)
 
 		// Register /.well-known/bsvalias at app root for capability discovery
 		svc.Paymail.Routes.RegisterWellKnown(app)

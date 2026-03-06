@@ -16,19 +16,26 @@ import (
 
 // Routes provides HTTP handlers for paymail endpoints.
 type Routes struct {
-	service *Service
-	logger  *slog.Logger
+	service    *Service
+	logger     *slog.Logger
+	pathPrefix string
 }
 
 // NewRoutes creates a new Routes instance.
-func NewRoutes(service *Service, logger *slog.Logger) *Routes {
+func NewRoutes(service *Service, logger *slog.Logger, pathPrefix string) *Routes {
 	if logger == nil {
 		logger = slog.Default()
 	}
 	return &Routes{
-		service: service,
-		logger:  logger,
+		service:    service,
+		logger:     logger,
+		pathPrefix: pathPrefix,
 	}
+}
+
+// SetPathPrefix sets the full URL path prefix for capability URL generation.
+func (r *Routes) SetPathPrefix(prefix string) {
+	r.pathPrefix = prefix
 }
 
 // Register registers paymail routes with the Fiber router.
@@ -63,16 +70,16 @@ func parsePaymail(paymailAddr string) (alias string, domain string, err error) {
 func (r *Routes) Capabilities(c *fiber.Ctx) error {
 	host := c.Hostname()
 	scheme := c.Protocol()
-	baseURL := fmt.Sprintf("%s://%s", scheme, host)
+	base := fmt.Sprintf("%s://%s%s", scheme, host, r.pathPrefix)
 
 	return c.JSON(fiber.Map{
 		"bsvalias": "1.0",
 		"capabilities": fiber.Map{
 			"6745385c3fc0": false,
-			"pki":          baseURL + "/v1/bsvalias/id/{alias}@{domain.tld}",
-			"2a40af698840": baseURL + "/v1/bsvalias/p2p-payment-destination/{alias}@{domain.tld}",
-			"5c55a7fdb7bb": baseURL + "/v1/bsvalias/receive-beef/{alias}@{domain.tld}",
-			"5f1323cddf31": baseURL + "/v1/bsvalias/receive-transaction/{alias}@{domain.tld}",
+			"pki":          base + "/id/{alias}@{domain.tld}",
+			"2a40af698840": base + "/p2p-payment-destination/{alias}@{domain.tld}",
+			"5c55a7fdb7bb": base + "/receive-beef/{alias}@{domain.tld}",
+			"5f1323cddf31": base + "/receive-transaction/{alias}@{domain.tld}",
 		},
 	})
 }
