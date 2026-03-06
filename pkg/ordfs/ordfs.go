@@ -639,8 +639,12 @@ func (o *Ordfs) migrateToOrigin(ctx context.Context, requestedOutpoint, origin *
 		}
 	}
 
-	pipe.ZAdd(ctx, originSeqKey, members...)
-	pipe.HSet(ctx, "origins", originUpdates)
+	if len(members) > 0 {
+		pipe.ZAdd(ctx, originSeqKey, members...)
+	}
+	if len(originUpdates) > 0 {
+		pipe.HSet(ctx, "origins", originUpdates)
+	}
 
 	if requestedOutpoint.String() != origin.String() {
 		tempSeqKey := fmt.Sprintf("seq:%s", requestedOutpoint.String())
