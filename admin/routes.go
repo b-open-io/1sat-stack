@@ -121,6 +121,16 @@ func (r *Routes) Register(guardedGroup fiber.Router, publicGroup fiber.Router, a
 		Browse: false,
 	}))
 
+	// SPA fallback: serve index.html for any unmatched routes (client-side routing)
+	publicGroup.Get("/*", func(c *fiber.Ctx) error {
+		content, err := fs.ReadFile(uiSubFS, "index.html")
+		if err != nil {
+			return c.Status(fiber.StatusNotFound).SendString("Not found")
+		}
+		c.Set("Content-Type", "text/html")
+		return c.Send(content)
+	})
+
 	r.logger.Debug("registered admin routes")
 }
 
