@@ -3,7 +3,6 @@ package paymail
 import (
 	"encoding/base64"
 	"encoding/hex"
-	"encoding/json"
 	"fmt"
 	"log/slog"
 	"strings"
@@ -399,11 +398,8 @@ func (r *Routes) internalizePayment(
 			tags = append(tags, "type:"+contentType)
 		}
 		if contentType == "application/op-ns" && content != nil {
-			var nameData struct {
-				Name string `json:"name"`
-			}
-			if json.Unmarshal(content, &nameData) == nil && nameData.Name != "" {
-				tags = append(tags, "name:"+nameData.Name)
+			if name := strings.TrimSpace(string(content)); name != "" {
+				tags = append(tags, "name:"+name)
 			}
 		}
 

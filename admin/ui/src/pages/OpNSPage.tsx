@@ -80,14 +80,6 @@ function parseNameFromTags(tags?: string[]): string {
   return "unknown";
 }
 
-function parseNameFromCustomInstructions(ci?: string): string {
-  if (!ci) return "unknown";
-  try {
-    return JSON.parse(ci).name ?? "unknown";
-  } catch {
-    return "unknown";
-  }
-}
 
 function isPublished(tags?: string[]): boolean {
   return tags?.includes("opns:published") ?? false;
@@ -276,9 +268,7 @@ export default function OpNSPage() {
 
       const names: WalletName[] = (result.outputs ?? []).map((o: WalletOutput) => ({
         output: o,
-        name: parseNameFromCustomInstructions(o.customInstructions) !== "unknown"
-          ? parseNameFromCustomInstructions(o.customInstructions)
-          : parseNameFromTags(o.tags),
+        name: parseNameFromTags(o.tags),
         published: isPublished(o.tags),
       }));
 
