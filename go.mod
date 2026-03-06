@@ -14,7 +14,7 @@ replace github.com/b-open-io/go-junglebus => github.com/b-open-io/go-junglebus v
 
 replace github.com/bsv-blockchain/go-wallet-toolbox => github.com/bsv-blockchain/go-wallet-toolbox v0.177.2-0.20260306233917-e1b1a4d43fc2
 
-replace github.com/bsv-blockchain/arcade => github.com/bsv-blockchain/arcade v0.2.1-0.20260306234007-57aae47d2c27
+replace github.com/bsv-blockchain/arcade => github.com/bsv-blockchain/arcade v0.2.1-0.20260306235308-3916a2dbfdea
 
 require (
 	github.com/b-open-io/go-junglebus v0.3.5-0.20260212191545-39c1c23d7559
