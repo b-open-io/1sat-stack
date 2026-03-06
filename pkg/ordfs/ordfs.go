@@ -688,9 +688,11 @@ func (o *Ordfs) forwardCrawl(ctx context.Context, origin, startOutpoint *transac
 			break // End of chain
 		}
 
+		o.logger.Warn("forward crawl step", "currentOutpoint", currentOutpoint.String(), "spendTxid", spendTxid.String(), "seq", currentSeq)
+
 		spendTx, err := o.loadTx(ctx, spendTxid.String())
 		if err != nil {
-			return nil, 0, fmt.Errorf("failed to load spending tx: %w", err)
+			return nil, 0, fmt.Errorf("failed to load spending tx %s (spending %s): %w", spendTxid.String(), currentOutpoint.String(), err)
 		}
 
 		nextOutpoint, err := o.calculateOrdinalOutput(ctx, spendTx, currentOutpoint)
