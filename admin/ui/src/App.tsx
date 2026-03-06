@@ -3,6 +3,7 @@ import Layout from "./Layout";
 import OpNSPage from "./pages/OpNSPage";
 import BSV21Page from "./pages/BSV21Page";
 import SystemPage from "./pages/SystemPage";
+import UsersPage from "./pages/UsersPage";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { Toaster } from "@/components/ui/sonner";
 import "./styles.css";
@@ -14,6 +15,7 @@ function AppContent() {
         <Route path="/" element={<OpNSPage />} />
         <Route path="/bsv21" element={<BSV21Page />} />
         <Route path="/system" element={<SystemPage />} />
+        <Route path="/users" element={<UsersPage />} />
         <Route path="*" element={<Navigate to="/" />} />
       </Routes>
     </Layout>

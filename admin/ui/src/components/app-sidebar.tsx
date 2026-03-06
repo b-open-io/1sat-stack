@@ -1,4 +1,4 @@
-import { Globe, Coins, Settings } from "lucide-react";
+import { Globe, Coins, Settings, Users } from "lucide-react";
 import { useLocation, Link } from "react-router-dom";
 import {
   Sidebar,
@@ -15,6 +15,7 @@ import {
 const navItems = [
   { title: "OpNS", url: "/", icon: Globe },
   { title: "BSV21", url: "/bsv21", icon: Coins },
+  { title: "Users", url: "/users", icon: Users },
   { title: "System", url: "/system", icon: Settings },
 ];
 

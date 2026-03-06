@@ -3,12 +3,13 @@ package admin
 import (
 	"embed"
 	"encoding/binary"
+	"encoding/json"
 	"io/fs"
-	"strings"
 	"log/slog"
 	"net/http"
 	"sort"
 	"strconv"
+	"strings"
 
 	"github.com/b-open-io/1sat-stack/pkg/auth"
 	"github.com/b-open-io/1sat-stack/pkg/bsv21"
@@ -85,6 +86,11 @@ func (r *Routes) Register(guardedGroup fiber.Router, publicGroup fiber.Router, a
 	guardedGroup.Delete("/progress/:id", r.handleDeleteProgress)
 
 	guardedGroup.Get("/bsv21/workers", r.handleGetBSV21Workers)
+
+	guardedGroup.Get("/users", r.handleGetUsers)
+	guardedGroup.Post("/users", r.handleAddUser)
+	guardedGroup.Put("/users/:pubkey", r.handleUpdateUser)
+	guardedGroup.Delete("/users/:pubkey", r.handleDeleteUser)
 
 	guardedGroup.Post("/opns/crawl", r.handleTriggerOpnsCrawl)
 
@@ -715,17 +721,128 @@ func (r *Routes) handleSetup(c *fiber.Ctx) error {
 		})
 	}
 
-	pubkey := []byte(identity.ToDERHex())
-	if err := r.store.SAdd(c.Context(), auth.KeyAdminPubkeys, pubkey); err != nil {
+	user := auth.AdminUser{
+		Pubkey: identity.ToDERHex(),
+		Admin:  true,
+	}
+	if err := auth.SaveAdminUser(c.Context(), r.store, user); err != nil {
 		r.logger.Error("failed to add initial admin", "error", err)
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
 			"error": "internal error",
 		})
 	}
 
-	r.logger.Info("admin setup complete", "pubkey", string(pubkey))
+	r.logger.Info("admin setup complete", "pubkey", user.Pubkey)
 	return c.JSON(fiber.Map{
 		"message": "admin configured",
+	})
+}
+
+func (r *Routes) handleGetUsers(c *fiber.Ctx) error {
+	users, err := auth.ListAdminUsers(c.Context(), r.store)
+	if err != nil {
+		r.logger.Error("failed to list users", "error", err)
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"error": "failed to list users",
+		})
+	}
+	return c.JSON(users)
+}
+
+func (r *Routes) handleAddUser(c *fiber.Ctx) error {
+	var user auth.AdminUser
+	if err := c.BodyParser(&user); err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": "invalid request body",
+		})
+	}
+	if user.Pubkey == "" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": "pubkey is required",
+		})
+	}
+
+	if err := auth.SaveAdminUser(c.Context(), r.store, user); err != nil {
+		r.logger.Error("failed to add user", "error", err)
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"error": "failed to add user",
+		})
+	}
+
+	r.logger.Info("added user", "pubkey", user.Pubkey, "name", user.Name, "admin", user.Admin)
+	return c.JSON(user)
+}
+
+func (r *Routes) handleUpdateUser(c *fiber.Ctx) error {
+	pubkey := c.Params("pubkey")
+	if pubkey == "" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": "pubkey is required",
+		})
+	}
+
+	existing, err := auth.GetAdminUser(c.Context(), r.store, pubkey)
+	if err != nil {
+		r.logger.Error("failed to get user", "error", err)
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"error": "failed to get user",
+		})
+	}
+	if existing == nil {
+		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{
+			"error": "user not found",
+		})
+	}
+
+	var updates map[string]json.RawMessage
+	if err := c.BodyParser(&updates); err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": "invalid request body",
+		})
+	}
+
+	if v, ok := updates["name"]; ok {
+		var name string
+		if err := json.Unmarshal(v, &name); err == nil {
+			existing.Name = name
+		}
+	}
+	if v, ok := updates["admin"]; ok {
+		var admin bool
+		if err := json.Unmarshal(v, &admin); err == nil {
+			existing.Admin = admin
+		}
+	}
+
+	if err := auth.SaveAdminUser(c.Context(), r.store, *existing); err != nil {
+		r.logger.Error("failed to update user", "error", err)
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"error": "failed to update user",
+		})
+	}
+
+	r.logger.Info("updated user", "pubkey", pubkey, "name", existing.Name, "admin", existing.Admin)
+	return c.JSON(existing)
+}
+
+func (r *Routes) handleDeleteUser(c *fiber.Ctx) error {
+	pubkey := c.Params("pubkey")
+	if pubkey == "" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": "pubkey is required",
+		})
+	}
+
+	if err := auth.DeleteAdminUser(c.Context(), r.store, pubkey); err != nil {
+		r.logger.Error("failed to delete user", "error", err)
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"error": "failed to delete user",
+		})
+	}
+
+	r.logger.Info("deleted user", "pubkey", pubkey)
+	return c.JSON(fiber.Map{
+		"message": "user deleted",
 	})
 }
 
