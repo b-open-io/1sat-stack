@@ -13,11 +13,21 @@ import (
 // Field: pubkey (string), Value: JSON-encoded AdminUser.
 var KeyAdminUsers = []byte("admin:users")
 
+// KeyAdminRequests is the store key for the hash of pending access requests.
+// Field: pubkey (string), Value: JSON-encoded AccessRequest.
+var KeyAdminRequests = []byte("admin:requests")
+
 // AdminUser represents a user entry in the admin users hash.
 type AdminUser struct {
 	Pubkey string `json:"pubkey"`
 	Name   string `json:"name"`
 	Admin  bool   `json:"admin"`
+}
+
+// AccessRequest represents a pending access request.
+type AccessRequest struct {
+	Pubkey string `json:"pubkey"`
+	Name   string `json:"name"`
 }
 
 // AdminGuard returns a Fiber middleware that restricts access to admin endpoints.
@@ -116,4 +126,35 @@ func SaveAdminUser(ctx context.Context, s store.Store, user AdminUser) error {
 // DeleteAdminUser removes an admin user from the hash.
 func DeleteAdminUser(ctx context.Context, s store.Store, pubkey string) error {
 	return s.HDel(ctx, KeyAdminUsers, []byte(pubkey))
+}
+
+// SaveAccessRequest saves a pending access request.
+func SaveAccessRequest(ctx context.Context, s store.Store, req AccessRequest) error {
+	data, err := json.Marshal(req)
+	if err != nil {
+		return err
+	}
+	return s.HSet(ctx, KeyAdminRequests, []byte(req.Pubkey), data)
+}
+
+// ListAccessRequests returns all pending access requests.
+func ListAccessRequests(ctx context.Context, s store.Store) ([]AccessRequest, error) {
+	entries, err := s.HGetAll(ctx, KeyAdminRequests)
+	if err != nil {
+		return nil, err
+	}
+	requests := make([]AccessRequest, 0, len(entries))
+	for _, data := range entries {
+		var req AccessRequest
+		if err := json.Unmarshal(data, &req); err != nil {
+			continue
+		}
+		requests = append(requests, req)
+	}
+	return requests, nil
+}
+
+// DeleteAccessRequest removes a pending access request.
+func DeleteAccessRequest(ctx context.Context, s store.Store, pubkey string) error {
+	return s.HDel(ctx, KeyAdminRequests, []byte(pubkey))
 }

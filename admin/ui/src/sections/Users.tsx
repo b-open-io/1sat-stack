@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, Fragment } from "react";
 import { apiFetch } from "../api";
 import { toast } from "sonner";
 import { toastError } from "@/lib/utils";
@@ -20,20 +20,31 @@ interface AdminUser {
   admin: boolean;
 }
 
+interface AccessRequest {
+  pubkey: string;
+  name: string;
+}
+
 export default function Users() {
   const [users, setUsers] = useState<AdminUser[]>([]);
   const [loading, setLoading] = useState(true);
   const [pubkeyInput, setPubkeyInput] = useState("");
   const [nameInput, setNameInput] = useState("");
   const [adminInput, setAdminInput] = useState(true);
+  const [requests, setRequests] = useState<AccessRequest[]>([]);
   const [editingPubkey, setEditingPubkey] = useState<string | null>(null);
   const [editName, setEditName] = useState("");
 
   const load = useCallback(async () => {
     try {
-      const res = await apiFetch("/users");
-      if (!res.ok) throw new Error((await res.json()).error || res.statusText);
-      setUsers(await res.json());
+      const [usersRes, requestsRes] = await Promise.all([
+        apiFetch("/users"),
+        apiFetch("/requests"),
+      ]);
+      if (!usersRes.ok) throw new Error((await usersRes.json()).error || usersRes.statusText);
+      if (!requestsRes.ok) throw new Error((await requestsRes.json()).error || requestsRes.statusText);
+      setUsers(await usersRes.json());
+      setRequests(await requestsRes.json());
     } catch {
       toastError("Failed to load users");
     } finally {
@@ -124,12 +135,100 @@ export default function Users() {
     }
   }
 
+  async function approveRequest(pubkey: string, admin: boolean) {
+    try {
+      const res = await apiFetch(
+        `/requests/${encodeURIComponent(pubkey)}/approve`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ admin }),
+        },
+      );
+      if (!res.ok) throw new Error((await res.json()).error || "Failed");
+      toast.success("Request approved");
+      load();
+    } catch (e: any) {
+      toastError(e.message);
+    }
+  }
+
+  async function denyRequest(pubkey: string) {
+    try {
+      const res = await apiFetch(
+        `/requests/${encodeURIComponent(pubkey)}`,
+        { method: "DELETE" },
+      );
+      if (!res.ok) throw new Error((await res.json()).error || "Failed");
+      toast.success("Request denied");
+      load();
+    } catch (e: any) {
+      toastError(e.message);
+    }
+  }
+
   function copyPubkey(pubkey: string) {
     navigator.clipboard.writeText(pubkey);
     toast.success("Pubkey copied");
   }
 
   return (
+    <Fragment>
+    {requests.length > 0 && (
+      <Card className="mb-6">
+        <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+          <CardTitle>Pending Requests</CardTitle>
+          <Badge className="bg-warning/20 text-warning border-0">
+            {requests.length} pending
+          </Badge>
+        </CardHeader>
+        <CardContent>
+          <div className="space-y-2">
+            {requests.map((req) => (
+              <div
+                key={req.pubkey}
+                className="flex items-center gap-3 rounded-md bg-secondary p-3"
+              >
+                <div className="flex-1 min-w-0">
+                  <span className="text-sm font-medium">
+                    {req.name || "(no name)"}
+                  </span>
+                  <span
+                    className="block font-mono text-xs text-muted-foreground truncate cursor-pointer hover:text-foreground"
+                    title={`Click to copy: ${req.pubkey}`}
+                    onClick={() => copyPubkey(req.pubkey)}
+                  >
+                    {req.pubkey}
+                  </span>
+                </div>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => approveRequest(req.pubkey, true)}
+                >
+                  Approve as Admin
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => approveRequest(req.pubkey, false)}
+                >
+                  Approve
+                </Button>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => denyRequest(req.pubkey)}
+                  className="text-destructive hover:text-destructive"
+                >
+                  Deny
+                </Button>
+              </div>
+            ))}
+          </div>
+        </CardContent>
+      </Card>
+    )}
     <Card>
       <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
         <CardTitle>Users</CardTitle>
@@ -259,5 +358,6 @@ export default function Users() {
         </ScrollArea>
       </CardContent>
     </Card>
+    </Fragment>
   );
 }

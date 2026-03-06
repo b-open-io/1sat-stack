@@ -132,6 +132,7 @@ Binary key: 36 bytes outpoint
 | `bsv21:whitelist` | string tokenId | Always-active tokens |
 | `bsv21:blacklist` | string tokenId | Never-active tokens |
 | `admin:users` | string pubkey (field) → JSON `AdminUser` (value) | Admin user entries (hash, not set) |
+| `admin:requests` | string pubkey (field) → JSON `AccessRequest` (value) | Pending access requests (hash) |
 
 ---
 

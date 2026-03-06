@@ -66,3 +66,38 @@ export async function performSetup(): Promise<{ message: string }> {
   }
   return res.json();
 }
+
+export async function checkAccess(): Promise<{ status: string; admin?: boolean }> {
+  const url = `${SETUP_BASE}/check`;
+  let res: Response;
+  if (authFetch) {
+    res = await authFetch.fetch(url, { method: "GET" });
+  } else {
+    res = await fetch(url);
+  }
+  if (!res.ok) throw new Error("Failed to check access");
+  return res.json();
+}
+
+export async function requestAccess(name: string): Promise<{ message: string }> {
+  const url = `${SETUP_BASE}/request`;
+  let res: Response;
+  if (authFetch) {
+    res = await authFetch.fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name }),
+    });
+  } else {
+    res = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name }),
+    });
+  }
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    throw new Error(data.error || "Request failed");
+  }
+  return res.json();
+}

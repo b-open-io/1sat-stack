@@ -63,6 +63,8 @@ func (r *Routes) Register(guardedGroup fiber.Router, publicGroup fiber.Router, a
 	// Setup routes
 	publicGroup.Get("/setup/status", r.handleGetSetupStatus)
 	publicGroup.Post("/setup", authHandler, r.handleSetup)
+	publicGroup.Post("/setup/request", authHandler, r.handleRequestAccess)
+	publicGroup.Get("/setup/check", authHandler, r.handleCheckAccess)
 
 	// API routes (require auth via AdminGuard on guardedGroup)
 	guardedGroup.Get("/whitelist", r.handleGetWhitelist)
@@ -91,6 +93,10 @@ func (r *Routes) Register(guardedGroup fiber.Router, publicGroup fiber.Router, a
 	guardedGroup.Post("/users", r.handleAddUser)
 	guardedGroup.Put("/users/:pubkey", r.handleUpdateUser)
 	guardedGroup.Delete("/users/:pubkey", r.handleDeleteUser)
+
+	guardedGroup.Get("/requests", r.handleGetRequests)
+	guardedGroup.Post("/requests/:pubkey/approve", r.handleApproveRequest)
+	guardedGroup.Delete("/requests/:pubkey", r.handleDenyRequest)
 
 	guardedGroup.Post("/opns/crawl", r.handleTriggerOpnsCrawl)
 
@@ -853,6 +859,153 @@ func (r *Routes) handleDeleteUser(c *fiber.Ctx) error {
 	r.logger.Info("deleted user", "pubkey", pubkey)
 	return c.JSON(fiber.Map{
 		"message": "user deleted",
+	})
+}
+
+func (r *Routes) handleCheckAccess(c *fiber.Ctx) error {
+	identity := auth.GetIdentity(c)
+	if identity == nil {
+		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{
+			"error": "unauthorized",
+		})
+	}
+
+	pubkey := identity.ToDERHex()
+	user, err := auth.GetAdminUser(c.Context(), r.store, pubkey)
+	if err != nil {
+		r.logger.Error("failed to check access", "error", err)
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"error": "internal error",
+		})
+	}
+
+	if user != nil {
+		return c.JSON(fiber.Map{
+			"status": "approved",
+			"admin":  user.Admin,
+		})
+	}
+
+	return c.JSON(fiber.Map{
+		"status": "none",
+	})
+}
+
+func (r *Routes) handleRequestAccess(c *fiber.Ctx) error {
+	identity := auth.GetIdentity(c)
+	if identity == nil {
+		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{
+			"error": "unauthorized",
+		})
+	}
+
+	var req struct {
+		Name string `json:"name"`
+	}
+	if err := c.BodyParser(&req); err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": "invalid request body",
+		})
+	}
+
+	accessReq := auth.AccessRequest{
+		Pubkey: identity.ToDERHex(),
+		Name:   req.Name,
+	}
+	if err := auth.SaveAccessRequest(c.Context(), r.store, accessReq); err != nil {
+		r.logger.Error("failed to save access request", "error", err)
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"error": "failed to save request",
+		})
+	}
+
+	r.logger.Info("access request submitted", "pubkey", accessReq.Pubkey, "name", accessReq.Name)
+	return c.JSON(fiber.Map{
+		"message": "access request submitted",
+	})
+}
+
+func (r *Routes) handleGetRequests(c *fiber.Ctx) error {
+	requests, err := auth.ListAccessRequests(c.Context(), r.store)
+	if err != nil {
+		r.logger.Error("failed to list requests", "error", err)
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"error": "failed to list requests",
+		})
+	}
+	return c.JSON(requests)
+}
+
+func (r *Routes) handleApproveRequest(c *fiber.Ctx) error {
+	pubkey := c.Params("pubkey")
+	if pubkey == "" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": "pubkey is required",
+		})
+	}
+
+	var req struct {
+		Admin bool `json:"admin"`
+	}
+	if err := c.BodyParser(&req); err != nil {
+		req.Admin = false
+	}
+
+	// Get the request to preserve the name
+	requests, err := auth.ListAccessRequests(c.Context(), r.store)
+	if err != nil {
+		r.logger.Error("failed to list requests", "error", err)
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"error": "internal error",
+		})
+	}
+
+	var name string
+	for _, r := range requests {
+		if r.Pubkey == pubkey {
+			name = r.Name
+			break
+		}
+	}
+
+	user := auth.AdminUser{
+		Pubkey: pubkey,
+		Name:   name,
+		Admin:  req.Admin,
+	}
+	if err := auth.SaveAdminUser(c.Context(), r.store, user); err != nil {
+		r.logger.Error("failed to approve request", "error", err)
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"error": "failed to approve request",
+		})
+	}
+
+	if err := auth.DeleteAccessRequest(c.Context(), r.store, pubkey); err != nil {
+		r.logger.Error("failed to delete request after approval", "error", err)
+	}
+
+	r.logger.Info("approved access request", "pubkey", pubkey, "name", name, "admin", req.Admin)
+	return c.JSON(user)
+}
+
+func (r *Routes) handleDenyRequest(c *fiber.Ctx) error {
+	pubkey := c.Params("pubkey")
+	if pubkey == "" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": "pubkey is required",
+		})
+	}
+
+	if err := auth.DeleteAccessRequest(c.Context(), r.store, pubkey); err != nil {
+		r.logger.Error("failed to deny request", "error", err)
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"error": "failed to deny request",
+		})
+	}
+
+	r.logger.Info("denied access request", "pubkey", pubkey)
+	return c.JSON(fiber.Map{
+		"message": "request denied",
 	})
 }
 
