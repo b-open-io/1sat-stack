@@ -12,7 +12,7 @@ replace github.com/bitcoin-sv/go-templates => github.com/b-open-io/go-templates 
 
 replace github.com/b-open-io/go-junglebus => github.com/b-open-io/go-junglebus v0.3.5-0.20260212191545-39c1c23d7559
 
-replace github.com/bsv-blockchain/go-wallet-toolbox => github.com/bsv-blockchain/go-wallet-toolbox v0.176.1-0.20260224033718-3a16e3ca1636
+replace github.com/bsv-blockchain/go-wallet-toolbox => github.com/bsv-blockchain/go-wallet-toolbox v0.177.2-0.20260306014156-d0fdb9294d4d
 
 replace github.com/bsv-blockchain/arcade => github.com/bsv-blockchain/arcade v0.2.1-0.20260304174418-238ee694e616
 
