@@ -68,22 +68,20 @@ export default function Layout({ children }: { children?: React.ReactNode }) {
       const key = await connectWallet();
       setIdentityKey(key);
       setConnected(true);
-
-      if (setupStatus === "complete") {
-        setAccessStatus("checking");
-        try {
-          const result = await checkAccess();
-          setAccessStatus(result.status === "approved" ? "approved" : "none");
-        } catch {
-          setAccessStatus("none");
-        }
-      }
     } catch (e: any) {
       toastError(e.message || "Failed to connect wallet");
     } finally {
       setConnecting(false);
     }
-  }, [setupStatus]);
+  }, []);
+
+  useEffect(() => {
+    if (!connected || setupStatus !== "complete") return;
+    setAccessStatus("checking");
+    checkAccess()
+      .then((result) => setAccessStatus(result.status === "approved" ? "approved" : "none"))
+      .catch(() => setAccessStatus("none"));
+  }, [connected, setupStatus]);
 
   const copyIdentity = useCallback(() => {
     const key = getIdentityKey();
