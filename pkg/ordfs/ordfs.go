@@ -26,6 +26,10 @@ const (
 	lockCheckInterval   = 10 * time.Second
 	ResolveTimeout      = 60 * time.Second // Default timeout for web-facing resolve calls
 	cacheTTL            = 30 * 24 * time.Hour
+
+	// SeqOrigin resolves to the origin outpoint and returns its data directly,
+	// without forward crawling or merging reinscriptions/MAP data.
+	SeqOrigin = -2
 )
 
 var ErrNotFound = errors.New("not found")
@@ -68,6 +72,28 @@ func (o *Ordfs) Load(ctx context.Context, req *Request) (*Response, error) {
 	if output.Satoshis != 1 || req.Seq == nil {
 		resp := o.parseOutput(ctx, req.Outpoint, output, req.Content)
 		resp.Outpoint = req.Outpoint
+		if !req.Content {
+			resp.Content = nil
+		}
+		if !req.Map {
+			resp.Map = nil
+		}
+		return resp, nil
+	}
+
+	// Origin-only resolution: backward crawl to origin, return its data directly
+	if *req.Seq == SeqOrigin {
+		origin, err := o.backwardCrawl(ctx, req.Outpoint)
+		if err != nil {
+			return nil, fmt.Errorf("origin resolution failed: %w", err)
+		}
+		originOutput, err := o.loadOutput(ctx, origin)
+		if err != nil {
+			return nil, fmt.Errorf("failed to load origin output: %w", err)
+		}
+		resp := o.parseOutput(ctx, origin, originOutput, req.Content)
+		resp.Outpoint = req.Outpoint
+		resp.Origin = origin
 		if !req.Content {
 			resp.Content = nil
 		}
