@@ -12,7 +12,7 @@ replace github.com/bitcoin-sv/go-templates => github.com/b-open-io/go-templates 
 
 replace github.com/b-open-io/go-junglebus => github.com/b-open-io/go-junglebus v0.3.5-0.20260212191545-39c1c23d7559
 
-replace github.com/bsv-blockchain/go-wallet-toolbox => github.com/bsv-blockchain/go-wallet-toolbox v0.177.2-0.20260306233917-e1b1a4d43fc2
+replace github.com/bsv-blockchain/go-wallet-toolbox => github.com/bsv-blockchain/go-wallet-toolbox v0.177.3-0.20260307141356-cb6d66a0adca
 
 replace github.com/bsv-blockchain/arcade => github.com/bsv-blockchain/arcade v0.2.1-0.20260306235308-3916a2dbfdea
 
@@ -30,6 +30,7 @@ require (
 	github.com/dgraph-io/badger/v4 v4.9.1
 	github.com/gofiber/fiber/v2 v2.52.12
 	github.com/joho/godotenv v1.6.0-pre.2
+	github.com/mattn/go-sqlite3 v1.14.34
 	github.com/redis/go-redis/v9 v9.17.2
 	github.com/spf13/viper v1.21.0
 	github.com/swaggo/swag v1.16.6
@@ -203,7 +204,6 @@ require (
 	github.com/mattn/go-colorable v0.1.14 // indirect
 	github.com/mattn/go-isatty v0.0.20 // indirect
 	github.com/mattn/go-runewidth v0.0.20 // indirect
-	github.com/mattn/go-sqlite3 v1.14.34 // indirect
 	github.com/mgutz/ansi v0.0.0-20200706080929-d51e80ef957d // indirect
 	github.com/miekg/dns v1.1.72 // indirect
 	github.com/mikioh/tcpinfo v0.0.0-20190314235526-30a79bb1804b // indirect
