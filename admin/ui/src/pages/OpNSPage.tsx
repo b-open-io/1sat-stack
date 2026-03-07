@@ -2,7 +2,7 @@ import { useState, useCallback } from "react";
 import { toast } from "sonner";
 import { toastError } from "@/lib/utils";
 import { getServices } from "@/lib/services";
-import { apiFetch } from "@/api";
+import { apiFetch, getWallet } from "@/api";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -58,10 +58,10 @@ function getServerBase(): string {
 }
 
 function buildContext(): OneSatContext {
-  const cwi = window.CWI;
-  if (!cwi) throw new Error("No wallet connected");
+  const wallet = getWallet();
+  if (!wallet) throw new Error("No wallet connected");
   return {
-    wallet: cwi,
+    wallet,
     services: getServices(),
     chain: "main",
   };
@@ -253,13 +253,13 @@ export default function OpNSPage() {
   const loadWalletNames = useCallback(async () => {
     setLoadingWallet(true);
     try {
-      const cwi = window.CWI;
-      if (!cwi) {
+      const wallet = getWallet();
+      if (!wallet) {
         toastError("No wallet connected");
         return;
       }
 
-      const result = await cwi.listOutputs({
+      const result = await wallet.listOutputs({
         basket: "opns",
         include: "entire transactions",
         includeTags: true,
@@ -288,10 +288,10 @@ export default function OpNSPage() {
     setPublishing(wn.output.outpoint);
     try {
       const ctx = buildContext();
-      const cwi = window.CWI;
-      if (!cwi) throw new Error("No wallet connected");
+      const wallet = getWallet();
+      if (!wallet) throw new Error("No wallet connected");
 
-      const listResult = await cwi.listOutputs({
+      const listResult = await wallet.listOutputs({
         basket: "opns",
         include: "entire transactions",
         includeTags: true,
@@ -318,10 +318,10 @@ export default function OpNSPage() {
     setPublishing(wn.output.outpoint);
     try {
       const ctx = buildContext();
-      const cwi = window.CWI;
-      if (!cwi) throw new Error("No wallet connected");
+      const wallet = getWallet();
+      if (!wallet) throw new Error("No wallet connected");
 
-      const listResult = await cwi.listOutputs({
+      const listResult = await wallet.listOutputs({
         basket: "opns",
         include: "entire transactions",
         includeTags: true,
