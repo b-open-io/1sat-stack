@@ -1022,6 +1022,10 @@ func (c *Config) RegisterRoutes(app *fiber.App, svc *Services) {
 		// (auth middleware handles the handshake internally)
 		app.All("/.well-known/auth", adaptor.HTTPHandler(authWrappedHandler))
 
+		// Serve /manifest.json for WalletPermissionsManager grouped permission flow.
+		// Declares protocol permissions so dApps get a single grouped prompt.
+		app.Get("/manifest.json", handleManifest())
+
 		capabilities = append(capabilities, "wallet")
 		slog.Debug("registered wallet routes", "prefix", c.Server.BasePath+prefix)
 	}
@@ -1077,6 +1081,28 @@ func handleHealth(c *fiber.Ctx) error {
 func handleCapabilities(capabilities []string) fiber.Handler {
 	return func(c *fiber.Ctx) error {
 		return c.JSON(capabilities)
+	}
+}
+
+func handleManifest() fiber.Handler {
+	manifest := fiber.Map{
+		"babbage": fiber.Map{
+			"groupPermissions": fiber.Map{
+				"description": "1Sat Stack Admin",
+				"protocolPermissions": []fiber.Map{
+					{"protocolID": []any{1, "identity key retrieval"}, "counterparty": "self"},
+					{"protocolID": []any{2, "server hmac"}, "counterparty": "self"},
+				},
+			},
+			"counterpartyPermissions": fiber.Map{
+				"protocols": []fiber.Map{
+					{"protocolID": []any{2, "auth message signature"}},
+				},
+			},
+		},
+	}
+	return func(c *fiber.Ctx) error {
+		return c.JSON(manifest)
 	}
 }
 

@@ -27,6 +27,7 @@ type Services struct {
 	Routes         *Routes
 	Monitor        *monitor.Daemon
 	WalletServices wdk.Services
+	IdentityKey    string
 }
 
 // InitializeDeps holds dependencies for wallet service initialization.
@@ -159,6 +160,7 @@ func (c *Config) Initialize(
 		Wallet:         serverWallet,
 		Monitor:        monitorDaemon,
 		WalletServices: walletServices,
+		IdentityKey:    storageIdentityKey,
 	}
 
 	// Create routes if enabled
