@@ -303,10 +303,12 @@ func (r *Routes) ReceiveTransaction(c *fiber.Ctx) error {
 
 	var req receiveTransactionRequest
 	if err := c.BodyParser(&req); err != nil {
+		r.logger.Warn("receive-transaction: body parse failed", "alias", alias, "error", err, "body", string(c.Body()))
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid request body"})
 	}
 
 	if req.Reference == "" {
+		r.logger.Warn("receive-transaction: missing reference", "alias", alias, "hex_len", len(req.Hex))
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "missing reference"})
 	}
 
@@ -323,12 +325,14 @@ func (r *Routes) ReceiveTransaction(c *fiber.Ctx) error {
 	// Parse raw transaction
 	tx, err := transaction.NewTransactionFromHex(req.Hex)
 	if err != nil {
+		r.logger.Warn("receive-transaction: invalid tx hex", "alias", alias, "error", err, "hex_len", len(req.Hex))
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid transaction hex"})
 	}
 
 	// Verify payment
 	outputIndex, err := verifyPayment(tx, pending)
 	if err != nil {
+		r.logger.Warn("receive-transaction: payment verification failed", "alias", alias, "error", err)
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": err.Error()})
 	}
 
