@@ -235,6 +235,7 @@ type Services struct {
 	Chaintracks       chaintracks.Chaintracks
 	ChaintracksRoutes *chaintracksroutes.Routes
 	Arcade            *arcadeconfig.Services
+	ArcadeWrapped     service.ArcadeService
 	ArcadeRoutes      *arcaderoutes.Routes
 }
 
@@ -399,6 +400,8 @@ func (c *Config) Initialize(ctx context.Context, logger *slog.Logger) (*Services
 			svc.Beef.Storage,
 			logger,
 		)
+
+		svc.ArcadeWrapped = wrappedService
 
 		// Create routes with wrapped service for BEEF capture
 		svc.ArcadeRoutes = arcaderoutes.NewRoutes(arcaderoutes.Config{
@@ -634,7 +637,9 @@ func (c *Config) Initialize(ctx context.Context, logger *slog.Logger) (*Services
 		// Setup pending auditor to verify proofs on each new block
 		if svc.Chaintracks != nil {
 			var arcadeService service.ArcadeService
-			if svc.Arcade != nil {
+			if svc.ArcadeWrapped != nil {
+				arcadeService = svc.ArcadeWrapped
+			} else if svc.Arcade != nil {
 				arcadeService = svc.Arcade.ArcadeService
 			}
 			svc.Indexer.SetupPendingAuditor(&indexer.PendingAuditorDeps{
@@ -723,7 +728,9 @@ func (c *Config) Initialize(ctx context.Context, logger *slog.Logger) (*Services
 		if svc.Chaintracks != nil {
 			walletDeps.Chaintracks = svc.Chaintracks
 		}
-		if svc.Arcade != nil && svc.Arcade.ArcadeService != nil {
+		if svc.ArcadeWrapped != nil {
+			walletDeps.Arcade = svc.ArcadeWrapped
+		} else if svc.Arcade != nil && svc.Arcade.ArcadeService != nil {
 			walletDeps.Arcade = svc.Arcade.ArcadeService
 		}
 		if svc.Beef != nil && svc.Beef.Storage != nil {
@@ -763,7 +770,9 @@ func (c *Config) Initialize(ctx context.Context, logger *slog.Logger) (*Services
 		if svc.ORDFS != nil && svc.ORDFS.Ordfs != nil {
 			paymailDeps.Ordfs = svc.ORDFS.Ordfs
 		}
-		if svc.Arcade != nil && svc.Arcade.ArcadeService != nil {
+		if svc.ArcadeWrapped != nil {
+			paymailDeps.Arcade = svc.ArcadeWrapped
+		} else if svc.Arcade != nil && svc.Arcade.ArcadeService != nil {
 			paymailDeps.Arcade = svc.Arcade.ArcadeService
 		}
 		if svc.Wallet != nil && svc.Wallet.Wallet != nil {
