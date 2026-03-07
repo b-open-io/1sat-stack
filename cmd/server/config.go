@@ -34,7 +34,6 @@ import (
 	"github.com/bsv-blockchain/go-chaintracks/chaintracks"
 	chaintracksconfig "github.com/bsv-blockchain/go-chaintracks/config"
 	chaintracksroutes "github.com/bsv-blockchain/go-chaintracks/routes/fiber"
-	sdkauth "github.com/bsv-blockchain/go-sdk/auth"
 	"github.com/bsv-blockchain/go-sdk/transaction"
 	p2p "github.com/bsv-blockchain/go-teranode-p2p-client"
 	"github.com/gofiber/fiber/v2"
@@ -742,8 +741,16 @@ func (c *Config) Initialize(ctx context.Context, logger *slog.Logger) (*Services
 		}
 		svc.Wallet = walletSvc
 
-		// Create shared session manager for all auth
-		sessionManager := sdkauth.NewSessionManager()
+		// Create persistent session manager
+		sessionTTL, err := time.ParseDuration(c.Auth.SessionTTL)
+		if err != nil {
+			logger.Warn("invalid session_ttl, using default 24h", "value", c.Auth.SessionTTL, "error", err)
+			sessionTTL = 24 * time.Hour
+		}
+		sessionManager, err := auth.NewBadgerSessionManager(c.Auth.SessionPath, sessionTTL, logger)
+		if err != nil {
+			return nil, fmt.Errorf("failed to create session manager: %w", err)
+		}
 
 		// Create auth middleware (requires authentication)
 		svc.AuthMiddleware = auth.NewMiddleware(
@@ -757,6 +764,8 @@ func (c *Config) Initialize(ctx context.Context, logger *slog.Logger) (*Services
 		logger.Info("auth middleware initialized",
 			"allowUnauthenticated", c.Auth.AllowUnauthenticated,
 			"apiKeyConfigured", c.Auth.ApiKey != "",
+			"sessionPath", c.Auth.SessionPath,
+			"sessionTTL", sessionTTL,
 		)
 
 	}

@@ -12,6 +12,12 @@ type Config struct {
 	// ApiKey is an optional static key for development/agent access.
 	// When set, requests with a matching X-Api-Key header bypass BRC-103/104.
 	ApiKey string `mapstructure:"api_key"`
+
+	// SessionPath is the directory for the persistent session store.
+	SessionPath string `mapstructure:"session_path"`
+
+	// SessionTTL is the duration string for session expiry (e.g. "24h").
+	SessionTTL string `mapstructure:"session_ttl"`
 }
 
 // SetDefaults sets viper defaults for auth configuration.
@@ -23,4 +29,6 @@ func (c *Config) SetDefaults(v *viper.Viper, prefix string) {
 
 	v.SetDefault(p+"allow_unauthenticated", true)
 	v.SetDefault(p+"api_key", "")
+	v.SetDefault(p+"session_path", "~/.1sat/sessions/")
+	v.SetDefault(p+"session_ttl", "24h")
 }

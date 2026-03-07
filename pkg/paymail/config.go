@@ -4,6 +4,9 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"os"
+	"path/filepath"
+	"strings"
 
 	"github.com/b-open-io/1sat-stack/pkg/opns"
 	"github.com/b-open-io/1sat-stack/pkg/ordfs"
@@ -11,6 +14,15 @@ import (
 	sdk "github.com/bsv-blockchain/go-sdk/wallet"
 	"github.com/spf13/viper"
 )
+
+func expandPath(path string) string {
+	if strings.HasPrefix(path, "~/") {
+		if home, err := os.UserHomeDir(); err == nil {
+			return filepath.Join(home, path[2:])
+		}
+	}
+	return path
+}
 
 // Mode constants
 const (
@@ -21,6 +33,7 @@ const (
 // Config holds paymail service configuration.
 type Config struct {
 	Mode   string       `mapstructure:"mode"`
+	DBPath string       `mapstructure:"db_path"`
 	Routes RoutesConfig `mapstructure:"routes"`
 }
 
@@ -38,6 +51,7 @@ func (c *Config) SetDefaults(v *viper.Viper, prefix string) {
 	}
 
 	v.SetDefault(p+"mode", ModeDisabled)
+	v.SetDefault(p+"db_path", "~/.1sat/paymail.db")
 	v.SetDefault(p+"routes.enabled", true)
 	v.SetDefault(p+"routes.prefix", "/bsvalias")
 }
@@ -54,6 +68,15 @@ type InitializeDeps struct {
 type Services struct {
 	Service *Service
 	Routes  *Routes
+	store   PendingStore
+}
+
+// Close releases resources held by paymail services.
+func (s *Services) Close() error {
+	if s.store != nil {
+		return s.store.Close()
+	}
+	return nil
 }
 
 // Initialize creates paymail services from the configuration.
@@ -83,16 +106,23 @@ func (c *Config) Initialize(
 		return nil, fmt.Errorf("wallet is required for paymail")
 	}
 
-	service := NewService(deps.OpnsLookup, deps.Ordfs, deps.Arcade, deps.Wallet, logger)
+	dbPath := expandPath(c.DBPath)
+	store, err := NewSQLiteStore(dbPath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to open paymail store: %w", err)
+	}
+
+	service := NewService(deps.OpnsLookup, deps.Ordfs, deps.Arcade, deps.Wallet, store, logger)
 
 	svc := &Services{
 		Service: service,
+		store:   store,
 	}
 
 	if c.Routes.Enabled {
 		svc.Routes = NewRoutes(service, logger, "")
 	}
 
-	logger.Info("paymail service initialized", "mode", c.Mode)
+	logger.Info("paymail service initialized", "mode", c.Mode, "db", dbPath)
 	return svc, nil
 }

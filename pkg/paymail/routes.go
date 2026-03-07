@@ -135,7 +135,7 @@ type paymentDestinationRequest struct {
 // @Router /v1/bsvalias/p2p-payment-destination/{paymail} [post]
 func (r *Routes) PaymentDestination(c *fiber.Ctx) error {
 	paymailAddr := c.Params("paymail")
-	alias, _, err := parsePaymail(paymailAddr)
+	alias, domain, err := parsePaymail(paymailAddr)
 	if err != nil {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": err.Error()})
 	}
@@ -151,7 +151,7 @@ func (r *Routes) PaymentDestination(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "paymail not found"})
 	}
 
-	pending, err := r.service.DerivePaymentDestination(identityKey, req.Satoshis)
+	pending, err := r.service.DerivePaymentDestination(c.Context(), alias, domain, identityKey, req.Satoshis)
 	if err != nil {
 		r.logger.Error("failed to derive payment destination", "alias", alias, "error", err)
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "derivation failed"})
@@ -212,7 +212,11 @@ func (r *Routes) ReceiveBeef(c *fiber.Ctx) error {
 	}
 
 	// Look up pending payment
-	pending := r.service.Store().Get(req.Reference)
+	pending, err := r.service.Store().Get(c.Context(), req.Reference)
+	if err != nil {
+		r.logger.Error("store lookup failed", "alias", alias, "error", err)
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "internal error"})
+	}
 	if pending == nil {
 		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "destination not found or expired"})
 	}
@@ -245,6 +249,12 @@ func (r *Routes) ReceiveBeef(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "transaction rejected by network"})
 	}
 
+	// Record the txid before internalization so we can trace back if it fails
+	pending.TxID = txid.String()
+	if err := r.service.Store().Update(c.Context(), pending); err != nil {
+		r.logger.Error("failed to update pending payment with txid", "alias", alias, "error", err)
+	}
+
 	// Internalize the payment into the wallet
 	err = r.internalizePayment(c, alias, beefBytes, uint32(outputIndex), pending)
 	if err != nil {
@@ -253,7 +263,9 @@ func (r *Routes) ReceiveBeef(c *fiber.Ctx) error {
 	}
 
 	// Clean up the pending payment
-	r.service.Store().Delete(req.Reference)
+	if err := r.service.Store().Delete(c.Context(), req.Reference); err != nil {
+		r.logger.Error("failed to delete pending payment", "alias", alias, "error", err)
+	}
 
 	return c.JSON(fiber.Map{
 		"txid": txid.String(),
@@ -299,7 +311,11 @@ func (r *Routes) ReceiveTransaction(c *fiber.Ctx) error {
 	}
 
 	// Look up pending payment
-	pending := r.service.Store().Get(req.Reference)
+	pending, err := r.service.Store().Get(c.Context(), req.Reference)
+	if err != nil {
+		r.logger.Error("store lookup failed", "alias", alias, "error", err)
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "internal error"})
+	}
 	if pending == nil {
 		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "destination not found or expired"})
 	}
@@ -328,6 +344,13 @@ func (r *Routes) ReceiveTransaction(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "transaction rejected by network"})
 	}
 
+	// Record the txid before internalization
+	txid := tx.TxID()
+	pending.TxID = txid.String()
+	if err := r.service.Store().Update(c.Context(), pending); err != nil {
+		r.logger.Error("failed to update pending payment with txid", "alias", alias, "error", err)
+	}
+
 	// Internalize the payment into the wallet
 	err = r.internalizePayment(c, alias, txBytes, uint32(outputIndex), pending)
 	if err != nil {
@@ -336,9 +359,10 @@ func (r *Routes) ReceiveTransaction(c *fiber.Ctx) error {
 	}
 
 	// Clean up
-	r.service.Store().Delete(req.Reference)
+	if err := r.service.Store().Delete(c.Context(), req.Reference); err != nil {
+		r.logger.Error("failed to delete pending payment", "alias", alias, "error", err)
+	}
 
-	txid := tx.TxID()
 	return c.JSON(fiber.Map{
 		"txid": txid.String(),
 		"note": "Payment received and internalized",

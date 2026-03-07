@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"time"
 
 	"github.com/b-open-io/1sat-stack/pkg/opns"
 	"github.com/b-open-io/1sat-stack/pkg/ordfs"
@@ -30,7 +31,7 @@ type Service struct {
 	ordfs         *ordfs.Ordfs
 	arcade        arcadeservice.ArcadeService
 	wallet        wallet.Interface
-	store         *Store
+	store         PendingStore
 	anyoneDeriver *wallet.KeyDeriver
 	logger        *slog.Logger
 }
@@ -41,6 +42,7 @@ func NewService(
 	ordfsService *ordfs.Ordfs,
 	arcadeService arcadeservice.ArcadeService,
 	w wallet.Interface,
+	store PendingStore,
 	logger *slog.Logger,
 ) *Service {
 	if logger == nil {
@@ -52,7 +54,7 @@ func NewService(
 		ordfs:         ordfsService,
 		arcade:        arcadeService,
 		wallet:        w,
-		store:         NewStore(),
+		store:         store,
 		anyoneDeriver: wallet.NewKeyDeriver(anyonePriv),
 		logger:        logger,
 	}
@@ -111,7 +113,7 @@ func (s *Service) ResolveIdentityKey(ctx context.Context, alias string) (*ec.Pub
 
 // DerivePaymentDestination generates a BRC-29 payment destination for the given
 // identity key. Returns the pending payment record with derivation info, output script, etc.
-func (s *Service) DerivePaymentDestination(identityPubKey *ec.PublicKey, satoshis uint64) (*PendingPayment, error) {
+func (s *Service) DerivePaymentDestination(ctx context.Context, alias, domain string, identityPubKey *ec.PublicKey, satoshis uint64) (*PendingPayment, error) {
 	// Generate random prefix/suffix for BRC-29
 	prefixBytes := make([]byte, 16)
 	suffixBytes := make([]byte, 16)
@@ -126,8 +128,6 @@ func (s *Service) DerivePaymentDestination(identityPubKey *ec.PublicKey, satoshi
 	derivationSuffix := base64.StdEncoding.EncodeToString(suffixBytes)
 	keyID := derivationPrefix + " " + derivationSuffix
 
-	// Derive payment public key: identityPubKey.DeriveChild(anyonePrivKey, invoiceNumber)
-	// Using the KeyDeriver with anyone key as root, counterparty = identity key
 	counterparty := wallet.Counterparty{
 		Type:         wallet.CounterpartyTypeOther,
 		Counterparty: identityPubKey,
@@ -137,7 +137,6 @@ func (s *Service) DerivePaymentDestination(identityPubKey *ec.PublicKey, satoshi
 		return nil, fmt.Errorf("failed to derive payment public key: %w", err)
 	}
 
-	// Build P2PKH locking script
 	address, err := script.NewAddressFromPublicKey(paymentPubKey, true)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create address from payment key: %w", err)
@@ -148,14 +147,23 @@ func (s *Service) DerivePaymentDestination(identityPubKey *ec.PublicKey, satoshi
 		return nil, fmt.Errorf("failed to create locking script: %w", err)
 	}
 
-	// Store pending payment
-	pending := s.store.Create(
-		identityPubKey.ToDERHex(),
-		derivationPrefix,
-		derivationSuffix,
-		satoshis,
-		hex.EncodeToString(*lockingScript),
-	)
+	now := time.Now()
+	pending := &PendingPayment{
+		Reference:        generateReference(),
+		Alias:            alias,
+		Domain:           domain,
+		IdentityPubKey:   identityPubKey.ToDERHex(),
+		DerivationPrefix: derivationPrefix,
+		DerivationSuffix: derivationSuffix,
+		Satoshis:         satoshis,
+		OutputScript:     hex.EncodeToString(*lockingScript),
+		CreatedAt:        now,
+		ExpiresAt:        now.Add(defaultTTL),
+	}
+
+	if err := s.store.Create(ctx, pending); err != nil {
+		return nil, fmt.Errorf("failed to store pending payment: %w", err)
+	}
 
 	return pending, nil
 }
@@ -166,7 +174,7 @@ func (s *Service) Wallet() wallet.Interface {
 }
 
 // Store returns the pending payment store.
-func (s *Service) Store() *Store {
+func (s *Service) Store() PendingStore {
 	return s.store
 }
 
