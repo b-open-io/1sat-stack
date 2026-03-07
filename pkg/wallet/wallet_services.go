@@ -74,6 +74,7 @@ func (s *LocalWalletServices) FindChainTipHeader(ctx context.Context) (*wdk.Chai
 // --- PostFromBEEF ---
 
 func (s *LocalWalletServices) PostFromBEEF(ctx context.Context, b *transaction.Beef, txIDs []string) (wdk.PostFromBeefResult, error) {
+	s.logger.Info("PostFromBEEF called", "txIDs", txIDs)
 	results := make([]*wdk.PostFromBEEFServiceResult, 0, len(txIDs))
 
 	for _, txID := range txIDs {

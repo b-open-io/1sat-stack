@@ -180,9 +180,7 @@ func (c *Config) Initialize(
 // RPCHandler returns an http.Handler for wallet RPC endpoints without auth middleware.
 // This allows 1sat-stack's global auth middleware to handle authentication.
 func (s *Services) RPCHandler(logger *slog.Logger) http.Handler {
-	// TODO: Remove normalizingProvider wrapper once @bsv/sdk publishes the fix
-	// from https://github.com/bsv-blockchain/ts-sdk/pull/489
-	provider := rpcserver.NewRPCStorageProvider(logger, &normalizingProvider{s.Provider})
+	provider := rpcserver.NewRPCStorageProvider(logger, s.Provider)
 	rpcServer := rpcserver.NewRPCHandler(logger, "remote_storage", provider)
 
 	mux := http.NewServeMux()
