@@ -74,19 +74,12 @@ func (s *LocalWalletServices) FindChainTipHeader(ctx context.Context) (*wdk.Chai
 // --- PostFromBEEF ---
 
 func (s *LocalWalletServices) PostFromBEEF(ctx context.Context, b *transaction.Beef, txIDs []string) (wdk.PostFromBeefResult, error) {
-	s.logger.Info("PostFromBEEF called", "txIDs", txIDs)
 	results := make([]*wdk.PostFromBEEFServiceResult, 0, len(txIDs))
 
 	for _, txID := range txIDs {
 		tx := b.FindTransaction(txID)
 		if tx == nil {
 			return nil, fmt.Errorf("transaction %s not found in beef", txID)
-		}
-
-		// Save to beef storage so the indexer can find it on arcade events
-		txHash, _ := chainhash.NewHashFromHex(txID)
-		if err := s.beefStorage.SaveBeef(ctx, txHash, b); err != nil {
-			s.logger.Warn("failed to save beef before broadcast", "txid", txID, "error", err)
 		}
 
 		// Skip already mined txs
