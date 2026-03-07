@@ -1096,7 +1096,7 @@ func handleManifest() fiber.Handler {
 			},
 			"counterpartyPermissions": fiber.Map{
 				"protocols": []fiber.Map{
-					{"protocolID": []any{2, "auth message signature"}},
+					{"protocolID": []any{2, "auth message signature"}, "description": "BRC-103/104 authentication signatures"},
 				},
 			},
 		},
