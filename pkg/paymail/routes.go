@@ -168,11 +168,17 @@ func (r *Routes) PaymentDestination(c *fiber.Ctx) error {
 	})
 }
 
+// p2pMetadata is the optional metadata object sent with P2P transactions.
+type p2pMetadata struct {
+	Sender string `json:"sender,omitempty"`
+	Note   string `json:"note,omitempty"`
+}
+
 // receiveBeefRequest is the JSON body for the receive-beef endpoint.
 type receiveBeefRequest struct {
-	Beef      string `json:"beef"`
-	Reference string `json:"reference"`
-	Metadata  string `json:"metadata,omitempty"`
+	Beef      string       `json:"beef"`
+	Reference string       `json:"reference"`
+	Metadata  *p2pMetadata `json:"metadata,omitempty"`
 }
 
 // ReceiveBeef processes an incoming BEEF transaction payment.
@@ -257,9 +263,9 @@ func (r *Routes) ReceiveBeef(c *fiber.Ctx) error {
 
 // receiveTransactionRequest is the JSON body for the receive-transaction endpoint.
 type receiveTransactionRequest struct {
-	Hex       string `json:"hex"`
-	Reference string `json:"reference"`
-	Metadata  string `json:"metadata,omitempty"`
+	Hex       string       `json:"hex"`
+	Reference string       `json:"reference"`
+	Metadata  *p2pMetadata `json:"metadata,omitempty"`
 }
 
 // ReceiveTransaction processes an incoming raw transaction payment.
