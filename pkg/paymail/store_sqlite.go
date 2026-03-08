@@ -4,7 +4,6 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
-	"time"
 
 	_ "github.com/mattn/go-sqlite3"
 )
@@ -43,9 +42,7 @@ func NewSQLiteStore(dbPath string) (*SQLiteStore, error) {
 		return nil, fmt.Errorf("failed to create pending_payments table: %w", err)
 	}
 
-	s := &SQLiteStore{db: db}
-	go s.cleanupLoop()
-	return s, nil
+	return &SQLiteStore{db: db}, nil
 }
 
 func (s *SQLiteStore) Create(ctx context.Context, p *PendingPayment) error {
@@ -68,8 +65,8 @@ func (s *SQLiteStore) Get(ctx context.Context, reference string) (*PendingPaymen
 			derivation_prefix, derivation_suffix,
 			satoshis, output_script, txid, created_at, expires_at
 		FROM pending_payments
-		WHERE reference = ? AND expires_at > ?`,
-		reference, time.Now(),
+		WHERE reference = ?`,
+		reference,
 	)
 
 	p := &PendingPayment{}
@@ -110,11 +107,3 @@ func (s *SQLiteStore) Close() error {
 	return s.db.Close()
 }
 
-func (s *SQLiteStore) cleanupLoop() {
-	ticker := time.NewTicker(1 * time.Minute)
-	defer ticker.Stop()
-
-	for range ticker.C {
-		_, _ = s.db.Exec(`DELETE FROM pending_payments WHERE expires_at <= ?`, time.Now())
-	}
-}
