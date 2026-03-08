@@ -336,9 +336,19 @@ func (r *Routes) ReceiveTransaction(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": err.Error()})
 	}
 
-	// Broadcast through Arcade synchronously
-	txBytes := tx.Bytes()
-	status, err := r.service.Arcade().SubmitTransaction(c.Context(), txBytes, nil)
+	// Build atomic BEEF from raw transaction by populating ancestor chain
+	if err := r.service.BeefStorage().PopulateAncestors(c.Context(), tx); err != nil {
+		r.logger.Error("failed to populate ancestors for raw tx", "alias", alias, "error", err)
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to build BEEF from transaction"})
+	}
+	beefBytes, err := tx.AtomicBEEF(false)
+	if err != nil {
+		r.logger.Error("failed to serialize atomic BEEF", "alias", alias, "error", err)
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to build BEEF from transaction"})
+	}
+
+	// Broadcast BEEF through Arcade synchronously
+	status, err := r.service.Arcade().SubmitTransaction(c.Context(), beefBytes, nil)
 	if err != nil {
 		r.logger.Error("arcade broadcast failed", "alias", alias, "error", err)
 		return c.Status(fiber.StatusBadGateway).JSON(fiber.Map{"error": fmt.Sprintf("broadcast failed: %v", err)})
@@ -356,7 +366,7 @@ func (r *Routes) ReceiveTransaction(c *fiber.Ctx) error {
 	}
 
 	// Internalize the payment into the wallet
-	err = r.internalizePayment(c, alias, txBytes, uint32(outputIndex), pending)
+	err = r.internalizePayment(c, alias, beefBytes, uint32(outputIndex), pending)
 	if err != nil {
 		r.logger.Error("failed to internalize raw tx payment", "alias", alias, "error", err)
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to process payment"})

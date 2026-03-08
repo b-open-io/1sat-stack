@@ -10,6 +10,7 @@ import (
 	"log/slog"
 	"time"
 
+	"github.com/b-open-io/1sat-stack/pkg/beef"
 	"github.com/b-open-io/1sat-stack/pkg/opns"
 	"github.com/b-open-io/1sat-stack/pkg/ordfs"
 	arcadeservice "github.com/bsv-blockchain/arcade/service"
@@ -31,6 +32,7 @@ type Service struct {
 	ordfs         *ordfs.Ordfs
 	arcade        arcadeservice.ArcadeService
 	wallet        wallet.Interface
+	beefStorage   *beef.Storage
 	store         PendingStore
 	anyoneDeriver *wallet.KeyDeriver
 	logger        *slog.Logger
@@ -42,6 +44,7 @@ func NewService(
 	ordfsService *ordfs.Ordfs,
 	arcadeService arcadeservice.ArcadeService,
 	w wallet.Interface,
+	beefStorage *beef.Storage,
 	store PendingStore,
 	logger *slog.Logger,
 ) *Service {
@@ -54,6 +57,7 @@ func NewService(
 		ordfs:         ordfsService,
 		arcade:        arcadeService,
 		wallet:        w,
+		beefStorage:   beefStorage,
 		store:         store,
 		anyoneDeriver: wallet.NewKeyDeriver(anyonePriv),
 		logger:        logger,
@@ -176,6 +180,11 @@ func (s *Service) Wallet() wallet.Interface {
 // Store returns the pending payment store.
 func (s *Service) Store() PendingStore {
 	return s.store
+}
+
+// BeefStorage returns the BEEF storage for ancestor lookups.
+func (s *Service) BeefStorage() *beef.Storage {
+	return s.beefStorage
 }
 
 // Arcade returns the arcade service for direct broadcast.

@@ -787,6 +787,9 @@ func (c *Config) Initialize(ctx context.Context, logger *slog.Logger) (*Services
 		if svc.Wallet != nil && svc.Wallet.Wallet != nil {
 			paymailDeps.Wallet = svc.Wallet.Wallet
 		}
+		if svc.Beef != nil && svc.Beef.Storage != nil {
+			paymailDeps.BeefStorage = svc.Beef.Storage
+		}
 		paymailSvc, err := c.Paymail.Initialize(ctx, logger, paymailDeps)
 		if err != nil {
 			return nil, fmt.Errorf("failed to initialize paymail: %w", err)
