@@ -262,11 +262,6 @@ func (r *Routes) ReceiveBeef(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to process payment"})
 	}
 
-	// Clean up the pending payment
-	if err := r.service.Store().Delete(c.Context(), req.Reference); err != nil {
-		r.logger.Error("failed to delete pending payment", "alias", alias, "error", err)
-	}
-
 	return c.JSON(fiber.Map{
 		"txid": txid.String(),
 		"note": "Payment received and internalized",
@@ -370,11 +365,6 @@ func (r *Routes) ReceiveTransaction(c *fiber.Ctx) error {
 	if err != nil {
 		r.logger.Error("failed to internalize raw tx payment", "alias", alias, "error", err)
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to process payment"})
-	}
-
-	// Clean up
-	if err := r.service.Store().Delete(c.Context(), req.Reference); err != nil {
-		r.logger.Error("failed to delete pending payment", "alias", alias, "error", err)
 	}
 
 	return c.JSON(fiber.Map{
