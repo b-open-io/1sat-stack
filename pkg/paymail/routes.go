@@ -1,7 +1,6 @@
 package paymail
 
 import (
-	"encoding/base64"
 	"encoding/hex"
 	"fmt"
 	"log/slog"
@@ -10,7 +9,8 @@ import (
 	"github.com/b-open-io/1sat-stack/pkg/ordfs"
 	"github.com/bsv-blockchain/arcade/models"
 	"github.com/bsv-blockchain/go-sdk/transaction"
-	"github.com/bsv-blockchain/go-sdk/wallet"
+	"github.com/bsv-blockchain/go-wallet-toolbox/pkg/wdk"
+	"github.com/bsv-blockchain/go-wallet-toolbox/pkg/wdk/primitives"
 	"github.com/gofiber/fiber/v2"
 )
 
@@ -396,7 +396,8 @@ func verifyPayment(tx *transaction.Transaction, pending *PendingPayment) (int, e
 	return -1, fmt.Errorf("no output matches the expected payment destination")
 }
 
-// internalizePayment calls InternalizeAction on the wallet to record the payment.
+// internalizePayment calls InternalizeAction on the storage provider to record
+// the payment for the client identified by the pending payment's identity key.
 func (r *Routes) internalizePayment(
 	c *fiber.Ctx,
 	alias string,
@@ -404,21 +405,22 @@ func (r *Routes) internalizePayment(
 	outputIndex uint32,
 	pending *PendingPayment,
 ) error {
-	prefixBytes, err := base64.StdEncoding.DecodeString(pending.DerivationPrefix)
+	// Resolve the client user from their identity key
+	userResp, err := r.service.WalletProvider().FindOrInsertUser(c.Context(), pending.IdentityPubKey)
 	if err != nil {
-		return fmt.Errorf("invalid derivation prefix: %w", err)
+		return fmt.Errorf("failed to resolve wallet user for %s: %w", alias, err)
 	}
-	suffixBytes, err := base64.StdEncoding.DecodeString(pending.DerivationSuffix)
-	if err != nil {
-		return fmt.Errorf("invalid derivation suffix: %w", err)
+	authID := wdk.AuthID{
+		IdentityKey: pending.IdentityPubKey,
+		UserID:      &userResp.User.UserID,
 	}
 
-	senderIdentityKey := r.service.AnyoneDeriverIdentityKey()
+	senderIdentityKey := primitives.PubKeyHex(r.service.AnyoneDeriverIdentityKey().ToDERHex())
 
-	args := wallet.InternalizeActionArgs{
+	args := wdk.InternalizeActionArgs{
 		Tx:          beefBytes,
-		Description: fmt.Sprintf("Paymail payment to %s", alias),
-		Labels:      []string{"paymail", "incoming"},
+		Description: primitives.String5to2000Bytes(fmt.Sprintf("Paymail payment to %s", alias)),
+		Labels:      []primitives.StringUnder300{primitives.NewIdentifier("paymail"), primitives.NewIdentifier("incoming")},
 	}
 
 	if pending.Satoshis == 1 {
@@ -437,32 +439,32 @@ func (r *Routes) internalizePayment(
 		case "application/op-ns":
 			basket = "opns"
 		case "application/bsv-20":
-			// TODO: BSV-21 tokens need overlay submission, not just basket insertion
 			r.logger.Warn("received BSV-21 token via paymail, treating as generic ordinal",
 				"alias", alias,
 				"outputIndex", outputIndex,
 			)
 		}
 
-		tags := []string{}
+		var tags []primitives.StringUnder300
 		if contentType != "" {
-			tags = append(tags, "type:"+contentType)
+			tags = append(tags, primitives.NewIdentifier("type:"+contentType))
 		}
 		if contentType == "application/op-ns" && content != nil {
 			if name := strings.TrimSpace(string(content)); name != "" {
-				tags = append(tags, "name:"+name)
+				tags = append(tags, primitives.NewIdentifier("name:"+name))
 			}
 		}
 
-		args.Outputs = []wallet.InternalizeOutput{
+		customInstructions := fmt.Sprintf(`{"protocolID":[2,"3241645161d8"],"keyID":"%s %s"}`,
+			pending.DerivationPrefix, pending.DerivationSuffix)
+		args.Outputs = []*wdk.InternalizeOutput{
 			{
 				OutputIndex: outputIndex,
-				Protocol:    wallet.InternalizeProtocolBasketInsertion,
-				InsertionRemittance: &wallet.BasketInsertion{
-					Basket: basket,
-					CustomInstructions: fmt.Sprintf(`{"protocolID":[2,"3241645161d8"],"keyID":"%s %s"}`,
-						pending.DerivationPrefix, pending.DerivationSuffix),
-					Tags: tags,
+				Protocol:    wdk.BasketInsertionProtocol,
+				InsertionRemittance: &wdk.BasketInsertion{
+					Basket:             primitives.NewIdentifier(basket),
+					CustomInstructions: &customInstructions,
+					Tags:               tags,
 				},
 			},
 		}
@@ -474,20 +476,20 @@ func (r *Routes) internalizePayment(
 			"outputIndex", outputIndex,
 		)
 	} else {
-		args.Outputs = []wallet.InternalizeOutput{
+		args.Outputs = []*wdk.InternalizeOutput{
 			{
 				OutputIndex: outputIndex,
-				Protocol:    wallet.InternalizeProtocolWalletPayment,
-				PaymentRemittance: &wallet.Payment{
-					DerivationPrefix:  prefixBytes,
-					DerivationSuffix:  suffixBytes,
+				Protocol:    wdk.WalletPaymentProtocol,
+				PaymentRemittance: &wdk.WalletPayment{
+					DerivationPrefix:  primitives.Base64String(pending.DerivationPrefix),
+					DerivationSuffix:  primitives.Base64String(pending.DerivationSuffix),
 					SenderIdentityKey: senderIdentityKey,
 				},
 			},
 		}
 	}
 
-	result, err := r.service.Wallet().InternalizeAction(c.Context(), args, "paymail")
+	result, err := r.service.WalletProvider().InternalizeAction(c.Context(), authID, args)
 	if err != nil {
 		return fmt.Errorf("InternalizeAction failed: %w", err)
 	}

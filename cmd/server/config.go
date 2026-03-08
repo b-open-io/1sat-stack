@@ -784,8 +784,8 @@ func (c *Config) Initialize(ctx context.Context, logger *slog.Logger) (*Services
 		} else if svc.Arcade != nil && svc.Arcade.ArcadeService != nil {
 			paymailDeps.Arcade = svc.Arcade.ArcadeService
 		}
-		if svc.Wallet != nil && svc.Wallet.Wallet != nil {
-			paymailDeps.Wallet = svc.Wallet.Wallet
+		if svc.Wallet != nil && svc.Wallet.Provider != nil {
+			paymailDeps.WalletProvider = svc.Wallet.Provider
 		}
 		if svc.Beef != nil && svc.Beef.Storage != nil {
 			paymailDeps.BeefStorage = svc.Beef.Storage

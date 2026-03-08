@@ -18,6 +18,7 @@ import (
 	"github.com/bsv-blockchain/go-sdk/script"
 	"github.com/bsv-blockchain/go-sdk/transaction/template/p2pkh"
 	"github.com/bsv-blockchain/go-sdk/wallet"
+	"github.com/bsv-blockchain/go-wallet-toolbox/pkg/storage"
 )
 
 // BRC-29 protocol constants
@@ -28,14 +29,14 @@ var brc29Protocol = wallet.Protocol{
 
 // Service provides paymail resolution and payment derivation.
 type Service struct {
-	opns          *opns.LookupService
-	ordfs         *ordfs.Ordfs
-	arcade        arcadeservice.ArcadeService
-	wallet        wallet.Interface
-	beefStorage   *beef.Storage
-	store         PendingStore
-	anyoneDeriver *wallet.KeyDeriver
-	logger        *slog.Logger
+	opns           *opns.LookupService
+	ordfs          *ordfs.Ordfs
+	arcade         arcadeservice.ArcadeService
+	walletProvider *storage.Provider
+	beefStorage    *beef.Storage
+	store          PendingStore
+	anyoneDeriver  *wallet.KeyDeriver
+	logger         *slog.Logger
 }
 
 // NewService creates a new paymail service.
@@ -43,7 +44,7 @@ func NewService(
 	opnsLookup *opns.LookupService,
 	ordfsService *ordfs.Ordfs,
 	arcadeService arcadeservice.ArcadeService,
-	w wallet.Interface,
+	walletProvider *storage.Provider,
 	beefStorage *beef.Storage,
 	store PendingStore,
 	logger *slog.Logger,
@@ -53,14 +54,14 @@ func NewService(
 	}
 	anyonePriv, _ := wallet.AnyoneKey()
 	return &Service{
-		opns:          opnsLookup,
-		ordfs:         ordfsService,
-		arcade:        arcadeService,
-		wallet:        w,
-		beefStorage:   beefStorage,
-		store:         store,
-		anyoneDeriver: wallet.NewKeyDeriver(anyonePriv),
-		logger:        logger,
+		opns:           opnsLookup,
+		ordfs:          ordfsService,
+		arcade:         arcadeService,
+		walletProvider: walletProvider,
+		beefStorage:    beefStorage,
+		store:          store,
+		anyoneDeriver:  wallet.NewKeyDeriver(anyonePriv),
+		logger:         logger,
 	}
 }
 
@@ -172,9 +173,9 @@ func (s *Service) DerivePaymentDestination(ctx context.Context, alias, domain st
 	return pending, nil
 }
 
-// Wallet returns the wallet interface for InternalizeAction calls.
-func (s *Service) Wallet() wallet.Interface {
-	return s.wallet
+// WalletProvider returns the wallet storage provider for InternalizeAction calls.
+func (s *Service) WalletProvider() *storage.Provider {
+	return s.walletProvider
 }
 
 // Store returns the pending payment store.
