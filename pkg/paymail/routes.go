@@ -1,6 +1,7 @@
 package paymail
 
 import (
+	"crypto/rand"
 	"encoding/hex"
 	"fmt"
 	"log/slog"
@@ -435,7 +436,12 @@ func (r *Routes) internalizePayment(
 			)
 		}
 
-		var tags []primitives.StringUnder300
+		// Generate a unique action ID tag for targeted lookups
+		idBytes := make([]byte, 8)
+		_, _ = rand.Read(idBytes)
+		actionID := hex.EncodeToString(idBytes)
+
+		tags := []primitives.StringUnder300{primitives.NewIdentifier("id:" + actionID)}
 		if contentType != "" {
 			tags = append(tags, primitives.NewIdentifier("type:"+contentType))
 		}
