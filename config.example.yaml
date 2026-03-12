@@ -202,12 +202,28 @@ opns:
     enabled: true
     prefix: /opns
 
+# OrdLock marketplace overlay
+# Indexes OrdLock listing and spend transactions.
+ordlock:
+  mode: embedded
+  sync:
+    enabled: true
+    subscription_id: ""     # ONESAT_ORDLOCK_SYNC_SUBSCRIPTION_ID
+    queue_name: "ordlock"
+    from_block: 783968
+    concurrency: 8
+    resolve_dependencies: true
+  routes:
+    enabled: true
+    prefix: /ordlock
+
 # Overlay engine services
 # Manages topic managers and lookup services for the BSV overlay network.
 overlay:
   mode: embedded
   topic_whitelist:
     - tm_bsv21              # Only used for factory-based (dynamic) topics
+    - tm_ordlock
   # topic_blacklist: []     # Topics to block even if whitelisted
   routes:
     enabled: true

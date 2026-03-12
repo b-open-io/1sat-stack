@@ -20,6 +20,7 @@ import (
 	"github.com/b-open-io/1sat-stack/pkg/logging"
 	"github.com/b-open-io/1sat-stack/pkg/opns"
 	"github.com/b-open-io/1sat-stack/pkg/ordfs"
+	ordlockpkg "github.com/b-open-io/1sat-stack/pkg/ordlock"
 	"github.com/b-open-io/1sat-stack/pkg/overlay"
 	overlaystorage "github.com/b-open-io/1sat-stack/pkg/overlay/storage"
 	"github.com/b-open-io/1sat-stack/pkg/owner"
@@ -88,6 +89,9 @@ type Config struct {
 
 	// OPNS domain name overlay
 	OPNS opns.Config `mapstructure:"opns"`
+
+	// OrdLock marketplace overlay
+	OrdLock ordlockpkg.Config `mapstructure:"ordlock"`
 
 	// MongoDB (shared by BAP and BSocial)
 	MongoDB MongoDBConfig `mapstructure:"mongodb"`
@@ -217,6 +221,7 @@ type Services struct {
 	BAP     *bap.Services
 	BSocial *bsocial.Services
 	OPNS    *opns.Services
+	OrdLock *ordlockpkg.Services
 	Overlay *overlay.Services
 	ORDFS   *ordfs.Services
 	Own     *owner.Services
@@ -301,6 +306,7 @@ func (c *Config) SetDefaults(v *viper.Viper) {
 	c.BAP.SetDefaults(v, "bap")
 	c.BSocial.SetDefaults(v, "bsocial")
 	c.OPNS.SetDefaults(v, "opns")
+	c.OrdLock.SetDefaults(v, "ordlock")
 	c.Overlay.SetDefaults(v, "overlay")
 	c.ORDFS.SetDefaults(v, "ordfs")
 	c.Owner.SetDefaults(v, "owner")
@@ -600,6 +606,34 @@ func (c *Config) Initialize(ctx context.Context, logger *slog.Logger) (*Services
 		logger.Info("opns initialized", "duration", time.Since(start).Round(time.Millisecond))
 	}
 
+	// Initialize OrdLock
+	if c.OrdLock.Mode != ordlockpkg.ModeDisabled && svc.Overlay != nil {
+		start = time.Now()
+		ordlockSvc, err := c.OrdLock.Initialize(ctx, logger, svc.Overlay.TopicDBFactory())
+		if err != nil {
+			return nil, fmt.Errorf("failed to initialize ordlock: %w", err)
+		}
+		svc.OrdLock = ordlockSvc
+
+		svc.Overlay.RegisterLookupService("ordlock", svc.OrdLock.Lookup)
+
+		ordlockTopic := &overlay.Topic{
+			Name:    ordlockpkg.TopicName,
+			Manager: svc.OrdLock.TopicManager,
+		}
+		if err := svc.Overlay.ActivateTopic(ctx, ordlockTopic); err != nil {
+			logger.Error("failed to activate OrdLock topic", "error", err)
+		} else {
+			logger.Info("OrdLock topic activated", "topic", ordlockpkg.TopicName)
+		}
+
+		if c.OrdLock.Sync != nil && c.OrdLock.Sync.Enabled && svc.Beef != nil {
+			svc.OrdLock.Sync = overlay.NewOverlaySync(c.OrdLock.Sync, ordlockpkg.TopicName, svc.Store.Store, svc.Beef.Storage, svc.Overlay, logger)
+		}
+
+		logger.Info("ordlock initialized", "duration", time.Since(start).Round(time.Millisecond))
+	}
+
 	// Activate whitelisted topics after all factories are registered
 	if svc.Overlay != nil {
 		svc.Overlay.ActivateConfiguredTopics()
@@ -864,6 +898,17 @@ func (c *Config) Initialize(ctx context.Context, logger *slog.Logger) (*Services
 			logger.Info("BSocial JungleBus subscriber initialized", "queue", subCfg.QueueName, "from_block", subCfg.FromBlock)
 		}
 
+		// OrdLock subscriber (if subscription_id configured)
+		if svc.OrdLock != nil && c.OrdLock.Sync != nil && c.OrdLock.Sync.SubscriptionID != "" {
+			subCfg := c.OrdLock.Sync.SubscriberConfig()
+			sub, err := jbsync.NewSubscriber(subCfg, svc.Store.Store, svc.Chaintracks, svc.JungleBus, logger)
+			if err != nil {
+				return nil, fmt.Errorf("failed to create ordlock subscriber: %w", err)
+			}
+			svc.JBSubscribers = append(svc.JBSubscribers, sub)
+			logger.Info("OrdLock JungleBus subscriber initialized", "queue", subCfg.QueueName, "from_block", subCfg.FromBlock)
+		}
+
 		// Ingest subscribers (multiple subscription_ids filling q:ingest)
 		for _, subID := range c.Indexer.Sync.SubscriptionIDs {
 			if subID == "" {
@@ -983,6 +1028,17 @@ func (c *Config) RegisterRoutes(app *fiber.App, svc *Services) {
 		opnsGroup := api.Group(prefix)
 		svc.OPNS.Routes.Register(opnsGroup)
 		capabilities = append(capabilities, "opns")
+	}
+
+	// Register OrdLock routes
+	if svc.OrdLock != nil && svc.OrdLock.Routes != nil {
+		prefix := c.OrdLock.Routes.Prefix
+		if prefix == "" {
+			prefix = "/ordlock"
+		}
+		ordlockGroup := api.Group(prefix)
+		svc.OrdLock.Routes.Register(ordlockGroup)
+		capabilities = append(capabilities, "ordlock")
 	}
 
 	// Register overlay routes
@@ -1261,6 +1317,12 @@ func (svc *Services) Close() error {
 		}
 	}
 
+	if svc.OrdLock != nil {
+		if err := svc.OrdLock.Close(); err != nil {
+			errs = append(errs, fmt.Errorf("ordlock close: %w", err))
+		}
+	}
+
 	if svc.BSocial != nil {
 		if err := svc.BSocial.Close(); err != nil {
 			errs = append(errs, fmt.Errorf("bsocial close: %w", err))
@@ -1375,6 +1437,14 @@ func (svc *Services) StartSubscribers(ctx context.Context, logger *slog.Logger) 
 			}
 		}()
 		logger.Info("started BSocial overlay sync")
+	}
+	if svc.OrdLock != nil && svc.OrdLock.Sync != nil {
+		go func() {
+			if err := svc.OrdLock.Sync.Start(ctx); err != nil {
+				logger.Error("OrdLock sync error", "error", err)
+			}
+		}()
+		logger.Info("started OrdLock overlay sync")
 	}
 	if svc.OPNS != nil && svc.OPNS.Crawl != nil {
 		go func() {
