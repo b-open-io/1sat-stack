@@ -196,10 +196,10 @@ func (w *TopicWorker) processBatch(ctx context.Context) (processed int, errCount
 			// Process using GASP with remote chain
 			if err := w.processWithRemotes(ctx, gaspStorage, seenNodes, outpoint); err != nil {
 				if errors.Is(err, engine.ErrGraphNoTopicalAdmittance) {
-					w.logger.Debug("dropping unadmitted output from queue", "outpoint", id)
+					w.logger.Info("dropping unadmitted output from queue", "outpoint", id)
 					w.config.Store.ZRem(ctx, w.queueKey, []byte(id))
 				} else {
-					w.logger.Debug("failed to process output", "outpoint", id, "error", err)
+					w.logger.Info("failed to process output", "outpoint", id, "error", err)
 				}
 				done <- result{id: id, err: err}
 				return
