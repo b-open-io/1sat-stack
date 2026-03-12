@@ -3,6 +3,7 @@ package gasp
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"sync"
@@ -113,15 +114,15 @@ func (w *TopicWorker) Start(ctx context.Context) error {
 
 		default:
 			// Process a batch
-			processed, errors, score := w.processBatch(ctx)
+			processed, errCnt, score := w.processBatch(ctx)
 			processedCount += processed
-			errorCount += errors
+			errorCount += errCnt
 			if score > lastScore {
 				lastScore = score
 			}
 
 			// If no items, wait before polling again
-			if processed == 0 && errors == 0 {
+			if processed == 0 && errCnt == 0 {
 				time.Sleep(w.config.PollDelay)
 			}
 		}
@@ -130,7 +131,7 @@ func (w *TopicWorker) Start(ctx context.Context) error {
 
 // processBatch fetches and processes a batch of items from the queue.
 // Returns the count of successfully processed items, error count, and max score.
-func (w *TopicWorker) processBatch(ctx context.Context) (processed int, errors int, maxScore float64) {
+func (w *TopicWorker) processBatch(ctx context.Context) (processed int, errCount int, maxScore float64) {
 	// Fetch items up to current time
 	to := types.HeightScore(0, 0)
 	items, err := w.config.Store.Search(ctx, &store.SearchCfg{
@@ -194,7 +195,12 @@ func (w *TopicWorker) processBatch(ctx context.Context) (processed int, errors i
 
 			// Process using GASP with remote chain
 			if err := w.processWithRemotes(ctx, gaspStorage, seenNodes, outpoint); err != nil {
-				w.logger.Debug("failed to process output", "outpoint", id, "error", err)
+				if errors.Is(err, engine.ErrGraphNoTopicalAdmittance) {
+					w.logger.Debug("dropping unadmitted output from queue", "outpoint", id)
+					w.config.Store.ZRem(ctx, w.queueKey, []byte(id))
+				} else {
+					w.logger.Debug("failed to process output", "outpoint", id, "error", err)
+				}
 				done <- result{id: id, err: err}
 				return
 			}
@@ -219,13 +225,13 @@ func (w *TopicWorker) processBatch(ctx context.Context) (processed int, errors i
 	for range items {
 		r := <-done
 		if r.err != nil {
-			errors++
+			errCount++
 		} else {
 			processed++
 		}
 	}
 
-	return processed, errors, maxScore
+	return processed, errCount, maxScore
 }
 
 // processWithRemotes tries each remote in the chain until one succeeds.
