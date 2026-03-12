@@ -2,6 +2,7 @@ package overlay
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"time"
@@ -149,6 +150,16 @@ func (s *OverlaySync) process(ctx context.Context, member string, score float64)
 		Beef:   beefBytes,
 		Topics: []string{s.topicName},
 	}, engine.SubmitModeHistorical); err != nil {
+		var missingErr *MissingInputError
+		if errors.As(err, &missingErr) {
+			s.logger.Info("skipping transaction with missing input",
+				"txid", missingErr.TransactionID.String(),
+				"missing_txid", missingErr.MissingTxID.String(),
+				"input_index", missingErr.InputIndex,
+				"output_index", missingErr.OutputIndex,
+				"topic", missingErr.Topic)
+			return nil
+		}
 		if s.config.ErrorClassifier != nil && s.config.ErrorClassifier(err) == ErrorSkip {
 			s.logger.Warn("skipping transaction due to classified error",
 				"txid", txid.String(), "error", err)

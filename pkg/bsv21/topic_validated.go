@@ -2,41 +2,16 @@ package bsv21
 
 import (
 	"context"
-	"fmt"
 	"log/slog"
 	"slices"
 
+	overlayerr "github.com/b-open-io/1sat-stack/pkg/overlay"
 	bsv21template "github.com/bitcoin-sv/go-templates/template/bsv21"
 	"github.com/bsv-blockchain/go-overlay-services/pkg/core/engine"
 	"github.com/bsv-blockchain/go-sdk/chainhash"
 	"github.com/bsv-blockchain/go-sdk/overlay"
 	"github.com/bsv-blockchain/go-sdk/transaction"
 )
-
-// MissingInputError represents a missing input during topic processing
-type MissingInputError struct {
-	TransactionID *chainhash.Hash
-	InputIndex    uint32
-	MissingTxID   *chainhash.Hash
-	OutputIndex   uint32
-	Message       string
-}
-
-func (e *MissingInputError) Error() string {
-	return fmt.Sprintf("%s: transaction %s input[%d] missing source %s:%d",
-		e.Message, e.TransactionID.String(), e.InputIndex, e.MissingTxID.String(), e.OutputIndex)
-}
-
-// NewMissingInputError creates a new MissingInputError
-func NewMissingInputError(txid, missingTxID *chainhash.Hash, inputIndex, outputIndex uint32, message string) *MissingInputError {
-	return &MissingInputError{
-		TransactionID: txid,
-		InputIndex:    inputIndex,
-		MissingTxID:   missingTxID,
-		OutputIndex:   outputIndex,
-		Message:       message,
-	}
-}
 
 // Bsv21ValidatedTopicManager implements the overlay TopicManager interface for BSV21.
 // It validates token transfers by checking input/output balances.
@@ -155,7 +130,13 @@ func (tm *Bsv21ValidatedTopicManager) IdentifyAdmissibleOutputs(ctx context.Cont
 							token.tokensIn += b.Amt
 						}
 					} else {
-						return admit, NewMissingInputError(txid, txin.SourceTXID, uint32(vin), txin.SourceTxOutIndex, "BSV21_INPUT_MISSING")
+						return admit, &overlayerr.MissingInputError{
+						TransactionID: txid,
+						InputIndex:    uint32(vin),
+						MissingTxID:   txin.SourceTXID,
+						OutputIndex:   txin.SourceTxOutIndex,
+						Topic:         tm.topic,
+					}
 					}
 				}
 			}

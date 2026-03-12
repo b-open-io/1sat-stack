@@ -3,6 +3,7 @@ package opns
 import (
 	"context"
 
+	overlayerr "github.com/b-open-io/1sat-stack/pkg/overlay"
 	"github.com/bitcoin-sv/go-templates/template/opns"
 	"github.com/bsv-blockchain/go-overlay-services/pkg/core/engine"
 	"github.com/bsv-blockchain/go-sdk/chainhash"
@@ -27,6 +28,16 @@ func (tm *TopicManager) IdentifyAdmissibleOutputs(ctx context.Context, beef *tra
 	}
 
 	if len(previousCoins) == 0 {
+		if len(tx.Inputs) > 0 {
+			txin := tx.Inputs[0]
+			return admit, &overlayerr.MissingInputError{
+				TransactionID: txid,
+				InputIndex:    0,
+				MissingTxID:   txin.SourceTXID,
+				OutputIndex:   txin.SourceTxOutIndex,
+				Topic:         "opns",
+			}
+		}
 		return
 	}
 
