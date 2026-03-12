@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"log/slog"
 
-	"github.com/b-open-io/1sat-stack/pkg/store"
+	overlaystorage "github.com/b-open-io/1sat-stack/pkg/overlay/storage"
 	"github.com/spf13/viper"
 )
 
@@ -54,7 +54,7 @@ type Services struct {
 func (c *Config) Initialize(
 	ctx context.Context,
 	logger *slog.Logger,
-	s store.Store,
+	db overlaystorage.TopicStorage,
 ) (*Services, error) {
 	if c.Mode == ModeDisabled {
 		return nil, nil
@@ -66,7 +66,7 @@ func (c *Config) Initialize(
 
 	switch c.Mode {
 	case ModeEmbedded:
-		lookupSvc := NewLookupService(s)
+		lookupSvc := NewLookupService(db)
 
 		topicManager := &TopicManager{}
 

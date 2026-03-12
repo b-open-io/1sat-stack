@@ -8,7 +8,7 @@ import (
 	"github.com/b-open-io/1sat-stack/pkg/beef"
 	"github.com/b-open-io/1sat-stack/pkg/pubsub"
 	"github.com/b-open-io/1sat-stack/pkg/store"
-	"github.com/b-open-io/1sat-stack/pkg/txo"
+	"github.com/bsv-blockchain/go-overlay-services/pkg/core/engine"
 	"github.com/bsv-blockchain/go-sdk/transaction/chaintracker"
 	"github.com/spf13/viper"
 )
@@ -58,7 +58,7 @@ func (c *Config) Initialize(
 	beefStore *beef.Storage,
 	ps pubsub.PubSub,
 	ct chaintracker.ChainTracker,
-	txoStore *txo.OutputStore,
+	overlayStorage engine.Storage,
 ) (*Services, error) {
 	if c.Mode == ModeDisabled {
 		return nil, nil
@@ -70,7 +70,7 @@ func (c *Config) Initialize(
 
 	switch c.Mode {
 	case ModeEmbedded:
-		service := NewService(s, beefStore, ps, ct, txoStore, logger)
+		service := NewService(s, beefStore, ps, ct, overlayStorage, logger)
 
 		svc := &Services{Service: service}
 

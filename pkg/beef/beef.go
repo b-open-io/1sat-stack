@@ -191,6 +191,7 @@ func (s *Storage) loadBeefInternal(ctx context.Context, txid *chainhash.Hash) (*
 	}
 
 	if s.chainTracker != nil {
+		hadInvalidPath := false
 		needsUpdate := false
 
 		if tx.MerklePath == nil {
@@ -199,20 +200,25 @@ func (s *Storage) loadBeefInternal(ctx context.Context, txid *chainhash.Hash) (*
 			valid, err := tx.MerklePath.Verify(ctx, txid, s.chainTracker)
 			if err != nil || !valid {
 				needsUpdate = true
+				hadInvalidPath = true
 			}
 		}
 
 		if needsUpdate {
 			updatedBeefBytes, err := s.UpdateMerklePath(ctx, txid, s.chainTracker)
 			if err != nil {
-				return nil, err
-			}
-			updatedBeef, _, _, err := transaction.ParseBeef(updatedBeefBytes)
-			if err != nil {
-				return nil, err
-			}
-			if err := beef.MergeBeef(updatedBeef); err != nil {
-				return nil, err
+				if hadInvalidPath {
+					return nil, err
+				}
+				// No path yet (unconfirmed tx) — not an error
+			} else {
+				updatedBeef, _, _, err := transaction.ParseBeef(updatedBeefBytes)
+				if err != nil {
+					return nil, err
+				}
+				if err := beef.MergeBeef(updatedBeef); err != nil {
+					return nil, err
+				}
 			}
 		}
 	}

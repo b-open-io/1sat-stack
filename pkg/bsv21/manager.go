@@ -9,6 +9,7 @@ import (
 
 	"github.com/b-open-io/1sat-stack/pkg/beef"
 	gaspqueue "github.com/b-open-io/1sat-stack/pkg/gasp"
+	lookuppkg "github.com/b-open-io/1sat-stack/pkg/lookup"
 	"github.com/b-open-io/1sat-stack/pkg/overlay"
 	"github.com/b-open-io/1sat-stack/pkg/store"
 	"github.com/b-open-io/1sat-stack/pkg/txo"
@@ -36,6 +37,7 @@ type TokenManager struct {
 	beefStorage       *beef.Storage
 	outputStore       *txo.OutputStore
 	overlay           *overlay.Services
+	lookup            *lookuppkg.BSV21Lookup
 	ownerSync         OwnerSyncer
 	chainTracker      chaintracks.Chaintracks
 	concurrency       int
@@ -56,6 +58,7 @@ func NewTokenManager(
 	beefStorage *beef.Storage,
 	outputStore *txo.OutputStore,
 	overlaySvc *overlay.Services,
+	lookup *lookuppkg.BSV21Lookup,
 	ownerSync OwnerSyncer,
 	ct chaintracks.Chaintracks,
 	concurrency int,
@@ -71,6 +74,7 @@ func NewTokenManager(
 		beefStorage:       beefStorage,
 		outputStore:       outputStore,
 		overlay:           overlaySvc,
+		lookup:            lookup,
 		ownerSync:         ownerSync,
 		chainTracker:      ct,
 		concurrency:       concurrency,
@@ -260,7 +264,7 @@ func (m *TokenManager) manageWorkerLifecycle(ctx context.Context) {
 				if outpoint, err := transaction.OutpointFromString(tokenId); err == nil {
 					metadata = m.getTokenMetadata(ctx, outpoint)
 				}
-				tm := NewBsv21ValidatedTopicManager(topicName, m.outputStore, nil, metadata)
+				tm := NewBsv21ValidatedTopicManager(topicName, nil, metadata)
 				m.overlay.Engine.RegisterTopicManager(topicName, tm)
 			}
 			activeTokens[tokenId] = struct{}{}
@@ -271,19 +275,13 @@ func (m *TokenManager) manageWorkerLifecycle(ctx context.Context) {
 	}
 
 	// Phase 2: Discover tokens needing workers
-	topicKey := txo.KeyTopicOutputs("tm_bsv21")
-	members, err := m.store.ZRange(ctx, topicKey, store.ScoreRange{})
+	tokenIds, err := m.lookup.ListTokenIds(ctx, "tm_bsv21")
 	if err != nil {
 		m.logger.Error("failed to query tm_bsv21 topic", "error", err)
 		return
 	}
 
-	for _, member := range members {
-		outpoint := transaction.NewOutpointFromBytes(member.Member)
-		if outpoint == nil {
-			continue
-		}
-		tokenId := outpoint.OrdinalString()
+	for _, tokenId := range tokenIds {
 
 		// Skip if worker already exists - it's self-monitoring
 		if _, exists := m.workers.Load(tokenId); exists {
@@ -307,8 +305,11 @@ func (m *TokenManager) manageWorkerLifecycle(ctx context.Context) {
 		// Register topic manager
 		topicName := "tm_" + tokenId
 		if m.overlay != nil {
-			metadata := m.getTokenMetadata(ctx, outpoint)
-			tm := NewBsv21ValidatedTopicManager(topicName, m.outputStore, nil, metadata)
+			var metadata *sdkoverlay.MetaData
+			if outpoint, err := transaction.OutpointFromString(tokenId); err == nil {
+				metadata = m.getTokenMetadata(ctx, outpoint)
+			}
+			tm := NewBsv21ValidatedTopicManager(topicName, nil, metadata)
 			m.overlay.Engine.RegisterTopicManager(topicName, tm)
 		}
 
@@ -335,26 +336,23 @@ func (m *TokenManager) manageWorkerLifecycle(ctx context.Context) {
 // refreshInactiveTokens syncs fee addresses for tokens without active workers.
 // This allows inactive tokens to receive new funding deposits.
 func (m *TokenManager) refreshInactiveTokens(ctx context.Context) {
-	topicKey := txo.KeyTopicOutputs("tm_bsv21")
-	members, err := m.store.ZRange(ctx, topicKey, store.ScoreRange{})
+	tokenIds, err := m.lookup.ListTokenIds(ctx, "tm_bsv21")
 	if err != nil {
 		m.logger.Error("failed to query tm_bsv21 topic for refresh", "error", err)
 		return
 	}
 
 	refreshed := 0
-	for _, member := range members {
-		outpoint := transaction.NewOutpointFromBytes(member.Member)
-		if outpoint == nil {
-			continue
-		}
-		tokenId := outpoint.OrdinalString()
-
+	for _, tokenId := range tokenIds {
 		// Only refresh tokens WITHOUT active workers
 		if _, exists := m.workers.Load(tokenId); exists {
 			continue
 		}
 
+		outpoint, err := transaction.OutpointFromString(tokenId)
+		if err != nil {
+			continue
+		}
 		feeAddress, err := GenerateFeeAddress(outpoint)
 		if err != nil {
 			continue

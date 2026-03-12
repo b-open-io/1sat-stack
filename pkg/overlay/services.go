@@ -11,6 +11,7 @@ import (
 
 	"github.com/b-open-io/1sat-stack/pkg/beef"
 	"github.com/b-open-io/1sat-stack/pkg/gasp"
+	overlaystorage "github.com/b-open-io/1sat-stack/pkg/overlay/storage"
 	"github.com/b-open-io/1sat-stack/pkg/store"
 	"github.com/bsv-blockchain/go-overlay-services/pkg/core/engine"
 	gasplib "github.com/bsv-blockchain/go-overlay-services/pkg/core/gasp"
@@ -47,6 +48,9 @@ type Services struct {
 	Store  store.Store // For DB remote config lookup
 	logger *slog.Logger
 
+	// Per-topic storage factory
+	factory overlaystorage.Factory
+
 	// For remote creation
 	beefStorage *beef.Storage
 
@@ -58,6 +62,21 @@ type Services struct {
 	topicFactories map[string]TopicManagerFactory // topic name -> factory
 	topicWhitelist map[string]struct{}            // config-based whitelist
 	topicBlacklist map[string]struct{}            // config-based blacklist
+}
+
+// TopicDB returns the TopicStorage for a given topic name.
+// Lookup services use this to access per-topic databases for custom tables via DB().
+func (s *Services) TopicDB(topic string) (overlaystorage.TopicStorage, error) {
+	if s.factory == nil {
+		return nil, errors.New("overlay storage not initialized")
+	}
+	return s.factory(topic)
+}
+
+// TopicDBFactory returns the underlying per-topic storage factory.
+// Lookup services use this to resolve databases for any topic on demand.
+func (s *Services) TopicDBFactory() overlaystorage.Factory {
+	return s.factory
 }
 
 // RegisterTopic registers a topic factory for static topics (tm_1sat, tm_bsv21).

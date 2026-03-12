@@ -2,12 +2,18 @@ package overlay
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
+	"os"
+	"path/filepath"
+	"strings"
 
 	"github.com/b-open-io/1sat-stack/pkg/beef"
+	overlaystorage "github.com/b-open-io/1sat-stack/pkg/overlay/storage"
 	"github.com/b-open-io/1sat-stack/pkg/store"
 	"github.com/b-open-io/1sat-stack/pkg/txo"
 	"github.com/bsv-blockchain/go-overlay-services/pkg/core/engine"
+	"github.com/bsv-blockchain/go-sdk/transaction"
 	"github.com/bsv-blockchain/go-sdk/transaction/chaintracker"
 	"github.com/spf13/viper"
 )
@@ -21,8 +27,9 @@ const (
 // Config holds overlay engine configuration
 type Config struct {
 	Mode           string       `mapstructure:"mode"`
-	TopicWhitelist []string     `mapstructure:"topic_whitelist"` // Pre-configured topics to enable (e.g., ["tm_1sat", "tm_bsv21"])
-	TopicBlacklist []string     `mapstructure:"topic_blacklist"` // Topics to disable even if in whitelist
+	StoragePath    string       `mapstructure:"storage_path"` // Base path for per-topic SQLite databases
+	TopicWhitelist []string     `mapstructure:"topic_whitelist"`
+	TopicBlacklist []string     `mapstructure:"topic_blacklist"`
 	Routes         RoutesConfig `mapstructure:"routes"`
 }
 
@@ -38,6 +45,7 @@ type RoutesConfig struct {
 // SetDefaults configures viper defaults for overlay settings
 func (c *Config) SetDefaults(v *viper.Viper, prefix string) {
 	v.SetDefault(prefix+".mode", ModeDisabled)
+	v.SetDefault(prefix+".storage_path", "~/.1sat/overlay")
 	v.SetDefault(prefix+".topic_whitelist", []string{})
 	v.SetDefault(prefix+".topic_blacklist", []string{})
 	v.SetDefault(prefix+".routes.enabled", true)
@@ -62,17 +70,44 @@ func (c *Config) Initialize(ctx context.Context, logger *slog.Logger, deps *Init
 		logger = slog.Default()
 	}
 
+	// Expand ~ in storage path
+	storagePath := c.StoragePath
+	if strings.HasPrefix(storagePath, "~/") {
+		home, _ := os.UserHomeDir()
+		storagePath = filepath.Join(home, storagePath[2:])
+	}
+	if err := os.MkdirAll(storagePath, 0755); err != nil {
+		return nil, fmt.Errorf("create overlay storage dir %s: %w", storagePath, err)
+	}
+
+	// Create per-topic SQLite factory and engine adapter
+	sqliteFactory, err := overlaystorage.NewSQLiteFactory(filepath.Join(storagePath, "topic"))
+	if err != nil {
+		return nil, fmt.Errorf("create overlay storage factory: %w", err)
+	}
+	factory := sqliteFactory.Factory()
+	adapter := overlaystorage.NewEngineAdapter(factory, deps.BeefStorage, sqliteFactory.TxTopicIndex())
+
+	// Wire IngestTx callback if output store is available
+	if deps.OutputStore != nil && deps.OutputStore.IngestTx != nil {
+		ingestFn := deps.OutputStore.IngestTx
+		adapter.IngestTx = func(ctx context.Context, tx *transaction.Transaction) error {
+			return ingestFn(ctx, tx)
+		}
+	}
+
 	svc := &Services{
 		logger:      logger,
 		Store:       deps.Store,
 		beefStorage: deps.BeefStorage,
+		factory:     factory,
 	}
 
 	// Create the overlay engine
 	eng := engine.NewEngine(&engine.EngineConfig{
 		Managers:       make(map[string]engine.TopicManager),
 		LookupServices: make(map[string]engine.LookupService),
-		Storage:        deps.OutputStore,
+		Storage:        adapter,
 		ChainTracker:   deps.ChainTracker,
 	})
 	svc.Engine = eng
@@ -82,7 +117,7 @@ func (c *Config) Initialize(ctx context.Context, logger *slog.Logger, deps *Init
 		svc.Routes = NewRoutes(eng, &c.Routes, logger)
 	}
 
-	logger.Info("overlay engine initialized", "mode", c.Mode)
+	logger.Info("overlay engine initialized", "mode", c.Mode, "storage", storagePath)
 
 	return svc, nil
 }

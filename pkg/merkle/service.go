@@ -11,6 +11,7 @@ import (
 	"github.com/b-open-io/1sat-stack/pkg/store"
 	"github.com/b-open-io/1sat-stack/pkg/txo"
 	"github.com/b-open-io/1sat-stack/pkg/types"
+	"github.com/bsv-blockchain/go-overlay-services/pkg/core/engine"
 	"github.com/bsv-blockchain/go-sdk/chainhash"
 	"github.com/bsv-blockchain/go-sdk/transaction"
 	"github.com/bsv-blockchain/go-sdk/transaction/chaintracker"
@@ -30,7 +31,7 @@ type Service struct {
 	beefStore      *beef.Storage
 	pubsub         pubsub.PubSub
 	chaintracks    chaintracker.ChainTracker
-	txoStore       *txo.OutputStore
+	overlayStorage engine.Storage
 	logger         *slog.Logger
 	immutableScore float64
 
@@ -45,7 +46,7 @@ func NewService(
 	beefStore *beef.Storage,
 	ps pubsub.PubSub,
 	ct chaintracker.ChainTracker,
-	txoStore *txo.OutputStore,
+	overlayStorage engine.Storage,
 	logger *slog.Logger,
 ) *Service {
 	if logger == nil {
@@ -53,12 +54,12 @@ func NewService(
 	}
 
 	return &Service{
-		store:       s,
-		beefStore:   beefStore,
-		pubsub:      ps,
-		chaintracks: ct,
-		txoStore:    txoStore,
-		logger:      logger,
+		store:          s,
+		beefStore:      beefStore,
+		pubsub:         ps,
+		chaintracks:    ct,
+		overlayStorage: overlayStorage,
+		logger:         logger,
 	}
 }
 
@@ -172,7 +173,7 @@ func (s *Service) handleMinedCallback(callback ArcCallback) {
 func (s *Service) handleRejectedCallback(callback ArcCallback) {
 	s.logger.Info("rolling back rejected tx", "txid", callback.TxID)
 
-	if s.txoStore != nil {
+	if s.overlayStorage != nil {
 		txid, err := chainhash.NewHashFromHex(callback.TxID)
 		if err != nil {
 			s.logger.Error("invalid txid", "txid", callback.TxID, "error", err)
@@ -180,7 +181,7 @@ func (s *Service) handleRejectedCallback(callback ArcCallback) {
 		}
 
 		// Find and rollback from all topics
-		outputs, err := s.txoStore.FindOutputsForTransaction(s.ctx, txid, false)
+		outputs, err := s.overlayStorage.FindOutputsForTransaction(s.ctx, txid, false)
 		if err != nil {
 			s.logger.Error("failed to find outputs", "txid", callback.TxID, "error", err)
 			return
@@ -188,7 +189,7 @@ func (s *Service) handleRejectedCallback(callback ArcCallback) {
 
 		for _, output := range outputs {
 			if output != nil {
-				if err := s.txoStore.DeleteOutput(s.ctx, &output.Outpoint, output.Topic); err != nil {
+				if err := s.overlayStorage.DeleteOutput(s.ctx, &output.Outpoint, output.Topic); err != nil {
 					s.logger.Error("failed to delete output", "outpoint", output.Outpoint.String(), "error", err)
 				}
 			}
@@ -263,8 +264,8 @@ func (s *Service) ValidateAndUpdateTx(ctx context.Context, txid *chainhash.Hash,
 	}
 
 	// Update txo storage if available
-	if s.txoStore != nil {
-		s.txoStore.UpdateTransactionBEEF(ctx, txid, beef)
+	if s.overlayStorage != nil {
+		s.overlayStorage.UpdateTransactionBEEF(ctx, txid, beef)
 	}
 
 	// Check if now immutable

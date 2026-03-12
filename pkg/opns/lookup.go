@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"log/slog"
 
-	"github.com/b-open-io/1sat-stack/pkg/store"
+	overlaystorage "github.com/b-open-io/1sat-stack/pkg/overlay/storage"
 	"github.com/b-open-io/1sat-stack/pkg/types"
 	"github.com/bitcoin-sv/go-templates/template/inscription"
 	"github.com/bitcoin-sv/go-templates/template/opns"
@@ -16,26 +16,16 @@ import (
 	"github.com/bsv-blockchain/go-sdk/transaction"
 )
 
-// nameKey returns the ZSet key for an OPNS domain origin: tm_opns:name:{name}
-func nameKey(name string) []byte {
-	return []byte("tm_opns:name:" + name)
-}
-
-// mineKey returns the ZSet key for OPNS mine state: tm_opns:mine:{prefix}
-func mineKey(prefix string) []byte {
-	return []byte("tm_opns:mine:" + prefix)
-}
+const topicName = "tm_opns"
 
 // LookupService implements the engine.LookupService interface for OpNS.
 type LookupService struct {
-	store store.Store
+	db overlaystorage.TopicStorage
 }
 
-// NewLookupService creates a new OpNS lookup service using the provided store.
-func NewLookupService(s store.Store) *LookupService {
-	return &LookupService{
-		store: s,
-	}
+// NewLookupService creates a new OpNS lookup service backed by per-topic overlay storage.
+func NewLookupService(db overlaystorage.TopicStorage) *LookupService {
+	return &LookupService{db: db}
 }
 
 // OutputAdmittedByTopic processes a newly admitted OpNS output and indexes events.
@@ -55,18 +45,15 @@ func (l *LookupService) OutputAdmittedByTopic(ctx context.Context, payload *engi
 	}
 
 	score := types.ScoreFromTx(tx, txid)
-	opBytes := outpoint.Bytes()
-	member := store.ScoredMember{Member: opBytes, Score: score}
-
 	txOut := tx.Outputs[payload.OutputIndex]
 
 	if o := opns.Decode(txOut.LockingScript); o != nil {
-		if err := l.store.ZAdd(ctx, mineKey(o.Domain), member); err != nil {
-			return fmt.Errorf("failed to add to mine ZSet %s: %w", o.Domain, err)
+		if err := l.db.SaveEvent(ctx, "mine:"+o.Domain, outpoint, score); err != nil {
+			return fmt.Errorf("failed to save mine event for %s: %w", o.Domain, err)
 		}
 	} else if insc := inscription.Decode(txOut.LockingScript); insc != nil && insc.File.Type == "application/op-ns" {
-		if err := l.store.ZAdd(ctx, nameKey(string(insc.File.Content)), member); err != nil {
-			return fmt.Errorf("failed to add to name ZSet %s: %w", string(insc.File.Content), err)
+		if err := l.db.SaveEvent(ctx, "name:"+string(insc.File.Content), outpoint, score); err != nil {
+			return fmt.Errorf("failed to save name event for %s: %w", string(insc.File.Content), err)
 		}
 	}
 
@@ -76,7 +63,7 @@ func (l *LookupService) OutputAdmittedByTopic(ctx context.Context, payload *engi
 	return nil
 }
 
-// OutputSpent handles spent outputs. ZSets are append-only; latest entry (highest score) wins.
+// OutputSpent handles spent outputs. Events are append-only; latest entry (highest score) wins.
 func (l *LookupService) OutputSpent(ctx context.Context, payload *engine.OutputSpent) error {
 	return nil
 }
@@ -87,7 +74,6 @@ func (l *LookupService) OutputNoLongerRetainedInHistory(ctx context.Context, out
 }
 
 // OutputEvicted is called when an output is permanently evicted.
-// ZSets are append-only; no cleanup needed.
 func (l *LookupService) OutputEvicted(ctx context.Context, outpoint *transaction.Outpoint) error {
 	return nil
 }
@@ -119,21 +105,17 @@ func (l *LookupService) GetMetaData() *overlay.MetaData {
 // Origin returns the current outpoint for a registered OpNS domain.
 // The highest-scored entry is the most recent (valid) one.
 func (l *LookupService) Origin(ctx context.Context, domain string) (*transaction.Outpoint, error) {
-	members, err := l.store.ZRevRange(ctx, nameKey(domain), store.ScoreRange{})
+	results, err := l.db.FindByEvent(ctx, "name:"+domain, &overlaystorage.QueryOpts{
+		Limit:   1,
+		Reverse: true,
+	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to query opns name for domain %s: %w", domain, err)
 	}
-
-	if len(members) == 0 {
+	if len(results) == 0 {
 		return nil, nil
 	}
-
-	outpoint := transaction.NewOutpointFromBytes(members[0].Member)
-	if outpoint == nil {
-		return nil, fmt.Errorf("failed to decode outpoint for domain %s", domain)
-	}
-
-	return outpoint, nil
+	return &results[0].Outpoint, nil
 }
 
 // MineResult represents the mining status of an OpNS domain.
@@ -146,28 +128,30 @@ type MineResult struct {
 // If the exact domain has existing mine outputs, returns nil (domain is taken).
 // Otherwise, searches for the longest prefix that has been mined.
 func (l *LookupService) Mine(ctx context.Context, domain string) (*MineResult, error) {
-	members, err := l.store.ZRevRange(ctx, mineKey(domain), store.ScoreRange{})
+	results, err := l.db.FindByEvent(ctx, "mine:"+domain, &overlaystorage.QueryOpts{
+		Limit:   1,
+		Reverse: true,
+	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to query mine for domain %s: %w", domain, err)
 	}
-	if len(members) > 0 {
+	if len(results) > 0 {
 		return nil, nil
 	}
 
 	search := domain
 	for len(search) > 0 {
 		search = search[:len(search)-1]
-		members, err = l.store.ZRevRange(ctx, mineKey(search), store.ScoreRange{})
+		results, err = l.db.FindByEvent(ctx, "mine:"+search, &overlaystorage.QueryOpts{
+			Limit:   1,
+			Reverse: true,
+		})
 		if err != nil {
 			return nil, fmt.Errorf("failed to query mine for prefix %s: %w", search, err)
 		}
-		if len(members) > 0 {
-			outpoint := transaction.NewOutpointFromBytes(members[0].Member)
-			if outpoint == nil {
-				return nil, fmt.Errorf("failed to decode outpoint for domain prefix %s", search)
-			}
+		if len(results) > 0 {
 			return &MineResult{
-				Outpoint: outpoint,
+				Outpoint: &results[0].Outpoint,
 				Domain:   search,
 			}, nil
 		}

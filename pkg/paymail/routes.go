@@ -1,17 +1,13 @@
 package paymail
 
 import (
-	"crypto/rand"
 	"encoding/hex"
 	"fmt"
 	"log/slog"
 	"strings"
 
-	"github.com/b-open-io/1sat-stack/pkg/ordfs"
 	"github.com/bsv-blockchain/arcade/models"
 	"github.com/bsv-blockchain/go-sdk/transaction"
-	"github.com/bsv-blockchain/go-wallet-toolbox/pkg/wdk"
-	"github.com/bsv-blockchain/go-wallet-toolbox/pkg/wdk/primitives"
 	"github.com/gofiber/fiber/v2"
 )
 
@@ -256,16 +252,15 @@ func (r *Routes) ReceiveBeef(c *fiber.Ctx) error {
 		r.logger.Error("failed to update pending payment with txid", "alias", alias, "error", err)
 	}
 
-	// Internalize the payment into the wallet
-	err = r.internalizePayment(c, alias, beefBytes, uint32(outputIndex), pending)
-	if err != nil {
-		r.logger.Error("failed to internalize payment", "alias", alias, "txid", txid.String(), "error", err)
+	// Deliver payment to message box for client-side internalization
+	if err := r.service.DeliverToMessageBox(beefBytes, uint32(outputIndex), pending); err != nil {
+		r.logger.Error("failed to deliver payment to message box", "alias", alias, "txid", txid.String(), "error", err)
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to process payment"})
 	}
 
 	return c.JSON(fiber.Map{
 		"txid": txid.String(),
-		"note": "Payment received and internalized",
+		"note": "Payment received",
 	})
 }
 
@@ -361,16 +356,15 @@ func (r *Routes) ReceiveTransaction(c *fiber.Ctx) error {
 		r.logger.Error("failed to update pending payment with txid", "alias", alias, "error", err)
 	}
 
-	// Internalize the payment into the wallet
-	err = r.internalizePayment(c, alias, beefBytes, uint32(outputIndex), pending)
-	if err != nil {
-		r.logger.Error("failed to internalize raw tx payment", "alias", alias, "error", err)
+	// Deliver payment to message box for client-side internalization
+	if err := r.service.DeliverToMessageBox(beefBytes, uint32(outputIndex), pending); err != nil {
+		r.logger.Error("failed to deliver payment to message box", "alias", alias, "error", err)
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to process payment"})
 	}
 
 	return c.JSON(fiber.Map{
 		"txid": txid.String(),
-		"note": "Payment received and internalized",
+		"note": "Payment received",
 	})
 }
 
@@ -387,118 +381,3 @@ func verifyPayment(tx *transaction.Transaction, pending *PendingPayment) (int, e
 	return -1, fmt.Errorf("no output matches the expected payment destination")
 }
 
-// internalizePayment calls InternalizeAction on the storage provider to record
-// the payment for the client identified by the pending payment's identity key.
-func (r *Routes) internalizePayment(
-	c *fiber.Ctx,
-	alias string,
-	beefBytes []byte,
-	outputIndex uint32,
-	pending *PendingPayment,
-) error {
-	// Resolve the client user from their identity key
-	userResp, err := r.service.WalletProvider().FindOrInsertUser(c.Context(), pending.IdentityPubKey)
-	if err != nil {
-		return fmt.Errorf("failed to resolve wallet user for %s: %w", alias, err)
-	}
-	authID := wdk.AuthID{
-		IdentityKey: pending.IdentityPubKey,
-		UserID:      &userResp.User.UserID,
-	}
-
-	senderIdentityKey := primitives.PubKeyHex(r.service.AnyoneDeriverIdentityKey().ToDERHex())
-
-	args := wdk.InternalizeActionArgs{
-		Tx:          beefBytes,
-		Description: primitives.String5to2000Bytes(fmt.Sprintf("Paymail payment to %s", alias)),
-		Labels:      []primitives.StringUnder300{primitives.NewIdentifier("paymail"), primitives.NewIdentifier("incoming")},
-	}
-
-	if pending.Satoshis == 1 {
-		_, tx, _, err := transaction.ParseBeef(beefBytes)
-		if err != nil {
-			return fmt.Errorf("failed to parse BEEF: %w", err)
-		}
-		if int(outputIndex) >= len(tx.Outputs) {
-			return fmt.Errorf("output index %d out of range", outputIndex)
-		}
-
-		contentType, content, _, _ := ordfs.ParseOutputForContent(tx.Outputs[outputIndex])
-
-		basket := "1sat"
-		switch contentType {
-		case "application/op-ns":
-			basket = "opns"
-		case "application/bsv-20":
-			r.logger.Warn("received BSV-21 token via paymail, treating as generic ordinal",
-				"alias", alias,
-				"outputIndex", outputIndex,
-			)
-		}
-
-		// Generate a unique action ID tag for targeted lookups
-		idBytes := make([]byte, 8)
-		_, _ = rand.Read(idBytes)
-		actionID := hex.EncodeToString(idBytes)
-
-		tags := []primitives.StringUnder300{primitives.NewIdentifier("id:" + actionID)}
-		if contentType != "" {
-			tags = append(tags, primitives.NewIdentifier("type:"+contentType))
-		}
-		if contentType == "application/op-ns" && content != nil {
-			if name := strings.TrimSpace(string(content)); name != "" {
-				tags = append(tags, primitives.NewIdentifier("name:"+name))
-			}
-		}
-
-		customInstructions := fmt.Sprintf(`{"protocolID":[2,"3241645161d8"],"keyID":"%s %s"}`,
-			pending.DerivationPrefix, pending.DerivationSuffix)
-		args.Outputs = []*wdk.InternalizeOutput{
-			{
-				OutputIndex: outputIndex,
-				Protocol:    wdk.BasketInsertionProtocol,
-				InsertionRemittance: &wdk.BasketInsertion{
-					Basket:             primitives.NewIdentifier(basket),
-					CustomInstructions: &customInstructions,
-					Tags:               tags,
-				},
-			},
-		}
-
-		r.logger.Info("ordinal payment internalized",
-			"alias", alias,
-			"basket", basket,
-			"contentType", contentType,
-			"outputIndex", outputIndex,
-		)
-	} else {
-		args.Outputs = []*wdk.InternalizeOutput{
-			{
-				OutputIndex: outputIndex,
-				Protocol:    wdk.WalletPaymentProtocol,
-				PaymentRemittance: &wdk.WalletPayment{
-					DerivationPrefix:  primitives.Base64String(pending.DerivationPrefix),
-					DerivationSuffix:  primitives.Base64String(pending.DerivationSuffix),
-					SenderIdentityKey: senderIdentityKey,
-				},
-			},
-		}
-	}
-
-	result, err := r.service.WalletProvider().InternalizeAction(c.Context(), authID, args)
-	if err != nil {
-		return fmt.Errorf("InternalizeAction failed: %w", err)
-	}
-	if !result.Accepted {
-		return fmt.Errorf("wallet rejected the payment")
-	}
-
-	if pending.Satoshis != 1 {
-		r.logger.Info("payment internalized",
-			"alias", alias,
-			"satoshis", pending.Satoshis,
-			"outputIndex", outputIndex,
-		)
-	}
-	return nil
-}

@@ -123,15 +123,10 @@ func ParseBAP(ctx *ParseContext) (*ParseResult, error) {
 		return nil, nil
 	}
 
-	result := &ParseResult{
-		Tag:    TagBAP,
-		Data:   bap,
-		Events: []string{"bap:type:" + string(bap.Type)},
-	}
-	if bap.IDKey != "" {
-		result.Events = append(result.Events, "bap:id:"+bap.IDKey)
-	}
-	return result, nil
+	return &ParseResult{
+		Tag:  TagBAP,
+		Data: bap,
+	}, nil
 }
 
 // ParseSigma parses SIGMA signatures from previously parsed bitcom.

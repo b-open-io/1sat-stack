@@ -8,6 +8,7 @@ import (
 	"github.com/b-open-io/1sat-stack/pkg/beef"
 	lookuppkg "github.com/b-open-io/1sat-stack/pkg/lookup"
 	"github.com/b-open-io/1sat-stack/pkg/overlay"
+	overlaystorage "github.com/b-open-io/1sat-stack/pkg/overlay/storage"
 	"github.com/b-open-io/1sat-stack/pkg/txo"
 	"github.com/b-open-io/go-junglebus"
 	"github.com/bsv-blockchain/go-chaintracks/chaintracks"
@@ -78,6 +79,7 @@ func (c *Config) Initialize(
 	ctx context.Context,
 	logger *slog.Logger,
 	txoStorage *txo.OutputStore,
+	topicDB overlaystorage.Factory,
 	chaintracker chaintracks.Chaintracks,
 	beefStorage *beef.Storage,
 	overlaySvc *overlay.Services,
@@ -93,11 +95,10 @@ func (c *Config) Initialize(
 
 	switch c.Mode {
 	case ModeEmbedded:
-		// Create lookup service
-		bsv21Lookup := lookuppkg.NewBSV21Lookup(txoStorage)
+		bsv21Lookup := lookuppkg.NewBSV21Lookup(topicDB)
 
 		// Create topic manager for overlay engine integration
-		topicManager := NewBsv21ValidatedTopicManager("bsv21", txoStorage, c.WhitelistTokens, nil)
+		topicManager := NewBsv21ValidatedTopicManager("bsv21", c.WhitelistTokens, nil)
 
 		svc := &Services{
 			Lookup:       bsv21Lookup,
@@ -112,6 +113,7 @@ func (c *Config) Initialize(
 				beefStorage,
 				txoStorage,
 				overlaySvc,
+				bsv21Lookup,
 				chaintracker,
 				jbClient,
 				logger,

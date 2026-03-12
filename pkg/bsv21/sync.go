@@ -11,6 +11,7 @@ import (
 	"github.com/b-open-io/1sat-stack/pkg/indexer"
 	"github.com/b-open-io/1sat-stack/pkg/jbsync"
 	"github.com/b-open-io/1sat-stack/pkg/logging"
+	lookuppkg "github.com/b-open-io/1sat-stack/pkg/lookup"
 	"github.com/b-open-io/1sat-stack/pkg/overlay"
 	"github.com/b-open-io/1sat-stack/pkg/owner"
 	"github.com/b-open-io/1sat-stack/pkg/store"
@@ -74,6 +75,7 @@ func NewSyncServices(
 	beefStorage *beef.Storage,
 	outputStore *txo.OutputStore,
 	overlaySvc *overlay.Services,
+	lookup *lookuppkg.BSV21Lookup,
 	ct chaintracks.Chaintracks,
 	jbClient *junglebus.Client,
 	logger *slog.Logger,
@@ -120,6 +122,7 @@ func NewSyncServices(
 		beefStorage,
 		outputStore,
 		overlaySvc,
+		lookup,
 		ownerSync,
 		ct,
 		cfg.TokenWorkers,

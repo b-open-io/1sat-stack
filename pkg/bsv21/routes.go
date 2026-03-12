@@ -3,7 +3,6 @@ package bsv21
 import (
 	"log/slog"
 	"strconv"
-	"strings"
 
 	lookuppkg "github.com/b-open-io/1sat-stack/pkg/lookup"
 	"github.com/b-open-io/1sat-stack/pkg/parse"
@@ -213,7 +212,9 @@ func (r *Routes) getTokenDetail(c *fiber.Ctx, tokenIdStr string) (*TokenDetailRe
 	return resp, nil
 }
 
-// GetBlockData retrieves block data for a token at a specific height
+// GetBlockData retrieves block data for a token at a specific height.
+// Uses the general indexer's bsv21:{tokenId} event (scored by HeightScore) to find
+// outpoints at the requested height, then queries the overlay's token_outputs for data.
 // @Summary Get block data for a token
 // @Tags bsv21
 // @Produce json
@@ -233,18 +234,16 @@ func (r *Routes) GetBlockData(c *fiber.Ctx) error {
 	}
 	height := uint32(height64)
 
-	// Search for outputs at this height in the topic
+	// Query the general indexer's bsv21:{tokenId} event by HeightScore range
 	score := types.HeightScore(height, 0)
 	scoreEnd := types.HeightScore(height+1, 0)
 
 	cfg := &txo.OutputSearchCfg{
 		SearchCfg: store.SearchCfg{
-			Keys: [][]byte{[]byte("tp:tm_" + tokenId)},
+			Keys: [][]byte{txo.KeyEvent("bsv21:" + tokenId)},
 			From: &score,
 			To:   &scoreEnd,
 		},
-		IncludeSpend: true,
-		IncludeTags:  []string{"bsv21"},
 	}
 
 	results, err := r.storage.Search(c.Context(), cfg)
@@ -255,7 +254,16 @@ func (r *Routes) GetBlockData(c *fiber.Ctx) error {
 		})
 	}
 
-	outputs, err := r.storage.LoadOutputsFromResults(c.Context(), results, cfg)
+	// Convert search results to outpoints
+	outpoints := make([]*transaction.Outpoint, 0, len(results))
+	for _, r := range results {
+		if op := transaction.NewOutpointFromBytes(r.Member); op != nil {
+			outpoints = append(outpoints, op)
+		}
+	}
+
+	// Load BSV21 data from overlay's token_outputs
+	outputs, err := r.lookup.LoadOutputs(c.Context(), tokenId, outpoints)
 	if err != nil {
 		r.logger.Error("GetBlockData load error", "error", err)
 		return c.Status(fiber.StatusInternalServerError).JSON(ErrorResponse{
@@ -334,43 +342,23 @@ func (r *Routes) GetTransaction(c *fiber.Ctx) error {
 	}
 
 	includeBeef := c.Query("beef") == "true"
-	topic := "tm_" + tokenId
 
-	// Query txid event index for outputs of this transaction
-	cfg := &txo.OutputSearchCfg{
-		SearchCfg: store.SearchCfg{
-			Keys: [][]byte{txo.KeyEvent("txid:" + txidStr)},
-		},
-		IncludeSpend: true,
-		IncludeBlock: true,
-		IncludeTags:  []string{"bsv21"},
-	}
-
-	results, err := r.storage.Search(c.Context(), cfg)
+	// Find BSV21 outputs for this transaction from overlay DB
+	rawOutputs, err := r.lookup.FindByTxid(c.Context(), tokenId, txid)
 	if err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(ErrorResponse{
 			Message: "Failed to retrieve transaction details",
 		})
 	}
 
-	rawOutputs, err := r.storage.LoadOutputsFromResults(c.Context(), results, cfg)
-	if err != nil {
-		return c.Status(fiber.StatusInternalServerError).JSON(ErrorResponse{
-			Message: "Failed to load output data",
+	if len(rawOutputs) == 0 {
+		return c.Status(fiber.StatusNotFound).JSON(ErrorResponse{
+			Message: "Transaction not found",
 		})
 	}
 
-	// Filter to BSV21 outputs and convert to OutputData
 	var outputs []*OutputData
-	var blockHeight uint32
-	var firstOutput *txo.IndexedOutput
 	for _, out := range rawOutputs {
-		if out == nil || out.Data == nil {
-			continue
-		}
-		if _, ok := out.Data["bsv21"]; !ok {
-			continue
-		}
 		od := &OutputData{
 			Vout: out.Outpoint.Index,
 			Data: out.Data,
@@ -380,30 +368,14 @@ func (r *Routes) GetTransaction(c *fiber.Ctx) error {
 			od.Spend = &s
 		}
 		outputs = append(outputs, od)
-		if firstOutput == nil {
-			firstOutput = out
-			if out.BlockHeight != nil {
-				blockHeight = *out.BlockHeight
-			}
-		}
 	}
 
-	if len(outputs) == 0 {
-		return c.Status(fiber.StatusNotFound).JSON(ErrorResponse{
-			Message: "Transaction not found",
-		})
-	}
-
-	// Find inputs: outputs from other transactions that were consumed by this transaction.
-	// GetInputsConsumed returns the outpoints consumed to produce a given output for a topic.
+	// Find inputs: outputs consumed by this transaction.
 	// All outputs of the same tx share the same consumed inputs, so query the first one.
 	var inputs []*OutputData
-	consumedOps, err := r.storage.GetInputsConsumed(c.Context(), &firstOutput.Outpoint, topic)
+	consumedOps, err := r.lookup.GetInputsConsumed(c.Context(), tokenId, &rawOutputs[0].Outpoint)
 	if err == nil && len(consumedOps) > 0 {
-		// Load the consumed outputs with their BSV21 data
-		inputOutputs, err := r.storage.LoadOutputs(c.Context(), consumedOps, &txo.OutputSearchCfg{
-			IncludeTags: []string{"bsv21"},
-		})
+		inputOutputs, err := r.lookup.LoadOutputs(c.Context(), tokenId, consumedOps)
 		if err == nil {
 			for _, inp := range inputOutputs {
 				if inp == nil {
@@ -420,13 +392,12 @@ func (r *Routes) GetTransaction(c *fiber.Ctx) error {
 	}
 
 	tx := &TransactionData{
-		TxID:        txidStr,
-		Inputs:      inputs,
-		Outputs:     outputs,
-		BlockHeight: blockHeight,
+		TxID:    txidStr,
+		Inputs:  inputs,
+		Outputs: outputs,
 	}
 
-	if includeBeef && r.storage.BeefStore != nil {
+	if includeBeef && r.storage != nil && r.storage.BeefStore != nil {
 		beef, err := r.storage.BeefStore.LoadBeef(c.Context(), txid)
 		if err == nil && beef != nil {
 			tx.Beef, _ = beef.AtomicBytes(txid)
@@ -487,7 +458,7 @@ func (r *Routes) GetAddressHistory(c *fiber.Ctx) error {
 		})
 	}
 
-	outputs, err := r.lookup.LoadOutputs(c.Context(), outpoints)
+	outputs, err := r.lookup.LoadOutputs(c.Context(), tokenId, outpoints)
 	if err != nil {
 		r.logger.Error("Failed to load outputs", "error", err)
 		return c.Status(fiber.StatusInternalServerError).JSON(ErrorResponse{
@@ -521,7 +492,7 @@ func (r *Routes) GetAddressUnspent(c *fiber.Ctx) error {
 		})
 	}
 
-	outputs, err := r.lookup.LoadOutputs(c.Context(), outpoints)
+	outputs, err := r.lookup.LoadOutputs(c.Context(), tokenId, outpoints)
 	if err != nil {
 		r.logger.Error("Failed to load outputs", "error", err)
 		return c.Status(fiber.StatusInternalServerError).JSON(ErrorResponse{
@@ -621,7 +592,7 @@ func (r *Routes) GetMultiAddressHistory(c *fiber.Ctx) error {
 		})
 	}
 
-	outputs, err := r.lookup.LoadOutputs(c.Context(), outpoints)
+	outputs, err := r.lookup.LoadOutputs(c.Context(), tokenId, outpoints)
 	if err != nil {
 		r.logger.Error("Failed to load outputs", "error", err)
 		return c.Status(fiber.StatusInternalServerError).JSON(ErrorResponse{
@@ -674,7 +645,7 @@ func (r *Routes) GetMultiAddressUnspent(c *fiber.Ctx) error {
 		})
 	}
 
-	outputs, err := r.lookup.LoadOutputs(c.Context(), outpoints)
+	outputs, err := r.lookup.LoadOutputs(c.Context(), tokenId, outpoints)
 	if err != nil {
 		r.logger.Error("Failed to load outputs", "error", err)
 		return c.Status(fiber.StatusInternalServerError).JSON(ErrorResponse{
@@ -687,26 +658,18 @@ func (r *Routes) GetMultiAddressUnspent(c *fiber.Ctx) error {
 
 // ValidateOutputs validates specific outpoints exist in the token's overlay topic
 // @Summary Validate specific outpoints
-// @Description Checks if specific outpoints exist in the token's overlay topic. Returns only those found. By default returns minimal data (outpoint + score). Use query params to load additional data.
+// @Description Checks if specific outpoints exist in the token's overlay. Returns only those found with BSV21 data.
 // @Tags bsv21
 // @Accept json
 // @Produce json
 // @Param tokenId path string true "Token ID (outpoint format: txid_vout)"
 // @Param outpoints body []string true "Array of outpoints to validate (max 1000)"
-// @Param unspent query bool false "Filter for unspent outputs only" default(false)
-// @Param spend query bool false "Include spend txid" default(false)
-// @Param sats query bool false "Include satoshis" default(false)
-// @Param events query bool false "Include events array" default(false)
-// @Param block query bool false "Include block info" default(false)
-// @Param tags query string false "Comma-separated data tags to include (e.g., 'bsv21')"
 // @Success 200 {array} txo.IndexedOutputResponse
 // @Failure 400 {object} ErrorResponse
 // @Failure 500 {object} ErrorResponse
 // @Router /bsv21/{tokenId}/outputs [post]
 func (r *Routes) ValidateOutputs(c *fiber.Ctx) error {
 	tokenId := c.Params("tokenId")
-	topic := "tm_" + tokenId
-
 	var outpointStrs []string
 	if err := c.BodyParser(&outpointStrs); err != nil {
 		return c.Status(fiber.StatusBadRequest).JSON(ErrorResponse{
@@ -726,49 +689,21 @@ func (r *Routes) ValidateOutputs(c *fiber.Ctx) error {
 		})
 	}
 
-	// Parse outpoints to bytes
-	members := make([][]byte, 0, len(outpointStrs))
+	outpoints := make([]*transaction.Outpoint, 0, len(outpointStrs))
 	for _, opStr := range outpointStrs {
 		op, err := transaction.OutpointFromString(opStr)
 		if err != nil {
-			// Skip invalid outpoints silently
 			r.logger.Debug("invalid outpoint format", "outpoint", opStr, "error", err)
 			continue
 		}
-		members = append(members, op.Bytes())
+		outpoints = append(outpoints, op)
 	}
 
-	if len(members) == 0 {
-		return c.JSON([]*txo.IndexedOutput{}) // Empty array if all invalid
+	if len(outpoints) == 0 {
+		return c.JSON([]*txo.IndexedOutput{})
 	}
 
-	// Build config - defaults to minimal data
-	cfg := &txo.OutputSearchCfg{
-		FilterSpent:   c.QueryBool("unspent", false),
-		IncludeSats:   c.QueryBool("sats", false),
-		IncludeSpend:  c.QueryBool("spend", false),
-		IncludeEvents: c.QueryBool("events", false),
-		IncludeBlock:  c.QueryBool("block", false),
-	}
-
-	// Only load tags if explicitly requested
-	if tagsQuery := c.Query("tags", ""); tagsQuery != "" {
-		cfg.IncludeTags = strings.Split(tagsQuery, ",")
-	}
-
-	// Check membership
-	results, err := r.storage.CheckMembership(c.Context(),
-		[][]byte{[]byte("tp:" + topic)},
-		members)
-	if err != nil {
-		r.logger.Error("ValidateOutputs membership check error", "error", err)
-		return c.Status(fiber.StatusInternalServerError).JSON(ErrorResponse{
-			Message: "Failed to check membership",
-		})
-	}
-
-	// Load output data
-	outputs, err := r.storage.LoadOutputsFromResults(c.Context(), results, cfg)
+	outputs, err := r.lookup.LoadOutputs(c.Context(), tokenId, outpoints)
 	if err != nil {
 		r.logger.Error("ValidateOutputs load error", "error", err)
 		return c.Status(fiber.StatusInternalServerError).JSON(ErrorResponse{
@@ -779,19 +714,13 @@ func (r *Routes) ValidateOutputs(c *fiber.Ctx) error {
 	return c.JSON(outputs)
 }
 
-// GetTokenOutput validates a single outpoint exists in the token's overlay topic
+// GetTokenOutput validates a single outpoint exists in the token's overlay
 // @Summary Validate single outpoint
-// @Description Checks if a specific outpoint exists in the token's overlay topic. Returns 404 if not found. By default returns minimal data (outpoint + score). Use query params to load additional data.
+// @Description Checks if a specific outpoint exists in the token's overlay. Returns 404 if not found.
 // @Tags bsv21
 // @Produce json
 // @Param tokenId path string true "Token ID (outpoint format: txid_vout)"
 // @Param outpoint path string true "Outpoint (format: txid_vout or txid.vout)"
-// @Param unspent query bool false "Filter for unspent outputs only" default(false)
-// @Param spend query bool false "Include spend txid" default(false)
-// @Param sats query bool false "Include satoshis" default(false)
-// @Param events query bool false "Include events array" default(false)
-// @Param block query bool false "Include block info" default(false)
-// @Param tags query string false "Comma-separated data tags to include (e.g., 'bsv21')"
 // @Success 200 {object} txo.IndexedOutputResponse
 // @Failure 400 {object} ErrorResponse
 // @Failure 404 {object} ErrorResponse
@@ -800,7 +729,6 @@ func (r *Routes) ValidateOutputs(c *fiber.Ctx) error {
 func (r *Routes) GetTokenOutput(c *fiber.Ctx) error {
 	tokenId := c.Params("tokenId")
 	outpointStr := c.Params("outpoint")
-	topic := "tm_" + tokenId
 
 	op, err := transaction.OutpointFromString(outpointStr)
 	if err != nil {
@@ -809,39 +737,7 @@ func (r *Routes) GetTokenOutput(c *fiber.Ctx) error {
 		})
 	}
 
-	// Build config - defaults to minimal data
-	cfg := &txo.OutputSearchCfg{
-		FilterSpent:   c.QueryBool("unspent", false),
-		IncludeSats:   c.QueryBool("sats", false),
-		IncludeSpend:  c.QueryBool("spend", false),
-		IncludeEvents: c.QueryBool("events", false),
-		IncludeBlock:  c.QueryBool("block", false),
-	}
-
-	// Only load tags if explicitly requested
-	if tagsQuery := c.Query("tags", ""); tagsQuery != "" {
-		cfg.IncludeTags = strings.Split(tagsQuery, ",")
-	}
-
-	// Check membership
-	results, err := r.storage.CheckMembership(c.Context(),
-		[][]byte{[]byte("tp:" + topic)},
-		[][]byte{op.Bytes()})
-	if err != nil {
-		r.logger.Error("GetTokenOutput membership check error", "error", err)
-		return c.Status(fiber.StatusInternalServerError).JSON(ErrorResponse{
-			Message: "Failed to check membership",
-		})
-	}
-
-	if len(results) == 0 {
-		return c.Status(fiber.StatusNotFound).JSON(ErrorResponse{
-			Message: "Outpoint not found in topic",
-		})
-	}
-
-	// Load output data
-	outputs, err := r.storage.LoadOutputsFromResults(c.Context(), results, cfg)
+	outputs, err := r.lookup.LoadOutputs(c.Context(), tokenId, []*transaction.Outpoint{op})
 	if err != nil {
 		r.logger.Error("GetTokenOutput load error", "error", err)
 		return c.Status(fiber.StatusInternalServerError).JSON(ErrorResponse{
@@ -849,9 +745,9 @@ func (r *Routes) GetTokenOutput(c *fiber.Ctx) error {
 		})
 	}
 
-	if len(outputs) == 0 || outputs[0] == nil {
+	if len(outputs) == 0 {
 		return c.Status(fiber.StatusNotFound).JSON(ErrorResponse{
-			Message: "Output data not found",
+			Message: "Outpoint not found in topic",
 		})
 	}
 

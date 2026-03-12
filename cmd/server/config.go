@@ -21,7 +21,9 @@ import (
 	"github.com/b-open-io/1sat-stack/pkg/opns"
 	"github.com/b-open-io/1sat-stack/pkg/ordfs"
 	"github.com/b-open-io/1sat-stack/pkg/overlay"
+	overlaystorage "github.com/b-open-io/1sat-stack/pkg/overlay/storage"
 	"github.com/b-open-io/1sat-stack/pkg/owner"
+	"github.com/b-open-io/1sat-stack/pkg/messagebox"
 	"github.com/b-open-io/1sat-stack/pkg/paymail"
 	"github.com/b-open-io/1sat-stack/pkg/pubsub"
 	"github.com/b-open-io/1sat-stack/pkg/store"
@@ -31,6 +33,7 @@ import (
 	arcadeconfig "github.com/bsv-blockchain/arcade/config"
 	arcaderoutes "github.com/bsv-blockchain/arcade/routes/fiber"
 	"github.com/bsv-blockchain/arcade/service"
+	"github.com/bsv-blockchain/go-overlay-services/pkg/core/engine"
 	"github.com/bsv-blockchain/go-chaintracks/chaintracks"
 	chaintracksconfig "github.com/bsv-blockchain/go-chaintracks/config"
 	chaintracksroutes "github.com/bsv-blockchain/go-chaintracks/routes/fiber"
@@ -109,6 +112,9 @@ type Config struct {
 
 	// Paymail service
 	Paymail paymail.Config `mapstructure:"paymail"`
+
+	// Message box service
+	MessageBox messagebox.Config `mapstructure:"messagebox"`
 }
 
 // MongoDBConfig holds shared MongoDB connection configuration.
@@ -216,7 +222,8 @@ type Services struct {
 	Own     *owner.Services
 	Admin   *admin.Services
 	Wallet  *wallet.Services
-	Paymail *paymail.Services
+	Paymail    *paymail.Services
+	MessageBox *messagebox.Services
 
 	// Auth middleware (nil when wallet is disabled)
 	// Used for routes that require authentication (wallet, admin)
@@ -301,6 +308,7 @@ func (c *Config) SetDefaults(v *viper.Viper) {
 	c.Wallet.SetDefaults(v, "wallet")
 	c.Auth.SetDefaults(v, "auth")
 	c.Paymail.SetDefaults(v, "paymail")
+	c.MessageBox.SetDefaults(v, "messagebox")
 }
 
 // Initialize creates all services from the configuration
@@ -453,7 +461,11 @@ func (c *Config) Initialize(ctx context.Context, logger *slog.Logger) (*Services
 	// Initialize BSV21 AFTER overlay so we can wire them together
 	if c.BSV21.Mode != bsv21.ModeDisabled && svc.TXO != nil {
 		start = time.Now()
-		bsv21Svc, err := c.BSV21.Initialize(ctx, logger, svc.TXO.OutputStore, svc.Chaintracks, svc.Beef.Storage, svc.Overlay, svc.JungleBus)
+		var topicDB overlaystorage.Factory
+		if svc.Overlay != nil {
+			topicDB = svc.Overlay.TopicDBFactory()
+		}
+		bsv21Svc, err := c.BSV21.Initialize(ctx, logger, svc.TXO.OutputStore, topicDB, svc.Chaintracks, svc.Beef.Storage, svc.Overlay, svc.JungleBus)
 		if err != nil {
 			return nil, fmt.Errorf("failed to initialize bsv21: %w", err)
 		}
@@ -469,7 +481,7 @@ func (c *Config) Initialize(ctx context.Context, logger *slog.Logger) (*Services
 			// This is a registration-only topic - no worker needed as it just identifies outputs
 			discoveryTopic := &overlay.Topic{
 				Name:    "tm_bsv21",
-				Manager: bsv21.NewBsv21DiscoveryTopicManager("tm_bsv21", svc.TXO.OutputStore, logger),
+				Manager: bsv21.NewBsv21DiscoveryTopicManager("tm_bsv21", logger),
 			}
 			if err := svc.Overlay.ActivateTopic(ctx, discoveryTopic); err != nil {
 				logger.Error("failed to activate BSV21 discovery topic", "error", err)
@@ -555,9 +567,13 @@ func (c *Config) Initialize(ctx context.Context, logger *slog.Logger) (*Services
 	}
 
 	// Initialize OPNS
-	if c.OPNS.Mode != opns.ModeDisabled && svc.Store != nil {
+	if c.OPNS.Mode != opns.ModeDisabled && svc.Overlay != nil {
 		start = time.Now()
-		opnsSvc, err := c.OPNS.Initialize(ctx, logger, svc.Store.Store)
+		opnsDB, err := svc.Overlay.TopicDB("tm_opns")
+		if err != nil {
+			return nil, fmt.Errorf("failed to get opns topic db: %w", err)
+		}
+		opnsSvc, err := c.OPNS.Initialize(ctx, logger, opnsDB)
 		if err != nil {
 			return nil, fmt.Errorf("failed to initialize opns: %w", err)
 		}
@@ -627,9 +643,14 @@ func (c *Config) Initialize(ctx context.Context, logger *slog.Logger) (*Services
 
 		// Setup status handler to process all arc events (from arcade or webhooks)
 		if svc.PubSub != nil {
+			var overlayStorage engine.Storage
+			if svc.Overlay != nil && svc.Overlay.Engine != nil {
+				overlayStorage = svc.Overlay.Engine.Storage
+			}
 			svc.Indexer.SetupStatusHandler(&indexer.StatusHandlerDeps{
-				PubSub:       svc.PubSub.PubSub,
-				ChainTracker: svc.Chaintracks,
+				PubSub:         svc.PubSub.PubSub,
+				ChainTracker:   svc.Chaintracks,
+				OverlayStorage: overlayStorage,
 			})
 		}
 
@@ -770,7 +791,16 @@ func (c *Config) Initialize(ctx context.Context, logger *slog.Logger) (*Services
 
 	}
 
-	// Initialize Paymail service (requires wallet + OpNS + ORDFS + Arcade)
+	// Initialize MessageBox service (must be before Paymail, which depends on it)
+	if c.MessageBox.Mode != messagebox.ModeDisabled {
+		mbSvc, err := c.MessageBox.Initialize(ctx, logger)
+		if err != nil {
+			return nil, fmt.Errorf("failed to initialize messagebox: %w", err)
+		}
+		svc.MessageBox = mbSvc
+	}
+
+	// Initialize Paymail service (requires MessageBox + OpNS + ORDFS + Arcade)
 	if c.Paymail.Mode != paymail.ModeDisabled {
 		paymailDeps := &paymail.InitializeDeps{}
 		if svc.OPNS != nil && svc.OPNS.Lookup != nil {
@@ -784,8 +814,8 @@ func (c *Config) Initialize(ctx context.Context, logger *slog.Logger) (*Services
 		} else if svc.Arcade != nil && svc.Arcade.ArcadeService != nil {
 			paymailDeps.Arcade = svc.Arcade.ArcadeService
 		}
-		if svc.Wallet != nil && svc.Wallet.Provider != nil {
-			paymailDeps.WalletProvider = svc.Wallet.Provider
+		if svc.MessageBox != nil && svc.MessageBox.DB != nil {
+			paymailDeps.MessageBoxDB = svc.MessageBox.DB
 		}
 		if svc.Beef != nil && svc.Beef.Storage != nil {
 			paymailDeps.BeefStorage = svc.Beef.Storage
@@ -1067,6 +1097,19 @@ func (c *Config) RegisterRoutes(app *fiber.App, svc *Services) {
 		// Register /.well-known/bsvalias at app root for capability discovery
 		svc.Paymail.Routes.RegisterWellKnown(app)
 		slog.Debug("registered paymail .well-known/bsvalias route")
+	}
+
+	// Register MessageBox routes
+	if svc.MessageBox != nil && svc.MessageBox.Routes != nil && svc.AuthMiddleware != nil {
+		prefix := c.MessageBox.Routes.Prefix
+		if prefix == "" {
+			prefix = "/messagebox"
+		}
+		mbHandler := svc.MessageBox.Routes.Handler()
+		authWrappedHandler := svc.AuthMiddleware.HTTPHandler(mbHandler)
+		api.Group(prefix).All("/*", adaptor.HTTPHandler(authWrappedHandler))
+		capabilities = append(capabilities, "messagebox")
+		slog.Debug("registered messagebox routes", "prefix", c.Server.BasePath+prefix)
 	}
 
 	// Health check endpoint

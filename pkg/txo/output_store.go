@@ -193,36 +193,6 @@ func (s *OutputStore) SaveEvents(ctx context.Context, op *transaction.Outpoint, 
 	return nil
 }
 
-// SaveDeps saves dependency txids for an output in a specific topic
-func (s *OutputStore) SaveDeps(ctx context.Context, op *transaction.Outpoint, topic string, txids []*chainhash.Hash) error {
-	if len(txids) == 0 {
-		return nil
-	}
-
-	// Store as concatenated 32-byte txids
-	data := make([]byte, 32*len(txids))
-	for i, txid := range txids {
-		copy(data[i*32:], txid[:])
-	}
-
-	return s.Store.HSet(ctx, KeyOutHash(op), []byte(fldDeps+topic), data)
-}
-
-// SaveInputsConsumed saves the inputs consumed by this output for a topic
-func (s *OutputStore) SaveInputsConsumed(ctx context.Context, op *transaction.Outpoint, topic string, inputs []*transaction.Outpoint) error {
-	if len(inputs) == 0 {
-		return nil
-	}
-
-	// Store as concatenated 36-byte outpoints
-	data := make([]byte, 36*len(inputs))
-	for i, input := range inputs {
-		copy(data[i*36:], input.Bytes())
-	}
-
-	return s.Store.HSet(ctx, KeyOutHash(op), []byte(fldInputs+topic), data)
-}
-
 // === Spend Operations ===
 
 // SaveSpend marks an output as spent and updates spent indexes.
@@ -829,51 +799,6 @@ func (s *OutputStore) GetEvents(ctx context.Context, op *transaction.Outpoint) (
 	var events []string
 	err = json.Unmarshal(eventsBytes, &events)
 	return events, err
-}
-
-// === Dependencies ===
-
-// GetDeps returns dependency txids for an output in a specific topic
-func (s *OutputStore) GetDeps(ctx context.Context, op *transaction.Outpoint, topic string) ([]*chainhash.Hash, error) {
-	data, err := s.Store.HGet(ctx, KeyOutHash(op), []byte(fldDeps+topic))
-	if err == store.ErrKeyNotFound {
-		return nil, nil
-	}
-	if err != nil {
-		return nil, err
-	}
-
-	if len(data)%32 != 0 {
-		return nil, nil
-	}
-
-	txids := make([]*chainhash.Hash, len(data)/32)
-	for i := range txids {
-		txids[i] = &chainhash.Hash{}
-		copy(txids[i][:], data[i*32:(i+1)*32])
-	}
-	return txids, nil
-}
-
-// GetInputsConsumed returns the inputs consumed by this output for a topic
-func (s *OutputStore) GetInputsConsumed(ctx context.Context, op *transaction.Outpoint, topic string) ([]*transaction.Outpoint, error) {
-	data, err := s.Store.HGet(ctx, KeyOutHash(op), []byte(fldInputs+topic))
-	if err == store.ErrKeyNotFound {
-		return nil, nil
-	}
-	if err != nil {
-		return nil, err
-	}
-
-	if len(data)%36 != 0 {
-		return nil, nil
-	}
-
-	inputs := make([]*transaction.Outpoint, len(data)/36)
-	for i := range inputs {
-		inputs[i] = transaction.NewOutpointFromBytes(data[i*36 : (i+1)*36])
-	}
-	return inputs, nil
 }
 
 // === Rollback ===

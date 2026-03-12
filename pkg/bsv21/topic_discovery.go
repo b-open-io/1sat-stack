@@ -11,25 +11,25 @@ import (
 	"github.com/bsv-blockchain/go-sdk/transaction"
 )
 
+
+
 // Bsv21DiscoveryTopicManager implements a global topic manager that admits ALL deploy operations.
 // This is used for token discovery - registered as topic "tm_bsv21".
 // Admits both deploy+mint and deploy+auth operations.
 // When a new token is discovered, it can trigger fee service notification and worker creation.
 type Bsv21DiscoveryTopicManager struct {
-	topic   string
-	storage engine.Storage
-	logger  *slog.Logger
+	topic  string
+	logger *slog.Logger
 }
 
 // NewBsv21DiscoveryTopicManager creates a new discovery topic manager
-func NewBsv21DiscoveryTopicManager(topic string, storage engine.Storage, logger *slog.Logger) *Bsv21DiscoveryTopicManager {
+func NewBsv21DiscoveryTopicManager(topic string, logger *slog.Logger) *Bsv21DiscoveryTopicManager {
 	if logger == nil {
 		logger = slog.Default()
 	}
 	return &Bsv21DiscoveryTopicManager{
-		topic:   topic,
-		storage: storage,
-		logger:  logger,
+		topic:  topic,
+		logger: logger,
 	}
 }
 

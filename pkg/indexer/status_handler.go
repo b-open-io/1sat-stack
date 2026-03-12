@@ -12,6 +12,7 @@ import (
 	"github.com/b-open-io/1sat-stack/pkg/store"
 	"github.com/b-open-io/1sat-stack/pkg/txo"
 	"github.com/b-open-io/1sat-stack/pkg/types"
+	"github.com/bsv-blockchain/go-overlay-services/pkg/core/engine"
 	"github.com/bsv-blockchain/go-sdk/chainhash"
 	"github.com/bsv-blockchain/go-sdk/transaction"
 	"github.com/bsv-blockchain/go-sdk/transaction/chaintracker"
@@ -20,13 +21,13 @@ import (
 // StatusHandler subscribes to the "arc" pubsub topic and handles all transaction status updates.
 // This consolidates ingestion, proof validation, and rollback into one handler.
 type StatusHandler struct {
-	pubsub       pubsub.PubSub
-	store        store.Store
-	beefStorage  *beef.Storage
-	outputStore  *txo.OutputStore
-	chainTracker chaintracker.ChainTracker
-	indexer      *IngestCtx
-	logger       *slog.Logger
+	pubsub         pubsub.PubSub
+	store          store.Store
+	beefStorage    *beef.Storage
+	overlayStorage engine.Storage
+	chainTracker   chaintracker.ChainTracker
+	indexer        *IngestCtx
+	logger         *slog.Logger
 
 	ingestEnabled  bool
 	immutableScore float64
@@ -46,7 +47,7 @@ func NewStatusHandler(
 	ps pubsub.PubSub,
 	s store.Store,
 	beefStorage *beef.Storage,
-	outputStore *txo.OutputStore,
+	overlayStorage engine.Storage,
 	ct chaintracker.ChainTracker,
 	indexer *IngestCtx,
 	cfg *StatusHandlerConfig,
@@ -62,14 +63,14 @@ func NewStatusHandler(
 	}
 
 	return &StatusHandler{
-		pubsub:        ps,
-		store:         s,
-		beefStorage:   beefStorage,
-		outputStore:   outputStore,
-		chainTracker:  ct,
-		indexer:       indexer,
-		ingestEnabled: ingestEnabled,
-		logger:        logger,
+		pubsub:         ps,
+		store:          s,
+		beefStorage:    beefStorage,
+		overlayStorage: overlayStorage,
+		chainTracker:   ct,
+		indexer:        indexer,
+		ingestEnabled:  ingestEnabled,
+		logger:         logger,
 	}
 }
 
@@ -271,8 +272,8 @@ func (h *StatusHandler) handleMined(event ArcEvent) {
 			h.beefStorage.SaveBeef(h.ctx, txid, beef)
 
 			// Also update TXO storage if available
-			if h.outputStore != nil {
-				h.outputStore.UpdateTransactionBEEF(h.ctx, txid, beef)
+			if h.overlayStorage != nil {
+				h.overlayStorage.UpdateTransactionBEEF(h.ctx, txid, beef)
 			}
 		}
 
@@ -304,7 +305,7 @@ func (h *StatusHandler) handleRejected(event ArcEvent) {
 
 	h.logger.Info("transaction rejected", "txid", event.TxID, "reason", event.ExtraInfo)
 
-	if h.outputStore == nil {
+	if h.overlayStorage == nil {
 		return
 	}
 
@@ -315,7 +316,7 @@ func (h *StatusHandler) handleRejected(event ArcEvent) {
 	}
 
 	// Find and delete outputs from all topics
-	outputs, err := h.outputStore.FindOutputsForTransaction(h.ctx, txid, false)
+	outputs, err := h.overlayStorage.FindOutputsForTransaction(h.ctx, txid, false)
 	if err != nil {
 		h.logger.Error("failed to find outputs for rollback", "txid", event.TxID, "error", err)
 		return
@@ -323,7 +324,7 @@ func (h *StatusHandler) handleRejected(event ArcEvent) {
 
 	for _, output := range outputs {
 		if output != nil {
-			if err := h.outputStore.DeleteOutput(h.ctx, &output.Outpoint, output.Topic); err != nil {
+			if err := h.overlayStorage.DeleteOutput(h.ctx, &output.Outpoint, output.Topic); err != nil {
 				h.logger.Error("failed to delete output", "outpoint", output.Outpoint.String(), "error", err)
 			}
 		}

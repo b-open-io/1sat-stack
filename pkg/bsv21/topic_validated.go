@@ -43,16 +43,14 @@ func NewMissingInputError(txid, missingTxID *chainhash.Hash, inputIndex, outputI
 // This matches the implementation in bsv21-overlay/topics/bsv21-topic-validated.go
 type Bsv21ValidatedTopicManager struct {
 	topic    string
-	storage  engine.Storage
 	tokenIds map[string]struct{}
 	metadata *overlay.MetaData
 }
 
 // NewBsv21ValidatedTopicManager creates a new BSV21 validated topic manager
-func NewBsv21ValidatedTopicManager(topic string, storage engine.Storage, tokenIds []string, metadata *overlay.MetaData) *Bsv21ValidatedTopicManager {
+func NewBsv21ValidatedTopicManager(topic string, tokenIds []string, metadata *overlay.MetaData) *Bsv21ValidatedTopicManager {
 	tm := &Bsv21ValidatedTopicManager{
 		topic:    topic,
-		storage:  storage,
 		metadata: metadata,
 	}
 	if len(tokenIds) > 0 {

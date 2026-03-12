@@ -3,6 +3,7 @@
 | Plan | Status | Description |
 |------|--------|-------------|
 | [Admin & OpNS Registration](./2026-03-03-admin-opns-registration.md) | **In Progress** | Admin setup working, OPNS crawl complete, lookups wired up |
+| [Overlay Storage Isolation](./overlay-storage-isolation.md) | **Complete** | All 10 steps done — per-topic SQLite, TxTopicIndex, dead code removed, ready for integration testing |
 
 ## Completed Plans
 

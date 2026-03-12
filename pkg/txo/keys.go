@@ -1,8 +1,6 @@
 package txo
 
 import (
-	"fmt"
-
 	"github.com/bsv-blockchain/go-sdk/chainhash"
 	"github.com/bsv-blockchain/go-sdk/transaction"
 )
@@ -31,18 +29,6 @@ func KeyEventSpent(event string) []byte {
 	return []byte(PfxEvent + event + ":spnd")
 }
 
-// KeyTopicOutputs builds ZSet key for topic outputs: tp:{topic}
-// Members are binary outpoints (36 bytes), scores are HeightScore
-func KeyTopicOutputs(topic string) []byte {
-	return []byte(PfxTopic + topic)
-}
-
-// KeyTopicTxs builds ZSet key for topic applied txids: tp:{topic}:tx
-// Members are binary txids (32 bytes), scores are HeightScore
-func KeyTopicTxs(topic string) []byte {
-	return []byte(PfxTopic + topic + ":tx")
-}
-
 // Transaction log names for tracking confirmation state
 const (
 	PendingTxLog   = "tx:pending"   // Transactions awaiting confirmation
@@ -60,12 +46,6 @@ func KeyLog(logName string) []byte {
 	return []byte(logName)
 }
 
-// KeyMerkleState builds ZSet key for merkle state index: merkle:{topic}:{state}
-// Members are binary outpoints (36 bytes), scores are HeightScore
-func KeyMerkleState(topic string, state uint32) []byte {
-	return []byte(fmt.Sprintf("merkle:%s:%d", topic, state))
-}
-
 // KeyQueue builds queue key: q:{queueName}
 // Members are binary txids (32 bytes), scores are HeightScore
 func KeyQueue(queueName string) []byte {
@@ -81,12 +61,6 @@ func KeyTokenQueue(tokenId string) []byte {
 // KeySet builds set key: {name}
 func KeySet(name string) []byte {
 	return []byte(name)
-}
-
-// PeerInteractionField builds the field name for peer interaction progress: peer:{topic}:{host}
-// Used with KeyProgress hash
-func PeerInteractionField(topic, host string) []byte {
-	return []byte("peer:" + topic + ":" + host)
 }
 
 // KeyOutHash builds the hash key for an outpoint: {outpoint:36}
