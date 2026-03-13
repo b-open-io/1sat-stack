@@ -25,7 +25,7 @@ func ParseOrdLock(ctx *ParseContext) (*ParseResult, error) {
 	result := &ParseResult{
 		Tag:    TagOrdLock,
 		Data:   ol,
-		Events: []string{"ordlock:list"},
+		Events: []string{"ordlock"},
 	}
 
 	// Extract owner (seller) from ordlock
