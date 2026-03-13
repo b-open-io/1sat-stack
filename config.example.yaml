@@ -92,6 +92,11 @@ indexer:
     - bsv21        # BSV21 fungible tokens
     - ordlock      # Ordinal lock scripts
     - cosign       # Co-signing scripts
+    - opns         # OpNS mine outputs
+    - bitcom       # Base bitcom parser (required by map, bap)
+    - map          # MAP protocol (emits map:type events for BSocial routing)
+    - bap          # BAP identity (emits bap:{operation} events)
+    - origin       # Origin resolution for transferred 1-sat outputs
   sync:
     enabled: true
     subscription_ids: []    # ONESAT_INDEXER_SYNC_SUBSCRIPTION_IDS (comma-separated)
