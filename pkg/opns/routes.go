@@ -3,6 +3,7 @@ package opns
 import (
 	"log/slog"
 
+	"github.com/bsv-blockchain/go-sdk/transaction"
 	"github.com/gofiber/fiber/v2"
 )
 
@@ -27,6 +28,7 @@ func NewRoutes(lookup *LookupService, logger *slog.Logger) *Routes {
 func (r *Routes) Register(router fiber.Router) {
 	router.Get("/origin/:name", r.GetOrigin)
 	router.Get("/mine/:name", r.GetMine)
+	router.Post("/origins", r.ValidateOrigins)
 }
 
 // GetOrigin returns the current outpoint for a registered OpNS domain.
@@ -106,4 +108,44 @@ func (r *Routes) GetMine(c *fiber.Ctx) error {
 	}
 
 	return c.JSON(result)
+}
+
+// ValidateOrigins checks which outpoints exist as registered OpNS names.
+// @Summary Bulk validate OpNS origins
+// @Tags opns
+// @Accept json
+// @Produce json
+// @Param outpoints body []string true "Array of outpoints (txid_vout or txid.vout)"
+// @Success 200 {object} object "Map of outpoint string to boolean"
+// @Failure 400 {object} object{error=string}
+// @Failure 500 {object} object{error=string}
+// @Router /opns/origins [post]
+func (r *Routes) ValidateOrigins(c *fiber.Ctx) error {
+	var strs []string
+	if err := c.BodyParser(&strs); err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": "Invalid request body: expected array of outpoint strings",
+		})
+	}
+
+	outpoints := make([]*transaction.Outpoint, 0, len(strs))
+	for _, s := range strs {
+		op, err := transaction.OutpointFromString(s)
+		if err != nil {
+			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+				"error": "Invalid outpoint: " + s,
+			})
+		}
+		outpoints = append(outpoints, op)
+	}
+
+	valid, err := r.lookup.ValidateOrigins(c.Context(), outpoints)
+	if err != nil {
+		r.logger.Error("failed to validate origins", "error", err)
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"error": err.Error(),
+		})
+	}
+
+	return c.JSON(valid)
 }

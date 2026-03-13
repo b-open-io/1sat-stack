@@ -44,7 +44,7 @@ func (c *Config) SetDefaults(v *viper.Viper, prefix string) {
 	v.SetDefault(p+"sync.reorg_depth", 6)
 	v.SetDefault(p+"sync.resolve_dependencies", true)
 	v.SetDefault(p+"routes.enabled", true)
-	v.SetDefault(p+"routes.prefix", "/ordlock")
+	v.SetDefault(p+"routes.prefix", "/market")
 }
 
 type Services struct {

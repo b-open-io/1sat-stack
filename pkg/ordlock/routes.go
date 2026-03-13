@@ -36,7 +36,7 @@ func (r *Routes) Register(router fiber.Router) {
 
 // SearchListings searches for OrdLock listings.
 // @Summary Search listings
-// @Tags ordlock
+// @Tags market
 // @Produce json
 // @Param status query string false "Listing status: active, sale, cancel" default(active)
 // @Param type query string false "Content type filter"
@@ -46,7 +46,7 @@ func (r *Routes) Register(router fiber.Router) {
 // @Param rev query bool false "Reverse order" default(true)
 // @Success 200 {array} object
 // @Failure 500 {object} object{message=string}
-// @Router /ordlock/listings [get]
+// @Router /market/listings [get]
 func (r *Routes) SearchListings(c *fiber.Ctx) error {
 	status := c.Query("status", "active")
 	contentType := c.Query("type")
@@ -78,15 +78,22 @@ func (r *Routes) SearchListings(c *fiber.Ctx) error {
 
 // GetListingByOrigin retrieves the active listing for an origin.
 // @Summary Get active listing by origin
-// @Tags ordlock
+// @Tags market
 // @Produce json
-// @Param origin path string true "Origin (txid_vout)"
+// @Param origin path string true "Origin (txid_vout or txid.vout)"
 // @Success 200 {object} object
+// @Failure 400 {object} object{message=string}
 // @Failure 404 {object} object{message=string}
 // @Failure 500 {object} object{message=string}
-// @Router /ordlock/origin/{origin} [get]
+// @Router /market/origin/{origin} [get]
 func (r *Routes) GetListingByOrigin(c *fiber.Ctx) error {
-	result, err := r.lookup.GetListingByOrigin(c.Context(), r.topic, c.Params("origin"))
+	origin, err := transaction.OutpointFromString(c.Params("origin"))
+	if err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"message": "Invalid origin format",
+		})
+	}
+	result, err := r.lookup.GetListingByOrigin(c.Context(), r.topic, origin)
 	if err != nil {
 		if err == sql.ErrNoRows {
 			return c.Status(fiber.StatusNotFound).JSON(fiber.Map{
@@ -104,20 +111,31 @@ func (r *Routes) GetListingByOrigin(c *fiber.Ctx) error {
 
 // GetListingsByOrigins retrieves active listings for multiple origins.
 // @Summary Bulk lookup active listings by origin
-// @Tags ordlock
+// @Tags market
 // @Accept json
 // @Produce json
-// @Param origins body []string true "Array of origins (txid_vout)"
+// @Param origins body []string true "Array of origins (txid_vout or txid.vout)"
 // @Success 200 {object} object "Map of origin to listing"
 // @Failure 400 {object} object{message=string}
 // @Failure 500 {object} object{message=string}
-// @Router /ordlock/origins [post]
+// @Router /market/origins [post]
 func (r *Routes) GetListingsByOrigins(c *fiber.Ctx) error {
-	var origins []string
-	if err := c.BodyParser(&origins); err != nil {
+	var originStrs []string
+	if err := c.BodyParser(&originStrs); err != nil {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
 			"message": "Invalid request body: expected array of origin strings",
 		})
+	}
+
+	origins := make([]*transaction.Outpoint, 0, len(originStrs))
+	for _, s := range originStrs {
+		op, err := transaction.OutpointFromString(s)
+		if err != nil {
+			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+				"message": "Invalid origin: " + s,
+			})
+		}
+		origins = append(origins, op)
 	}
 
 	results, err := r.lookup.GetListingsByOrigins(c.Context(), r.topic, origins)
@@ -133,13 +151,13 @@ func (r *Routes) GetListingsByOrigins(c *fiber.Ctx) error {
 
 // GetListing retrieves a single OrdLock listing by outpoint.
 // @Summary Get listing
-// @Tags ordlock
+// @Tags market
 // @Produce json
 // @Param outpoint path string true "Outpoint (txid.vout)"
 // @Success 200 {object} object
 // @Failure 404 {object} object{message=string}
 // @Failure 500 {object} object{message=string}
-// @Router /ordlock/listing/{outpoint} [get]
+// @Router /market/listing/{outpoint} [get]
 func (r *Routes) GetListing(c *fiber.Ctx) error {
 	op, err := transaction.OutpointFromString(c.Params("outpoint"))
 	if err != nil {

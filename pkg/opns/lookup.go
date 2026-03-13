@@ -118,6 +118,20 @@ func (l *LookupService) Origin(ctx context.Context, domain string) (*transaction
 	return &results[0].Outpoint, nil
 }
 
+// ValidateOrigins checks which of the given outpoints exist in the OPNS overlay.
+// Returns a set of outpoint strings (using canonical format) for those that are valid.
+func (l *LookupService) ValidateOrigins(ctx context.Context, outpoints []*transaction.Outpoint) (map[string]bool, error) {
+	found, err := l.db.FindOutputs(ctx, outpoints)
+	if err != nil {
+		return nil, fmt.Errorf("failed to validate origins: %w", err)
+	}
+	valid := make(map[string]bool, len(found))
+	for i := range found {
+		valid[found[i].Outpoint.String()] = true
+	}
+	return valid, nil
+}
+
 // MineResult represents the mining status of an OpNS domain.
 type MineResult struct {
 	Outpoint *transaction.Outpoint `json:"outpoint"`

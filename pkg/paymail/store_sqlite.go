@@ -23,7 +23,7 @@ CREATE TABLE IF NOT EXISTS pending_payments (
 	derivation_suffix TEXT NOT NULL,
 	satoshis         INTEGER NOT NULL,
 	output_script    TEXT NOT NULL,
-	txid             TEXT NOT NULL DEFAULT '',
+	txid             BLOB,
 	created_at       DATETIME NOT NULL,
 	expires_at       DATETIME NOT NULL
 );

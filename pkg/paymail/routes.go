@@ -247,7 +247,7 @@ func (r *Routes) ReceiveBeef(c *fiber.Ctx) error {
 	}
 
 	// Record the txid before internalization so we can trace back if it fails
-	pending.TxID = txid.String()
+	pending.TxID = txid[:]
 	if err := r.service.Store().Update(c.Context(), pending); err != nil {
 		r.logger.Error("failed to update pending payment with txid", "alias", alias, "error", err)
 	}
@@ -351,7 +351,7 @@ func (r *Routes) ReceiveTransaction(c *fiber.Ctx) error {
 
 	// Record the txid before internalization
 	txid := tx.TxID()
-	pending.TxID = txid.String()
+	pending.TxID = txid[:]
 	if err := r.service.Store().Update(c.Context(), pending); err != nil {
 		r.logger.Error("failed to update pending payment with txid", "alias", alias, "error", err)
 	}

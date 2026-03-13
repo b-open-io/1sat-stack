@@ -2,17 +2,18 @@
 
 | Plan | Status | Description |
 |------|--------|-------------|
-| [Admin & OpNS Registration](./2026-03-03-admin-opns-registration.md) | **In Progress** | Admin setup working, OPNS crawl complete, lookups wired up |
-| [Overlay Storage Isolation](./overlay-storage-isolation.md) | **Complete** | All 10 steps done — per-topic SQLite, TxTopicIndex, dead code removed |
-| [OrdLock Overlay](./ordlock-overlay.md) | **Complete** | Deployed to rack, syncing from block 783968 |
-| [TXO Lookup Fixes](./TXO_LOOKUP_FIXES.md) | **In Progress** | LoadOutputsByTxid scans wrong key space, direct outpoint lookup |
-| [Event-Driven Overlay Routing](./event-driven-overlay-routing.md) | **In Progress** | PubSub patterns, EventBridge, parser events, wiring complete — needs deploy |
+| [Market API & OPNS Validation](./market-api-opns-validation.md) | **In Progress** | Rename ordlock→market, origin BLOB fix, OPNS bulk validate, SDK clients |
+| [Event-Driven Overlay Routing](./event-driven-overlay-routing.md) | **Complete** | Deployed to rack — PubSub patterns, EventBridge, parser events, all overlay workers running |
 
 ## Completed Plans
 
 | Plan | Status | Description |
 |------|--------|-------------|
-| Wallet Connect Flow | **COMPLETE** | yours-wallet auth and popup fixes done |
+| Wallet Connect Flow | **Complete** | yours-wallet auth and popup fixes done |
+| [Admin & OpNS Registration](./2026-03-03-admin-opns-registration.md) | **Complete** | Admin setup, OPNS crawl, lookups wired up |
+| [Overlay Storage Isolation](./overlay-storage-isolation.md) | **Complete** | Per-topic SQLite, TxTopicIndex, dead code removed |
+| [OrdLock Overlay](./ordlock-overlay.md) | **Complete** | Deployed to rack, syncing from block 783968 |
+| [TXO Lookup Fixes](./TXO_LOOKUP_FIXES.md) | **Complete** | LoadOutputsByTxid fixed to use event index |
 
 ## Status Legend
 

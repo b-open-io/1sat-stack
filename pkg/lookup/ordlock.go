@@ -25,7 +25,7 @@ import (
 const ordlockSchema = `
 CREATE TABLE IF NOT EXISTS listings (
     outpoint      BLOB PRIMARY KEY,
-    origin        TEXT,
+    origin        BLOB,
     name          TEXT,
     content_type  TEXT,
     price         INTEGER NOT NULL,
@@ -91,7 +91,8 @@ func (l *OrdLockLookup) OutputAdmittedByTopic(ctx context.Context, payload *engi
 		Index: payload.OutputIndex,
 	}
 
-	var contentType, name, origin string
+	var contentType, name string
+	var origin *transaction.Outpoint
 
 	insc := inscription.Decode(output.LockingScript)
 	if insc != nil {
@@ -102,7 +103,7 @@ func (l *OrdLockLookup) OutputAdmittedByTopic(ctx context.Context, payload *engi
 		}
 
 		if insc.Parent != nil {
-			origin = insc.Parent.OrdinalString()
+			origin = insc.Parent
 		}
 
 		if name == "" {
@@ -123,7 +124,7 @@ func (l *OrdLockLookup) OutputAdmittedByTopic(ctx context.Context, payload *engi
 		})
 		if err == nil && resp != nil {
 			if resp.Origin != nil {
-				origin = resp.Origin.OrdinalString()
+				origin = resp.Origin
 			}
 			if resp.ContentType != "" {
 				contentType = strings.Split(resp.ContentType, ";")[0]
@@ -143,8 +144,8 @@ func (l *OrdLockLookup) OutputAdmittedByTopic(ctx context.Context, payload *engi
 		}
 	}
 
-	if origin == "" {
-		origin = outpoint.OrdinalString()
+	if origin == nil {
+		origin = outpoint
 	}
 
 	ts, err := l.db(payload.Topic)
@@ -154,7 +155,7 @@ func (l *OrdLockLookup) OutputAdmittedByTopic(ctx context.Context, payload *engi
 
 	_, err = ts.DB().ExecContext(ctx,
 		`INSERT OR REPLACE INTO listings (outpoint, origin, name, content_type, price, seller, score) VALUES (?, ?, ?, ?, ?, ?, ?)`,
-		outpoint.Bytes(), origin, name, contentType, lock.Price, lock.Seller.AddressString, types.ScoreFromTx(tx, txid),
+		outpoint.Bytes(), origin.Bytes(), name, contentType, lock.Price, lock.Seller.AddressString, types.ScoreFromTx(tx, txid),
 	)
 	return err
 }
@@ -313,7 +314,7 @@ func (l *OrdLockLookup) GetListing(ctx context.Context, topic string, outpoint [
 	return scanListing(rows)
 }
 
-func (l *OrdLockLookup) GetListingByOrigin(ctx context.Context, topic, origin string) (*txo.IndexedOutput, error) {
+func (l *OrdLockLookup) GetListingByOrigin(ctx context.Context, topic string, origin *transaction.Outpoint) (*txo.IndexedOutput, error) {
 	ts, err := l.db(topic)
 	if err != nil {
 		return nil, err
@@ -321,7 +322,7 @@ func (l *OrdLockLookup) GetListingByOrigin(ctx context.Context, topic, origin st
 
 	rows, err := ts.DB().QueryContext(ctx,
 		`SELECT outpoint, origin, name, content_type, price, seller, spend_txid, spend_type, score, spend_score FROM listings WHERE origin = ? AND spend_type IS NULL`,
-		origin,
+		origin.Bytes(),
 	)
 	if err != nil {
 		return nil, err
@@ -334,7 +335,7 @@ func (l *OrdLockLookup) GetListingByOrigin(ctx context.Context, topic, origin st
 	return scanListing(rows)
 }
 
-func (l *OrdLockLookup) GetListingsByOrigins(ctx context.Context, topic string, origins []string) (map[string]*txo.IndexedOutput, error) {
+func (l *OrdLockLookup) GetListingsByOrigins(ctx context.Context, topic string, origins []*transaction.Outpoint) (map[string]*txo.IndexedOutput, error) {
 	if len(origins) == 0 {
 		return nil, nil
 	}
@@ -349,7 +350,7 @@ func (l *OrdLockLookup) GetListingsByOrigins(ctx context.Context, topic string, 
 
 	args := make([]any, len(origins))
 	for i, o := range origins {
-		args[i] = o
+		args[i] = o.Bytes()
 	}
 
 	rows, err := ts.DB().QueryContext(ctx,
@@ -377,12 +378,12 @@ func (l *OrdLockLookup) GetListingsByOrigins(ctx context.Context, topic string, 
 }
 
 func scanListing(rows *sql.Rows) (*txo.IndexedOutput, error) {
-	var opBytes, spendBytes []byte
-	var origin, name, contentType, seller, spendType sql.NullString
+	var opBytes, originBytes, spendBytes []byte
+	var name, contentType, seller, spendType sql.NullString
 	var price uint64
 	var score, spendScore sql.NullFloat64
 
-	if err := rows.Scan(&opBytes, &origin, &name, &contentType, &price, &seller, &spendBytes, &spendType, &score, &spendScore); err != nil {
+	if err := rows.Scan(&opBytes, &originBytes, &name, &contentType, &price, &seller, &spendBytes, &spendType, &score, &spendScore); err != nil {
 		return nil, err
 	}
 
@@ -408,8 +409,8 @@ func scanListing(rows *sql.Rows) (*txo.IndexedOutput, error) {
 	if spendScore.Valid {
 		listing["spend_score"] = spendScore.Float64
 	}
-	if origin.Valid {
-		listing["origin"] = origin.String
+	if origin := transaction.NewOutpointFromBytes(originBytes); origin != nil {
+		listing["origin"] = origin.String()
 	}
 	if name.Valid {
 		listing["name"] = name.String

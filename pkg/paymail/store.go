@@ -20,7 +20,7 @@ type PendingPayment struct {
 	DerivationSuffix string    `json:"derivationSuffix"`
 	Satoshis         uint64    `json:"satoshis"`
 	OutputScript     string    `json:"outputScript"`
-	TxID             string    `json:"txid,omitempty"`
+	TxID             []byte    `json:"txid,omitempty"`
 	CreatedAt        time.Time `json:"createdAt"`
 	ExpiresAt        time.Time `json:"expiresAt"`
 }

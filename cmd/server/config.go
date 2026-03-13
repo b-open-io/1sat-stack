@@ -1069,11 +1069,11 @@ func (c *Config) RegisterRoutes(app *fiber.App, svc *Services) {
 	if svc.OrdLock != nil && svc.OrdLock.Routes != nil {
 		prefix := c.OrdLock.Routes.Prefix
 		if prefix == "" {
-			prefix = "/ordlock"
+			prefix = "/market"
 		}
 		ordlockGroup := api.Group(prefix)
 		svc.OrdLock.Routes.Register(ordlockGroup)
-		capabilities = append(capabilities, "ordlock")
+		capabilities = append(capabilities, "market")
 	}
 
 	// Register overlay routes

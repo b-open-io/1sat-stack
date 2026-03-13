@@ -2059,6 +2059,163 @@ paths:
       summary: Health check
       tags:
       - system
+  /market/listing/{outpoint}:
+    get:
+      parameters:
+      - description: Outpoint (txid.vout)
+        in: path
+        name: outpoint
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            type: object
+        "404":
+          description: Not Found
+          schema:
+            properties:
+              message:
+                type: string
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            properties:
+              message:
+                type: string
+            type: object
+      summary: Get listing
+      tags:
+      - market
+  /market/listings:
+    get:
+      parameters:
+      - default: active
+        description: 'Listing status: active, sale, cancel'
+        in: query
+        name: status
+        type: string
+      - description: Content type filter
+        in: query
+        name: type
+        type: string
+      - description: Name search
+        in: query
+        name: q
+        type: string
+      - default: 20
+        description: Results limit
+        in: query
+        name: limit
+        type: integer
+      - description: Pagination score
+        in: query
+        name: from
+        type: number
+      - default: true
+        description: Reverse order
+        in: query
+        name: rev
+        type: boolean
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              type: object
+            type: array
+        "500":
+          description: Internal Server Error
+          schema:
+            properties:
+              message:
+                type: string
+            type: object
+      summary: Search listings
+      tags:
+      - market
+  /market/origin/{origin}:
+    get:
+      parameters:
+      - description: Origin (txid_vout or txid.vout)
+        in: path
+        name: origin
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            properties:
+              message:
+                type: string
+            type: object
+        "404":
+          description: Not Found
+          schema:
+            properties:
+              message:
+                type: string
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            properties:
+              message:
+                type: string
+            type: object
+      summary: Get active listing by origin
+      tags:
+      - market
+  /market/origins:
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: Array of origins (txid_vout or txid.vout)
+        in: body
+        name: origins
+        required: true
+        schema:
+          items:
+            type: string
+          type: array
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Map of origin to listing
+          schema:
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            properties:
+              message:
+                type: string
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            properties:
+              message:
+                type: string
+            type: object
+      summary: Bulk lookup active listings by origin
+      tags:
+      - market
   /opns/mine/{name}:
     get:
       parameters:
@@ -2140,6 +2297,43 @@ paths:
                 type: string
             type: object
       summary: Get domain origin outpoint
+      tags:
+      - opns
+  /opns/origins:
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: Array of outpoints (txid_vout or txid.vout)
+        in: body
+        name: outpoints
+        required: true
+        schema:
+          items:
+            type: string
+          type: array
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Map of outpoint string to boolean
+          schema:
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            properties:
+              error:
+                type: string
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            properties:
+              error:
+                type: string
+            type: object
+      summary: Bulk validate OpNS origins
       tags:
       - opns
   /ordfs/metadata:
@@ -2286,156 +2480,6 @@ paths:
       summary: Stream content
       tags:
       - ordfs
-  /ordlock/listing/{outpoint}:
-    get:
-      parameters:
-      - description: Outpoint (txid.vout)
-        in: path
-        name: outpoint
-        required: true
-        type: string
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            type: object
-        "404":
-          description: Not Found
-          schema:
-            properties:
-              message:
-                type: string
-            type: object
-        "500":
-          description: Internal Server Error
-          schema:
-            properties:
-              message:
-                type: string
-            type: object
-      summary: Get listing
-      tags:
-      - ordlock
-  /ordlock/listings:
-    get:
-      parameters:
-      - default: active
-        description: 'Listing status: active, sale, cancel'
-        in: query
-        name: status
-        type: string
-      - description: Content type filter
-        in: query
-        name: type
-        type: string
-      - description: Name search
-        in: query
-        name: q
-        type: string
-      - default: 20
-        description: Results limit
-        in: query
-        name: limit
-        type: integer
-      - description: Pagination score
-        in: query
-        name: from
-        type: number
-      - default: true
-        description: Reverse order
-        in: query
-        name: rev
-        type: boolean
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            items:
-              type: object
-            type: array
-        "500":
-          description: Internal Server Error
-          schema:
-            properties:
-              message:
-                type: string
-            type: object
-      summary: Search listings
-      tags:
-      - ordlock
-  /ordlock/origin/{origin}:
-    get:
-      parameters:
-      - description: Origin (txid_vout)
-        in: path
-        name: origin
-        required: true
-        type: string
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            type: object
-        "404":
-          description: Not Found
-          schema:
-            properties:
-              message:
-                type: string
-            type: object
-        "500":
-          description: Internal Server Error
-          schema:
-            properties:
-              message:
-                type: string
-            type: object
-      summary: Get active listing by origin
-      tags:
-      - ordlock
-  /ordlock/origins:
-    post:
-      consumes:
-      - application/json
-      parameters:
-      - description: Array of origins (txid_vout)
-        in: body
-        name: origins
-        required: true
-        schema:
-          items:
-            type: string
-          type: array
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: Map of origin to listing
-          schema:
-            type: object
-        "400":
-          description: Bad Request
-          schema:
-            properties:
-              message:
-                type: string
-            type: object
-        "500":
-          description: Internal Server Error
-          schema:
-            properties:
-              message:
-                type: string
-            type: object
-      summary: Bulk lookup active listings by origin
-      tags:
-      - ordlock
   /overlay/admin/startGASPSync:
     post:
       description: Start GASP synchronization (requires admin bearer token)
