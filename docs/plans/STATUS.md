@@ -6,6 +6,7 @@
 | [Overlay Storage Isolation](./overlay-storage-isolation.md) | **Complete** | All 10 steps done — per-topic SQLite, TxTopicIndex, dead code removed |
 | [OrdLock Overlay](./ordlock-overlay.md) | **Complete** | Deployed to rack, syncing from block 783968 |
 | [TXO Lookup Fixes](./TXO_LOOKUP_FIXES.md) | **In Progress** | LoadOutputsByTxid scans wrong key space, direct outpoint lookup |
+| [Event-Driven Overlay Routing](./event-driven-overlay-routing.md) | **In Progress** | PubSub patterns, EventBridge, parser events, wiring complete — needs deploy |
 
 ## Completed Plans
 

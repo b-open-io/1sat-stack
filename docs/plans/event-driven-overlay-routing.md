@@ -1,6 +1,6 @@
 # Event-Driven Overlay Routing
 
-Status: **Not Started**
+Status: **In Progress**
 
 ## Problem
 
