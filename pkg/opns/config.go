@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log/slog"
 
+	"github.com/b-open-io/1sat-stack/pkg/overlay"
 	overlaystorage "github.com/b-open-io/1sat-stack/pkg/overlay/storage"
 	"github.com/spf13/viper"
 )
@@ -47,6 +48,7 @@ type Services struct {
 	Lookup       *LookupService
 	TopicManager *TopicManager
 	Crawl        *GenesisCrawl
+	Sync         *overlay.OverlaySync
 	Routes       *Routes
 }
 

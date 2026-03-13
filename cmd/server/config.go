@@ -535,8 +535,15 @@ func (c *Config) Initialize(ctx context.Context, logger *slog.Logger) (*Services
 				logger.Info("BAP topic (tm_bap) activated")
 			}
 
-			if c.BAP.Sync != nil && c.BAP.Sync.Enabled && svc.Beef != nil {
-				svc.BAP.Sync = overlay.NewOverlaySync(c.BAP.Sync, "tm_bap", svc.Store.Store, svc.Beef.Storage, svc.Overlay, logger)
+			if svc.Beef != nil {
+				syncCfg := c.BAP.Sync
+				if syncCfg == nil {
+					syncCfg = &overlay.OverlaySyncConfig{}
+				}
+				if syncCfg.QueueName == "" {
+					syncCfg.QueueName = "bap"
+				}
+				svc.BAP.Sync = overlay.NewOverlaySync(syncCfg, "tm_bap", svc.Store.Store, svc.Beef.Storage, svc.Overlay, logger)
 			}
 		}
 		logger.Info("bap initialized", "duration", time.Since(start).Round(time.Millisecond))
@@ -565,8 +572,15 @@ func (c *Config) Initialize(ctx context.Context, logger *slog.Logger) (*Services
 				logger.Info("BSocial topic (tm_bsocial) activated")
 			}
 
-			if c.BSocial.Sync != nil && c.BSocial.Sync.Enabled && svc.Beef != nil {
-				svc.BSocial.Sync = overlay.NewOverlaySync(c.BSocial.Sync, "tm_bsocial", svc.Store.Store, svc.Beef.Storage, svc.Overlay, logger)
+			if svc.Beef != nil {
+				syncCfg := c.BSocial.Sync
+				if syncCfg == nil {
+					syncCfg = &overlay.OverlaySyncConfig{}
+				}
+				if syncCfg.QueueName == "" {
+					syncCfg.QueueName = "bsocial"
+				}
+				svc.BSocial.Sync = overlay.NewOverlaySync(syncCfg, "tm_bsocial", svc.Store.Store, svc.Beef.Storage, svc.Overlay, logger)
 			}
 		}
 		logger.Info("bsocial initialized", "duration", time.Since(start).Round(time.Millisecond))
@@ -602,6 +616,14 @@ func (c *Config) Initialize(ctx context.Context, logger *slog.Logger) (*Services
 				c.OPNS.Crawl.JungleBusURL = c.JungleBus.URL
 				svc.OPNS.Crawl = opns.NewGenesisCrawl(c.OPNS.Crawl, svc.Beef.Storage, svc.Overlay, logger)
 			}
+
+			if svc.Beef != nil {
+				opnsSyncCfg := &overlay.OverlaySyncConfig{
+					QueueName:           "opns",
+					ResolveDependencies: true,
+				}
+				svc.OPNS.Sync = overlay.NewOverlaySync(opnsSyncCfg, "tm_opns", svc.Store.Store, svc.Beef.Storage, svc.Overlay, logger)
+			}
 		}
 		logger.Info("opns initialized", "duration", time.Since(start).Round(time.Millisecond))
 	}
@@ -627,8 +649,15 @@ func (c *Config) Initialize(ctx context.Context, logger *slog.Logger) (*Services
 			logger.Info("OrdLock topic activated", "topic", ordlockpkg.TopicName)
 		}
 
-		if c.OrdLock.Sync != nil && c.OrdLock.Sync.Enabled && svc.Beef != nil {
-			svc.OrdLock.Sync = overlay.NewOverlaySync(c.OrdLock.Sync, ordlockpkg.TopicName, svc.Store.Store, svc.Beef.Storage, svc.Overlay, logger)
+		if svc.Beef != nil {
+			syncCfg := c.OrdLock.Sync
+			if syncCfg == nil {
+				syncCfg = &overlay.OverlaySyncConfig{}
+			}
+			if syncCfg.QueueName == "" {
+				syncCfg.QueueName = "ordlock"
+			}
+			svc.OrdLock.Sync = overlay.NewOverlaySync(syncCfg, ordlockpkg.TopicName, svc.Store.Store, svc.Beef.Storage, svc.Overlay, logger)
 		}
 
 		logger.Info("ordlock initialized", "duration", time.Since(start).Round(time.Millisecond))
@@ -1417,6 +1446,66 @@ func (svc *Services) StartSubscribers(ctx context.Context, logger *slog.Logger) 
 		logger.Info("started JungleBus subscribers", "count", len(svc.JBSubscribers))
 	}
 
+	// Start EventBridges (PubSub → overlay queues)
+	if svc.PubSub != nil {
+		if svc.OrdLock != nil && svc.OrdLock.Sync != nil {
+			bridge := overlay.NewEventBridge(&overlay.EventBridgeConfig{
+				PubSub:   svc.PubSub.PubSub,
+				Store:    svc.Store.Store,
+				Patterns: []string{"ordlock", "spend:ordlock"},
+				QueueFunc: func(ev pubsub.Event) string {
+					return string(txo.KeyQueue("ordlock"))
+				},
+				Logger: logger,
+			})
+			if err := bridge.Start(ctx); err != nil {
+				logger.Error("failed to start OrdLock event bridge", "error", err)
+			}
+		}
+		if svc.BAP != nil && svc.BAP.Sync != nil {
+			bridge := overlay.NewEventBridge(&overlay.EventBridgeConfig{
+				PubSub:   svc.PubSub.PubSub,
+				Store:    svc.Store.Store,
+				Patterns: []string{"bap:*"},
+				QueueFunc: func(ev pubsub.Event) string {
+					return string(txo.KeyQueue("bap"))
+				},
+				Logger: logger,
+			})
+			if err := bridge.Start(ctx); err != nil {
+				logger.Error("failed to start BAP event bridge", "error", err)
+			}
+		}
+		if svc.BSocial != nil && svc.BSocial.Sync != nil {
+			bridge := overlay.NewEventBridge(&overlay.EventBridgeConfig{
+				PubSub:   svc.PubSub.PubSub,
+				Store:    svc.Store.Store,
+				Patterns: []string{"map:type:*"},
+				QueueFunc: func(ev pubsub.Event) string {
+					return string(txo.KeyQueue("bsocial"))
+				},
+				Logger: logger,
+			})
+			if err := bridge.Start(ctx); err != nil {
+				logger.Error("failed to start BSocial event bridge", "error", err)
+			}
+		}
+		if svc.OPNS != nil && svc.OPNS.Sync != nil {
+			bridge := overlay.NewEventBridge(&overlay.EventBridgeConfig{
+				PubSub:   svc.PubSub.PubSub,
+				Store:    svc.Store.Store,
+				Patterns: []string{"opns:mine"},
+				QueueFunc: func(ev pubsub.Event) string {
+					return string(txo.KeyQueue("opns"))
+				},
+				Logger: logger,
+			})
+			if err := bridge.Start(ctx); err != nil {
+				logger.Error("failed to start OPNS event bridge", "error", err)
+			}
+		}
+	}
+
 	// Start BSV21 sync services
 	if svc.BSV21 != nil && svc.BSV21.Sync != nil {
 		go func() {
@@ -1451,6 +1540,14 @@ func (svc *Services) StartSubscribers(ctx context.Context, logger *slog.Logger) 
 			}
 		}()
 		logger.Info("started OrdLock overlay sync")
+	}
+	if svc.OPNS != nil && svc.OPNS.Sync != nil {
+		go func() {
+			if err := svc.OPNS.Sync.Start(ctx); err != nil {
+				logger.Error("OPNS sync error", "error", err)
+			}
+		}()
+		logger.Info("started OPNS overlay sync")
 	}
 	if svc.OPNS != nil && svc.OPNS.Crawl != nil {
 		go func() {
