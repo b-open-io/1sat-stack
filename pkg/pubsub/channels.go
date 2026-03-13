@@ -3,6 +3,7 @@ package pubsub
 import (
 	"context"
 	"log/slog"
+	"strings"
 	"sync"
 )
 
@@ -14,9 +15,16 @@ type channelSubscription struct {
 	topics  []string
 }
 
+type patternSubscription struct {
+	prefix string
+	sub    *channelSubscription
+}
+
 // ChannelPubSub implements the PubSub interface using Go channels
 type ChannelPubSub struct {
 	subscribers sync.Map // topic -> []*channelSubscription
+	patternMu   sync.RWMutex
+	patternSubs []*patternSubscription
 	ctx         context.Context
 	cancel      context.CancelFunc
 	logger      *slog.Logger
@@ -63,6 +71,21 @@ func (cp *ChannelPubSub) Publish(ctx context.Context, topic string, data string,
 		}
 	}
 
+	cp.patternMu.RLock()
+	for _, ps := range cp.patternSubs {
+		if strings.HasPrefix(topic, ps.prefix) {
+			select {
+			case ps.sub.channel <- event:
+			case <-ctx.Done():
+				cp.patternMu.RUnlock()
+				return ctx.Err()
+			default:
+				cp.logger.Warn("skipping full channel", "topic", topic, "pattern", ps.prefix+"*")
+			}
+		}
+	}
+	cp.patternMu.RUnlock()
+
 	return nil
 }
 
@@ -76,12 +99,21 @@ func (cp *ChannelPubSub) Subscribe(ctx context.Context, topics []string) (<-chan
 	}
 
 	for _, topic := range topics {
-		var subs []*channelSubscription
-		if existing, ok := cp.subscribers.Load(topic); ok {
-			subs = existing.([]*channelSubscription)
+		if strings.HasSuffix(topic, "*") {
+			cp.patternMu.Lock()
+			cp.patternSubs = append(cp.patternSubs, &patternSubscription{
+				prefix: strings.TrimSuffix(topic, "*"),
+				sub:    sub,
+			})
+			cp.patternMu.Unlock()
+		} else {
+			var subs []*channelSubscription
+			if existing, ok := cp.subscribers.Load(topic); ok {
+				subs = existing.([]*channelSubscription)
+			}
+			subs = append(subs, sub)
+			cp.subscribers.Store(topic, subs)
 		}
-		subs = append(subs, sub)
-		cp.subscribers.Store(topic, subs)
 	}
 
 	go func() {
@@ -99,6 +131,9 @@ func (cp *ChannelPubSub) Unsubscribe(topics []string) error {
 
 func (cp *ChannelPubSub) unsubscribeSubscription(targetSub *channelSubscription) {
 	for _, topic := range targetSub.topics {
+		if strings.HasSuffix(topic, "*") {
+			continue
+		}
 		if subs, ok := cp.subscribers.Load(topic); ok {
 			subscriptions := subs.([]*channelSubscription)
 
@@ -116,6 +151,16 @@ func (cp *ChannelPubSub) unsubscribeSubscription(targetSub *channelSubscription)
 			}
 		}
 	}
+
+	cp.patternMu.Lock()
+	var remaining []*patternSubscription
+	for _, ps := range cp.patternSubs {
+		if ps.sub != targetSub {
+			remaining = append(remaining, ps)
+		}
+	}
+	cp.patternSubs = remaining
+	cp.patternMu.Unlock()
 }
 
 func (cp *ChannelPubSub) Stop() error {
