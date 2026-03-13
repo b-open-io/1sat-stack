@@ -131,14 +131,6 @@ func (s *OutputStore) SaveOutput(ctx context.Context, output *IndexedOutput, sat
 		}
 	}
 
-	// Publish events
-	if s.PubSub != nil {
-		opStr := op.String()
-		for _, event := range events {
-			s.PubSub.Publish(ctx, event, opStr)
-		}
-	}
-
 	return nil
 }
 
@@ -179,14 +171,6 @@ func (s *OutputStore) SaveEvents(ctx context.Context, op *transaction.Outpoint, 
 			Score:  score,
 		}); err != nil {
 			return err
-		}
-	}
-
-	// Publish events
-	if s.PubSub != nil {
-		opStr := op.String()
-		for _, event := range events {
-			s.PubSub.Publish(ctx, event, opStr)
 		}
 	}
 
@@ -250,6 +234,33 @@ func (s *OutputStore) SaveTransaction(ctx context.Context, tx *transaction.Trans
 		events := buildSpendEvents(spend)
 		if err := s.SaveSpend(ctx, outpoint, txid, events, score); err != nil {
 			return err
+		}
+	}
+
+	// Publish txid-level routing events
+	if s.PubSub != nil {
+		routingEvents := make(map[string]struct{})
+
+		for _, output := range outputs {
+			if output == nil {
+				continue
+			}
+			for _, event := range output.Events {
+				routingEvents[event] = struct{}{}
+			}
+		}
+
+		for _, spend := range spends {
+			if spend == nil {
+				continue
+			}
+			for _, event := range spend.Events {
+				routingEvents["spend:"+event] = struct{}{}
+			}
+		}
+
+		for event := range routingEvents {
+			s.PubSub.Publish(ctx, event, txidHex)
 		}
 	}
 
