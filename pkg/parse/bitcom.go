@@ -74,10 +74,7 @@ func ParseMAP(ctx *ParseContext) (*ParseResult, error) {
 				if t, ok := m.Data["type"]; ok {
 					result.Events = append(result.Events, "map:type:"+t)
 				}
-				if app, ok := m.Data["app"]; ok {
-					result.Events = append(result.Events, "map:app:"+app)
-				}
-				return result, nil
+					return result, nil
 			}
 		}
 	}
@@ -124,8 +121,9 @@ func ParseBAP(ctx *ParseContext) (*ParseResult, error) {
 	}
 
 	return &ParseResult{
-		Tag:  TagBAP,
-		Data: bap,
+		Tag:    TagBAP,
+		Data:   bap,
+		Events: []string{"bap:" + string(bap.Type)},
 	}, nil
 }
 
