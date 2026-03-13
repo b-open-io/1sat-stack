@@ -208,6 +208,8 @@ definitions:
         items:
           type: integer
         type: array
+      status:
+        type: integer
       timestamp:
         type: string
       txStatus:
@@ -437,6 +439,13 @@ definitions:
       count:
         type: integer
     type: object
+  pkg_paymail.p2pMetadata:
+    properties:
+      note:
+        type: string
+      sender:
+        type: string
+    type: object
   pkg_paymail.paymentDestinationRequest:
     properties:
       satoshis:
@@ -447,7 +456,7 @@ definitions:
       beef:
         type: string
       metadata:
-        type: string
+        $ref: '#/definitions/pkg_paymail.p2pMetadata'
       reference:
         type: string
     type: object
@@ -456,7 +465,7 @@ definitions:
       hex:
         type: string
       metadata:
-        type: string
+        $ref: '#/definitions/pkg_paymail.p2pMetadata'
       reference:
         type: string
     type: object
@@ -746,6 +755,60 @@ paths:
       security:
       - BearerAuth: []
       summary: Update progress
+      tags:
+      - admin
+  /admin/setup:
+    post:
+      description: Adds the authenticated identity as the first admin
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: success message
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "401":
+          description: Unauthorized
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "409":
+          description: Already configured
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Perform admin setup
+      tags:
+      - admin
+  /admin/status:
+    get:
+      description: Returns whether any admin identities have been configured
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: configured status
+          schema:
+            additionalProperties:
+              type: boolean
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Get setup status
       tags:
       - admin
   /admin/topics/{name}/remotes:
@@ -1665,9 +1728,8 @@ paths:
     post:
       consumes:
       - application/json
-      description: Checks if specific outpoints exist in the token's overlay topic.
-        Returns only those found. By default returns minimal data (outpoint + score).
-        Use query params to load additional data.
+      description: Checks if specific outpoints exist in the token's overlay. Returns
+        only those found with BSV21 data.
       parameters:
       - description: 'Token ID (outpoint format: txid_vout)'
         in: path
@@ -1682,35 +1744,6 @@ paths:
           items:
             type: string
           type: array
-      - default: false
-        description: Filter for unspent outputs only
-        in: query
-        name: unspent
-        type: boolean
-      - default: false
-        description: Include spend txid
-        in: query
-        name: spend
-        type: boolean
-      - default: false
-        description: Include satoshis
-        in: query
-        name: sats
-        type: boolean
-      - default: false
-        description: Include events array
-        in: query
-        name: events
-        type: boolean
-      - default: false
-        description: Include block info
-        in: query
-        name: block
-        type: boolean
-      - description: Comma-separated data tags to include (e.g., 'bsv21')
-        in: query
-        name: tags
-        type: string
       produces:
       - application/json
       responses:
@@ -1733,9 +1766,8 @@ paths:
       - bsv21
   /bsv21/{tokenId}/outputs/{outpoint}:
     get:
-      description: Checks if a specific outpoint exists in the token's overlay topic.
-        Returns 404 if not found. By default returns minimal data (outpoint + score).
-        Use query params to load additional data.
+      description: Checks if a specific outpoint exists in the token's overlay. Returns
+        404 if not found.
       parameters:
       - description: 'Token ID (outpoint format: txid_vout)'
         in: path
@@ -1746,35 +1778,6 @@ paths:
         in: path
         name: outpoint
         required: true
-        type: string
-      - default: false
-        description: Filter for unspent outputs only
-        in: query
-        name: unspent
-        type: boolean
-      - default: false
-        description: Include spend txid
-        in: query
-        name: spend
-        type: boolean
-      - default: false
-        description: Include satoshis
-        in: query
-        name: sats
-        type: boolean
-      - default: false
-        description: Include events array
-        in: query
-        name: events
-        type: boolean
-      - default: false
-        description: Include block info
-        in: query
-        name: block
-        type: boolean
-      - description: Comma-separated data tags to include (e.g., 'bsv21')
-        in: query
-        name: tags
         type: string
       produces:
       - application/json
@@ -2095,6 +2098,85 @@ paths:
       summary: Get domain mining status
       tags:
       - opns
+  /opns/origin/{name}:
+    get:
+      parameters:
+      - description: Domain name
+        in: path
+        name: name
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            properties:
+              name:
+                type: string
+              outpoint:
+                type: string
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            properties:
+              error:
+                type: string
+            type: object
+        "404":
+          description: Not Found
+          schema:
+            properties:
+              error:
+                type: string
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            properties:
+              error:
+                type: string
+            type: object
+      summary: Get domain origin outpoint
+      tags:
+      - opns
+  /ordfs/metadata:
+    post:
+      consumes:
+      - application/json
+      description: Get metadata for multiple outpoints in a single request
+      parameters:
+      - description: Outpoints to look up
+        in: body
+        name: body
+        required: true
+        schema:
+          type: object
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Map of outpoint to metadata (null if not found)
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: Bad request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Bulk metadata lookup
+      tags:
+      - ordfs
   /ordfs/metadata/{path}:
     get:
       description: Get metadata about inscription content without downloading the
@@ -2204,6 +2286,156 @@ paths:
       summary: Stream content
       tags:
       - ordfs
+  /ordlock/listing/{outpoint}:
+    get:
+      parameters:
+      - description: Outpoint (txid.vout)
+        in: path
+        name: outpoint
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            type: object
+        "404":
+          description: Not Found
+          schema:
+            properties:
+              message:
+                type: string
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            properties:
+              message:
+                type: string
+            type: object
+      summary: Get listing
+      tags:
+      - ordlock
+  /ordlock/listings:
+    get:
+      parameters:
+      - default: active
+        description: 'Listing status: active, sale, cancel'
+        in: query
+        name: status
+        type: string
+      - description: Content type filter
+        in: query
+        name: type
+        type: string
+      - description: Name search
+        in: query
+        name: q
+        type: string
+      - default: 20
+        description: Results limit
+        in: query
+        name: limit
+        type: integer
+      - description: Pagination score
+        in: query
+        name: from
+        type: number
+      - default: true
+        description: Reverse order
+        in: query
+        name: rev
+        type: boolean
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              type: object
+            type: array
+        "500":
+          description: Internal Server Error
+          schema:
+            properties:
+              message:
+                type: string
+            type: object
+      summary: Search listings
+      tags:
+      - ordlock
+  /ordlock/origin/{origin}:
+    get:
+      parameters:
+      - description: Origin (txid_vout)
+        in: path
+        name: origin
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            type: object
+        "404":
+          description: Not Found
+          schema:
+            properties:
+              message:
+                type: string
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            properties:
+              message:
+                type: string
+            type: object
+      summary: Get active listing by origin
+      tags:
+      - ordlock
+  /ordlock/origins:
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: Array of origins (txid_vout)
+        in: body
+        name: origins
+        required: true
+        schema:
+          items:
+            type: string
+          type: array
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Map of origin to listing
+          schema:
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            properties:
+              message:
+                type: string
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            properties:
+              message:
+                type: string
+            type: object
+      summary: Bulk lookup active listings by origin
+      tags:
+      - ordlock
   /overlay/admin/startGASPSync:
     post:
       description: Start GASP synchronization (requires admin bearer token)
@@ -2766,6 +2998,10 @@ paths:
         name: key
         required: true
         type: array
+      - description: 'Join type for multiple keys: union (default), intersect, difference'
+        in: query
+        name: join
+        type: string
       - description: Starting score for pagination
         in: query
         name: from

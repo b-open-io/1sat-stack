@@ -3,9 +3,12 @@ package lookup
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"fmt"
+	"strings"
 	"sync"
 
+	"github.com/b-open-io/1sat-stack/pkg/ordfs"
 	overlaystorage "github.com/b-open-io/1sat-stack/pkg/overlay/storage"
 	"github.com/b-open-io/1sat-stack/pkg/txo"
 	"github.com/b-open-io/1sat-stack/pkg/types"
@@ -32,18 +35,24 @@ CREATE TABLE IF NOT EXISTS listings (
     spend_score   REAL,
     score         REAL NOT NULL
 );
-CREATE INDEX IF NOT EXISTS idx_listings_active ON listings(content_type, score) WHERE spend_txid IS NULL;
-CREATE INDEX IF NOT EXISTS idx_listings_name ON listings(name COLLATE NOCASE) WHERE spend_txid IS NULL;
-CREATE INDEX IF NOT EXISTS idx_listings_sales ON listings(spend_type, spend_score) WHERE spend_txid IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_listings_search ON listings(spend_type, content_type, name COLLATE NOCASE, score);
+CREATE INDEX IF NOT EXISTS idx_listings_name ON listings(spend_type, name COLLATE NOCASE);
+CREATE INDEX IF NOT EXISTS idx_listings_origin ON listings(origin, spend_type);
+CREATE INDEX IF NOT EXISTS idx_listings_sales ON listings(spend_type, spend_score);
 `
 
 type OrdLockLookup struct {
 	topicDB overlaystorage.Factory
+	ordfs   *ordfs.Ordfs
 	ready   sync.Map
 }
 
 func NewOrdLockLookup(topicDB overlaystorage.Factory) *OrdLockLookup {
 	return &OrdLockLookup{topicDB: topicDB}
+}
+
+func (l *OrdLockLookup) SetOrdfs(o *ordfs.Ordfs) {
+	l.ordfs = o
 }
 
 func (l *OrdLockLookup) db(topic string) (overlaystorage.TopicStorage, error) {
@@ -95,16 +104,47 @@ func (l *OrdLockLookup) OutputAdmittedByTopic(ctx context.Context, payload *engi
 		if insc.Parent != nil {
 			origin = insc.Parent.OrdinalString()
 		}
+
+		if name == "" {
+			if nameField, ok := insc.Fields["name"]; ok {
+				name = string(nameField)
+			}
+		}
+	}
+
+	// For transferred ordinals without inscription data, resolve via ORDFS
+	if insc == nil && l.ordfs != nil {
+		seq := 0
+		resp, err := l.ordfs.Load(ctx, &ordfs.Request{
+			Outpoint: outpoint,
+			Seq:      &seq,
+			Content:  true,
+			Map:      true,
+		})
+		if err == nil && resp != nil {
+			if resp.Origin != nil {
+				origin = resp.Origin.OrdinalString()
+			}
+			if resp.ContentType != "" {
+				contentType = strings.Split(resp.ContentType, ";")[0]
+				contentType = strings.TrimSpace(contentType)
+			}
+			if contentType == "application/op-ns" && len(resp.Content) > 0 {
+				name = string(resp.Content)
+			}
+			if name == "" && resp.Map != nil {
+				var mapData map[string]string
+				if err := json.Unmarshal(resp.Map, &mapData); err == nil {
+					if n, ok := mapData["name"]; ok && n != "" {
+						name = n
+					}
+				}
+			}
+		}
 	}
 
 	if origin == "" {
 		origin = outpoint.OrdinalString()
-	}
-
-	if name == "" && insc != nil {
-		if nameField, ok := insc.Fields["name"]; ok {
-			name = string(nameField)
-		}
 	}
 
 	ts, err := l.db(payload.Topic)
@@ -186,14 +226,24 @@ func (l *OrdLockLookup) GetMetaData() *overlay.MetaData {
 	}
 }
 
-func (l *OrdLockLookup) SearchListings(ctx context.Context, topic, contentType, query string, limit int, from float64, rev bool) ([]*txo.IndexedOutput, error) {
+func (l *OrdLockLookup) SearchListings(ctx context.Context, topic, status, contentType, query string, limit int, from float64, rev bool) ([]*txo.IndexedOutput, error) {
 	ts, err := l.db(topic)
 	if err != nil {
 		return nil, err
 	}
 
-	q := `SELECT outpoint, origin, name, content_type, price, seller, spend_txid, spend_type, score FROM listings WHERE spend_txid IS NULL`
+	q := `SELECT outpoint, origin, name, content_type, price, seller, spend_txid, spend_type, score, spend_score FROM listings WHERE `
 	var args []any
+
+	scoreCol := "score"
+	switch status {
+	case "sale", "cancel":
+		q += "spend_type = ?"
+		args = append(args, status)
+		scoreCol = "spend_score"
+	default:
+		q += "spend_type IS NULL"
+	}
 
 	if contentType != "" {
 		q += " AND content_type = ?"
@@ -207,17 +257,17 @@ func (l *OrdLockLookup) SearchListings(ctx context.Context, topic, contentType, 
 
 	if from > 0 {
 		if rev {
-			q += " AND score < ?"
+			q += fmt.Sprintf(" AND %s < ?", scoreCol)
 		} else {
-			q += " AND score > ?"
+			q += fmt.Sprintf(" AND %s > ?", scoreCol)
 		}
 		args = append(args, from)
 	}
 
 	if rev {
-		q += " ORDER BY score DESC"
+		q += fmt.Sprintf(" ORDER BY %s DESC", scoreCol)
 	} else {
-		q += " ORDER BY score ASC"
+		q += fmt.Sprintf(" ORDER BY %s ASC", scoreCol)
 	}
 
 	if limit > 0 {
@@ -249,7 +299,7 @@ func (l *OrdLockLookup) GetListing(ctx context.Context, topic string, outpoint [
 	}
 
 	rows, err := ts.DB().QueryContext(ctx,
-		`SELECT outpoint, origin, name, content_type, price, seller, spend_txid, spend_type, score FROM listings WHERE outpoint = ?`,
+		`SELECT outpoint, origin, name, content_type, price, seller, spend_txid, spend_type, score, spend_score FROM listings WHERE outpoint = ?`,
 		outpoint,
 	)
 	if err != nil {
@@ -263,13 +313,76 @@ func (l *OrdLockLookup) GetListing(ctx context.Context, topic string, outpoint [
 	return scanListing(rows)
 }
 
+func (l *OrdLockLookup) GetListingByOrigin(ctx context.Context, topic, origin string) (*txo.IndexedOutput, error) {
+	ts, err := l.db(topic)
+	if err != nil {
+		return nil, err
+	}
+
+	rows, err := ts.DB().QueryContext(ctx,
+		`SELECT outpoint, origin, name, content_type, price, seller, spend_txid, spend_type, score, spend_score FROM listings WHERE origin = ? AND spend_type IS NULL`,
+		origin,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	if !rows.Next() {
+		return nil, sql.ErrNoRows
+	}
+	return scanListing(rows)
+}
+
+func (l *OrdLockLookup) GetListingsByOrigins(ctx context.Context, topic string, origins []string) (map[string]*txo.IndexedOutput, error) {
+	if len(origins) == 0 {
+		return nil, nil
+	}
+
+	ts, err := l.db(topic)
+	if err != nil {
+		return nil, err
+	}
+
+	placeholders := strings.Repeat("?,", len(origins))
+	placeholders = placeholders[:len(placeholders)-1]
+
+	args := make([]any, len(origins))
+	for i, o := range origins {
+		args[i] = o
+	}
+
+	rows, err := ts.DB().QueryContext(ctx,
+		fmt.Sprintf(`SELECT outpoint, origin, name, content_type, price, seller, spend_txid, spend_type, score, spend_score FROM listings WHERE origin IN (%s) AND spend_type IS NULL`, placeholders),
+		args...,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	results := make(map[string]*txo.IndexedOutput)
+	for rows.Next() {
+		out, err := scanListing(rows)
+		if err != nil {
+			return nil, err
+		}
+		if listing, ok := out.Data["ordlock"].(map[string]any); ok {
+			if origin, ok := listing["origin"].(string); ok {
+				results[origin] = out
+			}
+		}
+	}
+	return results, rows.Err()
+}
+
 func scanListing(rows *sql.Rows) (*txo.IndexedOutput, error) {
 	var opBytes, spendBytes []byte
 	var origin, name, contentType, seller, spendType sql.NullString
 	var price uint64
-	var score float64
+	var score, spendScore sql.NullFloat64
 
-	if err := rows.Scan(&opBytes, &origin, &name, &contentType, &price, &seller, &spendBytes, &spendType, &score); err != nil {
+	if err := rows.Scan(&opBytes, &origin, &name, &contentType, &price, &seller, &spendBytes, &spendType, &score, &spendScore); err != nil {
 		return nil, err
 	}
 
@@ -280,7 +393,7 @@ func scanListing(rows *sql.Rows) (*txo.IndexedOutput, error) {
 
 	out := &txo.IndexedOutput{
 		Outpoint: *outpoint,
-		Score:    score,
+		Score:    score.Float64,
 	}
 
 	if len(spendBytes) == 32 {
@@ -291,6 +404,9 @@ func scanListing(rows *sql.Rows) (*txo.IndexedOutput, error) {
 	listing := map[string]any{
 		"price":  price,
 		"seller": seller.String,
+	}
+	if spendScore.Valid {
+		listing["spend_score"] = spendScore.Float64
 	}
 	if origin.Valid {
 		listing["origin"] = origin.String

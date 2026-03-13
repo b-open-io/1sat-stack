@@ -77,7 +77,11 @@ func (tm *TopicManager) IdentifyNeededInputs(ctx context.Context, beef *transact
 
 	var inputs []*transaction.Outpoint
 	for _, txin := range tx.Inputs {
-		if txin.SourceTransaction == nil {
+		sourceOutput := txin.SourceTxOutput()
+		if sourceOutput == nil || sourceOutput.Satoshis != 1 {
+			continue
+		}
+		if ordlock.Decode(sourceOutput.LockingScript) != nil {
 			inputs = append(inputs, &transaction.Outpoint{
 				Txid:  *txin.SourceTXID,
 				Index: txin.SourceTxOutIndex,

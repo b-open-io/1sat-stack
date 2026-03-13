@@ -8,11 +8,16 @@ import (
 
 const TagP2PKH = "p2pkh"
 
-// ParseP2PKH parses a P2PKH locking script from the parse context.
-// Returns nil if the script is not a valid P2PKH.
+// ParseP2PKH extracts the owner from scripts with a P2PKH prefix.
+// For pure P2PKH scripts (exactly 25 bytes), also emits a p2pkh:{address} event.
+// For composite scripts with a P2PKH prefix, only populates the owner.
 func ParseP2PKH(ctx *ParseContext) (*ParseResult, error) {
-	scr := script.NewFromBytes(ctx.LockingScript)
-	addr := p2pkh.Decode(scr, true)
+	if len(ctx.LockingScript) < 25 {
+		return nil, nil
+	}
+
+	prefix := script.Script(ctx.LockingScript[:25])
+	addr := p2pkh.Decode(&prefix, true)
 	if addr == nil {
 		return nil, nil
 	}
@@ -22,16 +27,13 @@ func ParseP2PKH(ctx *ParseContext) (*ParseResult, error) {
 		return nil, nil
 	}
 
-	address := pkHash.Address()
 	result := &ParseResult{
 		Tag:    TagP2PKH,
-		Events: []string{},
 		Owners: []*types.PKHash{pkHash},
 	}
 
-	// Add p2pkh:{address} event only for pure P2PKH scripts (exactly 25 bytes)
 	if len(ctx.LockingScript) == 25 {
-		result.Events = append(result.Events, TagP2PKH+":"+address)
+		result.Events = []string{TagP2PKH + ":" + pkHash.Address()}
 	}
 
 	return result, nil

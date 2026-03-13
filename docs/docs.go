@@ -387,6 +387,88 @@ const docTemplate = `{
                 }
             }
         },
+        "/admin/setup": {
+            "post": {
+                "description": "Adds the authenticated identity as the first admin",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "admin"
+                ],
+                "summary": "Perform admin setup",
+                "responses": {
+                    "200": {
+                        "description": "success message",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "409": {
+                        "description": "Already configured",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/admin/status": {
+            "get": {
+                "description": "Returns whether any admin identities have been configured",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "admin"
+                ],
+                "summary": "Get setup status",
+                "responses": {
+                    "200": {
+                        "description": "configured status",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "boolean"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
         "/admin/topics/active": {
             "get": {
                 "security": [
@@ -1535,7 +1617,7 @@ const docTemplate = `{
         },
         "/bsv21/{tokenId}/outputs": {
             "post": {
-                "description": "Checks if specific outpoints exist in the token's overlay topic. Returns only those found. By default returns minimal data (outpoint + score). Use query params to load additional data.",
+                "description": "Checks if specific outpoints exist in the token's overlay. Returns only those found with BSV21 data.",
                 "consumes": [
                     "application/json"
                 ],
@@ -1565,47 +1647,6 @@ const docTemplate = `{
                                 "type": "string"
                             }
                         }
-                    },
-                    {
-                        "type": "boolean",
-                        "default": false,
-                        "description": "Filter for unspent outputs only",
-                        "name": "unspent",
-                        "in": "query"
-                    },
-                    {
-                        "type": "boolean",
-                        "default": false,
-                        "description": "Include spend txid",
-                        "name": "spend",
-                        "in": "query"
-                    },
-                    {
-                        "type": "boolean",
-                        "default": false,
-                        "description": "Include satoshis",
-                        "name": "sats",
-                        "in": "query"
-                    },
-                    {
-                        "type": "boolean",
-                        "default": false,
-                        "description": "Include events array",
-                        "name": "events",
-                        "in": "query"
-                    },
-                    {
-                        "type": "boolean",
-                        "default": false,
-                        "description": "Include block info",
-                        "name": "block",
-                        "in": "query"
-                    },
-                    {
-                        "type": "string",
-                        "description": "Comma-separated data tags to include (e.g., 'bsv21')",
-                        "name": "tags",
-                        "in": "query"
                     }
                 ],
                 "responses": {
@@ -1635,7 +1676,7 @@ const docTemplate = `{
         },
         "/bsv21/{tokenId}/outputs/{outpoint}": {
             "get": {
-                "description": "Checks if a specific outpoint exists in the token's overlay topic. Returns 404 if not found. By default returns minimal data (outpoint + score). Use query params to load additional data.",
+                "description": "Checks if a specific outpoint exists in the token's overlay. Returns 404 if not found.",
                 "produces": [
                     "application/json"
                 ],
@@ -1657,47 +1698,6 @@ const docTemplate = `{
                         "name": "outpoint",
                         "in": "path",
                         "required": true
-                    },
-                    {
-                        "type": "boolean",
-                        "default": false,
-                        "description": "Filter for unspent outputs only",
-                        "name": "unspent",
-                        "in": "query"
-                    },
-                    {
-                        "type": "boolean",
-                        "default": false,
-                        "description": "Include spend txid",
-                        "name": "spend",
-                        "in": "query"
-                    },
-                    {
-                        "type": "boolean",
-                        "default": false,
-                        "description": "Include satoshis",
-                        "name": "sats",
-                        "in": "query"
-                    },
-                    {
-                        "type": "boolean",
-                        "default": false,
-                        "description": "Include events array",
-                        "name": "events",
-                        "in": "query"
-                    },
-                    {
-                        "type": "boolean",
-                        "default": false,
-                        "description": "Include block info",
-                        "name": "block",
-                        "in": "query"
-                    },
-                    {
-                        "type": "string",
-                        "description": "Comma-separated data tags to include (e.g., 'bsv21')",
-                        "name": "tags",
-                        "in": "query"
                     }
                 ],
                 "responses": {
@@ -2427,6 +2427,128 @@ const docTemplate = `{
                 }
             }
         },
+        "/opns/origin/{name}": {
+            "get": {
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "opns"
+                ],
+                "summary": "Get domain origin outpoint",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Domain name",
+                        "name": "name",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "properties": {
+                                "name": {
+                                    "type": "string"
+                                },
+                                "outpoint": {
+                                    "type": "string"
+                                }
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "type": "object",
+                            "properties": {
+                                "error": {
+                                    "type": "string"
+                                }
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "type": "object",
+                            "properties": {
+                                "error": {
+                                    "type": "string"
+                                }
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "type": "object",
+                            "properties": {
+                                "error": {
+                                    "type": "string"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/ordfs/metadata": {
+            "post": {
+                "description": "Get metadata for multiple outpoints in a single request",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "ordfs"
+                ],
+                "summary": "Bulk metadata lookup",
+                "parameters": [
+                    {
+                        "description": "Outpoints to look up",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "type": "object"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Map of outpoint to metadata (null if not found)",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "400": {
+                        "description": "Bad request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
         "/ordfs/metadata/{path}": {
             "get": {
                 "description": "Get metadata about inscription content without downloading the content",
@@ -2585,6 +2707,238 @@ const docTemplate = `{
                             "type": "object",
                             "additionalProperties": {
                                 "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/ordlock/listing/{outpoint}": {
+            "get": {
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "ordlock"
+                ],
+                "summary": "Get listing",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Outpoint (txid.vout)",
+                        "name": "outpoint",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "type": "object",
+                            "properties": {
+                                "message": {
+                                    "type": "string"
+                                }
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "type": "object",
+                            "properties": {
+                                "message": {
+                                    "type": "string"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/ordlock/listings": {
+            "get": {
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "ordlock"
+                ],
+                "summary": "Search listings",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "default": "active",
+                        "description": "Listing status: active, sale, cancel",
+                        "name": "status",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Content type filter",
+                        "name": "type",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Name search",
+                        "name": "q",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "default": 20,
+                        "description": "Results limit",
+                        "name": "limit",
+                        "in": "query"
+                    },
+                    {
+                        "type": "number",
+                        "description": "Pagination score",
+                        "name": "from",
+                        "in": "query"
+                    },
+                    {
+                        "type": "boolean",
+                        "default": true,
+                        "description": "Reverse order",
+                        "name": "rev",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "type": "object"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "type": "object",
+                            "properties": {
+                                "message": {
+                                    "type": "string"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/ordlock/origin/{origin}": {
+            "get": {
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "ordlock"
+                ],
+                "summary": "Get active listing by origin",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Origin (txid_vout)",
+                        "name": "origin",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "type": "object",
+                            "properties": {
+                                "message": {
+                                    "type": "string"
+                                }
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "type": "object",
+                            "properties": {
+                                "message": {
+                                    "type": "string"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/ordlock/origins": {
+            "post": {
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "ordlock"
+                ],
+                "summary": "Bulk lookup active listings by origin",
+                "parameters": [
+                    {
+                        "description": "Array of origins (txid_vout)",
+                        "name": "origins",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Map of origin to listing",
+                        "schema": {
+                            "type": "object"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "type": "object",
+                            "properties": {
+                                "message": {
+                                    "type": "string"
+                                }
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "type": "object",
+                            "properties": {
+                                "message": {
+                                    "type": "string"
+                                }
                             }
                         }
                     }
@@ -3329,6 +3683,12 @@ const docTemplate = `{
                         "name": "key",
                         "in": "query",
                         "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Join type for multiple keys: union (default), intersect, difference",
+                        "name": "join",
+                        "in": "query"
                     },
                     {
                         "type": "number",
@@ -4255,6 +4615,9 @@ const docTemplate = `{
                         "type": "integer"
                     }
                 },
+                "status": {
+                    "type": "integer"
+                },
                 "timestamp": {
                     "type": "string"
                 },
@@ -4598,6 +4961,17 @@ const docTemplate = `{
                 }
             }
         },
+        "pkg_paymail.p2pMetadata": {
+            "type": "object",
+            "properties": {
+                "note": {
+                    "type": "string"
+                },
+                "sender": {
+                    "type": "string"
+                }
+            }
+        },
         "pkg_paymail.paymentDestinationRequest": {
             "type": "object",
             "properties": {
@@ -4613,7 +4987,7 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "metadata": {
-                    "type": "string"
+                    "$ref": "#/definitions/pkg_paymail.p2pMetadata"
                 },
                 "reference": {
                     "type": "string"
@@ -4627,7 +5001,7 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "metadata": {
-                    "type": "string"
+                    "$ref": "#/definitions/pkg_paymail.p2pMetadata"
                 },
                 "reference": {
                     "type": "string"

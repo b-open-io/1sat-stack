@@ -1,6 +1,6 @@
 # OrdLock Overlay
 
-Status: **In Progress**
+Status: **Complete**
 
 ## Summary
 
@@ -18,16 +18,19 @@ Add OrdLock marketplace overlay to 1sat-stack. Indexes listing creation (OrdLock
 - [x] GASP dependency resolution in OverlaySync (`resolve_dependencies` config flag) — uses BeefRemote + ProcessUTXOToCompletion for overlays with UTXO chains
 - [x] Config files updated (`config.yaml`, `config.example.yaml`) — ordlock section, tm_ordlock in topic_whitelist
 
-## Deploy Steps (Rack)
+## Deploy Steps (Rack) — Completed 2026-03-12
 
-1. Delete progress for the OrdLock subscription ID via admin API (`DELETE /admin/progress/{sub_id}`)
-2. Stop PM2 (`pm2 delete stack`)
-3. Pull code on rack
-4. Update PM2 config: move subscription ID to `ONESAT_ORDLOCK_SYNC_SUBSCRIPTION_ID`
-5. Build: `cd admin/ui && bun run build && cd ../.. && go build -o server ./cmd/server`
-6. Start: `pm2 start ~/Code/pm2/stack.config.js`
-
-Progress must be deleted before starting PM2 (or before stopping the old server via admin API), because the subscriber reads progress once at startup and never re-checks.
+1. Pushed `overlay-storage-isolation` branch to origin
+2. Stopped PM2 (`pm2 delete stack`)
+3. Pulled code on rack
+4. Updated PM2 config: moved subscription ID `9efa781...` from `ONESAT_INDEXER_SYNC_SUBSCRIPTION_IDS` to `ONESAT_ORDLOCK_SYNC_SUBSCRIPTION_ID`
+5. Added `ONESAT_AUTH_API_KEY` to PM2 config (for admin API access via `X-Api-Key` header)
+6. Added ordlock section to `config.yaml` on rack (mode: embedded, sync enabled, resolve_dependencies: true)
+7. Added `tm_ordlock` to overlay topic_whitelist in `config.yaml`
+8. Built admin UI and Go binary on rack
+9. Started PM2 from ecosystem file (`pm2 start ~/Code/pm2/stack.config.js`)
+10. Deleted progress via admin API (`DELETE /admin/api/progress/{sub_id}` with `X-Api-Key` header)
+11. Restarted PM2 to pick up cleared progress — OrdLock subscriber syncing from block 783968
 
 ## Architecture Notes
 
