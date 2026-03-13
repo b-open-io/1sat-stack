@@ -96,6 +96,7 @@ export async function performSetup(): Promise<{ message: string }> {
   return res.json();
 }
 
+
 export async function checkAccess(): Promise<{ status: string; admin?: boolean }> {
   const url = `${SETUP_BASE}/check`;
   let res: Response;
