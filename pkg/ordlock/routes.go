@@ -5,25 +5,22 @@ import (
 	"log/slog"
 	"strconv"
 
-	"github.com/b-open-io/1sat-stack/pkg/lookup"
 	"github.com/bsv-blockchain/go-sdk/transaction"
 	"github.com/gofiber/fiber/v2"
 )
 
 type Routes struct {
-	lookup *lookup.OrdLockLookup
-	topic  string
-	logger *slog.Logger
+	ordlock *OrdLock
+	logger  *slog.Logger
 }
 
-func NewRoutes(lookup *lookup.OrdLockLookup, topic string, logger *slog.Logger) *Routes {
+func NewRoutes(ordlock *OrdLock, logger *slog.Logger) *Routes {
 	if logger == nil {
 		logger = slog.Default()
 	}
 	return &Routes{
-		lookup: lookup,
-		topic:  topic,
-		logger: logger,
+		ordlock: ordlock,
+		logger:  logger,
 	}
 }
 
@@ -65,7 +62,7 @@ func (r *Routes) SearchListings(c *fiber.Ctx) error {
 		}
 	}
 
-	results, err := r.lookup.SearchListings(c.Context(), r.topic, status, contentType, q, limit, from, rev)
+	results, err := r.ordlock.SearchListings(c.Context(), status, contentType, q, limit, from, rev)
 	if err != nil {
 		r.logger.Error("failed to search listings", "error", err)
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
@@ -93,7 +90,7 @@ func (r *Routes) GetListingByOrigin(c *fiber.Ctx) error {
 			"message": "Invalid origin format",
 		})
 	}
-	result, err := r.lookup.GetListingByOrigin(c.Context(), r.topic, origin)
+	result, err := r.ordlock.GetListingByOrigin(c.Context(), origin)
 	if err != nil {
 		if err == sql.ErrNoRows {
 			return c.Status(fiber.StatusNotFound).JSON(fiber.Map{
@@ -138,7 +135,7 @@ func (r *Routes) GetListingsByOrigins(c *fiber.Ctx) error {
 		origins = append(origins, op)
 	}
 
-	results, err := r.lookup.GetListingsByOrigins(c.Context(), r.topic, origins)
+	results, err := r.ordlock.GetListingsByOrigins(c.Context(), origins)
 	if err != nil {
 		r.logger.Error("failed to bulk lookup listings", "error", err)
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
@@ -166,7 +163,7 @@ func (r *Routes) GetListing(c *fiber.Ctx) error {
 		})
 	}
 
-	result, err := r.lookup.GetListing(c.Context(), r.topic, op.Bytes())
+	result, err := r.ordlock.GetListing(c.Context(), op.Bytes())
 	if err != nil {
 		if err == sql.ErrNoRows {
 			return c.Status(fiber.StatusNotFound).JSON(fiber.Map{

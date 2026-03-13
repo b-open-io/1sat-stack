@@ -1,28 +1,26 @@
-package lookup
+package ordlock
 
 import (
 	"context"
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"strings"
-	"sync"
 
+	"github.com/b-open-io/1sat-stack/pkg/beef"
 	"github.com/b-open-io/1sat-stack/pkg/ordfs"
-	overlaystorage "github.com/b-open-io/1sat-stack/pkg/overlay/storage"
 	"github.com/b-open-io/1sat-stack/pkg/txo"
 	"github.com/b-open-io/1sat-stack/pkg/types"
 	"github.com/bitcoin-sv/go-templates/template/inscription"
 	"github.com/bitcoin-sv/go-templates/template/ordlock"
-	"github.com/bsv-blockchain/go-overlay-services/pkg/core/engine"
 	"github.com/bsv-blockchain/go-sdk/chainhash"
-	"github.com/bsv-blockchain/go-sdk/overlay"
-	"github.com/bsv-blockchain/go-sdk/overlay/lookup"
 	"github.com/bsv-blockchain/go-sdk/script"
 	"github.com/bsv-blockchain/go-sdk/transaction"
+	_ "github.com/mattn/go-sqlite3"
 )
 
-const ordlockSchema = `
+const schema = `
 CREATE TABLE IF NOT EXISTS listings (
     outpoint      BLOB PRIMARY KEY,
     origin        BLOB,
@@ -41,82 +39,162 @@ CREATE INDEX IF NOT EXISTS idx_listings_origin ON listings(origin, spend_type);
 CREATE INDEX IF NOT EXISTS idx_listings_sales ON listings(spend_type, spend_score);
 `
 
-type OrdLockLookup struct {
-	topicDB overlaystorage.Factory
-	ordfs   *ordfs.Ordfs
-	ready   sync.Map
+type OrdLock struct {
+	db          *sql.DB
+	beefStorage *beef.Storage
+	ordfs       *ordfs.Ordfs
+	logger      *slog.Logger
 }
 
-func NewOrdLockLookup(topicDB overlaystorage.Factory) *OrdLockLookup {
-	return &OrdLockLookup{topicDB: topicDB}
-}
-
-func (l *OrdLockLookup) SetOrdfs(o *ordfs.Ordfs) {
-	l.ordfs = o
-}
-
-func (l *OrdLockLookup) db(topic string) (overlaystorage.TopicStorage, error) {
-	ts, err := l.topicDB(topic)
-	if err != nil {
-		return nil, err
+func New(db *sql.DB, beefStorage *beef.Storage, logger *slog.Logger) (*OrdLock, error) {
+	if _, err := db.Exec(schema); err != nil {
+		return nil, fmt.Errorf("failed to create listings schema: %w", err)
 	}
-	if _, ok := l.ready.Load(topic); !ok {
-		if _, err := ts.DB().Exec(ordlockSchema); err != nil {
-			return nil, fmt.Errorf("failed to create listings schema for %s: %w", topic, err)
+	return &OrdLock{
+		db:          db,
+		beefStorage: beefStorage,
+		logger:      logger,
+	}, nil
+}
+
+func (o *OrdLock) SetOrdfs(ordfs *ordfs.Ordfs) {
+	o.ordfs = ordfs
+}
+
+func (o *OrdLock) Close() error {
+	return o.db.Close()
+}
+
+// Process handles a single txid from the queue. It loads the full BEEF,
+// scans outputs for new listings and inputs for spent listings, and upserts both.
+func (o *OrdLock) Process(ctx context.Context, member string, score float64) error {
+	if len(member) != 32 {
+		return fmt.Errorf("invalid txid length: expected 32, got %d", len(member))
+	}
+
+	txid := &chainhash.Hash{}
+	copy(txid[:], []byte(member))
+
+	tx, err := o.beefStorage.BuildFullBeefTx(ctx, txid)
+	if err != nil {
+		return fmt.Errorf("failed to build BEEF for %s: %w", txid.String(), err)
+	}
+
+	txScore := types.ScoreFromTx(tx, txid)
+
+	// Scan outputs for new listings
+	for vout, output := range tx.Outputs {
+		if output.Satoshis != 1 {
+			continue
 		}
-		l.ready.Store(topic, true)
+		outpoint := &transaction.Outpoint{Txid: *txid, Index: uint32(vout)}
+		ld := o.extractListingData(ctx, outpoint, output.LockingScript)
+		if ld == nil {
+			continue
+		}
+
+		if _, err := o.db.ExecContext(ctx,
+			`INSERT INTO listings (outpoint, origin, name, content_type, price, seller, score)
+			VALUES (?, ?, ?, ?, ?, ?, ?)
+			ON CONFLICT(outpoint) DO UPDATE SET
+				origin = excluded.origin,
+				name = excluded.name,
+				content_type = excluded.content_type,
+				price = excluded.price,
+				seller = excluded.seller,
+				score = excluded.score`,
+			outpoint.Bytes(), ld.origin.Bytes(), ld.name, ld.contentType, ld.price, ld.seller, txScore,
+		); err != nil {
+			return fmt.Errorf("failed to upsert listing %s: %w", outpoint.String(), err)
+		}
 	}
-	return ts, nil
+
+	// Scan inputs for spent listings
+	for _, txin := range tx.Inputs {
+		sourceOutput := txin.SourceTxOutput()
+		if sourceOutput == nil || sourceOutput.Satoshis != 1 {
+			continue
+		}
+
+		spentOutpoint := &transaction.Outpoint{
+			Txid:  *txin.SourceTXID,
+			Index: txin.SourceTxOutIndex,
+		}
+
+		ld := o.extractListingData(ctx, spentOutpoint, sourceOutput.LockingScript)
+		if ld == nil {
+			continue
+		}
+
+		spentTx := tx.Inputs[0].SourceTransaction
+		if txin.SourceTransaction != nil {
+			spentTx = txin.SourceTransaction
+		}
+		listingScore := types.ScoreFromTx(spentTx, txin.SourceTXID)
+
+		if _, err := o.db.ExecContext(ctx,
+			`INSERT INTO listings (outpoint, origin, name, content_type, price, seller, score, spend_txid, spend_type, spend_score)
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+			ON CONFLICT(outpoint) DO UPDATE SET
+				origin = excluded.origin,
+				name = excluded.name,
+				content_type = excluded.content_type,
+				price = excluded.price,
+				seller = excluded.seller,
+				spend_txid = excluded.spend_txid,
+				spend_type = excluded.spend_type,
+				spend_score = excluded.spend_score`,
+			spentOutpoint.Bytes(), ld.origin.Bytes(), ld.name, ld.contentType, ld.price, ld.seller, listingScore,
+			txid[:], classifySpend(txin.UnlockingScript), txScore,
+		); err != nil {
+			return fmt.Errorf("failed to upsert spend %s: %w", spentOutpoint.String(), err)
+		}
+	}
+
+	return nil
 }
 
-func (l *OrdLockLookup) OutputAdmittedByTopic(ctx context.Context, payload *engine.OutputAdmittedByTopic) error {
-	_, tx, txid, err := transaction.ParseBeef(payload.AtomicBEEF)
-	if err != nil {
-		return err
-	}
+type listingData struct {
+	origin      *transaction.Outpoint
+	name        string
+	contentType string
+	price       uint64
+	seller      string
+}
 
-	if int(payload.OutputIndex) >= len(tx.Outputs) {
-		return nil
-	}
-
-	output := tx.Outputs[int(payload.OutputIndex)]
-
-	lock := ordlock.Decode(output.LockingScript)
+func (o *OrdLock) extractListingData(ctx context.Context, outpoint *transaction.Outpoint, lockingScript *script.Script) *listingData {
+	lock := ordlock.Decode(lockingScript)
 	if lock == nil {
 		return nil
 	}
 
-	outpoint := &transaction.Outpoint{
-		Txid:  *txid,
-		Index: payload.OutputIndex,
+	ld := &listingData{
+		price:  lock.Price,
+		seller: lock.Seller.AddressString,
 	}
 
-	var contentType, name string
-	var origin *transaction.Outpoint
-
-	insc := inscription.Decode(output.LockingScript)
+	insc := inscription.Decode(lockingScript)
 	if insc != nil {
-		contentType = insc.File.Type
+		ld.contentType = insc.File.Type
 
-		if contentType == "application/op-ns" {
-			name = string(insc.File.Content)
+		if ld.contentType == "application/op-ns" {
+			ld.name = string(insc.File.Content)
 		}
 
 		if insc.Parent != nil {
-			origin = insc.Parent
+			ld.origin = insc.Parent
 		}
 
-		if name == "" {
+		if ld.name == "" {
 			if nameField, ok := insc.Fields["name"]; ok {
-				name = string(nameField)
+				ld.name = string(nameField)
 			}
 		}
 	}
 
-	// For transferred ordinals without inscription data, resolve via ORDFS
-	if insc == nil && l.ordfs != nil {
+	if insc == nil && o.ordfs != nil {
 		seq := 0
-		resp, err := l.ordfs.Load(ctx, &ordfs.Request{
+		resp, err := o.ordfs.Load(ctx, &ordfs.Request{
 			Outpoint: outpoint,
 			Seq:      &seq,
 			Content:  true,
@@ -124,60 +202,31 @@ func (l *OrdLockLookup) OutputAdmittedByTopic(ctx context.Context, payload *engi
 		})
 		if err == nil && resp != nil {
 			if resp.Origin != nil {
-				origin = resp.Origin
+				ld.origin = resp.Origin
 			}
 			if resp.ContentType != "" {
-				contentType = strings.Split(resp.ContentType, ";")[0]
-				contentType = strings.TrimSpace(contentType)
+				ld.contentType = strings.Split(resp.ContentType, ";")[0]
+				ld.contentType = strings.TrimSpace(ld.contentType)
 			}
-			if contentType == "application/op-ns" && len(resp.Content) > 0 {
-				name = string(resp.Content)
+			if ld.contentType == "application/op-ns" && len(resp.Content) > 0 {
+				ld.name = string(resp.Content)
 			}
-			if name == "" && resp.Map != nil {
+			if ld.name == "" && resp.Map != nil {
 				var mapData map[string]string
 				if err := json.Unmarshal(resp.Map, &mapData); err == nil {
 					if n, ok := mapData["name"]; ok && n != "" {
-						name = n
+						ld.name = n
 					}
 				}
 			}
 		}
 	}
 
-	if origin == nil {
-		origin = outpoint
+	if ld.origin == nil {
+		ld.origin = outpoint
 	}
 
-	ts, err := l.db(payload.Topic)
-	if err != nil {
-		return err
-	}
-
-	_, err = ts.DB().ExecContext(ctx,
-		`INSERT OR REPLACE INTO listings (outpoint, origin, name, content_type, price, seller, score) VALUES (?, ?, ?, ?, ?, ?, ?)`,
-		outpoint.Bytes(), origin.Bytes(), name, contentType, lock.Price, lock.Seller.AddressString, types.ScoreFromTx(tx, txid),
-	)
-	return err
-}
-
-func (l *OrdLockLookup) OutputSpent(ctx context.Context, payload *engine.OutputSpent) error {
-	_, tx, txid, err := transaction.ParseBeef(payload.SpendingAtomicBEEF)
-	if err != nil {
-		return err
-	}
-
-	spendType := classifySpend(payload.UnlockingScript)
-
-	ts, err := l.db(payload.Topic)
-	if err != nil {
-		return err
-	}
-
-	_, err = ts.DB().ExecContext(ctx,
-		`UPDATE listings SET spend_txid = ?, spend_type = ?, spend_score = ? WHERE outpoint = ?`,
-		txid[:], spendType, types.ScoreFromTx(tx, txid), payload.Outpoint.Bytes(),
-	)
-	return err
+	return ld
 }
 
 // classifySpend determines whether a spend is a sale or cancel by examining
@@ -201,38 +250,8 @@ func classifySpend(unlockingScript *script.Script) string {
 	}
 }
 
-func (l *OrdLockLookup) OutputNoLongerRetainedInHistory(ctx context.Context, outpoint *transaction.Outpoint, topic string) error {
-	return nil
-}
-
-func (l *OrdLockLookup) OutputEvicted(ctx context.Context, outpoint *transaction.Outpoint) error {
-	return nil
-}
-
-func (l *OrdLockLookup) OutputBlockHeightUpdated(ctx context.Context, txid *chainhash.Hash, blockHeight uint32, blockIndex uint64) error {
-	return nil
-}
-
-func (l *OrdLockLookup) Lookup(ctx context.Context, question *lookup.LookupQuestion) (*lookup.LookupAnswer, error) {
-	return nil, nil
-}
-
-func (l *OrdLockLookup) GetDocumentation() string {
-	return "OrdLock Lookup Service"
-}
-
-func (l *OrdLockLookup) GetMetaData() *overlay.MetaData {
-	return &overlay.MetaData{
-		Name: "OrdLock",
-	}
-}
-
-func (l *OrdLockLookup) SearchListings(ctx context.Context, topic, status, contentType, query string, limit int, from float64, rev bool) ([]*txo.IndexedOutput, error) {
-	ts, err := l.db(topic)
-	if err != nil {
-		return nil, err
-	}
-
+// SearchListings searches for listings with optional filters.
+func (o *OrdLock) SearchListings(ctx context.Context, status, contentType, query string, limit int, from float64, rev bool) ([]*txo.IndexedOutput, error) {
 	q := `SELECT outpoint, origin, name, content_type, price, seller, spend_txid, spend_type, score, spend_score FROM listings WHERE `
 	var args []any
 
@@ -276,7 +295,7 @@ func (l *OrdLockLookup) SearchListings(ctx context.Context, topic, status, conte
 		args = append(args, limit)
 	}
 
-	rows, err := ts.DB().QueryContext(ctx, q, args...)
+	rows, err := o.db.QueryContext(ctx, q, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -293,13 +312,8 @@ func (l *OrdLockLookup) SearchListings(ctx context.Context, topic, status, conte
 	return results, rows.Err()
 }
 
-func (l *OrdLockLookup) GetListing(ctx context.Context, topic string, outpoint []byte) (*txo.IndexedOutput, error) {
-	ts, err := l.db(topic)
-	if err != nil {
-		return nil, err
-	}
-
-	rows, err := ts.DB().QueryContext(ctx,
+func (o *OrdLock) GetListing(ctx context.Context, outpoint []byte) (*txo.IndexedOutput, error) {
+	rows, err := o.db.QueryContext(ctx,
 		`SELECT outpoint, origin, name, content_type, price, seller, spend_txid, spend_type, score, spend_score FROM listings WHERE outpoint = ?`,
 		outpoint,
 	)
@@ -314,13 +328,8 @@ func (l *OrdLockLookup) GetListing(ctx context.Context, topic string, outpoint [
 	return scanListing(rows)
 }
 
-func (l *OrdLockLookup) GetListingByOrigin(ctx context.Context, topic string, origin *transaction.Outpoint) (*txo.IndexedOutput, error) {
-	ts, err := l.db(topic)
-	if err != nil {
-		return nil, err
-	}
-
-	rows, err := ts.DB().QueryContext(ctx,
+func (o *OrdLock) GetListingByOrigin(ctx context.Context, origin *transaction.Outpoint) (*txo.IndexedOutput, error) {
+	rows, err := o.db.QueryContext(ctx,
 		`SELECT outpoint, origin, name, content_type, price, seller, spend_txid, spend_type, score, spend_score FROM listings WHERE origin = ? AND spend_type IS NULL`,
 		origin.Bytes(),
 	)
@@ -335,25 +344,20 @@ func (l *OrdLockLookup) GetListingByOrigin(ctx context.Context, topic string, or
 	return scanListing(rows)
 }
 
-func (l *OrdLockLookup) GetListingsByOrigins(ctx context.Context, topic string, origins []*transaction.Outpoint) (map[string]*txo.IndexedOutput, error) {
+func (o *OrdLock) GetListingsByOrigins(ctx context.Context, origins []*transaction.Outpoint) (map[string]*txo.IndexedOutput, error) {
 	if len(origins) == 0 {
 		return nil, nil
-	}
-
-	ts, err := l.db(topic)
-	if err != nil {
-		return nil, err
 	}
 
 	placeholders := strings.Repeat("?,", len(origins))
 	placeholders = placeholders[:len(placeholders)-1]
 
 	args := make([]any, len(origins))
-	for i, o := range origins {
-		args[i] = o.Bytes()
+	for i, op := range origins {
+		args[i] = op.Bytes()
 	}
 
-	rows, err := ts.DB().QueryContext(ctx,
+	rows, err := o.db.QueryContext(ctx,
 		fmt.Sprintf(`SELECT outpoint, origin, name, content_type, price, seller, spend_txid, spend_type, score, spend_score FROM listings WHERE origin IN (%s) AND spend_type IS NULL`, placeholders),
 		args...,
 	)
