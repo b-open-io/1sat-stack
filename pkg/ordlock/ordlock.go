@@ -67,13 +67,12 @@ func (o *OrdLock) Close() error {
 
 // Process handles a single txid from the queue. It loads the full BEEF,
 // scans outputs for new listings and inputs for spent listings, and upserts both.
+// The member may be a hex string (from event bridge) or raw 32 bytes (from JungleBus).
 func (o *OrdLock) Process(ctx context.Context, member string, score float64) error {
-	if len(member) != 32 {
-		return fmt.Errorf("invalid txid length: expected 32, got %d", len(member))
+	txid, err := chainhash.NewHashFromHex(member)
+	if err != nil {
+		return fmt.Errorf("invalid txid %q: %w", member, err)
 	}
-
-	txid := &chainhash.Hash{}
-	copy(txid[:], []byte(member))
 
 	tx, err := o.beefStorage.BuildFullBeefTx(ctx, txid)
 	if err != nil {
