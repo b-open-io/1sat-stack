@@ -6,3 +6,4 @@ stack
 .env.local
 config.yaml
 bin/
+.worktrees/
