@@ -42,6 +42,7 @@ var Parsers = map[string]ParserFunc{
 	TagOrdLock:     ParseOrdLock,
 	TagCosign:      ParseCosign,
 	TagShrug:       ParseShrug,
+	TagOPNS:        ParseOPNS,
 	TagBitcom:      ParseBitcom,
 	TagB:           ParseB,
 	TagMAP:         ParseMAP,
@@ -61,6 +62,7 @@ var DefaultTags = []string{
 	TagBSV21,       // BSV21 fungible tokens
 	TagOrdLock,     // Ordinal lock listings
 	TagCosign,      // Cosign protocol
+	TagOPNS,        // OpNS mine outputs
 	TagBitcom,      // Base bitcom parser (must come before B, MAP, etc.)
 	TagB,           // B:// protocol
 	TagMAP,         // MAP protocol
