@@ -13,6 +13,7 @@ import (
 )
 
 const TagOrigin = "origin"
+const maxEventValueLen = 256
 
 // ParseOrigin handles two responsibilities for 1-sat outputs:
 // 1. Owner extraction from composite scripts (P2PKH prefix on scripts > 25 bytes)
@@ -70,7 +71,7 @@ func ParseOrigin(ctx *ParseContext) (*ParseResult, error) {
 			if resp.Map != nil {
 				var mapData map[string]string
 				if err := json.Unmarshal(resp.Map, &mapData); err == nil {
-					if name, ok := mapData["name"]; ok && name != "" {
+					if name, ok := mapData["name"]; ok && name != "" && len(name) <= maxEventValueLen {
 						events = append(events, "name:"+name)
 					}
 				}

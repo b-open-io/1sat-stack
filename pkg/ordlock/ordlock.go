@@ -162,7 +162,7 @@ type listingData struct {
 
 func (o *OrdLock) extractListingData(ctx context.Context, outpoint *transaction.Outpoint, lockingScript *script.Script) *listingData {
 	lock := ordlock.Decode(lockingScript)
-	if lock == nil {
+	if lock == nil || lock.Price > 2_100_000_000_000_000 {
 		return nil
 	}
 

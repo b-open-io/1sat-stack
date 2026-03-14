@@ -17,6 +17,7 @@ import (
 )
 
 const topicName = "tm_opns"
+const maxEventValueLen = 256
 
 // LookupService implements the engine.LookupService interface for OpNS.
 type LookupService struct {
@@ -51,7 +52,7 @@ func (l *LookupService) OutputAdmittedByTopic(ctx context.Context, payload *engi
 		if err := l.db.SaveEvent(ctx, "mine:"+o.Domain, outpoint, score); err != nil {
 			return fmt.Errorf("failed to save mine event for %s: %w", o.Domain, err)
 		}
-	} else if insc := inscription.Decode(txOut.LockingScript); insc != nil && insc.File.Type == "application/op-ns" {
+	} else if insc := inscription.Decode(txOut.LockingScript); insc != nil && insc.File.Type == "application/op-ns" && len(insc.File.Content) <= maxEventValueLen {
 		if err := l.db.SaveEvent(ctx, "name:"+string(insc.File.Content), outpoint, score); err != nil {
 			return fmt.Errorf("failed to save name event for %s: %w", string(insc.File.Content), err)
 		}
