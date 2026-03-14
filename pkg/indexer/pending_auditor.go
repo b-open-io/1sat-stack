@@ -173,18 +173,17 @@ func (a *PendingAuditor) processImmutableCandidates(ctx context.Context, members
 			break
 		}
 
-		txidHex := string(m.Member)
+		txid, err := chainhash.NewHash(m.Member)
+		if err != nil {
+			a.logger.Error("invalid txid in pending set", "error", err)
+			continue
+		}
+		txidHex := txid.String()
 		wg.Add(1)
 		limiter <- struct{}{}
 
-		go func(txidHex string, score float64) {
+		go func(txid *chainhash.Hash, txidHex string, score float64) {
 			defer func() { <-limiter; wg.Done() }()
-
-			txid, err := chainhash.NewHashFromHex(txidHex)
-			if err != nil {
-				a.logger.Error("invalid txid in pending set", "txid", txidHex, "error", err)
-				return
-			}
 
 			// Load tx from BEEF to check its proof
 			tx, err := a.beefStorage.LoadTx(ctx, txid)
@@ -230,20 +229,20 @@ func (a *PendingAuditor) processImmutableCandidates(ctx context.Context, members
 
 			// Proof is valid and deep enough — promote to immutable
 			if err := a.outputStore.Store.ZAdd(ctx, txo.KeyLog(txo.ImmutableTxLog), store.ScoredMember{
-				Member: []byte(txidHex),
+				Member: txid[:],
 				Score:  score,
 			}); err != nil {
 				a.logger.Error("failed to add to immutable", "txid", txidHex, "error", err)
 				return
 			}
-			if err := a.outputStore.Store.ZRem(ctx, txo.KeyLog(txo.PendingTxLog), []byte(txidHex)); err != nil {
+			if err := a.outputStore.Store.ZRem(ctx, txo.KeyLog(txo.PendingTxLog), txid[:]); err != nil {
 				a.logger.Error("failed to remove from pending", "txid", txidHex, "error", err)
 			}
 
 			mu.Lock()
 			promoted++
 			mu.Unlock()
-		}(txidHex, m.Score)
+		}(txid, txidHex, m.Score)
 	}
 
 	wg.Wait()
@@ -262,19 +261,18 @@ func (a *PendingAuditor) processUnconfirmed(ctx context.Context, members []store
 			break
 		}
 
-		txidHex := string(m.Member)
+		txid, err := chainhash.NewHash(m.Member)
+		if err != nil {
+			a.logger.Error("invalid txid in pending set", "error", err)
+			continue
+		}
+		txidHex := txid.String()
 		score := m.Score
 		wg.Add(1)
 		limiter <- struct{}{}
 
-		go func(txidHex string, score float64) {
+		go func(txid *chainhash.Hash, txidHex string, score float64) {
 			defer func() { <-limiter; wg.Done() }()
-
-			txid, err := chainhash.NewHashFromHex(txidHex)
-			if err != nil {
-				a.logger.Error("invalid txid in pending set", "txid", txidHex, "error", err)
-				return
-			}
 
 			// Try Arcade first (opportunistic — 404 is not authoritative)
 			if a.arcadeService != nil {
@@ -329,9 +327,9 @@ func (a *PendingAuditor) processUnconfirmed(ctx context.Context, members []store
 					return
 				}
 				// Remove from pending, add to rollback log
-				a.outputStore.Store.ZRem(ctx, txo.KeyLog(txo.PendingTxLog), []byte(txidHex))
+				a.outputStore.Store.ZRem(ctx, txo.KeyLog(txo.PendingTxLog), txid[:])
 				a.outputStore.Store.ZAdd(ctx, txo.KeyLog(txo.RollbackTxLog), store.ScoredMember{
-					Member: []byte(txidHex),
+					Member: txid[:],
 					Score:  types.HeightScore(0, 0),
 				})
 				mu.Lock()
@@ -344,7 +342,7 @@ func (a *PendingAuditor) processUnconfirmed(ctx context.Context, members []store
 			mu.Lock()
 			stillPending++
 			mu.Unlock()
-		}(txidHex, score)
+		}(txid, txidHex, score)
 	}
 
 	wg.Wait()

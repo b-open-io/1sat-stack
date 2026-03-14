@@ -41,7 +41,7 @@ const ImmutabilityBlocks = 100
 
 // KeyLog builds ZSet key for log entries: {logName}
 // Used with OutputStore.Log() for tracking processed items
-// Members are typically binary txids (32 bytes), scores are HeightScore
+// Members are binary txids (32 bytes), scores are HeightScore
 func KeyLog(logName string) []byte {
 	return []byte(logName)
 }

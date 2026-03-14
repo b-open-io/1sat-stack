@@ -173,13 +173,13 @@ func (s *Service) handleMinedCallback(callback ArcCallback) {
 func (s *Service) handleRejectedCallback(callback ArcCallback) {
 	s.logger.Info("rolling back rejected tx", "txid", callback.TxID)
 
-	if s.overlayStorage != nil {
-		txid, err := chainhash.NewHashFromHex(callback.TxID)
-		if err != nil {
-			s.logger.Error("invalid txid", "txid", callback.TxID, "error", err)
-			return
-		}
+	txid, err := chainhash.NewHashFromHex(callback.TxID)
+	if err != nil {
+		s.logger.Error("invalid txid", "txid", callback.TxID, "error", err)
+		return
+	}
 
+	if s.overlayStorage != nil {
 		// Find and rollback from all topics
 		outputs, err := s.overlayStorage.FindOutputsForTransaction(s.ctx, txid, false)
 		if err != nil {
@@ -198,14 +198,14 @@ func (s *Service) handleRejectedCallback(callback ArcCallback) {
 
 	// Log to rollback set using properly scaled timestamp
 	if err := s.store.ZAdd(s.ctx, txo.KeyLog(txo.RollbackTxLog), store.ScoredMember{
-		Member: []byte(callback.TxID),
+		Member: txid[:],
 		Score:  types.HeightScore(0, 0),
 	}); err != nil {
 		s.logger.Error("failed to log rollback", "txid", callback.TxID, "error", err)
 	}
 
 	// Remove from pending
-	s.store.ZRem(s.ctx, txo.KeyLog(txo.PendingTxLog), []byte(callback.TxID))
+	s.store.ZRem(s.ctx, txo.KeyLog(txo.PendingTxLog), txid[:])
 }
 
 // SetChainTip updates the immutability threshold based on the current chain tip.
@@ -274,28 +274,28 @@ func (s *Service) ValidateAndUpdateTx(ctx context.Context, txid *chainhash.Hash,
 
 		// Move from pending to immutable
 		if err := s.store.ZAdd(ctx, txo.KeyLog(txo.ImmutableTxLog), store.ScoredMember{
-			Member: []byte(txid.String()),
+			Member: txid[:],
 			Score:  newScore,
 		}); err != nil {
 			return err
 		}
-		s.store.ZRem(ctx, txo.KeyLog(txo.PendingTxLog), []byte(txid.String()))
+		s.store.ZRem(ctx, txo.KeyLog(txo.PendingTxLog), txid[:])
 	}
 
 	return nil
 }
 
 // LogPending logs a transaction as pending confirmation.
-func (s *Service) LogPending(ctx context.Context, txid string, score float64) error {
+func (s *Service) LogPending(ctx context.Context, txid *chainhash.Hash, score float64) error {
 	return s.store.ZAdd(ctx, txo.KeyLog(txo.PendingTxLog), store.ScoredMember{
-		Member: []byte(txid),
+		Member: txid[:],
 		Score:  score,
 	})
 }
 
 // DequeuePending removes a transaction from the pending log.
-func (s *Service) DequeuePending(ctx context.Context, txid string) error {
-	return s.store.ZRem(ctx, txo.KeyLog(txo.PendingTxLog), []byte(txid))
+func (s *Service) DequeuePending(ctx context.Context, txid *chainhash.Hash) error {
+	return s.store.ZRem(ctx, txo.KeyLog(txo.PendingTxLog), txid[:])
 }
 
 // GetImmutableThreshold returns the current score threshold for immutability.

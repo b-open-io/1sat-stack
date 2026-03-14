@@ -84,7 +84,7 @@ func (l *LookupService) OutputAdmittedByTopic(ctx context.Context, payload *engi
 				FirstSeenTxid: txidStr,
 			}
 		} else {
-			id.CurrentAddress = aip.Address
+			id.CurrentAddress = bap.Address
 			id.Addresses = append(id.Addresses, Address{
 				Address: bap.Address,
 				Txid:    txidStr,

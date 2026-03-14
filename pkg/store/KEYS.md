@@ -66,12 +66,9 @@ func KeyTxidPrefix(txid) []byte                 // {txid} (32 bytes, for prefix 
 
 | Key Pattern | Member Type | Score | Purpose |
 |-------------|-------------|-------|---------|
-| `tx:pending` | hex string txid | HeightScore | Pending confirmation |
-| `tx:immutable` | hex string txid | HeightScore | Confirmed and archived |
-| `tx:rollback` | hex string txid | HeightScore | Rolled back transactions |
-
-> **TODO**: tx logs use hex string members instead of binary txids. Should be
-> migrated to binary chainhash format on next store clear for consistency.
+| `tx:pending` | binary txid (32 bytes) | HeightScore | Pending confirmation |
+| `tx:immutable` | binary txid (32 bytes) | HeightScore | Confirmed and archived |
+| `tx:rollback` | binary txid (32 bytes) | HeightScore | Rolled back transactions |
 
 ---
 

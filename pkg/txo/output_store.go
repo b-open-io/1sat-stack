@@ -266,7 +266,7 @@ func (s *OutputStore) SaveTransaction(ctx context.Context, tx *transaction.Trans
 
 	// Log to tx:pending — the audit process handles promotion to tx:immutable
 	if err := s.Store.ZAdd(ctx, KeyLog(PendingTxLog), store.ScoredMember{
-		Member: []byte(txidHex),
+		Member: txid[:],
 		Score:  score,
 	}); err != nil {
 		return err

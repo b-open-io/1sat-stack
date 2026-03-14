@@ -86,7 +86,7 @@ func (tm *TopicManager) IdentifyAdmissibleOutputs(ctx context.Context, beef *tra
 					BapType: string(bap.Type),
 					Message: "identity not found",
 				}
-			} else if id.CurrentAddress == aip.Address {
+			} else if id.CurrentAddress == aip.Address || id.RootAddress == aip.Address {
 				admit.OutputsToAdmit = append(admit.OutputsToAdmit, uint32(vout))
 			} else {
 				return admit, &BAPStateError{

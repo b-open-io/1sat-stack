@@ -333,34 +333,34 @@ func (h *StatusHandler) handleRejected(event ArcEvent) {
 	// Log to rollback set and remove from pending
 	if h.store != nil {
 		if err := h.store.ZAdd(h.ctx, txo.KeyLog(txo.RollbackTxLog), store.ScoredMember{
-			Member: []byte(event.TxID),
+			Member: txid[:],
 			Score:  types.HeightScore(0, 0),
 		}); err != nil {
 			h.logger.Error("failed to log rollback", "txid", event.TxID, "error", err)
 		}
-		h.store.ZRem(h.ctx, txo.KeyLog(txo.PendingTxLog), []byte(event.TxID))
+		h.store.ZRem(h.ctx, txo.KeyLog(txo.PendingTxLog), txid[:])
 	}
 
 	h.logger.Info("rolled back rejected tx", "txid", event.TxID, "outputs", len(outputs))
 }
 
 // LogPending logs a transaction as pending confirmation.
-func (h *StatusHandler) LogPending(ctx context.Context, txid string, score float64) error {
+func (h *StatusHandler) LogPending(ctx context.Context, txid *chainhash.Hash, score float64) error {
 	if h.store == nil {
 		return nil
 	}
 	return h.store.ZAdd(ctx, txo.KeyLog(txo.PendingTxLog), store.ScoredMember{
-		Member: []byte(txid),
+		Member: txid[:],
 		Score:  score,
 	})
 }
 
 // DequeuePending removes a transaction from the pending log.
-func (h *StatusHandler) DequeuePending(ctx context.Context, txid string) error {
+func (h *StatusHandler) DequeuePending(ctx context.Context, txid *chainhash.Hash) error {
 	if h.store == nil {
 		return nil
 	}
-	return h.store.ZRem(ctx, txo.KeyLog(txo.PendingTxLog), []byte(txid))
+	return h.store.ZRem(ctx, txo.KeyLog(txo.PendingTxLog), txid[:])
 }
 
 // GetImmutableThreshold returns the current score threshold for immutability.
