@@ -10,7 +10,7 @@ import (
 	"github.com/bsv-blockchain/go-sdk/transaction"
 )
 
-const MaxConcurrentRequests = 16
+const MaxConcurrentRequests = 8
 
 type JunglebusBeefStorage struct {
 	client  *junglebus.Client
