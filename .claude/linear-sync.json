@@ -1,0 +1,11 @@
+{
+  "workspace": "openprotocollabs",
+  "team": "OPL",
+  "team_id": "d7a8e5a8-67a8-4325-915a-5ec21357c5ca",
+  "project": "1Sat Indexer",
+  "project_id": "5cd53a19-600f-4db0-96c8-4a509351691b",
+  "label": "repo:1sat-stack",
+  "label_id": "d322a835-a71c-4e8d-94de-688082df6ab1",
+  "github_org": "b-open-io",
+  "issue_prefix": "OPL"
+}
