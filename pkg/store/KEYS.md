@@ -62,6 +62,17 @@ func KeyTxidPrefix(txid) []byte                 // {txid} (32 bytes, for prefix 
 | `q:{subscription}` | binary txid (32 bytes) | HeightScore | JungleBus subscription queue |
 | `q:tok:{tokenId}` | binary outpoint (36 bytes) | HeightScore | Per-token BSV21 queue |
 
+## Transaction Log Keys (Sorted Sets)
+
+| Key Pattern | Member Type | Score | Purpose |
+|-------------|-------------|-------|---------|
+| `tx:pending` | hex string txid | HeightScore | Pending confirmation |
+| `tx:immutable` | hex string txid | HeightScore | Confirmed and archived |
+| `tx:rollback` | hex string txid | HeightScore | Rolled back transactions |
+
+> **TODO**: tx logs use hex string members instead of binary txids. Should be
+> migrated to binary chainhash format on next store clear for consistency.
+
 ---
 
 ## Hash Keys

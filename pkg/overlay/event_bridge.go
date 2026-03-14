@@ -7,6 +7,7 @@ import (
 	"github.com/b-open-io/1sat-stack/pkg/pubsub"
 	"github.com/b-open-io/1sat-stack/pkg/store"
 	"github.com/b-open-io/1sat-stack/pkg/types"
+	"github.com/bsv-blockchain/go-sdk/chainhash"
 )
 
 type EventBridgeConfig struct {
@@ -56,8 +57,14 @@ func (eb *EventBridge) run(ctx context.Context, ch <-chan pubsub.Event) {
 			if queueKey == "" {
 				continue
 			}
+			txid, err := chainhash.NewHashFromHex(ev.Member)
+			if err != nil {
+				eb.logger.Error("failed to parse txid",
+					"queue", queueKey, "txid", ev.Member, "error", err)
+				continue
+			}
 			if err := eb.config.Store.ZAdd(ctx, []byte(queueKey), store.ScoredMember{
-				Member: []byte(ev.Member),
+				Member: txid[:],
 				Score:  types.HeightScore(0, 0),
 			}); err != nil {
 				eb.logger.Error("failed to enqueue txid",

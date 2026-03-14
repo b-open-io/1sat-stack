@@ -65,13 +65,12 @@ func (o *OrdLock) Close() error {
 	return o.db.Close()
 }
 
-// Process handles a single txid from the queue. It loads the full BEEF,
-// scans outputs for new listings and inputs for spent listings, and upserts both.
-// The member may be a hex string (from event bridge) or raw 32 bytes (from JungleBus).
+// Process handles a single txid from the queue. The member is a raw 32-byte
+// little-endian txid (chainhash format) matching the JungleBus subscriber convention.
 func (o *OrdLock) Process(ctx context.Context, member string, score float64) error {
-	txid, err := chainhash.NewHashFromHex(member)
+	txid, err := chainhash.NewHash([]byte(member))
 	if err != nil {
-		return fmt.Errorf("invalid txid %q: %w", member, err)
+		return fmt.Errorf("invalid txid (len=%d): %w", len(member), err)
 	}
 
 	tx, err := o.beefStorage.BuildFullBeefTx(ctx, txid)
