@@ -175,6 +175,10 @@ func (o *OrdLock) extractListingData(ctx context.Context, outpoint *transaction.
 	if insc != nil {
 		ld.contentType = insc.File.Type
 
+		if ld.contentType == "application/bsv-20" {
+			return nil
+		}
+
 		if ld.contentType == "application/op-ns" {
 			ld.name = string(insc.File.Content)
 		}
@@ -205,6 +209,9 @@ func (o *OrdLock) extractListingData(ctx context.Context, outpoint *transaction.
 			if resp.ContentType != "" {
 				ld.contentType = strings.Split(resp.ContentType, ";")[0]
 				ld.contentType = strings.TrimSpace(ld.contentType)
+			}
+			if ld.contentType == "application/bsv-20" {
+				return nil
 			}
 			if ld.contentType == "application/op-ns" && len(resp.Content) > 0 {
 				ld.name = string(resp.Content)
