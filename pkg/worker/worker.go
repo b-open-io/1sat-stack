@@ -83,7 +83,6 @@ func New(cfg *Config) *Worker {
 
 // Start begins processing the queue. Blocks until context is cancelled.
 func (w *Worker) Start(ctx context.Context) error {
-	w.logger.Info("worker starting", "key", w.key)
 	ctx, w.cancel = context.WithCancel(ctx)
 
 	inflight := make(map[string]struct{})
@@ -153,12 +152,9 @@ func (w *Worker) Start(ctx context.Context) error {
 			}
 
 			if len(items) == 0 {
-				w.logger.Info("queue empty", "key", w.key, "to", to)
 				time.Sleep(w.pollDelay)
 				continue
 			}
-			w.logger.Info("queue items found", "key", w.key, "count", len(items))
-
 			for _, item := range items {
 				id := string(item.Member)
 				lastScore = item.Score
