@@ -107,16 +107,35 @@ func (r *DataRoutes) handleDeleteKey(c *fiber.Ctx) error {
 		})
 	}
 
-	if err := r.store.Del(c.Context(), []byte(key)); err != nil {
-		r.logger.Error("failed to delete key", "key", key, "error", err)
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
-			"error": "failed to delete key",
-		})
+	keyBytes := []byte(key)
+
+	// Try deleting as a sorted set first (drain all members)
+	removed := int64(0)
+	for {
+		members, err := r.store.ZRange(c.Context(), keyBytes, store.ScoreRange{Count: 500})
+		if err != nil || len(members) == 0 {
+			break
+		}
+		batch := make([][]byte, len(members))
+		for i, m := range members {
+			batch[i] = m.Member
+		}
+		if err := r.store.ZRem(c.Context(), keyBytes, batch...); err != nil {
+			r.logger.Error("failed to remove zset members", "key", key, "error", err)
+			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+				"error": "failed to remove members",
+			})
+		}
+		removed += int64(len(batch))
 	}
 
-	r.logger.Info("deleted key", "key", key)
+	// Also delete the KV key in case it's a simple key
+	r.store.Del(c.Context(), keyBytes)
+
+	r.logger.Info("deleted key", "key", key, "removed", removed)
 	return c.JSON(fiber.Map{
 		"key":     key,
+		"removed": removed,
 		"deleted": true,
 	})
 }
