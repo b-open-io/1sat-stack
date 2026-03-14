@@ -10,31 +10,20 @@ import (
 	"github.com/bsv-blockchain/go-sdk/transaction"
 )
 
-const MaxConcurrentRequests = 8
-
 type JunglebusBeefStorage struct {
-	client  *junglebus.Client
-	limiter chan struct{}
+	client *junglebus.Client
 }
 
 // NewJunglebusBeefStorageWithClient creates a JungleBus storage using the provided client.
 func NewJunglebusBeefStorageWithClient(client *junglebus.Client) *JunglebusBeefStorage {
 	return &JunglebusBeefStorage{
-		client:  client,
-		limiter: make(chan struct{}, MaxConcurrentRequests),
+		client: client,
 	}
 }
 
 func (t *JunglebusBeefStorage) Get(ctx context.Context, txid *chainhash.Hash) ([]byte, error) {
 	if t.client == nil {
 		return nil, ErrNotFound
-	}
-
-	select {
-	case t.limiter <- struct{}{}:
-		defer func() { <-t.limiter }()
-	case <-ctx.Done():
-		return nil, ctx.Err()
 	}
 
 	beefBytes, err := t.client.GetBeef(ctx, txid.String())
@@ -67,13 +56,6 @@ func (t *JunglebusBeefStorage) GetRawTx(ctx context.Context, txid *chainhash.Has
 		return nil, ErrNotFound
 	}
 
-	select {
-	case t.limiter <- struct{}{}:
-		defer func() { <-t.limiter }()
-	case <-ctx.Done():
-		return nil, ctx.Err()
-	}
-
 	rawTx, err := t.client.GetRawTransaction(ctx, txid.String())
 	if err != nil {
 		if errors.Is(err, transports.ErrNotFound) {
@@ -88,13 +70,6 @@ func (t *JunglebusBeefStorage) GetRawTx(ctx context.Context, txid *chainhash.Has
 func (t *JunglebusBeefStorage) GetProof(ctx context.Context, txid *chainhash.Hash) ([]byte, error) {
 	if t.client == nil {
 		return nil, ErrNotFound
-	}
-
-	select {
-	case t.limiter <- struct{}{}:
-		defer func() { <-t.limiter }()
-	case <-ctx.Done():
-		return nil, ctx.Err()
 	}
 
 	proof, err := t.client.GetProof(ctx, txid.String())

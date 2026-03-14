@@ -147,8 +147,8 @@ github.com/aws/aws-sdk-go-v2/service/sts v1.41.7 h1:NITQpgo9A5NrDZ57uOWj+abvXSb8
 github.com/aws/aws-sdk-go-v2/service/sts v1.41.7/go.mod h1:sks5UWBhEuWYDPdwlnRFn1w7xWdH29Jcpe+/PJQefEs=
 github.com/aws/smithy-go v1.24.2 h1:FzA3bu/nt/vDvmnkg+R8Xl46gmzEDam6mZ1hzmwXFng=
 github.com/aws/smithy-go v1.24.2/go.mod h1:YE2RhdIuDbA5E5bTdciG9KrW3+TiEONeUWCqxX9i1Fc=
-github.com/b-open-io/go-junglebus v0.3.5-0.20260212191545-39c1c23d7559 h1:UFgDpr1gELL8IrIjwXiig4o1mVpULuPP87Or4oa1CwA=
-github.com/b-open-io/go-junglebus v0.3.5-0.20260212191545-39c1c23d7559/go.mod h1:q3fI4C61buifx+4TI4/Dhsnza9fKIWhOX1t69rKkFNY=
+github.com/b-open-io/go-junglebus v0.3.5-0.20260314045350-8a550a4ef3b9 h1:qpQQN6HefMIppB1BfaDb0OoNEsho+/XxUmVhnqMfu/g=
+github.com/b-open-io/go-junglebus v0.3.5-0.20260314045350-8a550a4ef3b9/go.mod h1:q3fI4C61buifx+4TI4/Dhsnza9fKIWhOX1t69rKkFNY=
 github.com/b-open-io/go-messagebox-server v0.0.0-20260312051123-8278abab80f8 h1:5T1FwSuKO1tR7prdetVMdYoqkbDompjf2IP8wtmX13A=
 github.com/b-open-io/go-messagebox-server v0.0.0-20260312051123-8278abab80f8/go.mod h1:0KeF7wkK+s2ZpefZB8eV2gD8rk1/+CAhIk5ArDTF6gA=
 github.com/b-open-io/go-sdk v1.1.25-0.20260306232724-34090fe4ae98 h1:/GB/8ucRr+hufM3aX7SanJRIoMYebCCxMpQglNzYa34=
