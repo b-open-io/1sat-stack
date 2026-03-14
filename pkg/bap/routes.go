@@ -26,6 +26,7 @@ func NewRoutes(lookup *LookupService, logger *slog.Logger) *Routes {
 // Register registers the BAP routes with the Fiber router.
 func (r *Routes) Register(router fiber.Router) {
 	router.Post("/identity/get", r.GetIdentity)
+	router.Post("/identity/validByAddress", r.ValidByAddress)
 	router.Get("/identity/search", r.SearchIdentities)
 	router.Get("/profile", r.ListProfiles)
 	router.Get("/profile/:bapId", r.GetProfileByBapId)
@@ -143,4 +144,68 @@ func (r *Routes) GetProfileByBapId(c *fiber.Ctx) error {
 	}
 
 	return c.JSON(identity.Profile)
+}
+
+// ValidByAddress checks if an address is currently valid for a BAP identity.
+// @Summary Check address validity for identity
+// @Tags bap
+// @Accept json
+// @Produce json
+// @Param request body ValidByAddressRequest true "Address and optional block height"
+// @Success 200 {object} ValidByAddressResponse
+// @Failure 400 {object} object{message=string}
+// @Failure 404 {object} object{message=string}
+// @Failure 500 {object} object{message=string}
+// @Router /bap/identity/validByAddress [post]
+func (r *Routes) ValidByAddress(c *fiber.Ctx) error {
+	var req ValidByAddressRequest
+	if err := c.BodyParser(&req); err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"message": "Invalid request body: " + err.Error(),
+		})
+	}
+
+	if req.Address == "" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"message": "Address is required",
+		})
+	}
+
+	identity, err := r.lookup.LoadIdentityByAddress(c.Context(), req.Address)
+	if err != nil {
+		r.logger.Error("failed to fetch identity by address", "error", err)
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"message": "Failed to fetch identity: " + err.Error(),
+		})
+	}
+
+	if identity == nil {
+		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{
+			"message": "Identity not found for address: " + req.Address,
+		})
+	}
+
+	var valid bool
+	var validBlock uint32
+
+	if req.Block > 0 {
+		for _, addr := range identity.Addresses {
+			if addr.Block <= req.Block {
+				valid = addr.Address == req.Address
+				validBlock = addr.Block
+			}
+		}
+	} else {
+		valid = req.Address == identity.CurrentAddress
+	}
+
+	resp := ValidByAddressResponse{
+		Identity:       *identity,
+		ValidityRecord: ValidityRecord{Valid: valid, Block: validBlock},
+	}
+	if valid {
+		resp.Profile = identity.Profile
+	}
+
+	return c.JSON(resp)
 }

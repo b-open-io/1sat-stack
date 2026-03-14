@@ -47,3 +47,19 @@ type Profile struct {
 	BapID string          `json:"_id"`
 	Data  json.RawMessage `json:"data"`
 }
+
+type ValidByAddressRequest struct {
+	Address string `json:"address"`
+	Block   uint32 `json:"block"`
+}
+
+type ValidityRecord struct {
+	Valid bool   `json:"valid"`
+	Block uint32 `json:"block"`
+}
+
+type ValidByAddressResponse struct {
+	Identity       Identity       `json:"identity"`
+	ValidityRecord ValidityRecord `json:"validityRecord"`
+	Profile        map[string]any `json:"profile,omitempty"`
+}
