@@ -152,9 +152,11 @@ func (w *Worker) Start(ctx context.Context) error {
 			}
 
 			if len(items) == 0 {
+				w.logger.Info("queue empty", "key", w.key, "to", to)
 				time.Sleep(w.pollDelay)
 				continue
 			}
+			w.logger.Info("queue items found", "key", w.key, "count", len(items))
 
 			for _, item := range items {
 				id := string(item.Member)
