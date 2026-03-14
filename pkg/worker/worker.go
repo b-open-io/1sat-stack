@@ -65,7 +65,6 @@ func New(cfg *Config) *Worker {
 		cfg.Logger = slog.Default()
 	}
 
-	// Add component tag with queue key for identification
 	logger := cfg.Logger.With("component", "worker", "queue", cfg.Key)
 
 	return &Worker{
@@ -98,6 +97,7 @@ func (w *Worker) Start(ctx context.Context) error {
 	processedCount := 0
 	statusTime := time.Now()
 	var lastScore float64
+	var pending []store.ScoredMember
 
 	for {
 		select {
@@ -107,7 +107,6 @@ func (w *Worker) Start(ctx context.Context) error {
 			return ctx.Err()
 
 		case <-ticker.C:
-			// Only log status if items were processed
 			if processedCount > 0 {
 				duration := time.Since(statusTime)
 				rate := float64(processedCount) / duration.Seconds()
@@ -136,66 +135,71 @@ func (w *Worker) Start(ctx context.Context) error {
 				"id", we.id,
 				"error", we.err,
 			)
+			inflightMu.Lock()
+			delete(inflight, we.id)
+			inflightMu.Unlock()
 
 		default:
-			// Fetch items up to current time using HeightScore scale
-			to := types.HeightScore(0, 0)
-			items, err := w.store.Search(ctx, &store.SearchCfg{
-				Keys:  [][]byte{[]byte(w.key)},
-				Limit: w.pageSize,
-				To:    &to,
-			})
-			if err != nil {
-				w.logger.Error("search error", "key", w.key, "error", err)
-				time.Sleep(w.pollDelay)
-				continue
-			}
-
-			if len(items) == 0 {
-				time.Sleep(w.pollDelay)
-				continue
-			}
-			for _, item := range items {
-				id := string(item.Member)
-				lastScore = item.Score
-
-				inflightMu.Lock()
-				if _, ok := inflight[id]; ok {
-					inflightMu.Unlock()
+			if len(pending) == 0 {
+				to := types.HeightScore(0, 0)
+				items, err := w.store.Search(ctx, &store.SearchCfg{
+					Keys:  [][]byte{[]byte(w.key)},
+					Limit: w.pageSize,
+					To:    &to,
+				})
+				if err != nil {
+					w.logger.Error("search error", "key", w.key, "error", err)
+					time.Sleep(w.pollDelay)
 					continue
 				}
-				inflight[id] = struct{}{}
-				inflightMu.Unlock()
-
-				w.limiter <- struct{}{}
-				w.wg.Add(1)
-
-				go func(id string, score float64) {
-					defer func() {
-						if r := recover(); r != nil {
-							w.logger.Error("worker panic",
-								"key", w.key,
-								"id", id,
-								"panic", r,
-								"stack", string(debug.Stack()),
-							)
-						}
-						<-w.limiter
-						w.wg.Done()
-						done <- id
-					}()
-
-					if err := w.handler(ctx, id, score); err != nil {
-						errChan <- workerError{id: id, score: score, err: err}
-						return
-					}
-
-					// Remove successfully processed item from queue
-					if err := w.store.ZRem(ctx, []byte(w.key), []byte(id)); err != nil {
-						w.logger.Error("failed to remove from queue", "key", w.key, "id", id, "error", err)
-					}
-				}(id, item.Score)
+				if len(items) == 0 {
+					time.Sleep(w.pollDelay)
+					continue
+				}
+				pending = items
 			}
+
+			item := pending[0]
+			pending = pending[1:]
+
+			id := string(item.Member)
+			lastScore = item.Score
+
+			inflightMu.Lock()
+			if _, ok := inflight[id]; ok {
+				inflightMu.Unlock()
+				continue
+			}
+			inflight[id] = struct{}{}
+			inflightMu.Unlock()
+
+			w.limiter <- struct{}{}
+			w.wg.Add(1)
+
+			go func(id string, score float64) {
+				defer func() {
+					if r := recover(); r != nil {
+						w.logger.Error("worker panic",
+							"key", w.key,
+							"id", id,
+							"panic", r,
+							"stack", string(debug.Stack()),
+						)
+					}
+					<-w.limiter
+					w.wg.Done()
+					done <- id
+				}()
+
+				if err := w.handler(ctx, id, score); err != nil {
+					errChan <- workerError{id: id, score: score, err: err}
+					return
+				}
+
+				if err := w.store.ZRem(ctx, []byte(w.key), []byte(id)); err != nil {
+					w.logger.Error("failed to remove from queue", "key", w.key, "id", id, "error", err)
+				}
+			}(id, item.Score)
 		}
 	}
 }
@@ -220,7 +224,6 @@ func (w *Worker) ProcessOnce(ctx context.Context) error {
 	var wg sync.WaitGroup
 
 	for {
-		// Fetch items up to current time using HeightScore scale
 		to := types.HeightScore(0, 0)
 		items, err := w.store.Search(ctx, &store.SearchCfg{
 			Keys:  [][]byte{[]byte(w.key)},
