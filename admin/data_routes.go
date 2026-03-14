@@ -52,6 +52,9 @@ func (r *DataRoutes) Register(group fiber.Router) {
 	zset.Get("/sum/:key", r.handleZSetSum)
 	zset.Delete("/rem/:key/:member", r.handleZSetRem)
 
+	// Key operations
+	group.Delete("/key/*", r.handleDeleteKey)
+
 	// Search
 	group.Post("/search", r.handleSearch)
 
@@ -92,6 +95,30 @@ func isPrintable(b []byte) bool {
 		}
 	}
 	return len(b) > 0
+}
+
+// Key handlers
+
+func (r *DataRoutes) handleDeleteKey(c *fiber.Ctx) error {
+	key := c.Params("*")
+	if key == "" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": "key is required",
+		})
+	}
+
+	if err := r.store.Del(c.Context(), []byte(key)); err != nil {
+		r.logger.Error("failed to delete key", "key", key, "error", err)
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"error": "failed to delete key",
+		})
+	}
+
+	r.logger.Info("deleted key", "key", key)
+	return c.JSON(fiber.Map{
+		"key":     key,
+		"deleted": true,
+	})
 }
 
 // KV handlers
