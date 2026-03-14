@@ -56,6 +56,7 @@ func (eb *EventBridge) run(ctx context.Context, ch <-chan pubsub.Event) {
 			if queueKey == "" {
 				continue
 			}
+			eb.logger.Info("bridging event", "topic", ev.Topic, "member", ev.Member, "queue", queueKey)
 			if err := eb.config.Store.ZAdd(ctx, []byte(queueKey), store.ScoredMember{
 				Member: []byte(ev.Member),
 				Score:  types.HeightScore(0, 0),
