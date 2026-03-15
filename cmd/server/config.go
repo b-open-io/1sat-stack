@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/hex"
 	"fmt"
 	"log/slog"
 	"os"
@@ -456,7 +457,7 @@ func (c *Config) Initialize(ctx context.Context, logger *slog.Logger) (*Services
 		}
 		// Create overlay P2P bus if enabled
 		if c.Overlay.P2P.Enabled && svc.Store != nil {
-			p2pBus, err := createOverlayP2PBus(c.Overlay.P2P, svc.Store.Store, logger)
+			p2pBus, err := createOverlayP2PBus(c.Overlay.P2P, c.Wallet.ServerPrivateKey, svc.Store.Store, logger)
 			if err != nil {
 				return nil, fmt.Errorf("failed to create overlay P2P bus: %w", err)
 			}
@@ -1596,10 +1597,25 @@ func LoadConfig(configPath string) (*Config, error) {
 }
 
 // createOverlayP2PBus creates the overlay P2P bus from configuration.
-func createOverlayP2PBus(cfg overlay.P2PConfig, s store.Store, logger *slog.Logger) (*overlay.P2PBus, error) {
-	privKey, err := loadOrGenerateP2PKey(cfg.StoragePath)
-	if err != nil {
-		return nil, fmt.Errorf("load P2P key: %w", err)
+// If walletKeyHex is provided, it's used as the libp2p identity (secp256k1).
+// This makes the peer ID encode the BRC-100 wallet's public key, enabling
+// BRC-42 payment derivation directly from peer IDs.
+func createOverlayP2PBus(cfg overlay.P2PConfig, walletKeyHex string, s store.Store, logger *slog.Logger) (*overlay.P2PBus, error) {
+	var privKey crypto.PrivKey
+	var err error
+
+	if walletKeyHex != "" {
+		privKey, err = secp256k1KeyFromHex(walletKeyHex)
+		if err != nil {
+			return nil, fmt.Errorf("parse wallet key for P2P identity: %w", err)
+		}
+		logger.Info("using wallet identity key for overlay P2P")
+	} else {
+		privKey, err = loadOrGenerateP2PKey(cfg.StoragePath)
+		if err != nil {
+			return nil, fmt.Errorf("load P2P key: %w", err)
+		}
+		logger.Warn("using generated key for overlay P2P (no wallet key configured)")
 	}
 
 	client, err := msgbus.NewClient(msgbus.Config{
@@ -1623,8 +1639,17 @@ func createOverlayP2PBus(cfg overlay.P2PConfig, s store.Store, logger *slog.Logg
 	return overlay.NewP2PBus(client, s, logger), nil
 }
 
+// secp256k1KeyFromHex converts a hex-encoded secp256k1 private key to a libp2p crypto.PrivKey.
+func secp256k1KeyFromHex(keyHex string) (crypto.PrivKey, error) {
+	keyBytes, err := hex.DecodeString(keyHex)
+	if err != nil {
+		return nil, fmt.Errorf("decode hex: %w", err)
+	}
+	return crypto.UnmarshalSecp256k1PrivateKey(keyBytes)
+}
+
 // loadOrGenerateP2PKey loads or generates a persistent P2P identity key.
-// Temporary — will be replaced by BRC-100 wallet identity key (OPL-1166).
+// Fallback when no wallet key is configured.
 func loadOrGenerateP2PKey(storagePath string) (crypto.PrivKey, error) {
 	dir := expandHome(storagePath)
 	if err := os.MkdirAll(dir, 0755); err != nil {
@@ -1642,12 +1667,12 @@ func loadOrGenerateP2PKey(storagePath string) (crypto.PrivKey, error) {
 		return nil, err
 	}
 
-	hex, err := msgbus.PrivateKeyToHex(privKey)
+	keyHex, err := msgbus.PrivateKeyToHex(privKey)
 	if err != nil {
 		return nil, err
 	}
 
-	if err := os.WriteFile(keyFile, []byte(hex), 0600); err != nil {
+	if err := os.WriteFile(keyFile, []byte(keyHex), 0600); err != nil {
 		return nil, err
 	}
 

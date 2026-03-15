@@ -231,6 +231,18 @@ overlay:
   # topic_blacklist: []     # Topics to block even if whitelisted
   routes:
     enabled: true
+  p2p:
+    enabled: false           # Enable overlay P2P broadcast via libp2p GossipSub
+    port: 9906               # libp2p listen port
+    dht_mode: "off"          # "server" for bootstrap nodes, "off" for clients
+    storage_path: "~/.1sat/overlay-p2p"
+    # bootstrap_peers:       # Multiaddr of bootstrap nodes to connect to
+    #   - "/dns4/bootstrap.example.com/tcp/9906/p2p/12D3KooW..."
+    #
+    # P2P identity is derived from wallet.server_private_key (secp256k1).
+    # This means the peer ID encodes the BRC-100 identity public key,
+    # enabling BRC-42 payment derivation directly from peer IDs.
+    # If wallet is disabled, a random key is generated in storage_path.
 
 # Owner sync - address-based output tracking
 owner:
