@@ -3,6 +3,7 @@
 | Plan | Status | Description |
 |------|--------|-------------|
 | [Market API & OPNS Validation](./market-api-opns-validation.md) | **In Progress** | Rename ordlock→market, origin BLOB fix, OPNS bulk validate, SDK clients |
+| [GASP Wire Protocol](./gasp-wire-protocol.md) | **Not Started** | Binary wire protocol for GASP over libp2p streams, with payment envelope |
 | [Event-Driven Overlay Routing](./event-driven-overlay-routing.md) | **Complete** | Deployed to rack — PubSub patterns, EventBridge, parser events, all overlay workers running |
 
 ## Completed Plans
