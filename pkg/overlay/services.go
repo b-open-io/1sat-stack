@@ -226,6 +226,12 @@ func (s *Services) Close() error {
 		s.DeactivateTopic(topicName)
 		return true
 	})
+	// Close overlay P2P bus
+	if s.P2P != nil {
+		if err := s.P2P.Close(); err != nil {
+			s.logger.Error("failed to close overlay P2P bus", "error", err)
+		}
+	}
 	return nil
 }
 

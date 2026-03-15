@@ -131,3 +131,8 @@ func (b *P2PBus) Subscribe(ctx context.Context, topicName string) context.Cancel
 	b.logger.Info("subscribed to overlay topic", "topic", topicName)
 	return cancel
 }
+
+// Close shuts down the underlying msgbus client.
+func (b *P2PBus) Close() error {
+	return b.client.Close()
+}
