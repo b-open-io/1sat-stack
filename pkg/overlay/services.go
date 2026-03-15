@@ -46,6 +46,7 @@ type Services struct {
 	Engine *engine.Engine
 	Routes *Routes
 	Store  store.Store // For DB remote config lookup
+	P2P    *P2PBus
 	logger *slog.Logger
 
 	// Per-topic storage factory
@@ -300,6 +301,11 @@ func (s *Services) ActivateTopic(ctx context.Context, topic *Topic) error {
 		}
 	}
 
+	// Subscribe to P2P topic if bus available
+	if s.P2P != nil {
+		topic.p2pUnsub = s.P2P.Subscribe(topicCtx, topic.Name)
+	}
+
 	// Track in registry
 	topic.active.Store(true)
 	s.topics.Store(topic.Name, topic)
@@ -308,6 +314,7 @@ func (s *Services) ActivateTopic(ctx context.Context, topic *Topic) error {
 		"topic", topic.Name,
 		"remotes", len(topic.Remotes),
 		"listeners", len(topic.Listeners),
+		"p2p", s.P2P != nil,
 	)
 
 	return nil
@@ -325,6 +332,11 @@ func (s *Services) DeactivateTopic(name string) error {
 	}
 
 	topic := value.(*Topic)
+
+	// Unsubscribe from P2P topic
+	if topic.p2pUnsub != nil {
+		topic.p2pUnsub()
+	}
 
 	// Cancel context (stops worker and listeners)
 	if topic.cancel != nil {

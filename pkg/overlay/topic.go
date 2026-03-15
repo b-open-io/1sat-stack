@@ -33,9 +33,10 @@ type Topic struct {
 	Listeners   []Listener           // External data sources (optional)
 
 	// Runtime state (internal)
-	worker *gasp.TopicWorker
-	cancel context.CancelFunc
-	active atomic.Bool
+	worker   *gasp.TopicWorker
+	cancel   context.CancelFunc
+	p2pUnsub context.CancelFunc
+	active   atomic.Bool
 }
 
 // IsActive returns true if the topic is currently activated.

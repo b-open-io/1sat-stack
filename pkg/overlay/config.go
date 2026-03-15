@@ -31,6 +31,7 @@ type Config struct {
 	TopicWhitelist []string     `mapstructure:"topic_whitelist"`
 	TopicBlacklist []string     `mapstructure:"topic_blacklist"`
 	Routes         RoutesConfig `mapstructure:"routes"`
+	P2P            P2PConfig    `mapstructure:"p2p"`
 }
 
 // RoutesConfig holds route configuration
@@ -50,6 +51,10 @@ func (c *Config) SetDefaults(v *viper.Viper, prefix string) {
 	v.SetDefault(prefix+".topic_blacklist", []string{})
 	v.SetDefault(prefix+".routes.enabled", true)
 	v.SetDefault(prefix+".routes.prefix", "/overlay")
+	v.SetDefault(prefix+".p2p.enabled", false)
+	v.SetDefault(prefix+".p2p.port", 9906)
+	v.SetDefault(prefix+".p2p.dht_mode", "off")
+	v.SetDefault(prefix+".p2p.storage_path", "~/.1sat/overlay-p2p")
 }
 
 // InitializeDeps holds dependencies required for overlay initialization
@@ -58,6 +63,7 @@ type InitializeDeps struct {
 	ChainTracker chaintracker.ChainTracker
 	Store        store.Store   // For remote config and queue operations
 	BeefStorage  *beef.Storage // For BEEF remote creation
+	P2PBus       *P2PBus       // For overlay P2P broadcast (optional)
 }
 
 // Initialize creates overlay services from configuration
@@ -111,6 +117,12 @@ func (c *Config) Initialize(ctx context.Context, logger *slog.Logger, deps *Init
 		ChainTracker:   deps.ChainTracker,
 	})
 	svc.Engine = eng
+
+	// Wire P2P bus if available
+	if deps.P2PBus != nil {
+		svc.P2P = deps.P2PBus
+		eng.OnAdmission = deps.P2PBus.OnAdmission
+	}
 
 	// Create routes if enabled
 	if c.Routes.Enabled {

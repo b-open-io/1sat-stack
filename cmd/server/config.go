@@ -38,8 +38,10 @@ import (
 	"github.com/bsv-blockchain/go-chaintracks/chaintracks"
 	chaintracksconfig "github.com/bsv-blockchain/go-chaintracks/config"
 	chaintracksroutes "github.com/bsv-blockchain/go-chaintracks/routes/fiber"
+	msgbus "github.com/bsv-blockchain/go-p2p-message-bus"
 	"github.com/bsv-blockchain/go-sdk/transaction"
 	p2p "github.com/bsv-blockchain/go-teranode-p2p-client"
+	"github.com/libp2p/go-libp2p/core/crypto"
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/middleware/adaptor"
 	"github.com/spf13/viper"
@@ -451,6 +453,14 @@ func (c *Config) Initialize(ctx context.Context, logger *slog.Logger) (*Services
 		}
 		if svc.Beef != nil {
 			overlayDeps.BeefStorage = svc.Beef.Storage
+		}
+		// Create overlay P2P bus if enabled
+		if c.Overlay.P2P.Enabled && svc.Store != nil {
+			p2pBus, err := createOverlayP2PBus(c.Overlay.P2P, svc.Store.Store, logger)
+			if err != nil {
+				return nil, fmt.Errorf("failed to create overlay P2P bus: %w", err)
+			}
+			overlayDeps.P2PBus = p2pBus
 		}
 		overlaySvc, err := c.Overlay.Initialize(ctx, logger, overlayDeps)
 		if err != nil {
@@ -1583,4 +1593,71 @@ func LoadConfig(configPath string) (*Config, error) {
 	}
 
 	return cfg, nil
+}
+
+// createOverlayP2PBus creates the overlay P2P bus from configuration.
+func createOverlayP2PBus(cfg overlay.P2PConfig, s store.Store, logger *slog.Logger) (*overlay.P2PBus, error) {
+	privKey, err := loadOrGenerateP2PKey(cfg.StoragePath)
+	if err != nil {
+		return nil, fmt.Errorf("load P2P key: %w", err)
+	}
+
+	client, err := msgbus.NewClient(msgbus.Config{
+		Name:           "1sat-overlay",
+		PrivateKey:     privKey,
+		Port:           cfg.Port,
+		DHTMode:        cfg.DHTMode,
+		BootstrapPeers: cfg.BootstrapPeers,
+		PeerCacheFile:  filepath.Join(expandHome(cfg.StoragePath), "peers.json"),
+	})
+	if err != nil {
+		return nil, fmt.Errorf("create msgbus client: %w", err)
+	}
+
+	logger.Info("overlay P2P bus started",
+		"port", cfg.Port,
+		"dht_mode", cfg.DHTMode,
+		"peer_id", client.GetID(),
+	)
+
+	return overlay.NewP2PBus(client, s, logger), nil
+}
+
+// loadOrGenerateP2PKey loads or generates a persistent P2P identity key.
+// Temporary — will be replaced by BRC-100 wallet identity key (OPL-1166).
+func loadOrGenerateP2PKey(storagePath string) (crypto.PrivKey, error) {
+	dir := expandHome(storagePath)
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		return nil, err
+	}
+
+	keyFile := filepath.Join(dir, "identity.key")
+	data, err := os.ReadFile(keyFile)
+	if err == nil {
+		return msgbus.PrivateKeyFromHex(string(data))
+	}
+
+	privKey, err := msgbus.GeneratePrivateKey()
+	if err != nil {
+		return nil, err
+	}
+
+	hex, err := msgbus.PrivateKeyToHex(privKey)
+	if err != nil {
+		return nil, err
+	}
+
+	if err := os.WriteFile(keyFile, []byte(hex), 0600); err != nil {
+		return nil, err
+	}
+
+	return privKey, nil
+}
+
+func expandHome(path string) string {
+	if strings.HasPrefix(path, "~/") {
+		home, _ := os.UserHomeDir()
+		return filepath.Join(home, path[2:])
+	}
+	return path
 }
