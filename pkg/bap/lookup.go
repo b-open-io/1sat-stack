@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 
+	"github.com/b-open-io/1sat-stack/pkg/types"
 	"github.com/bitcoin-sv/go-templates/template/bitcom"
 	"github.com/bsv-blockchain/go-overlay-services/pkg/core/engine"
 	"github.com/bsv-blockchain/go-sdk/chainhash"
@@ -23,7 +24,7 @@ func NewLookupService(store BAPStore) *LookupService {
 	return &LookupService{store: store}
 }
 
-// OutputAdmittedByTopic processes a newly admitted BAP output and updates identity/attestation state.
+// OutputAdmittedByTopic stores raw BAP facts. Authority is resolved at query time.
 func (l *LookupService) OutputAdmittedByTopic(ctx context.Context, payload *engine.OutputAdmittedByTopic) error {
 	_, tx, txid, err := transaction.ParseBeef(payload.AtomicBEEF)
 	if err != nil {
@@ -34,6 +35,8 @@ func (l *LookupService) OutputAdmittedByTopic(ctx context.Context, payload *engi
 	if bc == nil {
 		return nil
 	}
+
+	score := types.ScoreFromTx(tx, txid)
 	var height uint32
 	if tx.MerklePath != nil {
 		height = tx.MerklePath.BlockHeight
@@ -53,64 +56,57 @@ func (l *LookupService) OutputAdmittedByTopic(ctx context.Context, payload *engi
 	if aip == nil {
 		return nil
 	}
-	id, err := l.store.LoadIdentityByAddress(ctx, aip.Address)
-	if err != nil {
-		return err
-	}
 
 	txidStr := txid.String()
 
 	switch bap.Type {
 	case bitcom.ID:
+		id, err := l.store.LoadIdentityById(ctx, bap.IDKey)
+		if err != nil {
+			return err
+		}
 		if id == nil {
 			id = &Identity{
 				BapId:          bap.IDKey,
 				RootAddress:    aip.Address,
 				CurrentAddress: bap.Address,
-				Addresses: []Address{
-					{
-						Address: bap.Address,
-						Txid:    txidStr,
-						Block:   height,
-					},
-				},
-				FirstSeen:     height,
-				FirstSeenTxid: txidStr,
+				Addresses:      []Address{},
+				FirstSeen:      height,
+				FirstSeenTxid:  txidStr,
 			}
-		} else {
-			id.CurrentAddress = aip.Address
-			id.Addresses = append(id.Addresses, Address{
-				Address: bap.Address,
-				Txid:    txidStr,
-				Block:   height,
-			})
 		}
+		id.CurrentAddress = bap.Address
+		id.Addresses = append(id.Addresses, Address{
+			Address: bap.Address,
+			Signer:  aip.Address,
+			Txid:    txidStr,
+			Block:   height,
+			Score:   score,
+		})
 		if err := l.store.SaveIdentity(ctx, id); err != nil {
 			return err
 		}
+
 	case bitcom.ATTEST:
-		if id == nil {
-			return fmt.Errorf("identity not found for address %s", aip.Address)
-		}
 		signer := &Signer{
-			BapID:   id.BapId,
 			UrnHash: bap.IDKey,
 			Address: aip.Address,
 			Txid:    txidStr,
+			Block:   height,
+			Score:   score,
 			Revoked: false,
 		}
-		if err := l.store.SaveAttestation(ctx, signer.UrnHash, signer.BapID, signer); err != nil {
+		if err := l.store.SaveAttestation(ctx, signer); err != nil {
 			return err
 		}
+
 	case bitcom.REVOKE:
-		if err := l.store.RevokeAttestation(ctx, bap.IDKey, id.BapId); err != nil {
+		if err := l.store.RevokeAttestation(ctx, bap.IDKey, aip.Address); err != nil {
 			return err
 		}
+
 	case bitcom.ALIAS:
-		if id == nil {
-			return fmt.Errorf("identity not found for address %s", aip.Address)
-		}
-		if len(bap.Profile) > 0 && bap.IDKey == id.BapId {
+		if len(bap.Profile) > 0 {
 			p := map[string]any{}
 			if err := json.Unmarshal(bap.Profile, &p); err != nil {
 				return fmt.Errorf("failed to unmarshal profile: %w", err)
@@ -184,4 +180,49 @@ func (l *LookupService) LoadProfiles(ctx context.Context, limit, offset int) ([]
 // Search performs a text search across identities.
 func (l *LookupService) Search(ctx context.Context, query string, limit, offset int) ([]Identity, error) {
 	return l.store.Search(ctx, query, limit, offset)
+}
+
+// ResolveCurrentAddress walks the address chain ordered by score and validates
+// that each rotation was authorized by the previous key. Returns the latest
+// validated address and the validated chain.
+func ResolveCurrentAddress(identity *Identity) (currentAddr string, validChain []Address) {
+	if identity == nil || len(identity.Addresses) == 0 {
+		return "", nil
+	}
+
+	validChain = append(validChain, identity.Addresses[0])
+	currentAddr = identity.Addresses[0].Address
+
+	for i := 1; i < len(identity.Addresses); i++ {
+		addr := identity.Addresses[i]
+		if addr.Signer != currentAddr {
+			break
+		}
+		validChain = append(validChain, addr)
+		currentAddr = addr.Address
+	}
+
+	return currentAddr, validChain
+}
+
+// IsAuthorityAtScore checks whether the given address was the valid authority
+// for the identity at the specified score (block height + index).
+func IsAuthorityAtScore(identity *Identity, address string, atScore float64) bool {
+	if identity == nil || len(identity.Addresses) == 0 {
+		return false
+	}
+
+	currentAddr := identity.Addresses[0].Address
+	for i := 1; i < len(identity.Addresses); i++ {
+		addr := identity.Addresses[i]
+		if addr.Score > atScore {
+			break
+		}
+		if addr.Signer != currentAddr {
+			break
+		}
+		currentAddr = addr.Address
+	}
+
+	return address == currentAddr
 }

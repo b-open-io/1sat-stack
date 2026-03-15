@@ -11,10 +11,11 @@ var AddressIdentityKey = "add:id"
 var AttestationKey = "attestation"
 
 type Address struct {
-	Address   string `json:"address"`
-	Txid      string `json:"txId"`
-	Block     uint32 `json:"block"`
-	Timestamp uint32 `json:"-"`
+	Address string  `json:"address"`
+	Signer  string  `json:"-"`
+	Txid    string  `json:"txId"`
+	Block   uint32  `json:"block"`
+	Score   float64 `json:"-"`
 }
 
 type Identity struct {
@@ -28,14 +29,15 @@ type Identity struct {
 }
 
 type Signer struct {
-	UrnHash   string `json:"_"`
-	BapID     string `json:"idKey"`
-	Address   string `json:"signingAddress"`
-	Sequence  uint64 `json:"sequence"`
-	Block     uint32 `json:"block"`
-	Txid      string `json:"txId"`
-	Timestamp uint32 `json:"timestamp"`
-	Revoked   bool   `json:"revoked"`
+	UrnHash   string  `json:"_"`
+	BapID     string  `json:"idKey"`
+	Address   string  `json:"signingAddress"`
+	Sequence  uint64  `json:"sequence"`
+	Block     uint32  `json:"block"`
+	Score     float64 `json:"-"`
+	Txid      string  `json:"txId"`
+	Timestamp uint32  `json:"timestamp"`
+	Revoked   bool    `json:"revoked"`
 }
 
 type Attestation struct {

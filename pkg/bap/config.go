@@ -2,7 +2,6 @@ package bap
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"log/slog"
 
@@ -42,7 +41,7 @@ func (c *Config) SetDefaults(v *viper.Viper, prefix string) {
 	v.SetDefault(p+"sync.subscription_id", "")
 	v.SetDefault(p+"sync.queue_name", "bap")
 	v.SetDefault(p+"sync.from_block", 575000)
-	v.SetDefault(p+"sync.concurrency", 1) // Sequential - BAP validates against current identity owner state
+	v.SetDefault(p+"sync.concurrency", 8)
 	v.SetDefault(p+"sync.batch_size", 1000)
 	v.SetDefault(p+"sync.reorg_depth", 6)
 	v.SetDefault(p+"routes.enabled", true)
@@ -83,25 +82,11 @@ func (c *Config) Initialize(
 		store := NewSQLStore(ts.DB(), ts.TopicID())
 		lookupSvc := NewLookupService(store)
 
-		topicManager := &TopicManager{
-			Lookup: lookupSvc,
-		}
+		topicManager := &TopicManager{}
 
 		svc := &Services{
 			Lookup:       lookupSvc,
 			TopicManager: topicManager,
-		}
-
-		// BAP must process sequentially — identity state is order-dependent
-		if c.Sync != nil {
-			c.Sync.Concurrency = 1
-			c.Sync.ErrorClassifier = func(err error) overlay.ErrorAction {
-				var stateErr *BAPStateError
-				if errors.As(err, &stateErr) {
-					return overlay.ErrorSkip
-				}
-				return overlay.ErrorRetry
-			}
 		}
 
 		if c.Routes.Enabled {

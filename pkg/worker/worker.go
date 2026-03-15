@@ -192,6 +192,14 @@ func (w *Worker) Start(ctx context.Context) error {
 				}()
 
 				if err := w.handler(ctx, id, score); err != nil {
+					// Re-score 30s in the future so other items process immediately
+					retryScore := float64(time.Now().Add(30*time.Second).UnixNano()) / 1e9
+					if rerr := w.store.ZAdd(ctx, []byte(w.key), store.ScoredMember{
+						Member: []byte(id),
+						Score:  retryScore,
+					}); rerr != nil {
+						w.logger.Error("failed to re-score for retry", "key", w.key, "id", id, "error", rerr)
+					}
 					errChan <- workerError{id: id, score: score, err: err}
 					return
 				}

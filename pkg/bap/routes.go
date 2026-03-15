@@ -65,6 +65,10 @@ func (r *Routes) GetIdentity(c *fiber.Ctx) error {
 		})
 	}
 
+	currentAddr, validChain := ResolveCurrentAddress(id)
+	id.CurrentAddress = currentAddr
+	id.Addresses = validChain
+
 	return c.JSON(id)
 }
 
@@ -91,6 +95,12 @@ func (r *Routes) SearchIdentities(c *fiber.Ctx) error {
 		})
 	}
 
+	for i := range identities {
+		currentAddr, validChain := ResolveCurrentAddress(&identities[i])
+		identities[i].CurrentAddress = currentAddr
+		identities[i].Addresses = validChain
+	}
+
 	return c.JSON(identities)
 }
 
@@ -113,6 +123,12 @@ func (r *Routes) ListProfiles(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
 			"message": "Failed to fetch profiles: " + err.Error(),
 		})
+	}
+
+	for i := range profiles {
+		currentAddr, validChain := ResolveCurrentAddress(&profiles[i])
+		profiles[i].CurrentAddress = currentAddr
+		profiles[i].Addresses = validChain
 	}
 
 	return c.JSON(profiles)
@@ -142,6 +158,10 @@ func (r *Routes) GetProfileByBapId(c *fiber.Ctx) error {
 			"message": "Profile not found for BAP ID: " + bapId,
 		})
 	}
+
+	currentAddr, validChain := ResolveCurrentAddress(identity)
+	identity.CurrentAddress = currentAddr
+	identity.Addresses = validChain
 
 	return c.JSON(identity.Profile)
 }
@@ -185,18 +205,22 @@ func (r *Routes) ValidByAddress(c *fiber.Ctx) error {
 		})
 	}
 
+	currentAddr, validChain := ResolveCurrentAddress(identity)
+	identity.CurrentAddress = currentAddr
+	identity.Addresses = validChain
+
 	var valid bool
 	var validBlock uint32
 
 	if req.Block > 0 {
-		for _, addr := range identity.Addresses {
+		for _, addr := range validChain {
 			if addr.Block <= req.Block {
 				valid = addr.Address == req.Address
 				validBlock = addr.Block
 			}
 		}
 	} else {
-		valid = req.Address == identity.CurrentAddress
+		valid = req.Address == currentAddr
 	}
 
 	resp := ValidByAddressResponse{

@@ -208,9 +208,9 @@ func (s *SQLStore) SaveIdentity(ctx context.Context, identity *Identity) error {
 	for _, addr := range identity.Addresses {
 		aq := s.newQB()
 		insQuery := fmt.Sprintf(
-			`INSERT INTO bap_identity_addresses (%sbap_id, address, txid, block) VALUES (%s%s, %s, %s, %s)`,
+			`INSERT INTO bap_identity_addresses (%sbap_id, address, signer, txid, block, score) VALUES (%s%s, %s, %s, %s, %s, %s)`,
 			aq.topicCols(), aq.topicVals(),
-			aq.ph(identity.BapId), aq.ph(addr.Address), aq.ph(addr.Txid), aq.ph(addr.Block),
+			aq.ph(identity.BapId), aq.ph(addr.Address), aq.ph(addr.Signer), aq.ph(addr.Txid), aq.ph(addr.Block), aq.ph(addr.Score),
 		)
 		if _, err = tx.ExecContext(ctx, insQuery, aq.args...); err != nil {
 			return fmt.Errorf("failed to insert address %s for %s: %w", addr.Address, identity.BapId, err)
@@ -220,7 +220,7 @@ func (s *SQLStore) SaveIdentity(ctx context.Context, identity *Identity) error {
 	return tx.Commit()
 }
 
-func (s *SQLStore) SaveAttestation(ctx context.Context, urnHash, bapID string, signer *Signer) error {
+func (s *SQLStore) SaveAttestation(ctx context.Context, signer *Signer) error {
 	if err := s.ensureSchema(); err != nil {
 		return fmt.Errorf("failed to ensure schema: %w", err)
 	}
@@ -228,50 +228,47 @@ func (s *SQLStore) SaveAttestation(ctx context.Context, urnHash, bapID string, s
 	q := s.newQB()
 	var conflictTarget string
 	if s.topicID > 0 {
-		conflictTarget = "(topic_id, urn_hash, bap_id)"
+		conflictTarget = "(topic_id, urn_hash, signing_address)"
 	} else {
-		conflictTarget = "(urn_hash, bap_id)"
+		conflictTarget = "(urn_hash, signing_address)"
 	}
 
 	query := fmt.Sprintf(
-		`INSERT INTO bap_attestations (%surn_hash, bap_id, signing_address, sequence, block, txid, timestamp, revoked)
+		`INSERT INTO bap_attestations (%surn_hash, signing_address, sequence, block, score, txid, timestamp, revoked)
 		VALUES (%s%s, %s, %s, %s, %s, %s, %s, %s)
 		ON CONFLICT %s DO UPDATE SET
-			signing_address = excluded.signing_address,
 			sequence = excluded.sequence,
 			block = excluded.block,
+			score = excluded.score,
 			txid = excluded.txid,
 			timestamp = excluded.timestamp,
 			revoked = excluded.revoked`,
 		q.topicCols(), q.topicVals(),
-		q.ph(urnHash), q.ph(bapID), q.ph(signer.Address), q.ph(signer.Sequence),
-		q.ph(signer.Block), q.ph(signer.Txid), q.ph(signer.Timestamp), q.ph(signer.Revoked),
+		q.ph(signer.UrnHash), q.ph(signer.Address), q.ph(signer.Sequence),
+		q.ph(signer.Block), q.ph(signer.Score), q.ph(signer.Txid), q.ph(signer.Timestamp), q.ph(signer.Revoked),
 		conflictTarget,
 	)
 
 	if _, err := s.db.ExecContext(ctx, query, q.args...); err != nil {
-		return fmt.Errorf("failed to save attestation %s/%s: %w", urnHash, bapID, err)
+		return fmt.Errorf("failed to save attestation %s/%s: %w", signer.UrnHash, signer.Address, err)
 	}
 	return nil
 }
 
-func (s *SQLStore) RevokeAttestation(ctx context.Context, urnHash, bapID string) error {
+func (s *SQLStore) RevokeAttestation(ctx context.Context, urnHash, signingAddress string) error {
 	if err := s.ensureSchema(); err != nil {
 		return fmt.Errorf("failed to ensure schema: %w", err)
 	}
 
 	q := s.newQB()
 	revokedVal := 1
-	if s.topicID > 0 {
-		revokedVal = 1 // Postgres uses BOOLEAN but 1/true both work
-	}
 	query := fmt.Sprintf(
-		`UPDATE bap_attestations SET revoked = %s WHERE %surn_hash = %s AND bap_id = %s`,
-		q.ph(revokedVal), q.topicWhere(), q.ph(urnHash), q.ph(bapID),
+		`UPDATE bap_attestations SET revoked = %s WHERE %surn_hash = %s AND signing_address = %s`,
+		q.ph(revokedVal), q.topicWhere(), q.ph(urnHash), q.ph(signingAddress),
 	)
 
 	if _, err := s.db.ExecContext(ctx, query, q.args...); err != nil {
-		return fmt.Errorf("failed to revoke attestation %s/%s: %w", urnHash, bapID, err)
+		return fmt.Errorf("failed to revoke attestation %s/%s: %w", urnHash, signingAddress, err)
 	}
 	return nil
 }
@@ -426,7 +423,7 @@ func (s *SQLStore) topicJoinSuffix() string {
 func (s *SQLStore) loadAddresses(ctx context.Context, bapID string) ([]Address, error) {
 	q := s.newQB()
 	query := fmt.Sprintf(
-		`SELECT address, txid, block FROM bap_identity_addresses WHERE %sbap_id = %s ORDER BY block ASC`,
+		`SELECT address, signer, txid, block, score FROM bap_identity_addresses WHERE %sbap_id = %s ORDER BY score ASC`,
 		q.topicWhere(), q.ph(bapID),
 	)
 
@@ -439,7 +436,7 @@ func (s *SQLStore) loadAddresses(ctx context.Context, bapID string) ([]Address, 
 	var addresses []Address
 	for rows.Next() {
 		var addr Address
-		if err := rows.Scan(&addr.Address, &addr.Txid, &addr.Block); err != nil {
+		if err := rows.Scan(&addr.Address, &addr.Signer, &addr.Txid, &addr.Block, &addr.Score); err != nil {
 			return nil, fmt.Errorf("failed to scan address row: %w", err)
 		}
 		addresses = append(addresses, addr)
