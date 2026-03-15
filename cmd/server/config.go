@@ -498,8 +498,8 @@ func (c *Config) Initialize(ctx context.Context, logger *slog.Logger) (*Services
 		logger.Info("bsv21 initialized", "duration", time.Since(start).Round(time.Millisecond))
 	}
 
-	// Initialize MongoDB (shared by BAP and BSocial)
-	if c.MongoDB.URL != "" && (c.BAP.Mode != bap.ModeDisabled || c.BSocial.Mode != bsocial.ModeDisabled) {
+	// Initialize MongoDB (used by BSocial)
+	if c.MongoDB.URL != "" && c.BSocial.Mode != bsocial.ModeDisabled {
 		start = time.Now()
 		mongoClient, err := mongo.Connect(mongooptions.Client().ApplyURI(c.MongoDB.URL))
 		if err != nil {
