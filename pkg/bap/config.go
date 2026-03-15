@@ -7,8 +7,8 @@ import (
 	"log/slog"
 
 	"github.com/b-open-io/1sat-stack/pkg/overlay"
+	overlaystorage "github.com/b-open-io/1sat-stack/pkg/overlay/storage"
 	"github.com/spf13/viper"
-	"go.mongodb.org/mongo-driver/v2/mongo"
 )
 
 // Mode constants
@@ -19,9 +19,9 @@ const (
 
 // Config holds BAP configuration.
 type Config struct {
-	Mode   string                    `mapstructure:"mode"` // disabled, embedded
+	Mode   string                     `mapstructure:"mode"` // disabled, embedded
 	Sync   *overlay.OverlaySyncConfig `mapstructure:"sync"`
-	Routes RoutesConfig              `mapstructure:"routes"`
+	Routes RoutesConfig               `mapstructure:"routes"`
 }
 
 // RoutesConfig holds route configuration.
@@ -61,7 +61,7 @@ type Services struct {
 func (c *Config) Initialize(
 	ctx context.Context,
 	logger *slog.Logger,
-	db *mongo.Database,
+	topicDB overlaystorage.Factory,
 ) (*Services, error) {
 	if c.Mode == ModeDisabled {
 		return nil, nil
@@ -73,7 +73,15 @@ func (c *Config) Initialize(
 
 	switch c.Mode {
 	case ModeEmbedded:
-		lookupSvc := NewLookupService(db)
+		if topicDB == nil {
+			return nil, fmt.Errorf("overlay TopicDB factory is required for BAP")
+		}
+		ts, err := topicDB("tm_bap")
+		if err != nil {
+			return nil, fmt.Errorf("failed to get BAP topic storage: %w", err)
+		}
+		store := NewSQLStore(ts.DB(), ts.TopicID())
+		lookupSvc := NewLookupService(store)
 
 		topicManager := &TopicManager{
 			Lookup: lookupSvc,

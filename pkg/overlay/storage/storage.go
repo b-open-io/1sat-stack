@@ -57,6 +57,7 @@ type TopicStorage interface {
 
 	// --- Escape hatch for custom lookup schemas ---
 	DB() *sql.DB
+	TopicID() int
 
 	Close() error
 }

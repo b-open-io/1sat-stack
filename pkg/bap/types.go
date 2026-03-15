@@ -18,24 +18,24 @@ type Address struct {
 }
 
 type Identity struct {
-	BapId          string         `json:"idKey" bson:"_id"`
-	FirstSeen      uint32         `json:"firstSeen" bson:"firstSeen"`
-	FirstSeenTxid  string         `json:"_" bson:"firstSeenTxid"`
-	RootAddress    string         `json:"rootAddress" bson:"rootAddress"`
-	CurrentAddress string         `json:"currentAddress" bson:"currentAddress"`
-	Addresses      []Address      `json:"addresses" bson:"addresses"`
-	Profile        map[string]any `json:"identity,omitempty" bson:"profile"`
+	BapId          string         `json:"idKey"`
+	FirstSeen      uint32         `json:"firstSeen"`
+	FirstSeenTxid  string         `json:"_"`
+	RootAddress    string         `json:"rootAddress"`
+	CurrentAddress string         `json:"currentAddress"`
+	Addresses      []Address      `json:"addresses"`
+	Profile        map[string]any `json:"identity,omitempty"`
 }
 
 type Signer struct {
-	UrnHash   string `json:"_" bson:"urnHash"`
-	BapID     string `json:"idKey" bson:"idKey"`
-	Address   string `json:"signingAddress" bson:"signingAddress"`
-	Sequence  uint64 `json:"sequence" bson:"sequence"`
-	Block     uint32 `json:"block" bson:"block"`
-	Txid      string `json:"txId" bson:"txId"`
-	Timestamp uint32 `json:"timestamp" bson:"timestamp"`
-	Revoked   bool   `json:"revoked" bson:"revoked"`
+	UrnHash   string `json:"_"`
+	BapID     string `json:"idKey"`
+	Address   string `json:"signingAddress"`
+	Sequence  uint64 `json:"sequence"`
+	Block     uint32 `json:"block"`
+	Txid      string `json:"txId"`
+	Timestamp uint32 `json:"timestamp"`
+	Revoked   bool   `json:"revoked"`
 }
 
 type Attestation struct {

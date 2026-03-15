@@ -137,6 +137,10 @@ func (s *SQLiteStorage) DB() *sql.DB {
 	return s.writer
 }
 
+func (s *SQLiteStorage) TopicID() int {
+	return 0
+}
+
 func (s *SQLiteStorage) Close() error {
 	s.reader.Close()
 	return s.writer.Close()

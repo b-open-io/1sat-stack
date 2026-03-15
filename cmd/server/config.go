@@ -513,10 +513,9 @@ func (c *Config) Initialize(ctx context.Context, logger *slog.Logger) (*Services
 	}
 
 	// Initialize BAP
-	if c.BAP.Mode != bap.ModeDisabled && svc.MongoDB != nil {
+	if c.BAP.Mode != bap.ModeDisabled && svc.Overlay != nil {
 		start = time.Now()
-		bapDB := svc.MongoDB.Database("bap")
-		bapSvc, err := c.BAP.Initialize(ctx, logger, bapDB)
+		bapSvc, err := c.BAP.Initialize(ctx, logger, svc.Overlay.TopicDBFactory())
 		if err != nil {
 			return nil, fmt.Errorf("failed to initialize bap: %w", err)
 		}
