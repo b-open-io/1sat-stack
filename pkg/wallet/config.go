@@ -88,6 +88,8 @@ func (c *Config) ExpandDBPath() {
 			}
 			if tz := parsed.Query().Get("TimeZone"); tz != "" {
 				c.DB.PostgreSQL.TimeZone = tz
+			} else if c.DB.PostgreSQL.TimeZone == "" {
+				c.DB.PostgreSQL.TimeZone = "UTC"
 			}
 		}
 	}
