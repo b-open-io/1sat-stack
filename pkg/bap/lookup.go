@@ -7,6 +7,7 @@ import (
 
 	"github.com/b-open-io/1sat-stack/pkg/types"
 	"github.com/bitcoin-sv/go-templates/template/bitcom"
+	"github.com/bsv-blockchain/go-sdk/script"
 	"github.com/bsv-blockchain/go-overlay-services/pkg/core/engine"
 	"github.com/bsv-blockchain/go-sdk/chainhash"
 	"github.com/bsv-blockchain/go-sdk/overlay"
@@ -61,6 +62,9 @@ func (l *LookupService) OutputAdmittedByTopic(ctx context.Context, payload *engi
 
 	switch bap.Type {
 	case bitcom.ID:
+		if _, err := script.NewAddressFromString(bap.Address); err != nil {
+			return nil
+		}
 		id, err := l.store.LoadIdentityById(ctx, bap.IDKey)
 		if err != nil {
 			return err
