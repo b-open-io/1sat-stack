@@ -1,0 +1,175 @@
+network: main
+
+logging:
+  level: debug
+
+junglebus:
+  url: https://junglebus.gorillapool.io
+
+server:
+  port: 8080
+  host: 0.0.0.0
+  base_path: /1sat
+  body_limit: 100mb
+
+store:
+  mode: embedded
+  provider: badger
+  badger:
+    path: ~/.1sat-test/store
+    log_level: error
+
+pubsub:
+  mode: embedded
+  provider: channels
+  channels:
+    buffer_size: 100
+  routes:
+    enabled: true
+
+beef:
+  mode: embedded
+  chain:
+    - provider: lru
+      lru:
+        size: 100mb
+    - provider: redis
+      redis:
+        url: redis://localhost:6379/1
+        ttl: 8760h
+    - provider: junglebus
+  routes:
+    enabled: true
+
+txo:
+  mode: embedded
+  routes:
+    enabled: true
+
+indexer:
+  mode: embedded
+  verbose: true
+  tags:
+    - 1sat
+    - p2pkh
+    - lock
+    - inscription
+    - bsv21
+    - ordlock
+    - cosign
+    - origin
+  sync:
+    enabled: false
+    subscription_ids: []
+    queue_name: "ingest"
+    from_block: 783968
+    concurrency: 24
+    page_size: 100
+    poll_delay: 1s
+    batch_size: 500
+    reorg_depth: 6
+  arcade:
+    enabled: true
+    ingest: true
+  log_level: debug
+  routes:
+    enabled: true
+
+p2p:
+  mode: embedded
+  storage_path: ~/.1sat-test
+
+chaintracks:
+  mode: embedded
+  storage_path: ~/.1sat-test/chaintracks
+  bootstrap_url: https://mainnet.gorillanode.io/api/v1
+
+arcade:
+  mode: embedded
+  storage_path: ~/.1sat-test/arcade
+  log_level: debug
+  database:
+    type: sqlite
+    sqlite_path: ~/.1sat-test/arcade/arcade.db
+  events:
+    type: memory
+    buffer_size: 1000
+  teranode:
+    broadcast_urls:
+      - http://mainnet.gorillanode.io:8833
+    datahub_urls:
+      - https://teranode-eks-mainnet-eu-1.bsvb.tech/api/v1
+
+bsv21:
+  mode: embedded
+  sync:
+    enabled: false
+    subscription_id: ""
+    from_block: 783968
+    batch_size: 1000
+    dispatch_workers: 16
+    token_workers: 32
+    fee_per_output: 1000
+    lifecycle_interval: 5m
+  routes:
+    enabled: true
+
+bap:
+  mode: disabled
+
+bsocial:
+  mode: disabled
+
+opns:
+  mode: embedded
+  sync:
+    enabled: false
+    queue_name: "opns"
+    from_block: 800000
+    concurrency: 8
+  routes:
+    enabled: true
+    prefix: /opns
+
+overlay:
+  mode: embedded
+  topic_whitelist:
+    - tm_bsv21
+  routes:
+    enabled: true
+
+owner:
+  mode: embedded
+  log_level: debug
+  routes:
+    enabled: true
+
+wallet:
+  mode: embedded
+  server_private_key: "70e388904afd5a843d7d03b902d1c12a434da1b3cd1593ee6cdbd1c0ddf97b09"
+  fee_model:
+    type: "sat/kb"
+    value: 100
+  db:
+    engine: sqlite
+    sqlite:
+      connection_string: ~/.1sat-test/wallet.sqlite
+  routes:
+    enabled: true
+    prefix: /wallet
+
+ordfs:
+  enabled: true
+  redis:
+    url: redis://localhost:6379/0
+  routes:
+    enabled: true
+
+auth:
+  allow_unauthenticated: true
+
+admin:
+  mode: enabled
+  routes:
+    enabled: true
+    prefix: /admin
