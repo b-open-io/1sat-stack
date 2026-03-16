@@ -20,7 +20,15 @@ func (t *TxoSpendStorage) GetSpend(ctx context.Context, outpoint *transaction.Ou
 	return t.store.GetSpend(ctx, outpoint)
 }
 
+func (t *TxoSpendStorage) GetSpends(ctx context.Context, outpoints []*transaction.Outpoint) ([]*chainhash.Hash, error) {
+	return t.store.GetSpends(ctx, outpoints)
+}
+
 func (t *TxoSpendStorage) PutSpend(ctx context.Context, outpoint *transaction.Outpoint, spendTxid *chainhash.Hash) error {
+	return nil
+}
+
+func (t *TxoSpendStorage) DeleteSpend(ctx context.Context, outpoint *transaction.Outpoint) error {
 	return nil
 }
 

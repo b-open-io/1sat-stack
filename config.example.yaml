@@ -273,9 +273,9 @@ spends:
   chain:
     - provider: lru
       lru:
-        size: 100MB
-    - provider: txo
-    - provider: junglebus
+        size: 50mb
+    - provider: store      # persistent backend (Badger/Redis)
+    - provider: junglebus  # remote fallback
 
 # ORDFS - on-chain content serving (requires spends + beef services)
 ordfs:

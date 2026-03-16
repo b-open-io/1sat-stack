@@ -96,6 +96,41 @@ func (l *LRUSpendStorage) evictIfNeeded() {
 	}
 }
 
+func (l *LRUSpendStorage) GetSpends(ctx context.Context, outpoints []*transaction.Outpoint) ([]*chainhash.Hash, error) {
+	results := make([]*chainhash.Hash, len(outpoints))
+	for i, op := range outpoints {
+		if op == nil {
+			continue
+		}
+		spend, err := l.GetSpend(ctx, op)
+		if err != nil {
+			return nil, err
+		}
+		results[i] = spend
+	}
+	return results, nil
+}
+
+func (l *LRUSpendStorage) DeleteSpend(ctx context.Context, outpoint *transaction.Outpoint) error {
+	key := outpointKey(outpoint)
+
+	l.mu.Lock()
+	defer l.mu.Unlock()
+
+	if _, found := l.cache[key]; !found {
+		return nil
+	}
+
+	if elem, exists := l.lruIndex[key]; exists {
+		l.lru.Remove(elem)
+		delete(l.lruIndex, key)
+	}
+	delete(l.cache, key)
+	l.currentSize.Add(-entrySize)
+
+	return nil
+}
+
 func (l *LRUSpendStorage) Close() error {
 	l.mu.Lock()
 	defer l.mu.Unlock()

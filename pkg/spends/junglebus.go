@@ -34,7 +34,26 @@ func (j *JunglebusSpendStorage) GetSpend(ctx context.Context, outpoint *transact
 	return txid, nil
 }
 
+func (j *JunglebusSpendStorage) GetSpends(ctx context.Context, outpoints []*transaction.Outpoint) ([]*chainhash.Hash, error) {
+	results := make([]*chainhash.Hash, len(outpoints))
+	for i, op := range outpoints {
+		if op == nil {
+			continue
+		}
+		spend, err := j.GetSpend(ctx, op)
+		if err != nil {
+			return nil, err
+		}
+		results[i] = spend
+	}
+	return results, nil
+}
+
 func (j *JunglebusSpendStorage) PutSpend(ctx context.Context, outpoint *transaction.Outpoint, spendTxid *chainhash.Hash) error {
+	return nil
+}
+
+func (j *JunglebusSpendStorage) DeleteSpend(ctx context.Context, outpoint *transaction.Outpoint) error {
 	return nil
 }
 

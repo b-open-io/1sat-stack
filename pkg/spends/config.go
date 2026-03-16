@@ -6,6 +6,7 @@ import (
 	"log/slog"
 
 	"github.com/b-open-io/1sat-stack/pkg/beef"
+	"github.com/b-open-io/1sat-stack/pkg/store"
 	"github.com/b-open-io/1sat-stack/pkg/txo"
 	"github.com/b-open-io/go-junglebus"
 	"github.com/spf13/viper"
@@ -19,6 +20,7 @@ const (
 const (
 	ProviderLRU       = "lru"
 	ProviderTxo       = "txo"
+	ProviderStore     = "store"
 	ProviderJungleBus = "junglebus"
 )
 
@@ -58,6 +60,7 @@ func (c *Config) SetDefaults(v *viper.Viper, prefix string) {
 func (c *Config) Initialize(
 	ctx context.Context,
 	logger *slog.Logger,
+	s store.Store,
 	outputStore *txo.OutputStore,
 	jbClient *junglebus.Client,
 ) (*Services, error) {
@@ -71,7 +74,7 @@ func (c *Config) Initialize(
 
 	switch c.Mode {
 	case ModeEmbedded:
-		return c.initializeEmbedded(logger, outputStore, jbClient)
+		return c.initializeEmbedded(logger, s, outputStore, jbClient)
 	default:
 		return nil, fmt.Errorf("unknown spends mode: %s", c.Mode)
 	}
@@ -79,18 +82,21 @@ func (c *Config) Initialize(
 
 func (c *Config) initializeEmbedded(
 	logger *slog.Logger,
+	s store.Store,
 	outputStore *txo.OutputStore,
 	jbClient *junglebus.Client,
 ) (*Services, error) {
 	var storages []BaseSpendStorage
 
 	if len(c.Chain) == 0 {
-		if outputStore != nil {
+		if s != nil {
+			storages = append(storages, NewStoreSpendStorage(s))
+		} else if outputStore != nil {
 			storages = append(storages, NewTxoSpendStorage(outputStore))
 		}
 	} else {
 		for i, chainItem := range c.Chain {
-			storage, err := createStorageFromConfig(chainItem, outputStore, jbClient)
+			storage, err := createStorageFromConfig(chainItem, s, outputStore, jbClient)
 			if err != nil {
 				return nil, fmt.Errorf("failed to create storage at chain index %d: %w", i, err)
 			}
@@ -111,6 +117,7 @@ func (c *Config) initializeEmbedded(
 
 func createStorageFromConfig(
 	cfg ChainConfig,
+	s store.Store,
 	outputStore *txo.OutputStore,
 	jbClient *junglebus.Client,
 ) (BaseSpendStorage, error) {
@@ -124,6 +131,12 @@ func createStorageFromConfig(
 			return nil, fmt.Errorf("invalid LRU size %q: %w", cfg.LRU.Size, err)
 		}
 		return NewLRUSpendStorage(size), nil
+
+	case ProviderStore:
+		if s == nil {
+			return nil, nil
+		}
+		return NewStoreSpendStorage(s), nil
 
 	case ProviderTxo:
 		if outputStore == nil {
