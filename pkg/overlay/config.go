@@ -110,7 +110,7 @@ func (c *Config) Initialize(ctx context.Context, logger *slog.Logger, deps *Init
 	}
 
 	// Create the overlay engine
-	eng := engine.NewEngine(&engine.EngineConfig{
+	eng := engine.NewEngine(&engine.Config{
 		Managers:       make(map[string]engine.TopicManager),
 		LookupServices: make(map[string]engine.LookupService),
 		Storage:        adapter,

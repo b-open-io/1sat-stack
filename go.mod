@@ -6,8 +6,6 @@ replace github.com/bsv-blockchain/go-teranode-p2p-client => github.com/shruggr/g
 
 replace github.com/bsv-blockchain/teranode => github.com/bsv-blockchain/teranode v0.13.0-beta-3.0.20251211185306-7879a2f59199
 
-replace github.com/bsv-blockchain/go-overlay-services => github.com/bsv-blockchain/go-overlay-services v1.2.5-0.20260315062832-db49b71923c6
-
 replace github.com/bsv-blockchain/go-p2p-message-bus => github.com/b-open-io/go-p2p-message-bus v0.1.13-0.20260315040258-dc457ad243c2
 
 replace github.com/bitcoin-sv/go-templates => github.com/b-open-io/go-templates v0.0.0-20260302230614-be91c94f1d27
@@ -30,7 +28,7 @@ require (
 	github.com/bsv-blockchain/go-bsv-middleware v0.12.4
 	github.com/bsv-blockchain/go-chaintracks v1.1.2
 	github.com/bsv-blockchain/go-messagebox-server v0.0.0-00010101000000-000000000000
-	github.com/bsv-blockchain/go-overlay-services v1.2.3-0.20260212235430-f647e9bb2e9d
+	github.com/bsv-blockchain/go-overlay-services v1.2.5-0.20260316202442-c3d7bc12b09f
 	github.com/bsv-blockchain/go-p2p-message-bus v0.1.11
 	github.com/bsv-blockchain/go-sdk v1.2.19
 	github.com/bsv-blockchain/go-teranode-p2p-client v0.1.1
