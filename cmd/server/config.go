@@ -28,6 +28,7 @@ import (
 	"github.com/b-open-io/1sat-stack/pkg/messagebox"
 	"github.com/b-open-io/1sat-stack/pkg/paymail"
 	"github.com/b-open-io/1sat-stack/pkg/pubsub"
+	"github.com/b-open-io/1sat-stack/pkg/spends"
 	"github.com/b-open-io/1sat-stack/pkg/store"
 	"github.com/b-open-io/1sat-stack/pkg/txo"
 	"github.com/b-open-io/1sat-stack/pkg/wallet"
@@ -101,6 +102,9 @@ type Config struct {
 
 	// Overlay engine
 	Overlay overlay.Config `mapstructure:"overlay"`
+
+	// Spends service
+	Spends spends.Config `mapstructure:"spends"`
 
 	// Content serving
 	ORDFS ordfs.Config `mapstructure:"ordfs"`
@@ -226,6 +230,7 @@ type Services struct {
 	OPNS    *opns.Services
 	OrdLock *ordlockpkg.Services
 	Overlay *overlay.Services
+	Spends  *spends.Services
 	ORDFS   *ordfs.Services
 	Own     *owner.Services
 	Admin   *admin.Services
@@ -311,6 +316,7 @@ func (c *Config) SetDefaults(v *viper.Viper) {
 	c.OPNS.SetDefaults(v, "opns")
 	c.OrdLock.SetDefaults(v, "ordlock")
 	c.Overlay.SetDefaults(v, "overlay")
+	c.Spends.SetDefaults(v, "spends")
 	c.ORDFS.SetDefaults(v, "ordfs")
 	c.Owner.SetDefaults(v, "owner")
 	c.Admin.SetDefaults(v, "admin")
@@ -658,10 +664,32 @@ func (c *Config) Initialize(ctx context.Context, logger *slog.Logger) (*Services
 		svc.Overlay.ActivateConfiguredTopics()
 	}
 
+	// Initialize Spends
+	if c.Spends.Mode != spends.ModeDisabled {
+		start = time.Now()
+		spendsSvc, err := c.Spends.Initialize(ctx, logger, svc.Store.Store, svc.JungleBus)
+		if err != nil {
+			return nil, fmt.Errorf("failed to initialize spends: %w", err)
+		}
+		svc.Spends = spendsSvc
+		if svc.TXO != nil && spendsSvc != nil {
+			svc.TXO.OutputStore.SpendService = spendsSvc.Storage
+		}
+		logger.Info("spends initialized", "duration", time.Since(start).Round(time.Millisecond))
+	}
+
 	// Initialize ORDFS content serving
 	if c.ORDFS.Enabled {
 		start = time.Now()
-		ordfsSvc, err := c.ORDFS.Initialize(ctx, logger, svc.JungleBus)
+		var spendsStorage *spends.Storage
+		if svc.Spends != nil {
+			spendsStorage = svc.Spends.Storage
+		}
+		var beefStorage *beef.Storage
+		if svc.Beef != nil {
+			beefStorage = svc.Beef.Storage
+		}
+		ordfsSvc, err := c.ORDFS.Initialize(ctx, logger, spendsStorage, beefStorage)
 		if err != nil {
 			return nil, fmt.Errorf("failed to initialize ordfs: %w", err)
 		}
@@ -1322,6 +1350,12 @@ func (svc *Services) Close() error {
 	if svc.ORDFS != nil {
 		if err := svc.ORDFS.Close(); err != nil {
 			errs = append(errs, fmt.Errorf("ordfs close: %w", err))
+		}
+	}
+
+	if svc.Spends != nil {
+		if err := svc.Spends.Close(); err != nil {
+			errs = append(errs, fmt.Errorf("spends close: %w", err))
 		}
 	}
 

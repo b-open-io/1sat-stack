@@ -1,9 +1,7 @@
 package ordfs
 
 import (
-	"bytes"
 	"context"
-	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -11,7 +9,8 @@ import (
 	"log/slog"
 	"time"
 
-	"github.com/b-open-io/go-junglebus"
+	"github.com/b-open-io/1sat-stack/pkg/beef"
+	"github.com/b-open-io/1sat-stack/pkg/spends"
 	"github.com/bitcoin-sv/go-templates/template/bitcom"
 	"github.com/bitcoin-sv/go-templates/template/inscription"
 	"github.com/bsv-blockchain/go-sdk/chainhash"
@@ -36,18 +35,20 @@ var ErrNotFound = errors.New("not found")
 
 // Ordfs handles ordinal file system operations
 type Ordfs struct {
-	jb     *junglebus.Client
+	spends *spends.Storage
+	beef   *beef.Storage
 	cache  *redis.Client
 	logger *slog.Logger
 }
 
 // New creates a new Ordfs service
-func New(jb *junglebus.Client, cache *redis.Client, logger *slog.Logger) *Ordfs {
+func New(spendsStorage *spends.Storage, beefStorage *beef.Storage, cache *redis.Client, logger *slog.Logger) *Ordfs {
 	if logger == nil {
 		logger = slog.Default()
 	}
 	return &Ordfs{
-		jb:     jb,
+		spends: spendsStorage,
+		beef:   beefStorage,
 		cache:  cache,
 		logger: logger,
 	}
@@ -143,38 +144,30 @@ func (o *Ordfs) loadByTxid(ctx context.Context, req *Request) (*Response, error)
 	return nil, fmt.Errorf("no inscription or B protocol content found: %w", ErrNotFound)
 }
 
-// loadTx loads a transaction from junglebus
+// loadTx loads a transaction via beef storage
 func (o *Ordfs) loadTx(ctx context.Context, txid string) (*transaction.Transaction, error) {
-	rawTx, err := o.jb.GetRawTransaction(ctx, txid)
+	h, err := chainhash.NewHashFromHex(txid)
 	if err != nil {
 		return nil, err
 	}
-	return transaction.NewTransactionFromBytes(rawTx)
+	return o.beef.LoadTx(ctx, h)
 }
 
-// loadOutput loads a specific output from junglebus
+// loadOutput loads a specific output via beef storage
 func (o *Ordfs) loadOutput(ctx context.Context, outpoint *transaction.Outpoint) (*transaction.TransactionOutput, error) {
-	outputBytes, err := o.jb.GetTxo(ctx, outpoint.Txid.String(), outpoint.Index)
+	tx, err := o.beef.LoadTx(ctx, &outpoint.Txid)
 	if err != nil {
 		return nil, err
 	}
-	output := &transaction.TransactionOutput{}
-	if _, err := output.ReadFrom(bytes.NewReader(outputBytes)); err != nil {
-		return nil, err
+	if int(outpoint.Index) >= len(tx.Outputs) {
+		return nil, fmt.Errorf("output index %d out of range for tx %s", outpoint.Index, outpoint.Txid.String())
 	}
-	return output, nil
+	return tx.Outputs[outpoint.Index], nil
 }
 
 // loadSpend gets the spending txid for an outpoint
 func (o *Ordfs) loadSpend(ctx context.Context, outpoint *transaction.Outpoint) (*chainhash.Hash, error) {
-	spendBytes, err := o.jb.GetSpend(ctx, outpoint.Txid.String(), outpoint.Index)
-	if err != nil {
-		return nil, err
-	}
-	if len(spendBytes) == 0 {
-		return nil, nil
-	}
-	return chainhash.NewHashFromHex(hex.EncodeToString(spendBytes))
+	return o.spends.GetSpend(ctx, outpoint)
 }
 
 // parseOutput parses a transaction output for inscription or B protocol content

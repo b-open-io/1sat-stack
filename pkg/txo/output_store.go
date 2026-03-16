@@ -9,6 +9,7 @@ import (
 
 	"github.com/b-open-io/1sat-stack/pkg/beef"
 	"github.com/b-open-io/1sat-stack/pkg/pubsub"
+	"github.com/b-open-io/1sat-stack/pkg/spends"
 	"github.com/b-open-io/1sat-stack/pkg/store"
 	"github.com/bsv-blockchain/go-sdk/chainhash"
 	"github.com/bsv-blockchain/go-sdk/transaction"
@@ -42,6 +43,9 @@ type OutputStore struct {
 	Store     store.Store
 	PubSub    pubsub.PubSub
 	BeefStore *beef.Storage
+
+	// SpendService delegates spend operations to the spends service chain when set.
+	SpendService *spends.Storage
 
 	// IngestTx is an optional callback to trigger main indexing when
 	// outputs are inserted via overlay flow. Set after initialization
@@ -181,9 +185,14 @@ func (s *OutputStore) SaveEvents(ctx context.Context, op *transaction.Outpoint, 
 
 // SaveSpend marks an output as spent and updates spent indexes.
 func (s *OutputStore) SaveSpend(ctx context.Context, op *transaction.Outpoint, spendTxid *chainhash.Hash, events []string, score float64) error {
-	// Store spend txid in bulk lookup hash
-	if err := s.Store.HSet(ctx, hashSpnd, op.Bytes(), spendTxid[:]); err != nil {
-		return err
+	if s.SpendService != nil {
+		if err := s.SpendService.SaveSpend(ctx, op, spendTxid); err != nil {
+			return err
+		}
+	} else {
+		if err := s.Store.HSet(ctx, hashSpnd, op.Bytes(), spendTxid[:]); err != nil {
+			return err
+		}
 	}
 
 	return s.IndexSpentEvents(ctx, op, events, score)
@@ -290,6 +299,10 @@ func buildSpendEvents(output *IndexedOutput) []string {
 
 // GetSpend returns the spending txid for an outpoint (nil if unspent)
 func (s *OutputStore) GetSpend(ctx context.Context, op *transaction.Outpoint) (*chainhash.Hash, error) {
+	if s.SpendService != nil {
+		return s.SpendService.GetSpend(ctx, op)
+	}
+
 	spendBytes, err := s.Store.HGet(ctx, hashSpnd, op.Bytes())
 	if err == store.ErrKeyNotFound {
 		return nil, nil
@@ -308,6 +321,10 @@ func (s *OutputStore) GetSpend(ctx context.Context, op *transaction.Outpoint) (*
 
 // GetSpends returns spending txids for multiple outpoints (bulk)
 func (s *OutputStore) GetSpends(ctx context.Context, ops []*transaction.Outpoint) ([]*chainhash.Hash, error) {
+	if s.SpendService != nil {
+		return s.SpendService.GetSpends(ctx, ops)
+	}
+
 	if len(ops) == 0 {
 		return nil, nil
 	}
@@ -870,6 +887,11 @@ func (s *OutputStore) Rollback(ctx context.Context, txid *chainhash.Hash) error 
 	// 2. Un-spend the inputs this transaction consumed
 	for _, input := range inputsToUnspend {
 		// Remove spend marker
+		if s.SpendService != nil {
+			if err := s.SpendService.DeleteSpend(ctx, input); err != nil {
+				return fmt.Errorf("failed to un-spend %s via resolver: %w", input.String(), err)
+			}
+		}
 		if err := s.Store.HDel(ctx, hashSpnd, input.Bytes()); err != nil {
 			return fmt.Errorf("failed to un-spend %s: %w", input.String(), err)
 		}
@@ -921,6 +943,11 @@ func (s *OutputStore) Rollback(ctx context.Context, txid *chainhash.Hash) error 
 		}
 
 		// 5. Remove from bulk lookup hashes (output references - last)
+		if s.SpendService != nil {
+			if err := s.SpendService.DeleteSpend(ctx, op); err != nil {
+				return fmt.Errorf("failed to remove spend reference for %s via resolver: %w", op.String(), err)
+			}
+		}
 		if err := s.Store.HDel(ctx, hashSpnd, opBytes); err != nil {
 			return fmt.Errorf("failed to remove spend reference for %s: %w", op.String(), err)
 		}

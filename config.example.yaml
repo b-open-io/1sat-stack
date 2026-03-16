@@ -269,7 +269,17 @@ wallet:
     enabled: true
     prefix: /wallet
 
-# ORDFS - on-chain content serving (optional)
+# Spends - spend lookup service (required by ORDFS)
+spends:
+  mode: embedded
+  chain:
+    - provider: lru
+      lru:
+        size: 50mb
+    - provider: store      # persistent backend (Badger/Redis)
+    - provider: junglebus  # remote fallback
+
+# ORDFS - on-chain content serving (requires spends + beef services)
 ordfs:
   enabled: true
   redis:

@@ -432,4 +432,9 @@ git commit -m "Set steak message version to 0 (pre-release)"
 
 ---
 
-## Status: Not Started
+## Status: In Progress
+
+### Progress
+- Chunk 1 (envelope + bodies): **Complete** — envelope in 1sat-stack, bodies moved to go-overlay-services with version byte
+- Chunk 2 (remote + handler): **Not Started**
+- Chunk 3 (steak version cleanup): **Not Started**

@@ -244,7 +244,7 @@ func TestConfigSetDefaults(t *testing.T) {
 func TestConfigInitializeDisabled(t *testing.T) {
 	cfg := &Config{Enabled: false}
 
-	svc, err := cfg.Initialize(nil, nil, nil)
+	svc, err := cfg.Initialize(nil, nil, nil, nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -253,12 +253,12 @@ func TestConfigInitializeDisabled(t *testing.T) {
 	}
 }
 
-func TestConfigInitializeNoJungleBus(t *testing.T) {
+func TestConfigInitializeNilDeps(t *testing.T) {
 	cfg := &Config{Enabled: true}
 
-	_, err := cfg.Initialize(nil, nil, nil)
+	_, err := cfg.Initialize(nil, nil, nil, nil)
 	if err == nil {
-		t.Fatal("expected error when junglebus client is nil")
+		t.Fatal("expected error when beef storage is nil")
 	}
 }
 

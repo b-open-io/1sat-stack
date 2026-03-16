@@ -5,7 +5,8 @@ import (
 	"fmt"
 	"log/slog"
 
-	"github.com/b-open-io/go-junglebus"
+	"github.com/b-open-io/1sat-stack/pkg/beef"
+	"github.com/b-open-io/1sat-stack/pkg/spends"
 	"github.com/redis/go-redis/v9"
 	"github.com/spf13/viper"
 )
@@ -56,7 +57,8 @@ type Services struct {
 func (c *Config) Initialize(
 	ctx context.Context,
 	logger *slog.Logger,
-	jb *junglebus.Client,
+	spendsStorage *spends.Storage,
+	beefStorage *beef.Storage,
 ) (*Services, error) {
 	if !c.Enabled {
 		return nil, nil
@@ -66,8 +68,12 @@ func (c *Config) Initialize(
 		logger = slog.Default()
 	}
 
-	if jb == nil {
-		return nil, fmt.Errorf("junglebus client is required for ordfs")
+	if beefStorage == nil {
+		return nil, fmt.Errorf("beef storage is required for ordfs")
+	}
+
+	if spendsStorage == nil {
+		return nil, fmt.Errorf("spends storage is required for ordfs")
 	}
 
 	// Create Redis client
@@ -85,7 +91,7 @@ func (c *Config) Initialize(
 	logger.Info("ordfs connected to redis", "url", c.Redis.URL)
 
 	// Create ordfs service
-	ordfs := New(jb, redisClient, logger)
+	ordfs := New(spendsStorage, beefStorage, redisClient, logger)
 
 	svc := &Services{
 		Ordfs: ordfs,
