@@ -23,12 +23,12 @@ type IngestTxFunc func(ctx context.Context, tx *transaction.Transaction) error
 type EngineAdapter struct {
 	factory      Factory
 	beefStore    *beef.Storage
-	txTopicIndex *TxTopicIndex
+	txTopicIndex TxTopicIndexer
 	IngestTx     IngestTxFunc
 }
 
 // NewEngineAdapter creates an adapter that bridges engine.Storage to per-topic SQLite databases.
-func NewEngineAdapter(factory Factory, beefStore *beef.Storage, txTopicIndex *TxTopicIndex) *EngineAdapter {
+func NewEngineAdapter(factory Factory, beefStore *beef.Storage, txTopicIndex TxTopicIndexer) *EngineAdapter {
 	return &EngineAdapter{
 		factory:      factory,
 		beefStore:    beefStore,

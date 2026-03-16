@@ -225,6 +225,8 @@ ordlock:
 # Manages topic managers and lookup services for the BSV overlay network.
 overlay:
   mode: embedded
+  storage_backend: sqlite       # "sqlite" or "postgres"
+  # storage_url: ""             # PostgreSQL connection string (required when storage_backend is postgres)
   topic_whitelist:
     - tm_bsv21              # Only used for factory-based (dynamic) topics
     - tm_ordlock

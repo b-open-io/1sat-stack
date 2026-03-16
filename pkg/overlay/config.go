@@ -27,7 +27,9 @@ const (
 // Config holds overlay engine configuration
 type Config struct {
 	Mode           string       `mapstructure:"mode"`
-	StoragePath    string       `mapstructure:"storage_path"` // Base path for per-topic SQLite databases
+	StoragePath    string       `mapstructure:"storage_path"`    // Base path for per-topic SQLite databases
+	StorageBackend string       `mapstructure:"storage_backend"` // "sqlite" (default) or "postgres"
+	StorageURL     string       `mapstructure:"storage_url"`     // PostgreSQL connection string
 	TopicWhitelist []string     `mapstructure:"topic_whitelist"`
 	TopicBlacklist []string     `mapstructure:"topic_blacklist"`
 	Routes         RoutesConfig `mapstructure:"routes"`
@@ -47,6 +49,8 @@ type RoutesConfig struct {
 func (c *Config) SetDefaults(v *viper.Viper, prefix string) {
 	v.SetDefault(prefix+".mode", ModeDisabled)
 	v.SetDefault(prefix+".storage_path", "~/.1sat/overlay")
+	v.SetDefault(prefix+".storage_backend", "sqlite")
+	v.SetDefault(prefix+".storage_url", "")
 	v.SetDefault(prefix+".topic_whitelist", []string{})
 	v.SetDefault(prefix+".topic_blacklist", []string{})
 	v.SetDefault(prefix+".routes.enabled", true)
@@ -76,23 +80,39 @@ func (c *Config) Initialize(ctx context.Context, logger *slog.Logger, deps *Init
 		logger = slog.Default()
 	}
 
-	// Expand ~ in storage path
-	storagePath := c.StoragePath
-	if strings.HasPrefix(storagePath, "~/") {
-		home, _ := os.UserHomeDir()
-		storagePath = filepath.Join(home, storagePath[2:])
-	}
-	if err := os.MkdirAll(storagePath, 0755); err != nil {
-		return nil, fmt.Errorf("create overlay storage dir %s: %w", storagePath, err)
+	var factory overlaystorage.Factory
+	var txTopicIndex overlaystorage.TxTopicIndexer
+	var storagePath string
+
+	switch c.StorageBackend {
+	case "postgres":
+		if c.StorageURL == "" {
+			return nil, fmt.Errorf("overlay storage_url is required when storage_backend is postgres")
+		}
+		pgFactory, err := overlaystorage.NewPostgresFactory(c.StorageURL)
+		if err != nil {
+			return nil, fmt.Errorf("create postgres overlay storage: %w", err)
+		}
+		factory = pgFactory.Factory()
+		txTopicIndex = pgFactory.TxTopicIndex()
+	default:
+		storagePath = c.StoragePath
+		if strings.HasPrefix(storagePath, "~/") {
+			home, _ := os.UserHomeDir()
+			storagePath = filepath.Join(home, storagePath[2:])
+		}
+		if err := os.MkdirAll(storagePath, 0755); err != nil {
+			return nil, fmt.Errorf("create overlay storage dir %s: %w", storagePath, err)
+		}
+		sqliteFactory, err := overlaystorage.NewSQLiteFactory(filepath.Join(storagePath, "topic"))
+		if err != nil {
+			return nil, fmt.Errorf("create overlay storage factory: %w", err)
+		}
+		factory = sqliteFactory.Factory()
+		txTopicIndex = sqliteFactory.TxTopicIndex()
 	}
 
-	// Create per-topic SQLite factory and engine adapter
-	sqliteFactory, err := overlaystorage.NewSQLiteFactory(filepath.Join(storagePath, "topic"))
-	if err != nil {
-		return nil, fmt.Errorf("create overlay storage factory: %w", err)
-	}
-	factory := sqliteFactory.Factory()
-	adapter := overlaystorage.NewEngineAdapter(factory, deps.BeefStorage, sqliteFactory.TxTopicIndex())
+	adapter := overlaystorage.NewEngineAdapter(factory, deps.BeefStorage, txTopicIndex)
 
 	// Wire IngestTx callback if output store is available
 	if deps.OutputStore != nil && deps.OutputStore.IngestTx != nil {
@@ -129,7 +149,7 @@ func (c *Config) Initialize(ctx context.Context, logger *slog.Logger, deps *Init
 		svc.Routes = NewRoutes(eng, &c.Routes, logger)
 	}
 
-	logger.Info("overlay engine initialized", "mode", c.Mode, "storage", storagePath)
+	logger.Info("overlay engine initialized", "mode", c.Mode, "backend", c.StorageBackend, "storage", storagePath)
 
 	return svc, nil
 }
