@@ -667,13 +667,13 @@ func (c *Config) Initialize(ctx context.Context, logger *slog.Logger) (*Services
 	// Initialize Spends
 	if c.Spends.Mode != spends.ModeDisabled {
 		start = time.Now()
-		spendsSvc, err := c.Spends.Initialize(ctx, logger, svc.Store.Store, svc.TXO.OutputStore, svc.JungleBus)
+		spendsSvc, err := c.Spends.Initialize(ctx, logger, svc.Store.Store, svc.JungleBus)
 		if err != nil {
 			return nil, fmt.Errorf("failed to initialize spends: %w", err)
 		}
 		svc.Spends = spendsSvc
 		if svc.TXO != nil && spendsSvc != nil {
-			svc.TXO.OutputStore.SpendResolver = spendsSvc.Storage
+			svc.TXO.OutputStore.SpendService = spendsSvc.Storage
 		}
 		logger.Info("spends initialized", "duration", time.Since(start).Round(time.Millisecond))
 	}
