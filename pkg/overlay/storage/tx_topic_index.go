@@ -18,6 +18,13 @@ CREATE TABLE IF NOT EXISTS txid_topics (
 CREATE INDEX IF NOT EXISTS idx_txid ON txid_topics(txid);
 `
 
+// TxTopicIndexer is the interface for txid→topic mapping used by the engine adapter.
+type TxTopicIndexer interface {
+	Record(ctx context.Context, txid *chainhash.Hash, topic string) error
+	Topics(ctx context.Context, txid *chainhash.Hash) ([]string, error)
+	Delete(ctx context.Context, txid *chainhash.Hash) error
+}
+
 // TxTopicIndex maps transaction IDs to the topics they were admitted to.
 // Used by rollback handlers to know which per-topic databases to clean up.
 type TxTopicIndex struct {
