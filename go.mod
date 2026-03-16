@@ -12,7 +12,7 @@ replace github.com/bitcoin-sv/go-templates => github.com/b-open-io/go-templates 
 
 replace github.com/b-open-io/go-junglebus => github.com/b-open-io/go-junglebus v0.3.5-0.20260314045350-8a550a4ef3b9
 
-replace github.com/bsv-blockchain/go-wallet-toolbox => github.com/bsv-blockchain/go-wallet-toolbox v0.177.3-0.20260310200831-acf049464834
+replace github.com/bsv-blockchain/go-wallet-toolbox => github.com/bsv-blockchain/go-wallet-toolbox v0.178.2-0.20260316213836-82ae1e49f340
 
 replace github.com/bsv-blockchain/arcade => github.com/bsv-blockchain/arcade v0.2.1-0.20260308205140-0e61977abe7b
 
@@ -365,7 +365,7 @@ require (
 	go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp v0.65.0 // indirect
 	go.opentelemetry.io/otel v1.42.0 // indirect
 	go.opentelemetry.io/otel/exporters/otlp/otlptrace v1.42.0 // indirect
-	go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc v1.40.0 // indirect
+	go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc v1.42.0 // indirect
 	go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp v1.42.0 // indirect
 	go.opentelemetry.io/otel/metric v1.42.0 // indirect
 	go.opentelemetry.io/otel/sdk v1.42.0 // indirect
