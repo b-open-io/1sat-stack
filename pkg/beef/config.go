@@ -153,11 +153,6 @@ func (c *Config) initializeEmbedded(
 	storage := NewStorageFromProviders(storages, chainTracker)
 
 	svc := &Services{Storage: storage}
-
-	if c.Routes.Enabled {
-		svc.Routes = NewRoutes(storage)
-	}
-
 	return svc, nil
 }
 

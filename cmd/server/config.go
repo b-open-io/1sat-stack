@@ -16,6 +16,7 @@ import (
 	"github.com/b-open-io/1sat-stack/pkg/beef"
 	"github.com/b-open-io/1sat-stack/pkg/bsocial"
 	"github.com/b-open-io/1sat-stack/pkg/bsv21"
+	"github.com/b-open-io/1sat-stack/pkg/httputil"
 	"github.com/b-open-io/1sat-stack/pkg/indexer"
 	"github.com/b-open-io/1sat-stack/pkg/jbsync"
 	"github.com/b-open-io/1sat-stack/pkg/logging"
@@ -403,6 +404,9 @@ func (c *Config) Initialize(ctx context.Context, logger *slog.Logger) (*Services
 		return nil, fmt.Errorf("failed to initialize beef: %w", err)
 	}
 	svc.Beef = beefSvc
+	if c.Beef.Routes.Enabled && svc.Chaintracks != nil {
+		svc.Beef.Routes = beef.NewRoutes(beefSvc.Storage, svc.Chaintracks.GetHeight)
+	}
 	logger.Info("beef initialized", "duration", time.Since(start).Round(time.Millisecond))
 
 	// Initialize Arcade
@@ -1006,9 +1010,9 @@ func (c *Config) RegisterRoutes(app *fiber.App, svc *Services) {
 		capabilities = append(capabilities, "pubsub")
 	}
 
-	// Register TXO routes
+	// Register TXO routes (mutable — spend status changes)
 	if svc.TXO != nil && svc.TXO.Routes != nil {
-		txoGroup := api.Group("/txo")
+		txoGroup := api.Group("/txo", httputil.NoStoreMiddleware())
 		svc.TXO.Routes.Register(txoGroup)
 		capabilities = append(capabilities, "txo")
 	}
@@ -1019,7 +1023,7 @@ func (c *Config) RegisterRoutes(app *fiber.App, svc *Services) {
 		if prefix == "" {
 			prefix = "/owner"
 		}
-		ownGroup := api.Group(prefix)
+		ownGroup := api.Group(prefix, httputil.NoStoreMiddleware())
 		svc.Own.Routes.Register(ownGroup)
 		capabilities = append(capabilities, "owner")
 		slog.Debug("registered owner routes", "prefix", prefix)
@@ -1033,7 +1037,7 @@ func (c *Config) RegisterRoutes(app *fiber.App, svc *Services) {
 		if prefix == "" {
 			prefix = "/bsv21"
 		}
-		bsv21Group := api.Group(prefix)
+		bsv21Group := api.Group(prefix, httputil.NoStoreMiddleware())
 		svc.BSV21.Routes.Register(bsv21Group)
 
 		capabilities = append(capabilities, "bsv21")
@@ -1045,7 +1049,7 @@ func (c *Config) RegisterRoutes(app *fiber.App, svc *Services) {
 		if prefix == "" {
 			prefix = "/bap"
 		}
-		bapGroup := api.Group(prefix)
+		bapGroup := api.Group(prefix, httputil.NoStoreMiddleware())
 		svc.BAP.Routes.Register(bapGroup)
 		capabilities = append(capabilities, "bap")
 	}
@@ -1056,7 +1060,7 @@ func (c *Config) RegisterRoutes(app *fiber.App, svc *Services) {
 		if prefix == "" {
 			prefix = "/bsocial"
 		}
-		bsocialGroup := api.Group(prefix)
+		bsocialGroup := api.Group(prefix, httputil.NoStoreMiddleware())
 		svc.BSocial.Routes.Register(bsocialGroup)
 		capabilities = append(capabilities, "bsocial")
 	}
@@ -1067,7 +1071,7 @@ func (c *Config) RegisterRoutes(app *fiber.App, svc *Services) {
 		if prefix == "" {
 			prefix = "/opns"
 		}
-		opnsGroup := api.Group(prefix)
+		opnsGroup := api.Group(prefix, httputil.NoStoreMiddleware())
 		svc.OPNS.Routes.Register(opnsGroup)
 		capabilities = append(capabilities, "opns")
 	}
@@ -1078,7 +1082,7 @@ func (c *Config) RegisterRoutes(app *fiber.App, svc *Services) {
 		if prefix == "" {
 			prefix = "/market"
 		}
-		ordlockGroup := api.Group(prefix)
+		ordlockGroup := api.Group(prefix, httputil.NoStoreMiddleware())
 		svc.OrdLock.Routes.Register(ordlockGroup)
 		capabilities = append(capabilities, "market")
 	}
@@ -1089,7 +1093,7 @@ func (c *Config) RegisterRoutes(app *fiber.App, svc *Services) {
 		if prefix == "" {
 			prefix = "/overlay"
 		}
-		overlayGroup := api.Group(prefix)
+		overlayGroup := api.Group(prefix, httputil.NoStoreMiddleware())
 		svc.Overlay.Routes.Register(overlayGroup)
 		capabilities = append(capabilities, "overlay")
 	}
@@ -1143,10 +1147,11 @@ func (c *Config) RegisterRoutes(app *fiber.App, svc *Services) {
 			prefix = "/admin"
 		}
 		guardedGroup := api.Group(prefix+"/api",
+			httputil.PrivateNoStoreMiddleware(),
 			svc.AuthMiddleware.Handler(),
 			auth.AdminGuard(svc.Store.Store, slog.Default()),
 		)
-		publicGroup := api.Group(prefix)
+		publicGroup := api.Group(prefix, httputil.PrivateNoStoreMiddleware())
 		svc.Admin.Routes.Register(guardedGroup, publicGroup, svc.AuthMiddleware.Handler())
 		capabilities = append(capabilities, "admin")
 		slog.Debug("registered admin routes", "prefix", prefix)
@@ -1165,7 +1170,7 @@ func (c *Config) RegisterRoutes(app *fiber.App, svc *Services) {
 		authWrappedHandler := svc.AuthMiddleware.HTTPHandler(walletHandler)
 
 		// Register wallet routes with auth-wrapped handler
-		api.Group(prefix).All("/", adaptor.HTTPHandler(authWrappedHandler))
+		api.Group(prefix, httputil.PrivateNoStoreMiddleware()).All("/", adaptor.HTTPHandler(authWrappedHandler))
 
 		// Register /.well-known/auth at app root for BRC-103/104 handshake
 		// (auth middleware handles the handshake internally)

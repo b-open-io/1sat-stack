@@ -12,6 +12,7 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/b-open-io/1sat-stack/pkg/httputil"
 	"github.com/bsv-blockchain/go-sdk/chainhash"
 	"github.com/bsv-blockchain/go-sdk/transaction"
 	"github.com/gofiber/fiber/v2"
@@ -227,11 +228,10 @@ func (r *Routes) sendContentResponse(c *fiber.Ctx, resp *Response, seq *int) err
 	}
 	c.Set("X-Ord-Seq", fmt.Sprintf("%d", resp.Sequence))
 
-	// Cache control based on seq
 	if seq != nil && *seq == -1 {
-		c.Set("Cache-Control", "no-cache, no-store, must-revalidate")
+		httputil.SetNoStore(c)
 	} else {
-		c.Set("Cache-Control", "public, max-age=31536000, immutable")
+		httputil.SetImmutable(c)
 	}
 
 	if resp.Map != nil {
@@ -289,7 +289,7 @@ func (r *Routes) HandleMetadata(c *fiber.Ctx) error {
 		})
 	}
 
-	// Return metadata without content bytes
+	httputil.SetNoStore(c)
 	result := fiber.Map{
 		"contentType":   resp.ContentType,
 		"contentLength": resp.ContentLength,
@@ -396,6 +396,7 @@ func (r *Routes) HandleBulkMetadata(c *fiber.Ctx) error {
 
 	wg.Wait()
 
+	httputil.SetNoStore(c)
 	response := make(fiber.Map, len(results))
 	for _, r := range results {
 		if r.err != nil {

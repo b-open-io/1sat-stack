@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"strings"
 
+	"github.com/b-open-io/1sat-stack/pkg/httputil"
 	"github.com/bsv-blockchain/arcade/models"
 	"github.com/bsv-blockchain/go-sdk/transaction"
 	"github.com/gofiber/fiber/v2"
@@ -65,6 +66,7 @@ func parsePaymail(paymailAddr string) (alias string, domain string, err error) {
 // @Success 200 {object} object{bsvalias=string,capabilities=object}
 // @Router /.well-known/bsvalias [get]
 func (r *Routes) Capabilities(c *fiber.Ctx) error {
+	httputil.SetShortCache(c, 300)
 	host := c.Hostname()
 	scheme := c.Protocol()
 	base := fmt.Sprintf("%s://%s%s", scheme, host, r.pathPrefix)

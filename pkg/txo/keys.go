@@ -39,6 +39,10 @@ const (
 // ImmutabilityBlocks is the number of confirmations before a tx is considered immutable
 const ImmutabilityBlocks = 100
 
+// MinCacheConfirmations is the minimum confirmations before HTTP responses can be cached.
+// At 0-1 confirmations, reorgs are still likely enough to warrant no-store.
+const MinCacheConfirmations = 2
+
 // KeyLog builds ZSet key for log entries: {logName}
 // Used with OutputStore.Log() for tracking processed items
 // Members are binary txids (32 bytes), scores are HeightScore
