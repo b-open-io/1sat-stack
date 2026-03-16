@@ -1,0 +1,67 @@
+[
+  { "_type": "text", "shapeId": "title", "x": 400, "y": -80, "text": "1sat-stack Module Hierarchy", "size": "xl", "color": "black" },
+
+  { "_type": "frame", "shapeId": "always_on", "name": "Always-On Core (Tier 0)", "children": ["store", "pubsub", "chaintracks", "arcade", "wallet", "p2p", "admin"] },
+  { "_type": "rectangle", "shapeId": "store", "w": 160, "h": 70, "color": "green", "fill": "solid", "text": "Store" },
+  { "_type": "rectangle", "shapeId": "pubsub", "w": 160, "h": 70, "color": "green", "fill": "solid", "text": "PubSub" },
+  { "_type": "rectangle", "shapeId": "chaintracks", "w": 160, "h": 70, "color": "green", "fill": "solid", "text": "Chaintracks" },
+  { "_type": "rectangle", "shapeId": "arcade", "w": 160, "h": 70, "color": "green", "fill": "solid", "text": "Arcade" },
+  { "_type": "rectangle", "shapeId": "wallet", "w": 160, "h": 70, "color": "green", "fill": "solid", "text": "Wallet" },
+  { "_type": "rectangle", "shapeId": "p2p", "w": 160, "h": 70, "color": "green", "fill": "solid", "text": "P2P" },
+  { "_type": "rectangle", "shapeId": "admin", "w": 160, "h": 70, "color": "green", "fill": "solid", "text": "Admin" },
+
+  { "_type": "frame", "shapeId": "data_infra", "name": "Data Infrastructure (Tier 1)", "children": ["beef", "txo", "overlay_engine", "indexer"] },
+  { "_type": "rectangle", "shapeId": "beef", "w": 160, "h": 70, "color": "blue", "fill": "solid", "text": "Beef" },
+  { "_type": "rectangle", "shapeId": "txo", "w": 160, "h": 70, "color": "blue", "fill": "solid", "text": "TXO" },
+  { "_type": "rectangle", "shapeId": "overlay_engine", "w": 160, "h": 70, "color": "blue", "fill": "solid", "text": "Overlay Engine" },
+  { "_type": "rectangle", "shapeId": "indexer", "w": 160, "h": 70, "color": "blue", "fill": "solid", "text": "Indexer" },
+
+  { "_type": "frame", "shapeId": "overlays", "name": "Protocol Overlays (Tier 2)", "children": ["bsv21", "bap", "bsocial", "opns", "ordlock"] },
+  { "_type": "rectangle", "shapeId": "bsv21", "w": 160, "h": 70, "color": "violet", "fill": "solid", "text": "BSV21", "note": "Per-token topics: whitelist or full discovery" },
+  { "_type": "rectangle", "shapeId": "bap", "w": 160, "h": 70, "color": "violet", "fill": "solid", "text": "BAP" },
+  { "_type": "rectangle", "shapeId": "bsocial", "w": 160, "h": 70, "color": "violet", "fill": "solid", "text": "BSocial", "note": "Currently requires MongoDB (may change)" },
+  { "_type": "rectangle", "shapeId": "opns", "w": 160, "h": 70, "color": "violet", "fill": "solid", "text": "OPNS" },
+  { "_type": "rectangle", "shapeId": "ordlock", "w": 160, "h": 70, "color": "violet", "fill": "solid", "text": "OrdLock" },
+
+  { "_type": "frame", "shapeId": "app_services", "name": "Application Services (Tier 3)", "children": ["ordfs", "owner"] },
+  { "_type": "rectangle", "shapeId": "ordfs", "w": 160, "h": 70, "color": "light-blue", "fill": "solid", "text": "ORDFS" },
+  { "_type": "rectangle", "shapeId": "owner", "w": 160, "h": 70, "color": "light-blue", "fill": "solid", "text": "Owner Sync", "note": "JungleBus-only: requires full chain index" },
+
+  { "_type": "frame", "shapeId": "external", "name": "External-Facing (Tier 4)", "children": ["auth", "messagebox", "paymail"] },
+  { "_type": "rectangle", "shapeId": "auth", "w": 160, "h": 70, "color": "orange", "fill": "solid", "text": "Auth" },
+  { "_type": "rectangle", "shapeId": "messagebox", "w": 160, "h": 70, "color": "orange", "fill": "solid", "text": "MessageBox" },
+  { "_type": "rectangle", "shapeId": "paymail", "w": 160, "h": 70, "color": "orange", "fill": "solid", "text": "Paymail" },
+
+  { "_type": "cloud", "shapeId": "junglebus", "w": 180, "h": 80, "color": "grey", "fill": "semi", "text": "JungleBus", "note": "Fully optional. Service-provider data source." },
+
+  { "_type": "frame", "shapeId": "ingress", "name": "Data Ingress Paths", "children": ["ingress_arcade", "ingress_gasp", "ingress_jb"] },
+  { "_type": "note", "shapeId": "ingress_arcade", "text": "Arcade: user broadcasts", "color": "green" },
+  { "_type": "note", "shapeId": "ingress_gasp", "text": "GASP: overlay peer sync", "color": "blue" },
+  { "_type": "note", "shapeId": "ingress_jb", "text": "JungleBus: full chain stream (optional)", "color": "grey" },
+
+  { "_type": "frame", "shapeId": "storage", "name": "Storage Separation", "children": ["config_store_note", "data_store_note", "overlay_stores_note"] },
+  { "_type": "note", "shapeId": "config_store_note", "text": "Config Store: app settings, auth mode, module toggles", "color": "yellow" },
+  { "_type": "note", "shapeId": "data_store_note", "text": "Data Store: TXO, events, queues", "color": "light-blue" },
+  { "_type": "note", "shapeId": "overlay_stores_note", "text": "Per-Overlay Stores: each overlay owns its DB", "color": "violet" },
+
+  { "_type": "arrow", "shapeId": "a_store_txo", "fromId": "store", "toId": "txo", "color": "black", "dash": "solid" },
+  { "_type": "arrow", "shapeId": "a_pubsub_txo", "fromId": "pubsub", "toId": "txo", "color": "black", "dash": "solid" },
+  { "_type": "arrow", "shapeId": "a_beef_txo", "fromId": "beef", "toId": "txo", "color": "black", "dash": "solid" },
+  { "_type": "arrow", "shapeId": "a_txo_overlay", "fromId": "txo", "toId": "overlay_engine", "color": "black", "dash": "solid" },
+  { "_type": "arrow", "shapeId": "a_txo_indexer", "fromId": "txo", "toId": "indexer", "color": "black", "dash": "solid" },
+  { "_type": "arrow", "shapeId": "a_beef_indexer", "fromId": "beef", "toId": "indexer", "color": "black", "dash": "solid" },
+
+  { "_type": "arrow", "shapeId": "a_overlay_bsv21", "fromId": "overlay_engine", "toId": "bsv21", "color": "violet", "dash": "solid" },
+  { "_type": "arrow", "shapeId": "a_overlay_bap", "fromId": "overlay_engine", "toId": "bap", "color": "violet", "dash": "solid" },
+  { "_type": "arrow", "shapeId": "a_overlay_bsocial", "fromId": "overlay_engine", "toId": "bsocial", "color": "violet", "dash": "solid" },
+  { "_type": "arrow", "shapeId": "a_overlay_opns", "fromId": "overlay_engine", "toId": "opns", "color": "violet", "dash": "solid" },
+  { "_type": "arrow", "shapeId": "a_overlay_ordlock", "fromId": "overlay_engine", "toId": "ordlock", "color": "violet", "dash": "solid" },
+
+  { "_type": "arrow", "shapeId": "a_wallet_auth", "fromId": "wallet", "toId": "auth", "color": "black", "dash": "solid" },
+  { "_type": "arrow", "shapeId": "a_opns_paymail", "fromId": "opns", "toId": "paymail", "color": "black", "dash": "dashed" },
+  { "_type": "arrow", "shapeId": "a_ordfs_paymail", "fromId": "ordfs", "toId": "paymail", "color": "black", "dash": "dashed" },
+  { "_type": "arrow", "shapeId": "a_mb_paymail", "fromId": "messagebox", "toId": "paymail", "color": "black", "dash": "dashed" },
+
+  { "_type": "arrow", "shapeId": "a_jb_overlays", "fromId": "junglebus", "toId": "overlay_engine", "color": "grey", "dash": "dashed", "text": "optional subscription" },
+  { "_type": "arrow", "shapeId": "a_jb_owner", "fromId": "junglebus", "toId": "owner", "color": "grey", "dash": "solid", "text": "required" }
+]
