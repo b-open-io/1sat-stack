@@ -194,26 +194,26 @@ func (s *SQLStore) SaveIdentity(ctx context.Context, identity *Identity) error {
 		return fmt.Errorf("failed to upsert identity %s: %w", identity.BapId, err)
 	}
 
-	// Delete existing addresses
-	dq := s.newQB()
-	delQuery := fmt.Sprintf(
-		`DELETE FROM bap_identity_addresses WHERE %sbap_id = %s`,
-		dq.topicWhere(), dq.ph(identity.BapId),
-	)
-	if _, err = tx.ExecContext(ctx, delQuery, dq.args...); err != nil {
-		return fmt.Errorf("failed to delete addresses for %s: %w", identity.BapId, err)
-	}
-
-	// Insert addresses
+	// Upsert addresses — PK is (bap_id, address, txid) so each registration is a distinct record.
+	// ON CONFLICT handles idempotent re-processing of the same transaction.
 	for _, addr := range identity.Addresses {
 		aq := s.newQB()
-		insQuery := fmt.Sprintf(
-			`INSERT INTO bap_identity_addresses (%sbap_id, address, signer, txid, block, score) VALUES (%s%s, %s, %s, %s, %s, %s)`,
+		var conflictTarget string
+		if s.topicID > 0 {
+			conflictTarget = "(topic_id, bap_id, address, txid)"
+		} else {
+			conflictTarget = "(bap_id, address, txid)"
+		}
+		upsertQuery := fmt.Sprintf(
+			`INSERT INTO bap_identity_addresses (%sbap_id, address, signer, txid, block, score)
+			VALUES (%s%s, %s, %s, %s, %s, %s)
+			ON CONFLICT %s DO NOTHING`,
 			aq.topicCols(), aq.topicVals(),
 			aq.ph(identity.BapId), aq.ph(addr.Address), aq.ph(addr.Signer), aq.ph(addr.Txid), aq.ph(addr.Block), aq.ph(addr.Score),
+			conflictTarget,
 		)
-		if _, err = tx.ExecContext(ctx, insQuery, aq.args...); err != nil {
-			return fmt.Errorf("failed to insert address %s for %s: %w", addr.Address, identity.BapId, err)
+		if _, err = tx.ExecContext(ctx, upsertQuery, aq.args...); err != nil {
+			return fmt.Errorf("failed to upsert address %s for %s: %w", addr.Address, identity.BapId, err)
 		}
 	}
 

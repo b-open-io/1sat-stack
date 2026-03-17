@@ -32,7 +32,7 @@ CREATE TABLE IF NOT EXISTS bap_identity_addresses (
 	txid TEXT NOT NULL DEFAULT '',
 	block INTEGER NOT NULL DEFAULT 0,
 	score REAL NOT NULL DEFAULT 0,
-	PRIMARY KEY (bap_id, address),
+	PRIMARY KEY (bap_id, address, txid),
 	FOREIGN KEY (bap_id) REFERENCES bap_identities(bap_id)
 );
 
@@ -76,7 +76,7 @@ CREATE TABLE IF NOT EXISTS bap_identity_addresses (
 	txid TEXT NOT NULL DEFAULT '',
 	block INTEGER NOT NULL DEFAULT 0,
 	score REAL NOT NULL DEFAULT 0,
-	PRIMARY KEY (topic_id, bap_id, address),
+	PRIMARY KEY (topic_id, bap_id, address, txid),
 	FOREIGN KEY (topic_id, bap_id) REFERENCES bap_identities(topic_id, bap_id)
 );
 
