@@ -36,14 +36,6 @@ export function deriveAddress(wif: string): string {
   return PrivateKey.fromWif(wif.trim()).toPublicKey().toAddress();
 }
 
-function getServerBase(): string {
-  const sweepIdx = window.location.pathname.indexOf("/sweep");
-  const basePath = sweepIdx >= 0
-    ? window.location.pathname.substring(0, sweepIdx)
-    : "";
-  return `${window.location.origin}${basePath}`;
-}
-
 /** Extract event value by prefix, e.g. getEvent(events, "origin:") */
 function getEvent(events: string[], prefix: string): string | undefined {
   const e = events.find((e) => e.startsWith(prefix));
@@ -110,31 +102,26 @@ function categorizeOutputs(outputs: IndexedOutput[]): ScannedAssets {
     const events = out.events ?? [];
     const sats = out.satoshis ?? 0;
 
-    // BSV-21 tokens (1-sat with bsv21: event)
     if (events.some((e) => e.startsWith("bsv21:"))) {
       bsv21Raw.push(out);
       continue;
     }
 
-    // Locked outputs (have lock: event) — display only
     if (events.some((e) => e.startsWith("lock:"))) {
       locked.push(out);
       continue;
     }
 
-    // BSV-20 tokens (have type:application/bsv-20) — display only
     if (events.some((e) => e === "type:application/bsv-20" || e === "type:Token")) {
       bsv20Tokens.push(out);
       continue;
     }
 
-    // Ordinals: 1-sat outputs
     if (sats === 1) {
       rawOrdinals.push(out);
       continue;
     }
 
-    // Funding: everything else with satoshis > 1
     if (sats > 1) {
       funding.push(out);
     }
@@ -154,34 +141,21 @@ export async function scanAddress(
   address: string,
   onProgress?: (p: ScanProgress) => void,
 ): Promise<ScannedAssets> {
-  const base = getServerBase();
+  const services = getServices();
 
-  // Phase 1: Trigger owner sync via SSE
+  // Phase 1: Trigger owner sync via SSE stream
   onProgress?.({ phase: "sync", detail: "Syncing address..." });
-  await new Promise<void>((resolve, reject) => {
-    const es = new EventSource(`${base}/owner/${address}/txos?refresh=true&limit=1`);
-    es.onmessage = (ev) => {
-      try {
-        const msg = JSON.parse(ev.data);
-        if (msg.phase === "done" || msg.phase === "error") {
-          es.close();
-          if (msg.phase === "error") reject(new Error(msg.error || "Sync failed"));
-          else resolve();
-        } else if (msg.phase === "fetch" || msg.phase === "ingest") {
-          onProgress?.({
-            phase: "sync",
-            detail: `${msg.phase}: ${msg.processed ?? 0}/${msg.total ?? "?"}`,
-          });
-        }
-      } catch {
-        // ignore non-JSON
-      }
-    };
-    es.onerror = () => {
-      es.close();
-      resolve();
-    };
-  });
+  for await (const event of services.owner.getTxos(address, { refresh: true, limit: 1 })) {
+    if (event.type === "sync") {
+      const p = event.data;
+      onProgress?.({
+        phase: "sync",
+        detail: `${p.phase}: ${p.processed ?? 0}/${p.total ?? "?"}`,
+      });
+    } else if (event.type === "done" || event.type === "error") {
+      break;
+    }
+  }
 
   // Phase 2: Search for all unspent outputs — paginate to get everything
   onProgress?.({ phase: "search", detail: "Searching for assets..." });
@@ -189,26 +163,19 @@ export async function scanAddress(
   let from: number | undefined;
 
   while (true) {
-    const searchUrl = new URL(`${base}/txo/search`);
-    searchUrl.searchParams.append("key", `own:${address}`);
-    searchUrl.searchParams.set("unspent", "true");
-    searchUrl.searchParams.set("events", "true");
-    searchUrl.searchParams.set("sats", "true");
-    searchUrl.searchParams.set("limit", "100");
-    if (from !== undefined) {
-      searchUrl.searchParams.set("from", String(from));
-    }
-
-    const res = await fetch(searchUrl.toString());
-    if (!res.ok) throw new Error(`Search failed: ${res.statusText}`);
-    const page: IndexedOutput[] = await res.json();
+    const page = await services.txo.search(`own:${address}`, {
+      unspent: true,
+      events: true,
+      sats: true,
+      limit: 100,
+      from,
+    });
 
     if (!page || page.length === 0) break;
     allOutputs.push(...page);
     onProgress?.({ phase: "search", detail: `Found ${allOutputs.length} outputs...` });
 
     if (page.length < 100) break;
-    // Use last item's score for pagination
     from = page[page.length - 1].score;
   }
 
