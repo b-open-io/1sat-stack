@@ -236,8 +236,8 @@ func TestConfigSetDefaults(t *testing.T) {
 	if !v.GetBool("ordfs.routes.enabled") {
 		t.Error("expected routes.enabled=true")
 	}
-	if v.GetString("ordfs.redis.addr") != "localhost:6379" {
-		t.Errorf("expected redis.addr=localhost:6379, got %s", v.GetString("ordfs.redis.addr"))
+	if v.GetString("ordfs.redis.url") != "redis://localhost:6379/0" {
+		t.Errorf("expected redis.url=redis://localhost:6379/0, got %s", v.GetString("ordfs.redis.url"))
 	}
 }
 

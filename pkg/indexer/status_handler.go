@@ -24,7 +24,9 @@ type StatusHandler struct {
 	pubsub         pubsub.PubSub
 	store          store.Store
 	beefStorage    *beef.Storage
-	overlayStorage engine.Storage
+	overlayStorage engine.Storage                  // For BEEF update + rollback
+	topicIndex     TopicIndexer                    // txid → topic names
+	lookupServices map[string]engine.LookupService // topic name → lookup service
 	chainTracker   chaintracker.ChainTracker
 	indexer        *IngestCtx
 	logger         *slog.Logger
@@ -48,6 +50,8 @@ func NewStatusHandler(
 	s store.Store,
 	beefStorage *beef.Storage,
 	overlayStorage engine.Storage,
+	topicIndex TopicIndexer,
+	lookupServices map[string]engine.LookupService,
 	ct chaintracker.ChainTracker,
 	indexer *IngestCtx,
 	cfg *StatusHandlerConfig,
@@ -67,6 +71,8 @@ func NewStatusHandler(
 		store:          s,
 		beefStorage:    beefStorage,
 		overlayStorage: overlayStorage,
+		topicIndex:     topicIndex,
+		lookupServices: lookupServices,
 		chainTracker:   ct,
 		indexer:        indexer,
 		ingestEnabled:  ingestEnabled,
@@ -213,7 +219,6 @@ func (h *StatusHandler) handleMined(event ArcEvent) {
 		return
 	}
 
-	// Parse merkle path
 	merklePath, err := transaction.NewMerklePathFromBinary(event.MerklePath)
 	if err != nil {
 		h.logger.Error("failed to parse merkle path", "txid", event.TxID, "error", err)
@@ -239,26 +244,7 @@ func (h *StatusHandler) handleMined(event ArcEvent) {
 		}
 	}
 
-	// Calculate score from merkle path
-	var newScore float64
-	for _, path := range merklePath.Path[0] {
-		if txid.IsEqual(path.Hash) {
-			newScore = types.HeightScore(merklePath.BlockHeight, path.Offset)
-			break
-		}
-	}
-
-	if newScore == 0 {
-		h.logger.Warn("transaction not in proof", "txid", event.TxID)
-		return
-	}
-
-	h.logger.Debug("updating tx with merkle proof",
-		"txid", event.TxID,
-		"height", merklePath.BlockHeight,
-		"score", newScore)
-
-	// Load transaction and attach merkle path
+	// Save updated BEEF to beef storage
 	tx, err := h.beefStorage.LoadTx(h.ctx, txid)
 	if err != nil {
 		h.logger.Warn("could not load tx for BEEF update", "txid", event.TxID, "error", err)
@@ -267,17 +253,11 @@ func (h *StatusHandler) handleMined(event ArcEvent) {
 
 	if tx != nil {
 		tx.MerklePath = merklePath
-		beef := assembleBEEF(tx)
-		if beef != nil {
+		if beef := assembleBEEF(tx); beef != nil {
 			h.beefStorage.SaveBeef(h.ctx, txid, beef)
-
-			// Also update TXO storage if available
-			if h.overlayStorage != nil {
-				h.overlayStorage.UpdateTransactionBEEF(h.ctx, txid, beef)
-			}
 		}
 
-		// Re-ingest to update scores with confirmed block height
+		// Re-ingest to update TXO scores with confirmed block height
 		if h.indexer != nil {
 			if _, err := h.indexer.IngestTx(h.ctx, tx); err != nil {
 				h.logger.Error("failed to re-ingest mined tx", "txid", event.TxID, "error", err)
@@ -285,7 +265,47 @@ func (h *StatusHandler) handleMined(event ArcEvent) {
 		}
 	}
 
+	// Notify overlay lookup services of the confirmed block height
+	var blockIndex uint64
+	for _, leaf := range merklePath.Path[0] {
+		if leaf.Hash != nil && leaf.Hash.Equal(*txid) {
+			blockIndex = leaf.Offset
+			break
+		}
+	}
+	h.routeBlockHeightUpdate(txid, merklePath.BlockHeight, blockIndex)
+
 	h.logger.Info("transaction mined", "txid", event.TxID, "height", merklePath.BlockHeight)
+}
+
+// routeBlockHeightUpdate looks up which overlay topics contain this txid and
+// calls OutputBlockHeightUpdated on each relevant lookup service.
+func (h *StatusHandler) routeBlockHeightUpdate(txid *chainhash.Hash, blockHeight uint32, blockIndex uint64) {
+	if h.topicIndex == nil || len(h.lookupServices) == 0 {
+		return
+	}
+
+	topics, err := h.topicIndex.Topics(h.ctx, txid)
+	if err != nil {
+		h.logger.Error("failed to look up topics for txid", "txid", txid.String(), "error", err)
+		return
+	}
+
+	seen := make(map[engine.LookupService]bool)
+	for _, topic := range topics {
+		ls, ok := h.lookupServices[topic]
+		if !ok || seen[ls] {
+			continue
+		}
+		seen[ls] = true
+
+		if err := ls.OutputBlockHeightUpdated(h.ctx, txid, blockHeight, blockIndex); err != nil {
+			h.logger.Error("lookup service OutputBlockHeightUpdated failed",
+				"txid", txid.String(),
+				"topic", topic,
+				"error", err)
+		}
+	}
 }
 
 // handleRejected rolls back outputs for a rejected transaction.

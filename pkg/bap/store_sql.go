@@ -412,6 +412,32 @@ func (s *SQLStore) Search(ctx context.Context, query string, limit, offset int) 
 	return identities, nil
 }
 
+func (s *SQLStore) UpdateBlockHeightByTxid(ctx context.Context, txid string, blockHeight uint32) error {
+	if err := s.ensureSchema(); err != nil {
+		return fmt.Errorf("failed to ensure schema: %w", err)
+	}
+
+	q := s.newQB()
+	addrQuery := fmt.Sprintf(
+		`UPDATE bap_identity_addresses SET block = %s WHERE %stxid = %s`,
+		q.ph(blockHeight), q.topicWhere(), q.ph(txid),
+	)
+	if _, err := s.db.ExecContext(ctx, addrQuery, q.args...); err != nil {
+		return fmt.Errorf("failed to update address block height for %s: %w", txid, err)
+	}
+
+	q2 := s.newQB()
+	attestQuery := fmt.Sprintf(
+		`UPDATE bap_attestations SET block = %s WHERE %stxid = %s`,
+		q2.ph(blockHeight), q2.topicWhere(), q2.ph(txid),
+	)
+	if _, err := s.db.ExecContext(ctx, attestQuery, q2.args...); err != nil {
+		return fmt.Errorf("failed to update attestation block height for %s: %w", txid, err)
+	}
+
+	return nil
+}
+
 // topicJoinSuffix returns the extra join condition for Postgres topic scoping.
 func (s *SQLStore) topicJoinSuffix() string {
 	if s.topicID > 0 {

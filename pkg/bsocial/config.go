@@ -6,6 +6,7 @@ import (
 	"log/slog"
 
 	"github.com/b-open-io/1sat-stack/pkg/overlay"
+	"github.com/bsv-blockchain/go-overlay-services/pkg/core/engine"
 	"github.com/spf13/viper"
 	"go.mongodb.org/mongo-driver/v2/mongo"
 )
@@ -18,9 +19,9 @@ const (
 
 // Config holds BSocial configuration.
 type Config struct {
-	Mode   string                    `mapstructure:"mode"` // disabled, embedded
+	Mode   string                     `mapstructure:"mode"` // disabled, embedded
 	Sync   *overlay.OverlaySyncConfig `mapstructure:"sync"`
-	Routes RoutesConfig              `mapstructure:"routes"`
+	Routes RoutesConfig               `mapstructure:"routes"`
 }
 
 // RoutesConfig holds route configuration.
@@ -50,10 +51,12 @@ func (c *Config) SetDefaults(v *viper.Viper, prefix string) {
 
 // Services holds initialized BSocial services.
 type Services struct {
-	Lookup       *LookupService
-	TopicManager *TopicManager
-	Sync         *overlay.OverlaySync
-	Routes       *Routes
+	Engine        *engine.Engine
+	Lookup        *LookupService
+	TopicManager  *TopicManager
+	Sync          *overlay.OverlaySync
+	Routes        *Routes
+	OverlayRoutes *overlay.Routes
 }
 
 // Initialize creates BSocial services from the configuration.
@@ -61,6 +64,7 @@ func (c *Config) Initialize(
 	ctx context.Context,
 	logger *slog.Logger,
 	db *mongo.Database,
+	deps *overlay.ModuleDeps,
 ) (*Services, error) {
 	if c.Mode == ModeDisabled {
 		return nil, nil
@@ -80,13 +84,23 @@ func (c *Config) Initialize(
 
 		topicManager := &TopicManager{}
 
+		eng := overlay.NewModuleEngine(deps,
+			map[string]engine.TopicManager{"tm_bsocial": topicManager},
+			map[string]engine.LookupService{"bsocial": lookupSvc},
+		)
+
 		svc := &Services{
+			Engine:       eng,
 			Lookup:       lookupSvc,
 			TopicManager: topicManager,
 		}
 
 		if c.Routes.Enabled {
 			svc.Routes = NewRoutes(lookupSvc, logger)
+		}
+
+		if deps != nil && deps.RoutesConfig != nil && deps.RoutesConfig.Enabled {
+			svc.OverlayRoutes = overlay.NewRoutes(eng, deps.RoutesConfig, logger)
 		}
 
 		return svc, nil

@@ -7,11 +7,11 @@ import (
 
 	"github.com/b-open-io/1sat-stack/pkg/types"
 	"github.com/bitcoin-sv/go-templates/template/bitcom"
-	"github.com/bsv-blockchain/go-sdk/script"
 	"github.com/bsv-blockchain/go-overlay-services/pkg/core/engine"
 	"github.com/bsv-blockchain/go-sdk/chainhash"
 	"github.com/bsv-blockchain/go-sdk/overlay"
 	"github.com/bsv-blockchain/go-sdk/overlay/lookup"
+	"github.com/bsv-blockchain/go-sdk/script"
 	"github.com/bsv-blockchain/go-sdk/transaction"
 )
 
@@ -141,7 +141,7 @@ func (l *LookupService) OutputEvicted(ctx context.Context, outpoint *transaction
 
 // OutputBlockHeightUpdated is called when a transaction's block height is updated.
 func (l *LookupService) OutputBlockHeightUpdated(ctx context.Context, txid *chainhash.Hash, blockHeight uint32, blockIndex uint64) error {
-	return nil
+	return l.store.UpdateBlockHeightByTxid(ctx, txid.String(), blockHeight)
 }
 
 // Lookup handles generic lookup queries.

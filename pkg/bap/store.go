@@ -12,6 +12,7 @@ type BAPStore interface {
 	SaveProfile(ctx context.Context, bapId string, profile map[string]any) error
 	LoadProfiles(ctx context.Context, limit, offset int) ([]Identity, error)
 	Search(ctx context.Context, query string, limit, offset int) ([]Identity, error)
+	UpdateBlockHeightByTxid(ctx context.Context, txid string, blockHeight uint32) error
 }
 
 const sqliteSchema = `

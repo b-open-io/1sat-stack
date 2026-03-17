@@ -11,8 +11,10 @@ import (
 	"github.com/b-open-io/1sat-stack/pkg/ordfs"
 	"github.com/b-open-io/1sat-stack/pkg/overlay"
 	"github.com/b-open-io/1sat-stack/pkg/pubsub"
+	"github.com/b-open-io/1sat-stack/pkg/spends"
 	"github.com/b-open-io/1sat-stack/pkg/store"
 	"github.com/b-open-io/1sat-stack/pkg/txo"
+	"github.com/b-open-io/1sat-stack/pkg/wallet"
 	"github.com/spf13/viper"
 )
 
@@ -71,6 +73,8 @@ func TestConfigInitializeDisabled(t *testing.T) {
 		BSV21:   bsv21.Config{Mode: bsv21.ModeDisabled},
 		Overlay: overlay.Config{Mode: overlay.ModeDisabled},
 		ORDFS:   ordfs.Config{Enabled: false},
+		Spends:  spends.Config{Mode: spends.ModeDisabled},
+		Wallet:  wallet.Config{Mode: wallet.ModeDisabled},
 	}
 
 	ctx := context.Background()
@@ -123,6 +127,7 @@ func TestConfigInitializeEmbeddedPubSub(t *testing.T) {
 		TXO:    txo.Config{Mode: txo.ModeDisabled},
 		BSV21:  bsv21.Config{Mode: bsv21.ModeDisabled},
 		ORDFS:  ordfs.Config{Enabled: false},
+		Spends: spends.Config{Mode: spends.ModeDisabled},
 	}
 
 	ctx := context.Background()

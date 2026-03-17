@@ -16,6 +16,7 @@ import (
 	"github.com/b-open-io/1sat-stack/pkg/overlay"
 	"github.com/b-open-io/1sat-stack/pkg/store"
 	"github.com/b-open-io/1sat-stack/pkg/txo"
+	"github.com/bsv-blockchain/go-overlay-services/pkg/core/engine"
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/middleware/filesystem"
 )
@@ -26,6 +27,7 @@ var uiFS embed.FS
 // Routes handles admin HTTP routes
 type Routes struct {
 	overlay          *overlay.Services
+	engines          map[string]*engine.Engine
 	store            store.Store
 	bsv21Sync        *bsv21.SyncServices
 	triggerOpnsCrawl OpnsCrawlFunc
@@ -44,9 +46,10 @@ type UpdateProgressRequest struct {
 }
 
 // NewRoutes creates a new Routes instance
-func NewRoutes(overlaySvc *overlay.Services, s store.Store, bsv21Sync *bsv21.SyncServices, triggerCrawl OpnsCrawlFunc, cfg *RoutesConfig, logger *slog.Logger) *Routes {
+func NewRoutes(overlaySvc *overlay.Services, engines map[string]*engine.Engine, s store.Store, bsv21Sync *bsv21.SyncServices, triggerCrawl OpnsCrawlFunc, cfg *RoutesConfig, logger *slog.Logger) *Routes {
 	return &Routes{
 		overlay:          overlaySvc,
+		engines:          engines,
 		store:            s,
 		bsv21Sync:        bsv21Sync,
 		triggerOpnsCrawl: triggerCrawl,
@@ -345,10 +348,12 @@ func (r *Routes) handleRemoveFromBlacklist(c *fiber.Ctx) error {
 // @Security BearerAuth
 // @Router /admin/topics/active [get]
 func (r *Routes) handleGetActiveTopics(c *fiber.Ctx) error {
-	if r.overlay == nil {
-		return c.JSON([]string{})
+	var topics []string
+	for _, eng := range r.engines {
+		for name := range eng.ListTopicManagers() {
+			topics = append(topics, name)
+		}
 	}
-	topics := r.overlay.GetTopics()
 	if topics == nil {
 		topics = []string{}
 	}
@@ -364,10 +369,12 @@ func (r *Routes) handleGetActiveTopics(c *fiber.Ctx) error {
 // @Security BearerAuth
 // @Router /admin/lookups/active [get]
 func (r *Routes) handleGetActiveLookups(c *fiber.Ctx) error {
-	if r.overlay == nil {
-		return c.JSON([]string{})
+	var lookups []string
+	for _, eng := range r.engines {
+		for name := range eng.ListLookupServiceProviders() {
+			lookups = append(lookups, name)
+		}
 	}
-	lookups := r.overlay.GetLookupServices()
 	if lookups == nil {
 		lookups = []string{}
 	}

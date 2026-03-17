@@ -34,18 +34,18 @@ type ErrorClassifier func(err error) ErrorAction
 
 // OverlaySyncConfig configures the overlay sync worker and optional JungleBus subscriber for a single topic.
 type OverlaySyncConfig struct {
-	Enabled               bool            `mapstructure:"enabled"`
-	SubscriptionID        string          `mapstructure:"subscription_id"`    // JungleBus subscription ID (set via env var)
-	QueueName             string          `mapstructure:"queue_name"`         // Queue to consume from (e.g., "bap" → q:bap)
-	FromBlock             uint64          `mapstructure:"from_block"`         // Starting block for JungleBus subscription
-	Concurrency           int             `mapstructure:"concurrency"`        // Worker concurrency (default: 8)
-	PageSize              uint32          `mapstructure:"page_size"`          // Batch fetch size (default: 100)
-	PollDelay             time.Duration   `mapstructure:"poll_delay"`         // Sleep when queue empty (default: 1s)
-	BatchSize             int             `mapstructure:"batch_size"`         // JungleBus batch size (default: 1000)
-	ReorgDepth            uint32          `mapstructure:"reorg_depth"`        // JungleBus reorg depth (default: 6)
-	EnableMempool         bool            `mapstructure:"enable_mempool"`     // JungleBus mempool subscription
-	ResolveDependencies   bool            `mapstructure:"resolve_dependencies"` // Use GASP to resolve input dependencies before submit
-	ErrorClassifier       ErrorClassifier `mapstructure:"-"`                  // Classifies Submit errors (set programmatically)
+	Enabled             bool            `mapstructure:"enabled"`
+	SubscriptionID      string          `mapstructure:"subscription_id"`      // JungleBus subscription ID (set via env var)
+	QueueName           string          `mapstructure:"queue_name"`           // Queue to consume from (e.g., "bap" → q:bap)
+	FromBlock           uint64          `mapstructure:"from_block"`           // Starting block for JungleBus subscription
+	Concurrency         int             `mapstructure:"concurrency"`          // Worker concurrency (default: 8)
+	PageSize            uint32          `mapstructure:"page_size"`            // Batch fetch size (default: 100)
+	PollDelay           time.Duration   `mapstructure:"poll_delay"`           // Sleep when queue empty (default: 1s)
+	BatchSize           int             `mapstructure:"batch_size"`           // JungleBus batch size (default: 1000)
+	ReorgDepth          uint32          `mapstructure:"reorg_depth"`          // JungleBus reorg depth (default: 6)
+	EnableMempool       bool            `mapstructure:"enable_mempool"`       // JungleBus mempool subscription
+	ResolveDependencies bool            `mapstructure:"resolve_dependencies"` // Use GASP to resolve input dependencies before submit
+	ErrorClassifier     ErrorClassifier `mapstructure:"-"`                    // Classifies Submit errors (set programmatically)
 }
 
 // SubscriberConfig creates a jbsync.SubscriberConfig from this overlay sync config.
@@ -68,7 +68,7 @@ type OverlaySync struct {
 	topicName   string
 	store       store.Store
 	beefStorage *beef.Storage
-	overlay     *Services
+	engine      *engine.Engine
 	logger      *slog.Logger
 	worker      *worker.Worker
 }
@@ -79,7 +79,7 @@ func NewOverlaySync(
 	topicName string,
 	s store.Store,
 	beefStorage *beef.Storage,
-	overlaySvc *Services,
+	eng *engine.Engine,
 	logger *slog.Logger,
 ) *OverlaySync {
 	if logger == nil {
@@ -100,7 +100,7 @@ func NewOverlaySync(
 		topicName:   topicName,
 		store:       s,
 		beefStorage: beefStorage,
-		overlay:     overlaySvc,
+		engine:      eng,
 		logger:      logger.With("component", "overlay-sync", "topic", topicName),
 	}
 }
@@ -160,10 +160,10 @@ func (s *OverlaySync) processDirect(ctx context.Context, txid *chainhash.Hash) e
 		return fmt.Errorf("failed to build BEEF for %s: %w", txid.String(), err)
 	}
 
-	if _, err := s.overlay.Submit(ctx, sdkoverlay.TaggedBEEF{
+	if _, err := s.engine.Submit(ctx, sdkoverlay.TaggedBEEF{
 		Beef:   beefBytes,
 		Topics: []string{s.topicName},
-	}, engine.SubmitModeHistorical); err != nil {
+	}, engine.SubmitModeHistorical, nil); err != nil {
 		if s.config.ErrorClassifier != nil && s.config.ErrorClassifier(err) == ErrorSkip {
 			s.logger.Warn("skipping transaction due to classified error",
 				"txid", txid.String(), "error", err)
@@ -187,7 +187,7 @@ func (s *OverlaySync) processWithGASP(ctx context.Context, txid *chainhash.Hash)
 	}
 
 	beefRemote := gaspqueue.NewBeefRemote(s.beefStorage, s.store, "")
-	gaspStorage := engine.NewOverlayGASPStorage(s.topicName, s.overlay.Engine, nil)
+	gaspStorage := engine.NewOverlayGASPStorage(s.topicName, s.engine, nil)
 	seenNodes := &sync.Map{}
 
 	logPrefix := fmt.Sprintf("[GASP %s] ", s.topicName)
