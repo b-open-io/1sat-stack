@@ -299,10 +299,6 @@ func buildSpendEvents(output *IndexedOutput) []string {
 
 // GetSpend returns the spending txid for an outpoint (nil if unspent)
 func (s *OutputStore) GetSpend(ctx context.Context, op *transaction.Outpoint) (*chainhash.Hash, error) {
-	if s.SpendService != nil {
-		return s.SpendService.GetSpend(ctx, op)
-	}
-
 	spendBytes, err := s.Store.HGet(ctx, hashSpnd, op.Bytes())
 	if err == store.ErrKeyNotFound {
 		return nil, nil
@@ -321,10 +317,6 @@ func (s *OutputStore) GetSpend(ctx context.Context, op *transaction.Outpoint) (*
 
 // GetSpends returns spending txids for multiple outpoints (bulk)
 func (s *OutputStore) GetSpends(ctx context.Context, ops []*transaction.Outpoint) ([]*chainhash.Hash, error) {
-	if s.SpendService != nil {
-		return s.SpendService.GetSpends(ctx, ops)
-	}
-
 	if len(ops) == 0 {
 		return nil, nil
 	}
@@ -601,7 +593,7 @@ func (s *OutputStore) filterSpent(ctx context.Context, results []store.ScoredMem
 		ops[i] = transaction.NewOutpointFromBytes(r.Member)
 	}
 
-	spends, err := s.getLocalSpends(ctx, ops)
+	spends, err := s.GetSpends(ctx, ops)
 	if err != nil {
 		return nil, err
 	}
@@ -613,37 +605,6 @@ func (s *OutputStore) filterSpent(ctx context.Context, results []store.ScoredMem
 		}
 	}
 	return unspent, nil
-}
-
-// getLocalSpends checks spend status directly from the local store (Badger),
-// bypassing the SpendService chain (LRU cache → Badger → JungleBus fallback).
-// Used by search/filter operations that only need locally-indexed state.
-func (s *OutputStore) getLocalSpends(ctx context.Context, ops []*transaction.Outpoint) ([]*chainhash.Hash, error) {
-	if len(ops) == 0 {
-		return nil, nil
-	}
-
-	fields := make([][]byte, len(ops))
-	for i, op := range ops {
-		if op == nil {
-			continue
-		}
-		fields[i] = op.Bytes()
-	}
-
-	values, err := s.Store.HMGet(ctx, hashSpnd, fields...)
-	if err != nil {
-		return nil, err
-	}
-
-	result := make([]*chainhash.Hash, len(values))
-	for i, v := range values {
-		if len(v) == 32 {
-			result[i] = &chainhash.Hash{}
-			copy(result[i][:], v)
-		}
-	}
-	return result, nil
 }
 
 // === Load Operations ===
@@ -733,10 +694,10 @@ func (s *OutputStore) loadOutputsWithScores(ctx context.Context, ops []*transact
 		}
 	}
 
-	// Bulk load spends if requested (local-only — search results don't need fallback chain)
+	// Bulk load spends if requested
 	var spends []*chainhash.Hash
 	if cfg != nil && cfg.IncludeSpend {
-		spends, err = s.getLocalSpends(ctx, ops)
+		spends, err = s.GetSpends(ctx, ops)
 		if err != nil {
 			return nil, err
 		}
