@@ -1,11 +1,28 @@
 import { PrivateKey } from "@bsv/sdk";
 import type { IndexedOutput } from "@1sat/types";
 
+export interface EnrichedOrdinal extends IndexedOutput {
+  origin?: string;
+  contentType?: string;
+  name?: string;
+  contentUrl: string;
+}
+
+export interface TokenBalance {
+  tokenId: string;
+  symbol?: string;
+  icon: string;
+  decimals: number;
+  totalAmount: bigint;
+  outputs: IndexedOutput[];
+}
+
 export interface ScannedAssets {
   funding: IndexedOutput[];
-  ordinals: IndexedOutput[];
-  bsv21Tokens: IndexedOutput[];
+  ordinals: EnrichedOrdinal[];
+  bsv21Tokens: TokenBalance[];
   bsv20Tokens: IndexedOutput[];
+  locked: IndexedOutput[];
   totalBsv: number;
 }
 
@@ -24,6 +41,115 @@ function getServerBase(): string {
     ? window.location.pathname.substring(0, sweepIdx)
     : "";
   return `${window.location.origin}${basePath}`;
+}
+
+/** Extract event value by prefix, e.g. getEvent(events, "origin:") */
+function getEvent(events: string[], prefix: string): string | undefined {
+  const e = events.find((e) => e.startsWith(prefix));
+  return e ? e.slice(prefix.length) : undefined;
+}
+
+/** Get all events matching a prefix */
+function getEvents(events: string[], prefix: string): string[] {
+  return events.filter((e) => e.startsWith(prefix)).map((e) => e.slice(prefix.length));
+}
+
+function enrichOrdinal(out: IndexedOutput): EnrichedOrdinal {
+  const events = out.events ?? [];
+  const origin = getEvent(events, "origin:");
+  const types = getEvents(events, "type:");
+  // Get the most specific type (e.g., "image/jpeg" over "image")
+  const contentType = types.find((t) => t.includes("/")) ?? types[0];
+  const name = getEvent(events, "name:");
+  const base = getServerBase();
+  const contentUrl = `${base}/content/${origin ?? out.outpoint}`;
+
+  return { ...out, origin, contentType, name, contentUrl };
+}
+
+function groupBsv21Tokens(outputs: IndexedOutput[]): TokenBalance[] {
+  const groups = new Map<string, { outputs: IndexedOutput[]; totalAmount: bigint }>();
+
+  for (const out of outputs) {
+    const events = out.events ?? [];
+    const tokenId = getEvent(events, "bsv21:");
+    if (!tokenId) continue;
+
+    const amtStr = getEvent(events, "amt:");
+    const amount = amtStr ? BigInt(amtStr) : 0n;
+
+    let group = groups.get(tokenId);
+    if (!group) {
+      group = { outputs: [], totalAmount: 0n };
+      groups.set(tokenId, group);
+    }
+    group.outputs.push(out);
+    group.totalAmount += amount;
+  }
+
+  const base = getServerBase();
+  const balances: TokenBalance[] = [];
+  for (const [tokenId, group] of groups) {
+    balances.push({
+      tokenId,
+      icon: `${base}/content/${tokenId}`,
+      decimals: 0,
+      totalAmount: group.totalAmount,
+      outputs: group.outputs,
+    });
+  }
+  return balances;
+}
+
+function categorizeOutputs(outputs: IndexedOutput[]): ScannedAssets {
+  const funding: IndexedOutput[] = [];
+  const rawOrdinals: IndexedOutput[] = [];
+  const bsv21Raw: IndexedOutput[] = [];
+  const bsv20Tokens: IndexedOutput[] = [];
+  const locked: IndexedOutput[] = [];
+
+  for (const out of outputs) {
+    const events = out.events ?? [];
+    const sats = out.satoshis ?? 0;
+
+    // BSV-21 tokens (1-sat with bsv21: event)
+    if (events.some((e) => e.startsWith("bsv21:"))) {
+      bsv21Raw.push(out);
+      continue;
+    }
+
+    // Locked outputs (have lock: event) — display only
+    if (events.some((e) => e.startsWith("lock:"))) {
+      locked.push(out);
+      continue;
+    }
+
+    // BSV-20 tokens (have type:application/bsv-20) — display only
+    if (events.some((e) => e === "type:application/bsv-20" || e === "type:Token")) {
+      bsv20Tokens.push(out);
+      continue;
+    }
+
+    // Ordinals: 1-sat outputs
+    if (sats === 1) {
+      rawOrdinals.push(out);
+      continue;
+    }
+
+    // Funding: everything else with satoshis > 1
+    if (sats > 1) {
+      funding.push(out);
+    }
+  }
+
+  return {
+    funding,
+    ordinals: rawOrdinals.map(enrichOrdinal),
+    bsv21Tokens: groupBsv21Tokens(bsv21Raw),
+    bsv20Tokens,
+    locked,
+    totalBsv: funding.reduce((sum, o) => sum + (o.satoshis ?? 0), 0),
+  };
 }
 
 export async function scanAddress(
@@ -59,50 +185,38 @@ export async function scanAddress(
     };
   });
 
-  // Phase 2: Search for all unspent outputs owned by this address
+  // Phase 2: Search for all unspent outputs — paginate to get everything
   onProgress?.({ phase: "search", detail: "Searching for assets..." });
-  const searchUrl = new URL(`${base}/txo/search`);
-  searchUrl.searchParams.append("key", `own:${address}`);
-  searchUrl.searchParams.set("unspent", "true");
-  searchUrl.searchParams.set("events", "true");
-  searchUrl.searchParams.set("sats", "true");
+  const allOutputs: IndexedOutput[] = [];
+  let from: number | undefined;
 
-  const res = await fetch(searchUrl.toString());
-  if (!res.ok) throw new Error(`Search failed: ${res.statusText}`);
-  const results: IndexedOutput[] = await res.json();
+  while (true) {
+    const searchUrl = new URL(`${base}/txo/search`);
+    searchUrl.searchParams.append("key", `own:${address}`);
+    searchUrl.searchParams.set("unspent", "true");
+    searchUrl.searchParams.set("events", "true");
+    searchUrl.searchParams.set("sats", "true");
+    searchUrl.searchParams.set("limit", "100");
+    if (from !== undefined) {
+      searchUrl.searchParams.set("from", String(from));
+    }
+
+    const res = await fetch(searchUrl.toString());
+    if (!res.ok) throw new Error(`Search failed: ${res.statusText}`);
+    const page: IndexedOutput[] = await res.json();
+
+    if (!page || page.length === 0) break;
+    allOutputs.push(...page);
+    onProgress?.({ phase: "search", detail: `Found ${allOutputs.length} outputs...` });
+
+    if (page.length < 100) break;
+    // Use last item's score for pagination
+    from = page[page.length - 1].score;
+  }
 
   // Phase 3: Categorize
   onProgress?.({ phase: "categorize", detail: "Categorizing assets..." });
-  return categorizeOutputs(results);
-}
-
-function categorizeOutputs(outputs: IndexedOutput[]): ScannedAssets {
-  const funding: IndexedOutput[] = [];
-  const ordinals: IndexedOutput[] = [];
-  const bsv21Tokens: IndexedOutput[] = [];
-  const bsv20Tokens: IndexedOutput[] = [];
-
-  for (const out of outputs) {
-    const events = out.events ?? [];
-
-    if (events.some((e) => e.startsWith("bsv21:"))) {
-      bsv21Tokens.push(out);
-    } else if (events.some((e) => e.startsWith("bsv20:"))) {
-      bsv20Tokens.push(out);
-    } else if (out.satoshis === 1) {
-      ordinals.push(out);
-    } else {
-      funding.push(out);
-    }
-  }
-
-  return {
-    funding,
-    ordinals,
-    bsv21Tokens,
-    bsv20Tokens,
-    totalBsv: funding.reduce((sum, o) => sum + (o.satoshis ?? 0), 0),
-  };
+  return categorizeOutputs(allOutputs);
 }
 
 export async function scanAddresses(
@@ -122,6 +236,7 @@ export async function scanAddresses(
     ordinals: allResults.flatMap((r) => r.ordinals),
     bsv21Tokens: allResults.flatMap((r) => r.bsv21Tokens),
     bsv20Tokens: allResults.flatMap((r) => r.bsv20Tokens),
+    locked: allResults.flatMap((r) => r.locked),
     totalBsv: allResults.reduce((sum, r) => sum + r.totalBsv, 0),
   };
 }

@@ -4,7 +4,13 @@ import { ArrowDown, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ConnectWallet } from "@/components/connect-wallet";
 import { WifInput } from "@/components/wif-input";
-import { FundingSection, OrdinalsSection, Bsv21Section, Bsv20Section } from "@/components/asset-preview";
+import {
+  FundingSection,
+  OrdinalsSection,
+  Bsv21Section,
+  Bsv20Section,
+  LockedSection,
+} from "@/components/asset-preview";
 import { SweepProgress } from "@/components/sweep-progress";
 import { deriveAddress, scanAddresses, type ScannedAssets } from "@/lib/scanner";
 import { executeSweep, type SweepResult } from "@/lib/sweeper";
@@ -22,12 +28,31 @@ export default function App() {
   const [sweeping, setSweeping] = useState(false);
   const [sweepProgress, setSweepProgress] = useState("");
   const [sweepResult, setSweepResult] = useState<SweepResult | null>(null);
+  const [selectedOrdinals, setSelectedOrdinals] = useState<Set<string>>(new Set());
+
+  const handleToggleOrdinal = useCallback((outpoint: string) => {
+    setSelectedOrdinals((prev) => {
+      const next = new Set(prev);
+      if (next.has(outpoint)) next.delete(outpoint);
+      else next.add(outpoint);
+      return next;
+    });
+  }, []);
+
+  const handleSelectAll = useCallback(() => {
+    if (assets) setSelectedOrdinals(new Set(assets.ordinals.map((o) => o.outpoint)));
+  }, [assets]);
+
+  const handleDeselectAll = useCallback(() => {
+    setSelectedOrdinals(new Set());
+  }, []);
 
   const handleScan = useCallback(async (payWif: string, ordWif: string) => {
     setScanning(true);
     setState("scanning");
     setAssets(null);
     setSweepResult(null);
+    setSelectedOrdinals(new Set());
     setWifs({ pay: payWif, ord: ordWif });
 
     try {
@@ -40,8 +65,11 @@ export default function App() {
       );
 
       setAssets(result);
+      setSelectedOrdinals(new Set(result.ordinals.map((o) => o.outpoint)));
+
       const total = result.funding.length + result.ordinals.length +
-        result.bsv21Tokens.length + result.bsv20Tokens.length;
+        result.bsv21Tokens.reduce((n, t) => n + t.outputs.length, 0) +
+        result.bsv20Tokens.length + result.locked.length;
       if (total === 0) {
         toast.info("No assets found at legacy addresses");
       }
@@ -62,12 +90,17 @@ export default function App() {
     setState("sweeping");
 
     try {
+      const selectedOrdinalOutputs = assets.ordinals.filter((o) =>
+        selectedOrdinals.has(o.outpoint),
+      );
+      const bsv21Outputs = assets.bsv21Tokens.flatMap((t) => t.outputs);
+
       const result = await executeSweep({
         wallet,
         wif: wifs.pay,
         funding: assets.funding,
-        ordinals: assets.ordinals,
-        bsv21Tokens: assets.bsv21Tokens,
+        ordinals: selectedOrdinalOutputs,
+        bsv21Tokens: bsv21Outputs,
         onProgress: setSweepProgress,
       });
 
@@ -85,17 +118,19 @@ export default function App() {
     } finally {
       setSweeping(false);
     }
-  }, [wifs, assets]);
+  }, [wifs, assets, selectedOrdinals]);
 
   const handleReset = useCallback(() => {
     setAssets(null);
     setSweepResult(null);
     setWifs(null);
+    setSelectedOrdinals(new Set());
     setState(walletConnected ? "input" : "connect");
   }, [walletConnected]);
 
   const sweepableCount = assets
-    ? assets.funding.length + assets.ordinals.length + assets.bsv21Tokens.length
+    ? assets.funding.length + selectedOrdinals.size +
+      assets.bsv21Tokens.reduce((n, t) => n + t.outputs.length, 0)
     : 0;
 
   return (
@@ -137,9 +172,16 @@ export default function App() {
         {assets && !sweeping && (
           <div className="space-y-3">
             <FundingSection funding={assets.funding} totalBsv={assets.totalBsv} />
-            <OrdinalsSection ordinals={assets.ordinals} />
+            <OrdinalsSection
+              ordinals={assets.ordinals}
+              selectedOrdinals={selectedOrdinals}
+              onToggle={handleToggleOrdinal}
+              onSelectAll={handleSelectAll}
+              onDeselectAll={handleDeselectAll}
+            />
             <Bsv21Section tokens={assets.bsv21Tokens} />
             <Bsv20Section tokens={assets.bsv20Tokens} />
+            <LockedSection locked={assets.locked} />
 
             {sweepableCount > 0 && state === "preview" && (
               <Button onClick={handleSweep} className="w-full h-12 text-base" size="lg">
