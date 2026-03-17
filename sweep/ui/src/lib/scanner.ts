@@ -1,5 +1,6 @@
 import { PrivateKey } from "@bsv/sdk";
 import type { IndexedOutput } from "@1sat/types";
+import { getServices } from "./services";
 
 export interface EnrichedOrdinal extends IndexedOutput {
   origin?: string;
@@ -58,11 +59,9 @@ function enrichOrdinal(out: IndexedOutput): EnrichedOrdinal {
   const events = out.events ?? [];
   const origin = getEvent(events, "origin:");
   const types = getEvents(events, "type:");
-  // Get the most specific type (e.g., "image/jpeg" over "image")
   const contentType = types.find((t) => t.includes("/")) ?? types[0];
   const name = getEvent(events, "name:");
-  const base = getServerBase();
-  const contentUrl = `${base}/content/${origin ?? out.outpoint}`;
+  const contentUrl = getServices().ordfs.getContentUrl(origin ?? out.outpoint);
 
   return { ...out, origin, contentType, name, contentUrl };
 }
@@ -87,12 +86,11 @@ function groupBsv21Tokens(outputs: IndexedOutput[]): TokenBalance[] {
     group.totalAmount += amount;
   }
 
-  const base = getServerBase();
   const balances: TokenBalance[] = [];
   for (const [tokenId, group] of groups) {
     balances.push({
       tokenId,
-      icon: `${base}/content/${tokenId}`,
+      icon: getServices().ordfs.getContentUrl(tokenId),
       decimals: 0,
       totalAmount: group.totalAmount,
       outputs: group.outputs,
