@@ -28,7 +28,7 @@ require (
 	github.com/bsv-blockchain/go-bsv-middleware v0.12.4
 	github.com/bsv-blockchain/go-chaintracks v1.1.2
 	github.com/bsv-blockchain/go-messagebox-server v0.0.0-00010101000000-000000000000
-	github.com/bsv-blockchain/go-overlay-services v1.2.5-0.20260317171040-762652148a83
+	github.com/bsv-blockchain/go-overlay-services v1.2.5-0.20260317181539-0c270ae9ee31
 	github.com/bsv-blockchain/go-p2p-message-bus v0.1.11
 	github.com/bsv-blockchain/go-sdk v1.2.19
 	github.com/bsv-blockchain/go-teranode-p2p-client v0.1.1
