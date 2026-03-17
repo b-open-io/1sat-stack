@@ -12,7 +12,6 @@ import (
 	"github.com/b-open-io/1sat-stack/pkg/jbsync"
 	"github.com/b-open-io/1sat-stack/pkg/logging"
 	lookuppkg "github.com/b-open-io/1sat-stack/pkg/lookup"
-	"github.com/b-open-io/1sat-stack/pkg/overlay"
 	"github.com/b-open-io/1sat-stack/pkg/owner"
 	"github.com/b-open-io/1sat-stack/pkg/store"
 	"github.com/b-open-io/1sat-stack/pkg/txo"
@@ -59,7 +58,7 @@ type SyncServices struct {
 	store        store.Store
 	beefStorage  *beef.Storage
 	outputStore  *txo.OutputStore
-	overlay      *overlay.Services
+	overlay      *engine.Engine
 	chainTracker chaintracks.Chaintracks
 	jbClient     *junglebus.Client
 	logger       *slog.Logger
@@ -74,7 +73,7 @@ func NewSyncServices(
 	s store.Store,
 	beefStorage *beef.Storage,
 	outputStore *txo.OutputStore,
-	overlaySvc *overlay.Services,
+	overlaySvc *engine.Engine,
 	lookup *lookuppkg.BSV21Lookup,
 	ct chaintracks.Chaintracks,
 	jbClient *junglebus.Client,
@@ -224,7 +223,7 @@ func (s *SyncServices) dispatch(ctx context.Context, member string, score float6
 			if _, err := s.overlay.Submit(ctx, sdkoverlay.TaggedBEEF{
 				Beef:   beefBytes,
 				Topics: []string{"tm_bsv21"},
-			}, engine.SubmitModeHistorical); err != nil {
+			}, engine.SubmitModeHistorical, nil); err != nil {
 				s.logger.Error("failed to submit to tm_bsv21", "error", err, "txid", txid.String())
 			}
 

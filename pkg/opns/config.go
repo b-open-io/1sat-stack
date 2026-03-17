@@ -6,7 +6,7 @@ import (
 	"log/slog"
 
 	"github.com/b-open-io/1sat-stack/pkg/overlay"
-	overlaystorage "github.com/b-open-io/1sat-stack/pkg/overlay/storage"
+	"github.com/bsv-blockchain/go-overlay-services/pkg/core/engine"
 	"github.com/spf13/viper"
 )
 
@@ -18,8 +18,8 @@ const (
 
 // Config holds OPNS configuration.
 type Config struct {
-	Mode   string      `mapstructure:"mode"` // disabled, embedded
-	Crawl  CrawlConfig `mapstructure:"crawl"`
+	Mode   string       `mapstructure:"mode"` // disabled, embedded
+	Crawl  CrawlConfig  `mapstructure:"crawl"`
 	Routes RoutesConfig `mapstructure:"routes"`
 }
 
@@ -45,18 +45,20 @@ func (c *Config) SetDefaults(v *viper.Viper, prefix string) {
 
 // Services holds initialized OPNS services.
 type Services struct {
-	Lookup       *LookupService
-	TopicManager *TopicManager
-	Crawl        *GenesisCrawl
-	Sync         *overlay.OverlaySync
-	Routes       *Routes
+	Engine        *engine.Engine
+	Lookup        *LookupService
+	TopicManager  *TopicManager
+	Crawl         *GenesisCrawl
+	Sync          *overlay.OverlaySync
+	Routes        *Routes
+	OverlayRoutes *overlay.Routes
 }
 
 // Initialize creates OPNS services from the configuration.
 func (c *Config) Initialize(
 	ctx context.Context,
 	logger *slog.Logger,
-	db overlaystorage.TopicStorage,
+	deps *overlay.ModuleDeps,
 ) (*Services, error) {
 	if c.Mode == ModeDisabled {
 		return nil, nil
@@ -68,17 +70,33 @@ func (c *Config) Initialize(
 
 	switch c.Mode {
 	case ModeEmbedded:
-		lookupSvc := NewLookupService(db)
-
+		if deps == nil || deps.Factory == nil {
+			return nil, fmt.Errorf("overlay ModuleDeps with Factory is required for OPNS")
+		}
+		ts, err := deps.Factory("tm_opns")
+		if err != nil {
+			return nil, fmt.Errorf("failed to get OPNS topic storage: %w", err)
+		}
+		lookupSvc := NewLookupService(ts)
 		topicManager := &TopicManager{}
 
+		eng := overlay.NewModuleEngine(deps,
+			map[string]engine.TopicManager{"tm_opns": topicManager},
+			map[string]engine.LookupService{"opns": lookupSvc},
+		)
+
 		svc := &Services{
+			Engine:       eng,
 			Lookup:       lookupSvc,
 			TopicManager: topicManager,
 		}
 
 		if c.Routes.Enabled {
 			svc.Routes = NewRoutes(lookupSvc, logger)
+		}
+
+		if deps.RoutesConfig != nil && deps.RoutesConfig.Enabled {
+			svc.OverlayRoutes = overlay.NewRoutes(eng, deps.RoutesConfig, logger)
 		}
 
 		return svc, nil

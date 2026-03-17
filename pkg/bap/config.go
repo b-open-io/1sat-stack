@@ -6,7 +6,7 @@ import (
 	"log/slog"
 
 	"github.com/b-open-io/1sat-stack/pkg/overlay"
-	overlaystorage "github.com/b-open-io/1sat-stack/pkg/overlay/storage"
+	"github.com/bsv-blockchain/go-overlay-services/pkg/core/engine"
 	"github.com/spf13/viper"
 )
 
@@ -50,17 +50,19 @@ func (c *Config) SetDefaults(v *viper.Viper, prefix string) {
 
 // Services holds initialized BAP services.
 type Services struct {
-	Lookup       *LookupService
-	TopicManager *TopicManager
-	Sync         *overlay.OverlaySync
-	Routes       *Routes
+	Engine        *engine.Engine
+	Lookup        *LookupService
+	TopicManager  *TopicManager
+	Sync          *overlay.OverlaySync
+	Routes        *Routes
+	OverlayRoutes *overlay.Routes
 }
 
 // Initialize creates BAP services from the configuration.
 func (c *Config) Initialize(
 	ctx context.Context,
 	logger *slog.Logger,
-	topicDB overlaystorage.Factory,
+	deps *overlay.ModuleDeps,
 ) (*Services, error) {
 	if c.Mode == ModeDisabled {
 		return nil, nil
@@ -72,25 +74,34 @@ func (c *Config) Initialize(
 
 	switch c.Mode {
 	case ModeEmbedded:
-		if topicDB == nil {
-			return nil, fmt.Errorf("overlay TopicDB factory is required for BAP")
+		if deps == nil || deps.Factory == nil {
+			return nil, fmt.Errorf("overlay ModuleDeps with Factory is required for BAP")
 		}
-		ts, err := topicDB("tm_bap")
+		ts, err := deps.Factory("tm_bap")
 		if err != nil {
 			return nil, fmt.Errorf("failed to get BAP topic storage: %w", err)
 		}
 		store := NewSQLStore(ts.DB(), ts.TopicID())
 		lookupSvc := NewLookupService(store)
-
 		topicManager := &TopicManager{}
 
+		eng := overlay.NewModuleEngine(deps,
+			map[string]engine.TopicManager{"tm_bap": topicManager},
+			map[string]engine.LookupService{"bap": lookupSvc},
+		)
+
 		svc := &Services{
+			Engine:       eng,
 			Lookup:       lookupSvc,
 			TopicManager: topicManager,
 		}
 
 		if c.Routes.Enabled {
 			svc.Routes = NewRoutes(lookupSvc, logger)
+		}
+
+		if deps.RoutesConfig != nil && deps.RoutesConfig.Enabled {
+			svc.OverlayRoutes = overlay.NewRoutes(eng, deps.RoutesConfig, logger)
 		}
 
 		return svc, nil

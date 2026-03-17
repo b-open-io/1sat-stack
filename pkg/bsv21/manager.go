@@ -10,10 +10,10 @@ import (
 	"github.com/b-open-io/1sat-stack/pkg/beef"
 	gaspqueue "github.com/b-open-io/1sat-stack/pkg/gasp"
 	lookuppkg "github.com/b-open-io/1sat-stack/pkg/lookup"
-	"github.com/b-open-io/1sat-stack/pkg/overlay"
 	"github.com/b-open-io/1sat-stack/pkg/store"
 	"github.com/b-open-io/1sat-stack/pkg/txo"
 	"github.com/bsv-blockchain/go-chaintracks/chaintracks"
+	"github.com/bsv-blockchain/go-overlay-services/pkg/core/engine"
 	"github.com/bsv-blockchain/go-overlay-services/pkg/core/gasp"
 	sdkoverlay "github.com/bsv-blockchain/go-sdk/overlay"
 	"github.com/bsv-blockchain/go-sdk/transaction"
@@ -36,7 +36,7 @@ type TokenManager struct {
 	store             store.Store
 	beefStorage       *beef.Storage
 	outputStore       *txo.OutputStore
-	overlay           *overlay.Services
+	overlay           *engine.Engine
 	lookup            *lookuppkg.BSV21Lookup
 	ownerSync         OwnerSyncer
 	chainTracker      chaintracks.Chaintracks
@@ -48,8 +48,8 @@ type TokenManager struct {
 	workers  sync.Map // tokenId -> *TokenWorker
 	statuses sync.Map // tokenId -> *TokenStatus
 	limiter  chan struct{}
-	g       *errgroup.Group
-	ctx     context.Context
+	g        *errgroup.Group
+	ctx      context.Context
 }
 
 // NewTokenManager creates a new token manager
@@ -57,7 +57,7 @@ func NewTokenManager(
 	s store.Store,
 	beefStorage *beef.Storage,
 	outputStore *txo.OutputStore,
-	overlaySvc *overlay.Services,
+	overlaySvc *engine.Engine,
 	lookup *lookuppkg.BSV21Lookup,
 	ownerSync OwnerSyncer,
 	ct chaintracks.Chaintracks,
@@ -146,7 +146,7 @@ func (m *TokenManager) createWorker(ctx context.Context, status *TokenStatus) er
 	tw := gaspqueue.NewTopicWorker(&gaspqueue.TopicWorkerConfig{
 		TopicName:   topicName,
 		Store:       m.store,
-		Engine:      m.overlay.Engine,
+		Engine:      m.overlay,
 		Remotes:     []gasp.Remote{beefRemote},
 		Concurrency: m.concurrency,
 		OnProcessed: func(name string) error {
@@ -265,7 +265,7 @@ func (m *TokenManager) manageWorkerLifecycle(ctx context.Context) {
 					metadata = m.getTokenMetadata(ctx, outpoint)
 				}
 				tm := NewBsv21ValidatedTopicManager(topicName, nil, metadata)
-				m.overlay.Engine.RegisterTopicManager(topicName, tm)
+				m.overlay.RegisterTopicManager(topicName, tm)
 			}
 			activeTokens[tokenId] = struct{}{}
 		}
@@ -310,7 +310,7 @@ func (m *TokenManager) manageWorkerLifecycle(ctx context.Context) {
 				metadata = m.getTokenMetadata(ctx, outpoint)
 			}
 			tm := NewBsv21ValidatedTopicManager(topicName, nil, metadata)
-			m.overlay.Engine.RegisterTopicManager(topicName, tm)
+			m.overlay.RegisterTopicManager(topicName, tm)
 		}
 
 		// Create worker
@@ -326,7 +326,7 @@ func (m *TokenManager) manageWorkerLifecycle(ctx context.Context) {
 		if _, active := activeTokens[tokenId]; !active {
 			topicName := "tm_" + tokenId
 			if m.overlay != nil {
-				m.overlay.Engine.UnregisterTopicManager(topicName)
+				m.overlay.UnregisterTopicManager(topicName)
 			}
 		}
 		return true

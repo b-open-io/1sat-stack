@@ -11,7 +11,6 @@ import (
 	"time"
 
 	"github.com/b-open-io/1sat-stack/pkg/beef"
-	"github.com/b-open-io/1sat-stack/pkg/overlay"
 	"github.com/bitcoin-sv/go-templates/template/opns"
 	"github.com/bsv-blockchain/go-overlay-services/pkg/core/engine"
 	"github.com/bsv-blockchain/go-sdk/chainhash"
@@ -32,7 +31,7 @@ type CrawlConfig struct {
 type GenesisCrawl struct {
 	config      CrawlConfig
 	beefStorage *beef.Storage
-	overlay     *overlay.Services
+	engine      *engine.Engine
 	topicName   string
 	httpClient  *http.Client
 	cancel      context.CancelFunc
@@ -43,7 +42,7 @@ type GenesisCrawl struct {
 func NewGenesisCrawl(
 	cfg CrawlConfig,
 	beefStorage *beef.Storage,
-	overlaySvc *overlay.Services,
+	eng *engine.Engine,
 	logger *slog.Logger,
 ) *GenesisCrawl {
 	if cfg.Concurrency <= 0 {
@@ -55,7 +54,7 @@ func NewGenesisCrawl(
 	return &GenesisCrawl{
 		config:      cfg,
 		beefStorage: beefStorage,
-		overlay:     overlaySvc,
+		engine:      eng,
 		topicName:   "tm_opns",
 		httpClient:  &http.Client{Timeout: 30 * time.Second},
 		logger:      logger,
@@ -151,10 +150,10 @@ func (c *GenesisCrawl) processTransaction(ctx context.Context, txid *chainhash.H
 		return fmt.Errorf("failed to build BEEF for %s: %w", txid.String(), err)
 	}
 
-	steak, err := c.overlay.Submit(ctx, sdkoverlay.TaggedBEEF{
+	steak, err := c.engine.Submit(ctx, sdkoverlay.TaggedBEEF{
 		Beef:   beefBytes,
 		Topics: []string{c.topicName},
-	}, engine.SubmitModeHistorical)
+	}, engine.SubmitModeHistorical, nil)
 	if err != nil {
 		return fmt.Errorf("failed to submit %s: %w", txid.String(), err)
 	}

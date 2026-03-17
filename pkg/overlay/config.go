@@ -70,7 +70,41 @@ type InitializeDeps struct {
 	P2PBus       *P2PBus       // For overlay P2P broadcast (optional)
 }
 
-// Initialize creates overlay services from configuration
+// ModuleDeps holds the shared infrastructure that overlay modules use to create their own engines.
+type ModuleDeps struct {
+	Factory      overlaystorage.Factory
+	TxTopicIndex overlaystorage.TxTopicIndexer
+	BeefStorage  *beef.Storage
+	ChainTracker chaintracker.ChainTracker
+	Store        store.Store
+	IngestTx     overlaystorage.IngestTxFunc
+	RoutesConfig *RoutesConfig
+	P2PBus       *P2PBus
+}
+
+// NewModuleEngine creates an engine.Engine for a single overlay module.
+func NewModuleEngine(deps *ModuleDeps, managers map[string]engine.TopicManager, lookups map[string]engine.LookupService) *engine.Engine {
+	adapter := overlaystorage.NewEngineAdapter(deps.Factory, deps.BeefStorage, deps.TxTopicIndex)
+	if deps.IngestTx != nil {
+		adapter.IngestTx = deps.IngestTx
+	}
+
+	eng := engine.NewEngine(&engine.Config{
+		Managers:       managers,
+		LookupServices: lookups,
+		Storage:        adapter,
+		ChainTracker:   deps.ChainTracker,
+	})
+
+	if deps.P2PBus != nil {
+		eng.OnAdmission = deps.P2PBus.OnAdmission
+	}
+
+	return eng
+}
+
+// Initialize creates shared overlay infrastructure (storage factory, TxTopicIndex)
+// without creating an engine. Each module creates its own engine via NewModuleEngine.
 func (c *Config) Initialize(ctx context.Context, logger *slog.Logger, deps *InitializeDeps) (*Services, error) {
 	if c.Mode == ModeDisabled {
 		return nil, nil
@@ -112,44 +146,37 @@ func (c *Config) Initialize(ctx context.Context, logger *slog.Logger, deps *Init
 		txTopicIndex = sqliteFactory.TxTopicIndex()
 	}
 
-	adapter := overlaystorage.NewEngineAdapter(factory, deps.BeefStorage, txTopicIndex)
-
-	// Wire IngestTx callback if output store is available
+	var ingestTx overlaystorage.IngestTxFunc
 	if deps.OutputStore != nil && deps.OutputStore.IngestTx != nil {
 		ingestFn := deps.OutputStore.IngestTx
-		adapter.IngestTx = func(ctx context.Context, tx *transaction.Transaction) error {
+		ingestTx = func(ctx context.Context, tx *transaction.Transaction) error {
 			return ingestFn(ctx, tx)
 		}
 	}
 
 	svc := &Services{
-		logger:      logger,
-		Store:       deps.Store,
-		beefStorage: deps.BeefStorage,
-		factory:     factory,
+		logger:       logger,
+		Store:        deps.Store,
+		beefStorage:  deps.BeefStorage,
+		factory:      factory,
+		txTopicIndex: txTopicIndex,
+		ModuleDeps: &ModuleDeps{
+			Factory:      factory,
+			TxTopicIndex: txTopicIndex,
+			BeefStorage:  deps.BeefStorage,
+			ChainTracker: deps.ChainTracker,
+			Store:        deps.Store,
+			IngestTx:     ingestTx,
+			RoutesConfig: &c.Routes,
+			P2PBus:       deps.P2PBus,
+		},
 	}
 
-	// Create the overlay engine
-	eng := engine.NewEngine(&engine.Config{
-		Managers:       make(map[string]engine.TopicManager),
-		LookupServices: make(map[string]engine.LookupService),
-		Storage:        adapter,
-		ChainTracker:   deps.ChainTracker,
-	})
-	svc.Engine = eng
-
-	// Wire P2P bus if available
 	if deps.P2PBus != nil {
 		svc.P2P = deps.P2PBus
-		eng.OnAdmission = deps.P2PBus.OnAdmission
 	}
 
-	// Create routes if enabled
-	if c.Routes.Enabled {
-		svc.Routes = NewRoutes(eng, &c.Routes, logger)
-	}
-
-	logger.Info("overlay engine initialized", "mode", c.Mode, "backend", c.StorageBackend, "storage", storagePath)
+	logger.Info("overlay infrastructure initialized", "mode", c.Mode, "backend", c.StorageBackend, "storage", storagePath)
 
 	return svc, nil
 }

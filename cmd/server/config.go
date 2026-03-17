@@ -24,9 +24,9 @@ import (
 	"github.com/b-open-io/1sat-stack/pkg/ordfs"
 	ordlockpkg "github.com/b-open-io/1sat-stack/pkg/ordlock"
 	"github.com/b-open-io/1sat-stack/pkg/overlay"
-	overlaystorage "github.com/b-open-io/1sat-stack/pkg/overlay/storage"
-	"github.com/b-open-io/1sat-stack/pkg/owner"
+
 	"github.com/b-open-io/1sat-stack/pkg/messagebox"
+	"github.com/b-open-io/1sat-stack/pkg/owner"
 	"github.com/b-open-io/1sat-stack/pkg/paymail"
 	"github.com/b-open-io/1sat-stack/pkg/pubsub"
 	"github.com/b-open-io/1sat-stack/pkg/spends"
@@ -37,16 +37,16 @@ import (
 	arcadeconfig "github.com/bsv-blockchain/arcade/config"
 	arcaderoutes "github.com/bsv-blockchain/arcade/routes/fiber"
 	"github.com/bsv-blockchain/arcade/service"
-	"github.com/bsv-blockchain/go-overlay-services/pkg/core/engine"
 	"github.com/bsv-blockchain/go-chaintracks/chaintracks"
 	chaintracksconfig "github.com/bsv-blockchain/go-chaintracks/config"
 	chaintracksroutes "github.com/bsv-blockchain/go-chaintracks/routes/fiber"
+	"github.com/bsv-blockchain/go-overlay-services/pkg/core/engine"
 	msgbus "github.com/bsv-blockchain/go-p2p-message-bus"
 	"github.com/bsv-blockchain/go-sdk/transaction"
 	p2p "github.com/bsv-blockchain/go-teranode-p2p-client"
-	"github.com/libp2p/go-libp2p/core/crypto"
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/middleware/adaptor"
+	"github.com/libp2p/go-libp2p/core/crypto"
 	"github.com/spf13/viper"
 	"go.mongodb.org/mongo-driver/v2/mongo"
 	mongooptions "go.mongodb.org/mongo-driver/v2/mongo/options"
@@ -220,22 +220,22 @@ func (c *Config) CreateLogger(logLevelOverride string) *slog.Logger {
 
 // Services holds all initialized services
 type Services struct {
-	Store   *store.Services
-	PubSub  *pubsub.Services
-	Beef    *beef.Services
-	TXO     *txo.Services
-	Indexer *indexer.Services
-	BSV21   *bsv21.Services
-	BAP     *bap.Services
-	BSocial *bsocial.Services
-	OPNS    *opns.Services
-	OrdLock *ordlockpkg.Services
-	Overlay *overlay.Services
-	Spends  *spends.Services
-	ORDFS   *ordfs.Services
-	Own     *owner.Services
-	Admin   *admin.Services
-	Wallet  *wallet.Services
+	Store      *store.Services
+	PubSub     *pubsub.Services
+	Beef       *beef.Services
+	TXO        *txo.Services
+	Indexer    *indexer.Services
+	BSV21      *bsv21.Services
+	BAP        *bap.Services
+	BSocial    *bsocial.Services
+	OPNS       *opns.Services
+	OrdLock    *ordlockpkg.Services
+	Overlay    *overlay.Services
+	Spends     *spends.Services
+	ORDFS      *ordfs.Services
+	Own        *owner.Services
+	Admin      *admin.Services
+	Wallet     *wallet.Services
 	Paymail    *paymail.Services
 	MessageBox *messagebox.Services
 
@@ -485,37 +485,20 @@ func (c *Config) Initialize(ctx context.Context, logger *slog.Logger) (*Services
 		logger.Info("overlay initialized", "duration", time.Since(start).Round(time.Millisecond))
 	}
 
-	// Initialize BSV21 AFTER overlay so we can wire them together
-	if c.BSV21.Mode != bsv21.ModeDisabled && svc.TXO != nil {
+	// Get shared module deps for overlay modules
+	var moduleDeps *overlay.ModuleDeps
+	if svc.Overlay != nil {
+		moduleDeps = svc.Overlay.ModuleDeps
+	}
+
+	// Initialize BSV21
+	if c.BSV21.Mode != bsv21.ModeDisabled && svc.TXO != nil && moduleDeps != nil {
 		start = time.Now()
-		var topicDB overlaystorage.Factory
-		if svc.Overlay != nil {
-			topicDB = svc.Overlay.TopicDBFactory()
-		}
-		bsv21Svc, err := c.BSV21.Initialize(ctx, logger, svc.TXO.OutputStore, topicDB, svc.Chaintracks, svc.Beef.Storage, svc.Overlay, svc.JungleBus)
+		bsv21Svc, err := c.BSV21.Initialize(ctx, logger, svc.TXO.OutputStore, moduleDeps, svc.Chaintracks, svc.Beef.Storage, svc.JungleBus)
 		if err != nil {
 			return nil, fmt.Errorf("failed to initialize bsv21: %w", err)
 		}
 		svc.BSV21 = bsv21Svc
-
-		// Wire BSV21 to overlay engine
-		if svc.Overlay != nil {
-			// Register BSV21 lookup service
-			svc.Overlay.RegisterLookupService("bsv21", svc.BSV21.Lookup)
-			logger.Info("BSV21 lookup service registered with overlay engine")
-
-			// Activate tm_bsv21 discovery topic (admits all deploy+mint operations)
-			// This is a registration-only topic - no worker needed as it just identifies outputs
-			discoveryTopic := &overlay.Topic{
-				Name:    "tm_bsv21",
-				Manager: bsv21.NewBsv21DiscoveryTopicManager("tm_bsv21", logger),
-			}
-			if err := svc.Overlay.ActivateTopic(ctx, discoveryTopic); err != nil {
-				logger.Error("failed to activate BSV21 discovery topic", "error", err)
-			} else {
-				logger.Info("BSV21 discovery topic (tm_bsv21) activated")
-			}
-		}
 		logger.Info("bsv21 initialized", "duration", time.Since(start).Round(time.Millisecond))
 	}
 
@@ -534,37 +517,23 @@ func (c *Config) Initialize(ctx context.Context, logger *slog.Logger) (*Services
 	}
 
 	// Initialize BAP
-	if c.BAP.Mode != bap.ModeDisabled && svc.Overlay != nil {
+	if c.BAP.Mode != bap.ModeDisabled && moduleDeps != nil {
 		start = time.Now()
-		bapSvc, err := c.BAP.Initialize(ctx, logger, svc.Overlay.TopicDBFactory())
+		bapSvc, err := c.BAP.Initialize(ctx, logger, moduleDeps)
 		if err != nil {
 			return nil, fmt.Errorf("failed to initialize bap: %w", err)
 		}
 		svc.BAP = bapSvc
 
-		if svc.Overlay != nil {
-			svc.Overlay.RegisterLookupService("bap", svc.BAP.Lookup)
-
-			bapTopic := &overlay.Topic{
-				Name:    "tm_bap",
-				Manager: svc.BAP.TopicManager,
+		if svc.Beef != nil {
+			syncCfg := c.BAP.Sync
+			if syncCfg == nil {
+				syncCfg = &overlay.OverlaySyncConfig{}
 			}
-			if err := svc.Overlay.ActivateTopic(ctx, bapTopic); err != nil {
-				logger.Error("failed to activate BAP topic", "error", err)
-			} else {
-				logger.Info("BAP topic (tm_bap) activated")
+			if syncCfg.QueueName == "" {
+				syncCfg.QueueName = "bap"
 			}
-
-			if svc.Beef != nil {
-				syncCfg := c.BAP.Sync
-				if syncCfg == nil {
-					syncCfg = &overlay.OverlaySyncConfig{}
-				}
-				if syncCfg.QueueName == "" {
-					syncCfg.QueueName = "bap"
-				}
-				svc.BAP.Sync = overlay.NewOverlaySync(syncCfg, "tm_bap", svc.Store.Store, svc.Beef.Storage, svc.Overlay, logger)
-			}
+			svc.BAP.Sync = overlay.NewOverlaySync(syncCfg, "tm_bap", svc.Store.Store, svc.Beef.Storage, svc.BAP.Engine, logger)
 		}
 		logger.Info("bap initialized", "duration", time.Since(start).Round(time.Millisecond))
 	}
@@ -573,77 +542,45 @@ func (c *Config) Initialize(ctx context.Context, logger *slog.Logger) (*Services
 	if c.BSocial.Mode != bsocial.ModeDisabled && svc.MongoDB != nil {
 		start = time.Now()
 		bsocialDB := svc.MongoDB.Database("bsocial")
-		bsocialSvc, err := c.BSocial.Initialize(ctx, logger, bsocialDB)
+		bsocialSvc, err := c.BSocial.Initialize(ctx, logger, bsocialDB, moduleDeps)
 		if err != nil {
 			return nil, fmt.Errorf("failed to initialize bsocial: %w", err)
 		}
 		svc.BSocial = bsocialSvc
 
-		if svc.Overlay != nil {
-			svc.Overlay.RegisterLookupService("bsocial", svc.BSocial.Lookup)
-
-			bsocialTopic := &overlay.Topic{
-				Name:    "tm_bsocial",
-				Manager: svc.BSocial.TopicManager,
+		if svc.Beef != nil && moduleDeps != nil {
+			syncCfg := c.BSocial.Sync
+			if syncCfg == nil {
+				syncCfg = &overlay.OverlaySyncConfig{}
 			}
-			if err := svc.Overlay.ActivateTopic(ctx, bsocialTopic); err != nil {
-				logger.Error("failed to activate BSocial topic", "error", err)
-			} else {
-				logger.Info("BSocial topic (tm_bsocial) activated")
+			if syncCfg.QueueName == "" {
+				syncCfg.QueueName = "bsocial"
 			}
-
-			if svc.Beef != nil {
-				syncCfg := c.BSocial.Sync
-				if syncCfg == nil {
-					syncCfg = &overlay.OverlaySyncConfig{}
-				}
-				if syncCfg.QueueName == "" {
-					syncCfg.QueueName = "bsocial"
-				}
-				svc.BSocial.Sync = overlay.NewOverlaySync(syncCfg, "tm_bsocial", svc.Store.Store, svc.Beef.Storage, svc.Overlay, logger)
-			}
+			svc.BSocial.Sync = overlay.NewOverlaySync(syncCfg, "tm_bsocial", svc.Store.Store, svc.Beef.Storage, svc.BSocial.Engine, logger)
 		}
 		logger.Info("bsocial initialized", "duration", time.Since(start).Round(time.Millisecond))
 	}
 
 	// Initialize OPNS
-	if c.OPNS.Mode != opns.ModeDisabled && svc.Overlay != nil {
+	if c.OPNS.Mode != opns.ModeDisabled && moduleDeps != nil {
 		start = time.Now()
-		opnsDB, err := svc.Overlay.TopicDB("tm_opns")
-		if err != nil {
-			return nil, fmt.Errorf("failed to get opns topic db: %w", err)
-		}
-		opnsSvc, err := c.OPNS.Initialize(ctx, logger, opnsDB)
+		opnsSvc, err := c.OPNS.Initialize(ctx, logger, moduleDeps)
 		if err != nil {
 			return nil, fmt.Errorf("failed to initialize opns: %w", err)
 		}
 		svc.OPNS = opnsSvc
 
-		if svc.Overlay != nil {
-			svc.Overlay.RegisterLookupService("opns", svc.OPNS.Lookup)
+		if c.OPNS.Crawl.Enabled && svc.Beef != nil {
+			c.OPNS.Crawl.JungleBusURL = c.JungleBus.URL
+			svc.OPNS.Crawl = opns.NewGenesisCrawl(c.OPNS.Crawl, svc.Beef.Storage, svc.OPNS.Engine, logger)
+		}
 
-			opnsTopic := &overlay.Topic{
-				Name:    "tm_opns",
-				Manager: svc.OPNS.TopicManager,
+		if svc.Beef != nil {
+			opnsSyncCfg := &overlay.OverlaySyncConfig{
+				QueueName:           "opns",
+				ResolveDependencies: true,
 			}
-			if err := svc.Overlay.ActivateTopic(ctx, opnsTopic); err != nil {
-				logger.Error("failed to activate OPNS topic", "error", err)
-			} else {
-				logger.Info("OPNS topic (tm_opns) activated")
-			}
-
-			if c.OPNS.Crawl.Enabled && svc.Beef != nil {
-				c.OPNS.Crawl.JungleBusURL = c.JungleBus.URL
-				svc.OPNS.Crawl = opns.NewGenesisCrawl(c.OPNS.Crawl, svc.Beef.Storage, svc.Overlay, logger)
-			}
-
-			if svc.Beef != nil {
-				opnsSyncCfg := &overlay.OverlaySyncConfig{
-					QueueName:           "opns",
-					ResolveDependencies: true,
-				}
-				svc.OPNS.Sync = overlay.NewOverlaySync(opnsSyncCfg, "tm_opns", svc.Store.Store, svc.Beef.Storage, svc.Overlay, logger)
-			}
+			svc.OPNS.Sync = overlay.NewOverlaySync(opnsSyncCfg, "tm_opns", svc.Store.Store, svc.Beef.Storage, svc.OPNS.Engine, logger)
 		}
 		logger.Info("opns initialized", "duration", time.Since(start).Round(time.Millisecond))
 	}
@@ -669,7 +606,7 @@ func (c *Config) Initialize(ctx context.Context, logger *slog.Logger) (*Services
 	}
 
 	// Initialize Spends
-	if c.Spends.Mode != spends.ModeDisabled {
+	if c.Spends.Mode != spends.ModeDisabled && c.Spends.Mode != "" && svc.Store != nil {
 		start = time.Now()
 		spendsSvc, err := c.Spends.Initialize(ctx, logger, svc.Store.Store, svc.JungleBus)
 		if err != nil {
@@ -813,7 +750,7 @@ func (c *Config) Initialize(ctx context.Context, logger *slog.Logger) (*Services
 				crawlCfg := c.OPNS.Crawl
 				crawlCfg.Enabled = true
 				crawlCfg.JungleBusURL = c.JungleBus.URL
-				svc.OPNS.Crawl = opns.NewGenesisCrawl(crawlCfg, svc.Beef.Storage, svc.Overlay, logger)
+				svc.OPNS.Crawl = opns.NewGenesisCrawl(crawlCfg, svc.Beef.Storage, svc.OPNS.Engine, logger)
 				go func() {
 					if err := svc.OPNS.Crawl.Start(ctx); err != nil {
 						logger.Error("OpNS crawl error", "error", err)
@@ -832,7 +769,7 @@ func (c *Config) Initialize(ctx context.Context, logger *slog.Logger) (*Services
 	}
 
 	// Initialize Wallet service
-	if c.Wallet.Mode != wallet.ModeDisabled {
+	if c.Wallet.Mode != wallet.ModeDisabled && c.Wallet.Mode != "" {
 		walletDeps := &wallet.InitializeDeps{
 			Network: c.Network,
 		}
@@ -883,7 +820,7 @@ func (c *Config) Initialize(ctx context.Context, logger *slog.Logger) (*Services
 	}
 
 	// Initialize MessageBox service (must be before Paymail, which depends on it)
-	if c.MessageBox.Mode != messagebox.ModeDisabled {
+	if c.MessageBox.Mode != messagebox.ModeDisabled && c.MessageBox.Mode != "" {
 		mbSvc, err := c.MessageBox.Initialize(ctx, logger)
 		if err != nil {
 			return nil, fmt.Errorf("failed to initialize messagebox: %w", err)
@@ -892,7 +829,7 @@ func (c *Config) Initialize(ctx context.Context, logger *slog.Logger) (*Services
 	}
 
 	// Initialize Paymail service (requires MessageBox + OpNS + ORDFS + Arcade)
-	if c.Paymail.Mode != paymail.ModeDisabled {
+	if c.Paymail.Mode != paymail.ModeDisabled && c.Paymail.Mode != "" {
 		paymailDeps := &paymail.InitializeDeps{}
 		if svc.OPNS != nil && svc.OPNS.Lookup != nil {
 			paymailDeps.OpnsLookup = svc.OPNS.Lookup

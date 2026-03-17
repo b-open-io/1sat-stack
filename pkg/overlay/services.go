@@ -41,16 +41,18 @@ type RemoteConfig struct {
 // Deprecated: Use ActivateTopic with a Topic struct instead.
 type TopicManagerFactory func(topicName string) (engine.TopicManager, error)
 
-// Services holds initialized overlay services and acts as the central Topic registry.
+// Services holds shared overlay infrastructure. Each module creates its own engine via NewModuleEngine.
 type Services struct {
-	Engine *engine.Engine
+	Engine *engine.Engine // Deprecated: modules own their engines. Kept for backward compatibility during migration.
 	Routes *Routes
 	Store  store.Store // For DB remote config lookup
 	P2P    *P2PBus
 	logger *slog.Logger
 
-	// Per-topic storage factory
-	factory overlaystorage.Factory
+	// Shared infrastructure for modules
+	ModuleDeps   *ModuleDeps
+	factory      overlaystorage.Factory
+	txTopicIndex overlaystorage.TxTopicIndexer
 
 	// For remote creation
 	beefStorage *beef.Storage
@@ -63,6 +65,11 @@ type Services struct {
 	topicFactories map[string]TopicManagerFactory // topic name -> factory
 	topicWhitelist map[string]struct{}            // config-based whitelist
 	topicBlacklist map[string]struct{}            // config-based blacklist
+}
+
+// TxTopicIndex returns the shared cross-topic txid→topics index.
+func (s *Services) TxTopicIndex() overlaystorage.TxTopicIndexer {
+	return s.txTopicIndex
 }
 
 // TopicDB returns the TopicStorage for a given topic name.

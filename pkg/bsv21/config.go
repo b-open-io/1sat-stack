@@ -8,10 +8,10 @@ import (
 	"github.com/b-open-io/1sat-stack/pkg/beef"
 	lookuppkg "github.com/b-open-io/1sat-stack/pkg/lookup"
 	"github.com/b-open-io/1sat-stack/pkg/overlay"
-	overlaystorage "github.com/b-open-io/1sat-stack/pkg/overlay/storage"
 	"github.com/b-open-io/1sat-stack/pkg/txo"
 	"github.com/b-open-io/go-junglebus"
 	"github.com/bsv-blockchain/go-chaintracks/chaintracks"
+	"github.com/bsv-blockchain/go-overlay-services/pkg/core/engine"
 	"github.com/spf13/viper"
 )
 
@@ -68,10 +68,12 @@ func (c *Config) SetDefaults(v *viper.Viper, prefix string) {
 
 // Services holds initialized BSV21 services
 type Services struct {
-	Lookup       *lookuppkg.BSV21Lookup
-	TopicManager *Bsv21ValidatedTopicManager
-	Sync         *SyncServices
-	Routes       *Routes
+	Engine        *engine.Engine
+	Lookup        *lookuppkg.BSV21Lookup
+	TopicManager  *Bsv21ValidatedTopicManager
+	Sync          *SyncServices
+	Routes        *Routes
+	OverlayRoutes *overlay.Routes
 }
 
 // Initialize creates BSV21 services from the configuration
@@ -79,10 +81,9 @@ func (c *Config) Initialize(
 	ctx context.Context,
 	logger *slog.Logger,
 	txoStorage *txo.OutputStore,
-	topicDB overlaystorage.Factory,
+	deps *overlay.ModuleDeps,
 	chaintracker chaintracks.Chaintracks,
 	beefStorage *beef.Storage,
-	overlaySvc *overlay.Services,
 	jbClient *junglebus.Client,
 ) (*Services, error) {
 	if c.Mode == ModeDisabled {
@@ -95,12 +96,22 @@ func (c *Config) Initialize(
 
 	switch c.Mode {
 	case ModeEmbedded:
-		bsv21Lookup := lookuppkg.NewBSV21Lookup(topicDB)
-
-		// Create topic manager for overlay engine integration
+		bsv21Lookup := lookuppkg.NewBSV21Lookup(deps.Factory)
 		topicManager := NewBsv21ValidatedTopicManager("bsv21", c.WhitelistTokens, nil)
+		discoveryManager := NewBsv21DiscoveryTopicManager("tm_bsv21", logger)
+
+		eng := overlay.NewModuleEngine(deps,
+			map[string]engine.TopicManager{
+				"bsv21":    topicManager,
+				"tm_bsv21": discoveryManager,
+			},
+			map[string]engine.LookupService{
+				"bsv21": bsv21Lookup,
+			},
+		)
 
 		svc := &Services{
+			Engine:       eng,
 			Lookup:       bsv21Lookup,
 			TopicManager: topicManager,
 		}
@@ -112,7 +123,7 @@ func (c *Config) Initialize(
 				txoStorage.Store,
 				beefStorage,
 				txoStorage,
-				overlaySvc,
+				eng,
 				bsv21Lookup,
 				chaintracker,
 				jbClient,
@@ -126,17 +137,20 @@ func (c *Config) Initialize(
 
 		// Create routes if enabled
 		if c.Routes.Enabled && txoStorage != nil {
-			deps := &RoutesDeps{
+			routesDeps := &RoutesDeps{
 				Storage:      txoStorage,
 				Lookup:       bsv21Lookup,
 				ChainTracker: chaintracker,
 				Logger:       logger,
 			}
-			// Include token manager if sync is enabled
 			if svc.Sync != nil && svc.Sync.manager != nil {
-				deps.Manager = svc.Sync.manager
+				routesDeps.Manager = svc.Sync.manager
 			}
-			svc.Routes = NewRoutes(deps)
+			svc.Routes = NewRoutes(routesDeps)
+		}
+
+		if deps.RoutesConfig != nil && deps.RoutesConfig.Enabled {
+			svc.OverlayRoutes = overlay.NewRoutes(eng, deps.RoutesConfig, logger)
 		}
 
 		return svc, nil
@@ -151,6 +165,5 @@ func (c *Config) Initialize(
 
 // Close closes the BSV21 services
 func (s *Services) Close() error {
-	// Nothing to close
 	return nil
 }
