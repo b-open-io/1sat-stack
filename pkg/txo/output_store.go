@@ -601,7 +601,7 @@ func (s *OutputStore) filterSpent(ctx context.Context, results []store.ScoredMem
 		ops[i] = transaction.NewOutpointFromBytes(r.Member)
 	}
 
-	spends, err := s.GetSpends(ctx, ops)
+	spends, err := s.getLocalSpends(ctx, ops)
 	if err != nil {
 		return nil, err
 	}
@@ -613,6 +613,37 @@ func (s *OutputStore) filterSpent(ctx context.Context, results []store.ScoredMem
 		}
 	}
 	return unspent, nil
+}
+
+// getLocalSpends checks spend status directly from the local store (Badger),
+// bypassing the SpendService chain (LRU cache → Badger → JungleBus fallback).
+// Used by search/filter operations that only need locally-indexed state.
+func (s *OutputStore) getLocalSpends(ctx context.Context, ops []*transaction.Outpoint) ([]*chainhash.Hash, error) {
+	if len(ops) == 0 {
+		return nil, nil
+	}
+
+	fields := make([][]byte, len(ops))
+	for i, op := range ops {
+		if op == nil {
+			continue
+		}
+		fields[i] = op.Bytes()
+	}
+
+	values, err := s.Store.HMGet(ctx, hashSpnd, fields...)
+	if err != nil {
+		return nil, err
+	}
+
+	result := make([]*chainhash.Hash, len(values))
+	for i, v := range values {
+		if len(v) == 32 {
+			result[i] = &chainhash.Hash{}
+			copy(result[i][:], v)
+		}
+	}
+	return result, nil
 }
 
 // === Load Operations ===
