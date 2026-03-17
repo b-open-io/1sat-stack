@@ -7,6 +7,7 @@ import (
 
 	"github.com/b-open-io/1sat-stack/pkg/pubsub"
 	"github.com/b-open-io/1sat-stack/pkg/store"
+	"github.com/bsv-blockchain/go-sdk/chainhash"
 )
 
 type mockStore struct {
@@ -45,7 +46,8 @@ func TestEventBridge_RoutesToQueue(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if err := ps.Publish(ctx, "ordlock", "abcd1234"); err != nil {
+	testTxid := "a0b1c2d3e4f5a0b1c2d3e4f5a0b1c2d3e4f5a0b1c2d3e4f5a0b1c2d3e4f5a0b1"
+	if err := ps.Publish(ctx, "ordlock", testTxid); err != nil {
 		t.Fatal(err)
 	}
 
@@ -55,8 +57,9 @@ func TestEventBridge_RoutesToQueue(t *testing.T) {
 	if !ok || len(members) == 0 {
 		t.Fatal("expected txid to be enqueued")
 	}
-	if string(members[0].Member) != "abcd1234" {
-		t.Fatalf("unexpected member: %s", string(members[0].Member))
+	expectedHash, _ := chainhash.NewHashFromHex(testTxid)
+	if string(members[0].Member) != string(expectedHash[:]) {
+		t.Fatalf("unexpected member: got %x, want %x", members[0].Member, expectedHash[:])
 	}
 	if members[0].Score <= 0 {
 		t.Fatal("expected positive timestamp score")
