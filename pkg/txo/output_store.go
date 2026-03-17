@@ -733,10 +733,10 @@ func (s *OutputStore) loadOutputsWithScores(ctx context.Context, ops []*transact
 		}
 	}
 
-	// Bulk load spends if requested
+	// Bulk load spends if requested (local-only — search results don't need fallback chain)
 	var spends []*chainhash.Hash
 	if cfg != nil && cfg.IncludeSpend {
-		spends, err = s.GetSpends(ctx, ops)
+		spends, err = s.getLocalSpends(ctx, ops)
 		if err != nil {
 			return nil, err
 		}
