@@ -16,6 +16,7 @@ export interface TokenBalance {
   decimals: number;
   totalAmount: bigint;
   outputs: IndexedOutput[];
+  isActive: boolean;
 }
 
 export interface ScannedAssets {
@@ -58,7 +59,17 @@ function enrichOrdinal(out: IndexedOutput): EnrichedOrdinal {
   return { ...out, origin, contentType, name, contentUrl };
 }
 
-function groupBsv21Tokens(outputs: IndexedOutput[]): TokenBalance[] {
+/** Resolve icon reference — "_0" means vout 0 of the same txid */
+function resolveIconOutpoint(tokenId: string, icon?: string): string {
+  if (!icon) return tokenId;
+  if (icon.startsWith("_")) {
+    const txid = tokenId.split("_")[0];
+    return `${txid}${icon}`;
+  }
+  return icon;
+}
+
+async function groupBsv21Tokens(outputs: IndexedOutput[]): Promise<TokenBalance[]> {
   const groups = new Map<string, { outputs: IndexedOutput[]; totalAmount: bigint }>();
 
   for (const out of outputs) {
@@ -78,20 +89,40 @@ function groupBsv21Tokens(outputs: IndexedOutput[]): TokenBalance[] {
     group.totalAmount += amount;
   }
 
+  if (groups.size === 0) return [];
+
+  const services = getServices();
+  const tokenIds = [...groups.keys()];
+
+  // Bulk lookup token metadata and overlay status
+  let details: Array<{ tokenId: string; token?: { sym?: string; dec?: string; icon?: string }; status?: { is_active?: boolean } }> = [];
+  try {
+    details = await services.bsv21.lookupTokens(tokenIds);
+  } catch {
+    // BSV21 service may not be available — fall back to no metadata
+  }
+
+  const detailMap = new Map(details.map((d) => [d.tokenId, d]));
+
   const balances: TokenBalance[] = [];
   for (const [tokenId, group] of groups) {
+    const detail = detailMap.get(tokenId);
+    const iconOutpoint = resolveIconOutpoint(tokenId, detail?.token?.icon);
+
     balances.push({
       tokenId,
-      icon: getServices().ordfs.getContentUrl(tokenId),
-      decimals: 0,
+      symbol: detail?.token?.sym,
+      icon: services.ordfs.getContentUrl(iconOutpoint),
+      decimals: Number(detail?.token?.dec ?? 0),
       totalAmount: group.totalAmount,
       outputs: group.outputs,
+      isActive: detail?.status?.is_active ?? false,
     });
   }
   return balances;
 }
 
-function categorizeOutputs(outputs: IndexedOutput[]): ScannedAssets {
+async function categorizeOutputs(outputs: IndexedOutput[]): Promise<ScannedAssets> {
   const funding: IndexedOutput[] = [];
   const rawOrdinals: IndexedOutput[] = [];
   const bsv21Raw: IndexedOutput[] = [];
@@ -130,7 +161,7 @@ function categorizeOutputs(outputs: IndexedOutput[]): ScannedAssets {
   return {
     funding,
     ordinals: rawOrdinals.map(enrichOrdinal),
-    bsv21Tokens: groupBsv21Tokens(bsv21Raw),
+    bsv21Tokens: await groupBsv21Tokens(bsv21Raw),
     bsv20Tokens,
     locked,
     totalBsv: funding.reduce((sum, o) => sum + (o.satoshis ?? 0), 0),
@@ -166,9 +197,9 @@ export async function scanAddress(
     limit: 0,
   });
 
-  // Phase 3: Categorize
-  onProgress?.({ phase: "categorize", detail: "Categorizing assets..." });
-  return categorizeOutputs(allOutputs);
+  // Phase 3: Categorize and enrich token metadata
+  onProgress?.({ phase: "categorize", detail: "Loading token details..." });
+  return await categorizeOutputs(allOutputs);
 }
 
 export async function scanAddresses(

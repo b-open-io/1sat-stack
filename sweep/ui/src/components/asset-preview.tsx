@@ -227,8 +227,54 @@ export function OrdinalsSection({
 // BSV-21 Tokens Section
 // ============================================================================
 
+function TokenRow({ tb }: { tb: TokenBalance }) {
+  return (
+    <div
+      className={`flex items-center justify-between p-3 rounded-lg border ${
+        tb.isActive
+          ? "bg-black/20 border-purple-500/10"
+          : "bg-black/10 border-muted/20 opacity-60"
+      }`}
+    >
+      <div className="flex items-center gap-3">
+        <img
+          src={tb.icon}
+          alt={tb.symbol || "Token"}
+          className="w-8 h-8 rounded-full object-cover"
+          onError={(e) => {
+            (e.target as HTMLImageElement).style.display = "none";
+          }}
+        />
+        <div>
+          <div className="flex items-center gap-2">
+            <span className="font-medium text-foreground">
+              {tb.symbol || tb.tokenId.slice(0, 8) + "..."}
+            </span>
+            {tb.isActive ? (
+              <span className="px-1.5 py-0.5 text-[9px] rounded bg-green-500/20 text-green-400">active</span>
+            ) : (
+              <span className="px-1.5 py-0.5 text-[9px] rounded bg-muted text-muted-foreground">inactive</span>
+            )}
+          </div>
+          <div className="text-xs text-muted-foreground">
+            {formatTokenAmount(tb.totalAmount.toString(), tb.decimals)}{" "}
+            {tb.symbol || ""}
+            <span className="ml-2">
+              ({tb.outputs.length} output{tb.outputs.length !== 1 ? "s" : ""})
+            </span>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export function Bsv21Section({ tokens }: { tokens: TokenBalance[] }) {
   if (tokens.length === 0) return null;
+
+  const active = tokens.filter((t) => t.isActive);
+  const inactive = tokens.filter((t) => !t.isActive);
+
   return (
     <div className="border border-purple-500/20 bg-purple-500/5 p-4 rounded-lg">
       <div className="flex items-center gap-2 mb-3">
@@ -236,34 +282,18 @@ export function Bsv21Section({ tokens }: { tokens: TokenBalance[] }) {
         <span className="text-sm font-semibold text-purple-500">BSV-21 Tokens</span>
       </div>
       <div className="space-y-3">
-        {tokens.map((tb) => (
-          <div
-            key={tb.tokenId}
-            className="flex items-center justify-between p-3 bg-black/20 rounded-lg border border-purple-500/10"
-          >
-            <div className="flex items-center gap-3">
-              <img
-                src={tb.icon}
-                alt={tb.symbol || "Token"}
-                className="w-8 h-8 rounded-full object-cover"
-                onError={(e) => {
-                  (e.target as HTMLImageElement).style.display = "none";
-                }}
-              />
-              <div>
-                <div className="font-medium text-foreground">
-                  {tb.symbol || tb.tokenId.slice(0, 8) + "..."}
-                </div>
-                <div className="text-xs text-muted-foreground">
-                  {formatTokenAmount(tb.totalAmount.toString(), tb.decimals)}{" "}
-                  {tb.symbol || ""}
-                </div>
-              </div>
+        {active.map((tb) => (
+          <TokenRow key={tb.tokenId} tb={tb} />
+        ))}
+        {inactive.length > 0 && active.length > 0 && (
+          <div className="border-t border-purple-500/10 pt-3 mt-3">
+            <div className="text-xs text-muted-foreground mb-2">
+              Inactive overlays ({inactive.length}) — cannot be swept
             </div>
-            <Badge variant="secondary">
-              {tb.outputs.length} output{tb.outputs.length !== 1 ? "s" : ""}
-            </Badge>
           </div>
+        )}
+        {inactive.map((tb) => (
+          <TokenRow key={tb.tokenId} tb={tb} />
         ))}
       </div>
     </div>
