@@ -134,7 +134,7 @@ func (c *Config) Initialize(ctx context.Context, logger *slog.Logger, deps *Init
 		if err := os.MkdirAll(storagePath, 0755); err != nil {
 			return nil, fmt.Errorf("create overlay storage dir %s: %w", storagePath, err)
 		}
-		sqliteFactory, err := overlaystorage.NewSQLiteFactory(filepath.Join(storagePath, "topic"))
+		sqliteFactory, err := overlaystorage.NewSQLiteFactory(storagePath)
 		if err != nil {
 			return nil, fmt.Errorf("create overlay storage factory: %w", err)
 		}

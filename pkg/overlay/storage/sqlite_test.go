@@ -347,8 +347,8 @@ func TestFactory(t *testing.T) {
 	}
 
 	// Verify separate databases
-	dbFileA := filepath.Join(dir, "overlay_topic_a.db")
-	dbFileB := filepath.Join(dir, "overlay_topic_b.db")
+	dbFileA := filepath.Join(dir, "overlay", "topic_a.db")
+	dbFileB := filepath.Join(dir, "overlay", "topic_b.db")
 	if _, err := os.Stat(dbFileA); err != nil {
 		t.Errorf("expected DB file for topic_a: %v", err)
 	}

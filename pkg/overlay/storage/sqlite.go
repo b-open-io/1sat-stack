@@ -4,6 +4,8 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"os"
+	"path/filepath"
 	"sync"
 	"time"
 
@@ -86,7 +88,10 @@ type SQLiteFactory struct {
 // NewSQLiteFactory creates a factory that manages per-topic SQLite databases
 // under basePath, plus a singleton txid→topics index database.
 func NewSQLiteFactory(basePath string) (*SQLiteFactory, error) {
-	idx, err := NewTxTopicIndex(basePath + "_tx_topics.db")
+	if err := os.MkdirAll(basePath, 0755); err != nil {
+		return nil, fmt.Errorf("create overlay storage dir %s: %w", basePath, err)
+	}
+	idx, err := NewTxTopicIndex(filepath.Join(basePath, "tx_topics.db"))
 	if err != nil {
 		return nil, fmt.Errorf("failed to create tx topic index: %w", err)
 	}
@@ -101,7 +106,7 @@ func (f *SQLiteFactory) Topic(topic string) (TopicStorage, error) {
 	if s, ok := f.stores.Load(topic); ok {
 		return s.(*SQLiteStorage), nil
 	}
-	path := fmt.Sprintf("%s_%s.db", f.basePath, topic)
+	path := filepath.Join(f.basePath, topic+".db")
 	s, err := NewSQLiteStorage(path)
 	if err != nil {
 		return nil, err
