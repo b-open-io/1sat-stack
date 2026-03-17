@@ -157,27 +157,14 @@ export async function scanAddress(
     }
   }
 
-  // Phase 2: Search for all unspent outputs — paginate to get everything
+  // Phase 2: Search for all unspent outputs
   onProgress?.({ phase: "search", detail: "Searching for assets..." });
-  const allOutputs: IndexedOutput[] = [];
-  let from: number | undefined;
-
-  while (true) {
-    const page = await services.txo.search(`own:${address}`, {
-      unspent: true,
-      events: true,
-      sats: true,
-      limit: 100,
-      from,
-    });
-
-    if (!page || page.length === 0) break;
-    allOutputs.push(...page);
-    onProgress?.({ phase: "search", detail: `Found ${allOutputs.length} outputs...` });
-
-    if (page.length < 100) break;
-    from = page[page.length - 1].score;
-  }
+  const allOutputs = await services.txo.search(`own:${address}`, {
+    unspent: true,
+    events: true,
+    sats: true,
+    limit: 0,
+  });
 
   // Phase 3: Categorize
   onProgress?.({ phase: "categorize", detail: "Categorizing assets..." });
