@@ -15,6 +15,7 @@ import (
 	"github.com/bsv-blockchain/arcade/service"
 	"github.com/bsv-blockchain/go-chaintracks/chaintracks"
 	"github.com/bsv-blockchain/go-overlay-services/pkg/core/engine"
+	"github.com/bsv-blockchain/go-sdk/chainhash"
 	"github.com/bsv-blockchain/go-sdk/transaction/chaintracker"
 	"github.com/spf13/viper"
 )
@@ -127,11 +128,18 @@ type ArcadeListenerDeps struct {
 	PubSub         pubsub.PubSub
 }
 
+// TopicIndexer looks up which overlay topics contain outputs for a given txid.
+type TopicIndexer interface {
+	Topics(ctx context.Context, txid *chainhash.Hash) ([]string, error)
+}
+
 // StatusHandlerDeps holds dependencies for status handler initialization.
 type StatusHandlerDeps struct {
 	PubSub         pubsub.PubSub
 	ChainTracker   chaintracker.ChainTracker
-	OverlayStorage engine.Storage
+	OverlayStorage engine.Storage                  // For BEEF update + rollback
+	TopicIndex     TopicIndexer                    // txid → topic names
+	LookupServices map[string]engine.LookupService // topic name → lookup service
 }
 
 // Initialize creates indexer services from the configuration.
@@ -211,6 +219,8 @@ func (s *Services) SetupStatusHandler(deps *StatusHandlerDeps) {
 		s.initDeps.Store,
 		s.initDeps.BeefStorage,
 		deps.OverlayStorage,
+		deps.TopicIndex,
+		deps.LookupServices,
 		deps.ChainTracker,
 		s.Indexer,
 		&StatusHandlerConfig{IngestEnabled: s.config.Arcade.Ingest},

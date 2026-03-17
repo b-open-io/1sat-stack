@@ -663,15 +663,31 @@ func (c *Config) Initialize(ctx context.Context, logger *slog.Logger) (*Services
 
 		// Setup status handler to process all arc events (from arcade or webhooks)
 		if svc.PubSub != nil {
-			var overlayStorage engine.Storage
-			if svc.Overlay != nil {
-				overlayStorage = svc.Overlay.NewStorageAdapter()
+			statusDeps := &indexer.StatusHandlerDeps{
+				PubSub:       svc.PubSub.PubSub,
+				ChainTracker: svc.Chaintracks,
 			}
-			svc.Indexer.SetupStatusHandler(&indexer.StatusHandlerDeps{
-				PubSub:         svc.PubSub.PubSub,
-				ChainTracker:   svc.Chaintracks,
-				OverlayStorage: overlayStorage,
-			})
+			if svc.Overlay != nil {
+				statusDeps.OverlayStorage = svc.Overlay.NewStorageAdapter()
+				statusDeps.TopicIndex = svc.Overlay.TxTopicIndex()
+			}
+			// Build topic→lookup service map for block height routing
+			lookups := make(map[string]engine.LookupService)
+			if svc.BAP != nil {
+				lookups["tm_bap"] = svc.BAP.Lookup
+			}
+			if svc.BSocial != nil {
+				lookups["tm_bsocial"] = svc.BSocial.Lookup
+			}
+			if svc.OPNS != nil {
+				lookups["tm_opns"] = svc.OPNS.Lookup
+			}
+			if svc.BSV21 != nil {
+				lookups["bsv21"] = svc.BSV21.Lookup
+				lookups["tm_bsv21"] = svc.BSV21.Lookup
+			}
+			statusDeps.LookupServices = lookups
+			svc.Indexer.SetupStatusHandler(statusDeps)
 		}
 
 		// Setup pending auditor to verify proofs on each new block
