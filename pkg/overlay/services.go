@@ -15,7 +15,6 @@ import (
 	"github.com/b-open-io/1sat-stack/pkg/store"
 	"github.com/bsv-blockchain/go-overlay-services/pkg/core/engine"
 	gasplib "github.com/bsv-blockchain/go-overlay-services/pkg/core/gasp"
-	"github.com/bsv-blockchain/go-sdk/overlay"
 	"golang.org/x/sync/errgroup"
 )
 
@@ -37,14 +36,8 @@ type RemoteConfig struct {
 	Broadcast bool `json:"broadcast,omitempty"` // push new admissions to peer
 }
 
-// TopicManagerFactory creates a TopicManager instance for a given topic name
-// Deprecated: Use ActivateTopic with a Topic struct instead.
-type TopicManagerFactory func(topicName string) (engine.TopicManager, error)
-
 // Services holds shared overlay infrastructure. Each module creates its own engine via NewModuleEngine.
 type Services struct {
-	Engine *engine.Engine // Deprecated: modules own their engines. Kept for backward compatibility during migration.
-	Routes *Routes
 	Store  store.Store // For DB remote config lookup
 	P2P    *P2PBus
 	logger *slog.Logger
@@ -57,14 +50,8 @@ type Services struct {
 	// For remote creation
 	beefStorage *beef.Storage
 
-	// Topic registry - tracks ALL active topics
+	// Topic registry - tracks active topics for dynamic topic management (BSV21)
 	topics sync.Map // topicName -> *Topic
-
-	// Legacy fields (to be removed after migration)
-	mu             sync.RWMutex
-	topicFactories map[string]TopicManagerFactory // topic name -> factory
-	topicWhitelist map[string]struct{}            // config-based whitelist
-	topicBlacklist map[string]struct{}            // config-based blacklist
 }
 
 // TxTopicIndex returns the shared cross-topic txid→topics index.
@@ -73,7 +60,6 @@ func (s *Services) TxTopicIndex() overlaystorage.TxTopicIndexer {
 }
 
 // TopicDB returns the TopicStorage for a given topic name.
-// Lookup services use this to access per-topic databases for custom tables via DB().
 func (s *Services) TopicDB(topic string) (overlaystorage.TopicStorage, error) {
 	if s.factory == nil {
 		return nil, errors.New("overlay storage not initialized")
@@ -82,158 +68,26 @@ func (s *Services) TopicDB(topic string) (overlaystorage.TopicStorage, error) {
 }
 
 // TopicDBFactory returns the underlying per-topic storage factory.
-// Lookup services use this to resolve databases for any topic on demand.
 func (s *Services) TopicDBFactory() overlaystorage.Factory {
 	return s.factory
 }
 
-// RegisterTopic registers a topic factory for static topics (tm_1sat, tm_bsv21).
-// The factory will be called when ActivateConfiguredTopics is called.
-func (s *Services) RegisterTopic(topicName string, factory TopicManagerFactory) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	if s.topicFactories == nil {
-		s.topicFactories = make(map[string]TopicManagerFactory)
-	}
-	s.topicFactories[topicName] = factory
-	s.logger.Debug("topic factory registered", "name", topicName)
-}
-
-// SetTopicWhitelist sets the config-based topic whitelist
-func (s *Services) SetTopicWhitelist(topics []string) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	s.topicWhitelist = make(map[string]struct{}, len(topics))
-	for _, t := range topics {
-		s.topicWhitelist[t] = struct{}{}
-	}
-}
-
-// SetTopicBlacklist sets the config-based topic blacklist
-func (s *Services) SetTopicBlacklist(topics []string) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	s.topicBlacklist = make(map[string]struct{}, len(topics))
-	for _, t := range topics {
-		s.topicBlacklist[t] = struct{}{}
-	}
-}
-
-// IsTopicBlacklisted checks if a topic is blacklisted
-func (s *Services) IsTopicBlacklisted(topicName string) bool {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-	_, blacklisted := s.topicBlacklist[topicName]
-	return blacklisted
-}
-
-// ActivateConfiguredTopics activates all topics that are in the whitelist and have registered factories
-func (s *Services) ActivateConfiguredTopics() {
-	s.mu.RLock()
-	factories := make(map[string]TopicManagerFactory, len(s.topicFactories))
-	for k, v := range s.topicFactories {
-		factories[k] = v
-	}
-	whitelist := make(map[string]struct{}, len(s.topicWhitelist))
-	for k := range s.topicWhitelist {
-		whitelist[k] = struct{}{}
-	}
-	blacklist := make(map[string]struct{}, len(s.topicBlacklist))
-	for k := range s.topicBlacklist {
-		blacklist[k] = struct{}{}
-	}
-	s.mu.RUnlock()
-
-	s.logger.Debug("ActivateConfiguredTopics called",
-		"factories", len(factories),
-		"whitelist", len(whitelist))
-
-	for topicName := range whitelist {
-		// Skip blacklisted
-		if _, blocked := blacklist[topicName]; blocked {
-			s.logger.Debug("topic blacklisted, skipping", "topic", topicName)
-			continue
-		}
-
-		factory, hasFactory := factories[topicName]
-		if !hasFactory {
-			s.logger.Warn("whitelisted topic has no registered factory", "topic", topicName)
-			continue
-		}
-		manager, err := factory(topicName)
-		if err != nil {
-			s.logger.Error("failed to create topic manager", "topic", topicName, "error", err)
-			continue
-		}
-		s.Engine.RegisterTopicManager(topicName, manager)
-		s.logger.Info("topic activated from config", "topic", topicName)
-	}
-}
-
-// RegisterLookupService registers a lookup service with the overlay engine
-func (s *Services) RegisterLookupService(name string, service engine.LookupService) {
-	if s.Engine != nil {
-		s.Engine.RegisterLookupService(name, service)
-		s.logger.Info("registered lookup service", "name", name)
-	}
-}
-
-// UnregisterLookupService removes a lookup service from the overlay engine
-func (s *Services) UnregisterLookupService(name string) {
-	if s.Engine != nil {
-		s.Engine.UnregisterLookupService(name)
-		s.logger.Info("unregistered lookup service", "name", name)
-	}
-}
-
-// GetEngine returns the overlay engine for direct access
-func (s *Services) GetEngine() *engine.Engine {
-	return s.Engine
-}
-
-// Submit submits a tagged BEEF to the overlay engine
-func (s *Services) Submit(ctx context.Context, beef overlay.TaggedBEEF, mode engine.SumbitMode) (overlay.Steak, error) {
-	if s.Engine == nil {
-		return nil, errors.New("overlay engine not initialized")
-	}
-	return s.Engine.Submit(ctx, beef, mode, nil)
-}
-
-// GetTopics returns list of active topic names from the engine
-func (s *Services) GetTopics() []string {
-	if s.Engine == nil {
+// NewStorageAdapter creates an EngineAdapter backed by the shared storage factory.
+// Used by the status handler for BEEF updates and output lookups.
+func (s *Services) NewStorageAdapter() *overlaystorage.EngineAdapter {
+	if s.ModuleDeps == nil {
 		return nil
 	}
-	managers := s.Engine.ListTopicManagers()
-	topics := make([]string, 0, len(managers))
-	for name := range managers {
-		topics = append(topics, name)
-	}
-	return topics
+	return overlaystorage.NewEngineAdapter(s.factory, s.beefStorage, s.txTopicIndex)
 }
 
-// GetLookupServices returns list of active lookup service names from the engine
-func (s *Services) GetLookupServices() []string {
-	if s.Engine == nil {
-		return nil
-	}
-	providers := s.Engine.ListLookupServiceProviders()
-	services := make([]string, 0, len(providers))
-	for name := range providers {
-		services = append(services, name)
-	}
-	return services
-}
-
-// Close cleans up overlay services
+// Close cleans up overlay services.
 func (s *Services) Close() error {
-	// Deactivate all topics
 	s.topics.Range(func(key, value any) bool {
 		topicName := key.(string)
 		s.DeactivateTopic(topicName)
 		return true
 	})
-	// Close overlay P2P bus
 	if s.P2P != nil {
 		if err := s.P2P.Close(); err != nil {
 			s.logger.Error("failed to close overlay P2P bus", "error", err)
@@ -242,14 +96,14 @@ func (s *Services) Close() error {
 	return nil
 }
 
-// ActivateTopic activates a topic, performing all necessary setup:
+// ActivateTopic activates a topic on a given engine, performing all necessary setup:
 // 1. Registers TopicManager with engine
 // 2. If Remotes configured: checks DB for override, creates and starts TopicWorker
 // 3. Starts listeners
 // 4. Tracks in topics registry
 //
 // Topics without Remotes are "registration-only" (e.g., discovery topics).
-func (s *Services) ActivateTopic(ctx context.Context, topic *Topic) error {
+func (s *Services) ActivateTopic(ctx context.Context, eng *engine.Engine, topic *Topic) error {
 	if topic == nil {
 		return errors.New("topic is nil")
 	}
@@ -259,6 +113,9 @@ func (s *Services) ActivateTopic(ctx context.Context, topic *Topic) error {
 	if topic.Manager == nil {
 		return errors.New("topic manager is required")
 	}
+	if eng == nil {
+		return errors.New("engine is required")
+	}
 
 	// Check if already active
 	if _, exists := s.topics.Load(topic.Name); exists {
@@ -266,7 +123,7 @@ func (s *Services) ActivateTopic(ctx context.Context, topic *Topic) error {
 	}
 
 	// Register with engine
-	s.Engine.RegisterTopicManager(topic.Name, topic.Manager)
+	eng.RegisterTopicManager(topic.Name, topic.Manager)
 
 	// Create cancellable context for this topic
 	topicCtx, cancel := context.WithCancel(ctx)
@@ -276,14 +133,12 @@ func (s *Services) ActivateTopic(ctx context.Context, topic *Topic) error {
 	if len(topic.Remotes) > 0 {
 		// Check for DB remote config override
 		if configs, err := s.GetRemoteConfig(ctx, topic.Name); err == nil && len(configs) > 0 {
-			// Override remotes from DB config
 			dbRemotes := s.createRemotesFromConfig(topic.Name, configs)
 			if len(dbRemotes) > 0 {
 				topic.Remotes = dbRemotes
 				s.logger.Debug("using DB remote config override", "topic", topic.Name, "remotes", len(dbRemotes))
 			}
 
-			// Create SSE listeners from DB config
 			sseListeners := s.createListenersFromConfig(topic.Name, configs)
 			topic.Listeners = append(topic.Listeners, sseListeners...)
 		}
@@ -292,9 +147,9 @@ func (s *Services) ActivateTopic(ctx context.Context, topic *Topic) error {
 		topic.worker = gasp.NewTopicWorker(&gasp.TopicWorkerConfig{
 			TopicName:   topic.Name,
 			Store:       s.Store,
-			Engine:      s.Engine,
+			Engine:      eng,
 			Remotes:     topic.Remotes,
-			Concurrency: 8, // TODO: make configurable
+			Concurrency: 8,
 			OnProcessed: topic.OnProcessed,
 			Logger:      s.logger,
 		})
@@ -307,7 +162,7 @@ func (s *Services) ActivateTopic(ctx context.Context, topic *Topic) error {
 
 		// Start listeners
 		for _, listener := range topic.Listeners {
-			l := listener // capture for goroutine
+			l := listener
 			g.Go(func() error {
 				return l.Start(gCtx)
 			})
@@ -333,11 +188,7 @@ func (s *Services) ActivateTopic(ctx context.Context, topic *Topic) error {
 	return nil
 }
 
-// DeactivateTopic deactivates a topic, stopping all components:
-// 1. Stops listeners
-// 2. Stops worker
-// 3. Unregisters from engine
-// 4. Removes from topics registry
+// DeactivateTopic deactivates a topic, stopping all components.
 func (s *Services) DeactivateTopic(name string) error {
 	value, exists := s.topics.Load(name)
 	if !exists {
@@ -346,30 +197,22 @@ func (s *Services) DeactivateTopic(name string) error {
 
 	topic := value.(*Topic)
 
-	// Unsubscribe from P2P topic
 	if topic.p2pUnsub != nil {
 		topic.p2pUnsub()
 	}
 
-	// Cancel context (stops worker and listeners)
 	if topic.cancel != nil {
 		topic.cancel()
 	}
 
-	// Stop worker explicitly
 	if topic.worker != nil {
 		topic.worker.Stop()
 	}
 
-	// Stop listeners explicitly
 	for _, listener := range topic.Listeners {
 		listener.Stop()
 	}
 
-	// Unregister from engine
-	s.Engine.UnregisterTopicManager(name)
-
-	// Remove from registry
 	topic.active.Store(false)
 	s.topics.Delete(name)
 
@@ -400,7 +243,6 @@ func (s *Services) ListActiveTopics() []*Topic {
 const remoteConfigKeyPrefix = "topic:remotes:"
 
 // createRemotesFromConfig converts RemoteConfig slice to actual gasp.Remote instances.
-// Array order is preserved (determines priority).
 func (s *Services) createRemotesFromConfig(topicName string, configs []RemoteConfig) []gasplib.Remote {
 	remotes := make([]gasplib.Remote, 0, len(configs))
 
@@ -414,7 +256,6 @@ func (s *Services) createRemotesFromConfig(topicName string, configs []RemoteCon
 	return remotes
 }
 
-// createRemoteFromConfig creates a single gasp.Remote from RemoteConfig.
 func (s *Services) createRemoteFromConfig(topicName string, cfg RemoteConfig) gasplib.Remote {
 	switch cfg.Type {
 	case "beef":
@@ -434,7 +275,6 @@ func (s *Services) createRemoteFromConfig(topicName string, cfg RemoteConfig) ga
 		return engine.NewOverlayGASPRemote(cfg.URL, topicName, http.DefaultClient, 8)
 
 	case "libp2p":
-		// LibP2P remotes not yet implemented
 		s.logger.Warn("libp2p remote type not yet implemented", "topic", topicName, "peerId", cfg.PeerID)
 		return nil
 
@@ -444,7 +284,6 @@ func (s *Services) createRemoteFromConfig(topicName string, cfg RemoteConfig) ga
 	}
 }
 
-// createListenersFromConfig creates Listener instances from RemoteConfigs that have SSESubscribe enabled.
 func (s *Services) createListenersFromConfig(topicName string, configs []RemoteConfig) []Listener {
 	var listeners []Listener
 

@@ -30,8 +30,6 @@ type Config struct {
 	StoragePath    string       `mapstructure:"storage_path"`    // Base path for per-topic SQLite databases
 	StorageBackend string       `mapstructure:"storage_backend"` // "sqlite" (default) or "postgres"
 	StorageURL     string       `mapstructure:"storage_url"`     // PostgreSQL connection string
-	TopicWhitelist []string     `mapstructure:"topic_whitelist"`
-	TopicBlacklist []string     `mapstructure:"topic_blacklist"`
 	Routes         RoutesConfig `mapstructure:"routes"`
 	P2P            P2PConfig    `mapstructure:"p2p"`
 }
@@ -51,8 +49,6 @@ func (c *Config) SetDefaults(v *viper.Viper, prefix string) {
 	v.SetDefault(prefix+".storage_path", "~/.1sat/overlay")
 	v.SetDefault(prefix+".storage_backend", "sqlite")
 	v.SetDefault(prefix+".storage_url", "")
-	v.SetDefault(prefix+".topic_whitelist", []string{})
-	v.SetDefault(prefix+".topic_blacklist", []string{})
 	v.SetDefault(prefix+".routes.enabled", true)
 	v.SetDefault(prefix+".routes.prefix", "/overlay")
 	v.SetDefault(prefix+".p2p.enabled", false)

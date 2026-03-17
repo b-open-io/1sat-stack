@@ -479,9 +479,6 @@ func (c *Config) Initialize(ctx context.Context, logger *slog.Logger) (*Services
 		}
 		svc.Overlay = overlaySvc
 
-		// Set topic whitelist/blacklist from config
-		svc.Overlay.SetTopicWhitelist(c.Overlay.TopicWhitelist)
-		svc.Overlay.SetTopicBlacklist(c.Overlay.TopicBlacklist)
 		logger.Info("overlay initialized", "duration", time.Since(start).Round(time.Millisecond))
 	}
 
@@ -600,11 +597,6 @@ func (c *Config) Initialize(ctx context.Context, logger *slog.Logger) (*Services
 		logger.Info("ordlock initialized", "duration", time.Since(start).Round(time.Millisecond))
 	}
 
-	// Activate whitelisted topics after all factories are registered
-	if svc.Overlay != nil {
-		svc.Overlay.ActivateConfiguredTopics()
-	}
-
 	// Initialize Spends
 	if c.Spends.Mode != spends.ModeDisabled && c.Spends.Mode != "" && svc.Store != nil {
 		start = time.Now()
@@ -672,8 +664,8 @@ func (c *Config) Initialize(ctx context.Context, logger *slog.Logger) (*Services
 		// Setup status handler to process all arc events (from arcade or webhooks)
 		if svc.PubSub != nil {
 			var overlayStorage engine.Storage
-			if svc.Overlay != nil && svc.Overlay.Engine != nil {
-				overlayStorage = svc.Overlay.Engine.Storage
+			if svc.Overlay != nil {
+				overlayStorage = svc.Overlay.NewStorageAdapter()
 			}
 			svc.Indexer.SetupStatusHandler(&indexer.StatusHandlerDeps{
 				PubSub:         svc.PubSub.PubSub,
@@ -733,11 +725,26 @@ func (c *Config) Initialize(ctx context.Context, logger *slog.Logger) (*Services
 	// Initialize admin UI
 	if c.Admin.Mode != admin.ModeDisabled && svc.Store != nil {
 		start = time.Now()
+		// Build engines map for admin topic/lookup listing
+		engines := make(map[string]*engine.Engine)
+		if svc.BAP != nil {
+			engines["bap"] = svc.BAP.Engine
+		}
+		if svc.BSocial != nil {
+			engines["bsocial"] = svc.BSocial.Engine
+		}
+		if svc.OPNS != nil {
+			engines["opns"] = svc.OPNS.Engine
+		}
+		if svc.BSV21 != nil {
+			engines["bsv21"] = svc.BSV21.Engine
+		}
+
 		adminDeps := &admin.InitializeDeps{
 			Overlay: svc.Overlay,
+			Engines: engines,
 			Store:   svc.Store.Store,
 		}
-		// Pass BSV21 sync services if available
 		if svc.BSV21 != nil {
 			adminDeps.BSV21Sync = svc.BSV21.Sync
 		}
@@ -1024,14 +1031,24 @@ func (c *Config) RegisterRoutes(app *fiber.App, svc *Services) {
 		capabilities = append(capabilities, "market")
 	}
 
-	// Register overlay routes
-	if svc.Overlay != nil && svc.Overlay.Routes != nil {
-		prefix := c.Overlay.Routes.Prefix
-		if prefix == "" {
-			prefix = "/overlay"
-		}
-		overlayGroup := api.Group(prefix, httputil.NoStoreMiddleware())
-		svc.Overlay.Routes.Register(overlayGroup)
+	// Register per-module overlay routes
+	if svc.BAP != nil && svc.BAP.OverlayRoutes != nil {
+		bapOverlayGroup := api.Group("/bap/overlay", httputil.NoStoreMiddleware())
+		svc.BAP.OverlayRoutes.Register(bapOverlayGroup)
+	}
+	if svc.BSocial != nil && svc.BSocial.OverlayRoutes != nil {
+		bsocialOverlayGroup := api.Group("/bsocial/overlay", httputil.NoStoreMiddleware())
+		svc.BSocial.OverlayRoutes.Register(bsocialOverlayGroup)
+	}
+	if svc.OPNS != nil && svc.OPNS.OverlayRoutes != nil {
+		opnsOverlayGroup := api.Group("/opns/overlay", httputil.NoStoreMiddleware())
+		svc.OPNS.OverlayRoutes.Register(opnsOverlayGroup)
+	}
+	if svc.BSV21 != nil && svc.BSV21.OverlayRoutes != nil {
+		bsv21OverlayGroup := api.Group("/bsv21/overlay", httputil.NoStoreMiddleware())
+		svc.BSV21.OverlayRoutes.Register(bsv21OverlayGroup)
+	}
+	if svc.BAP != nil || svc.BSocial != nil || svc.OPNS != nil || svc.BSV21 != nil {
 		capabilities = append(capabilities, "overlay")
 	}
 

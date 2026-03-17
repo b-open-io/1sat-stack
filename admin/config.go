@@ -7,6 +7,7 @@ import (
 	"github.com/b-open-io/1sat-stack/pkg/bsv21"
 	"github.com/b-open-io/1sat-stack/pkg/overlay"
 	"github.com/b-open-io/1sat-stack/pkg/store"
+	"github.com/bsv-blockchain/go-overlay-services/pkg/core/engine"
 	"github.com/spf13/viper"
 )
 
@@ -40,9 +41,10 @@ type OpnsCrawlFunc func(ctx context.Context) error
 
 // InitializeDeps holds dependencies for admin initialization
 type InitializeDeps struct {
-	Overlay       *overlay.Services
-	Store         store.Store
-	BSV21Sync     *bsv21.SyncServices
+	Overlay          *overlay.Services
+	Engines          map[string]*engine.Engine // module name -> engine (for topic/lookup listing)
+	Store            store.Store
+	BSV21Sync        *bsv21.SyncServices
 	TriggerOpnsCrawl OpnsCrawlFunc
 }
 
@@ -67,7 +69,7 @@ func (c *Config) Initialize(ctx context.Context, logger *slog.Logger, deps *Init
 
 	// Create routes if enabled
 	if c.Routes.Enabled && deps.Store != nil {
-		svc.Routes = NewRoutes(deps.Overlay, deps.Store, deps.BSV21Sync, deps.TriggerOpnsCrawl, &c.Routes, logger)
+		svc.Routes = NewRoutes(deps.Overlay, deps.Engines, deps.Store, deps.BSV21Sync, deps.TriggerOpnsCrawl, &c.Routes, logger)
 	}
 
 	logger.Info("admin service initialized", "mode", c.Mode)
