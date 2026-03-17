@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/b-open-io/1sat-stack/admin"
+	"github.com/b-open-io/1sat-stack/sweep"
 	"github.com/b-open-io/1sat-stack/pkg/auth"
 	"github.com/b-open-io/1sat-stack/pkg/bap"
 	"github.com/b-open-io/1sat-stack/pkg/beef"
@@ -115,6 +116,9 @@ type Config struct {
 
 	// Admin UI
 	Admin admin.Config `mapstructure:"admin"`
+
+	// Sweep UI
+	Sweep sweep.Config `mapstructure:"sweep"`
 
 	// Wallet service
 	Wallet wallet.Config `mapstructure:"wallet"`
@@ -235,6 +239,7 @@ type Services struct {
 	ORDFS      *ordfs.Services
 	Own        *owner.Services
 	Admin      *admin.Services
+	Sweep      *sweep.Services
 	Wallet     *wallet.Services
 	Paymail    *paymail.Services
 	MessageBox *messagebox.Services
@@ -321,6 +326,7 @@ func (c *Config) SetDefaults(v *viper.Viper) {
 	c.ORDFS.SetDefaults(v, "ordfs")
 	c.Owner.SetDefaults(v, "owner")
 	c.Admin.SetDefaults(v, "admin")
+	c.Sweep.SetDefaults(v, "sweep")
 	c.Wallet.SetDefaults(v, "wallet")
 	c.Auth.SetDefaults(v, "auth")
 	c.Paymail.SetDefaults(v, "paymail")
@@ -791,6 +797,15 @@ func (c *Config) Initialize(ctx context.Context, logger *slog.Logger) (*Services
 		logger.Info("admin initialized", "mode", c.Admin.Mode, "duration", time.Since(start).Round(time.Millisecond))
 	}
 
+	// Initialize Sweep UI
+	if c.Sweep.Mode != sweep.ModeDisabled {
+		sweepSvc, err := c.Sweep.Initialize(ctx, logger)
+		if err != nil {
+			return nil, fmt.Errorf("failed to initialize sweep: %w", err)
+		}
+		svc.Sweep = sweepSvc
+	}
+
 	// Initialize Wallet service
 	if c.Wallet.Mode != wallet.ModeDisabled && c.Wallet.Mode != "" {
 		walletDeps := &wallet.InitializeDeps{
@@ -1125,6 +1140,18 @@ func (c *Config) RegisterRoutes(app *fiber.App, svc *Services) {
 		svc.Admin.Routes.Register(guardedGroup, publicGroup, svc.AuthMiddleware.Handler())
 		capabilities = append(capabilities, "admin")
 		slog.Debug("registered admin routes", "prefix", prefix)
+	}
+
+	// Register Sweep UI routes (no auth required)
+	if svc.Sweep != nil && svc.Sweep.Routes != nil {
+		prefix := c.Sweep.Routes.Prefix
+		if prefix == "" {
+			prefix = "/sweep"
+		}
+		sweepGroup := api.Group(prefix)
+		svc.Sweep.Routes.Register(sweepGroup)
+		capabilities = append(capabilities, "sweep")
+		slog.Debug("registered sweep routes", "prefix", prefix)
 	}
 
 	// Register Wallet routes (with auth required)
