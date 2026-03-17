@@ -84,13 +84,12 @@ function categorizeOutputs(outputs: IndexedOutput[]): ScannedAssets {
 
   for (const out of outputs) {
     const events = out.events ?? [];
-    const is1Sat = events.includes("1sat");
 
     if (events.some((e) => e.startsWith("bsv21:"))) {
       bsv21Tokens.push(out);
     } else if (events.some((e) => e.startsWith("bsv20:"))) {
       bsv20Tokens.push(out);
-    } else if (is1Sat) {
+    } else if (out.satoshis === 1) {
       ordinals.push(out);
     } else {
       funding.push(out);
