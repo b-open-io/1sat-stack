@@ -84,18 +84,13 @@ function categorizeOutputs(outputs: IndexedOutput[]): ScannedAssets {
 
   for (const out of outputs) {
     const events = out.events ?? [];
-    const types = events
-      .filter((e) => e.startsWith("type:"))
-      .map((e) => e.slice(5));
+    const is1Sat = events.includes("1sat");
 
-    if (types.some((t) => t.includes("bsv21") || t.includes("bsv-21"))) {
+    if (events.some((e) => e.startsWith("bsv21:"))) {
       bsv21Tokens.push(out);
-    } else if (types.some((t) => t.includes("bsv20") || t.includes("bsv-20"))) {
+    } else if (events.some((e) => e.startsWith("bsv20:"))) {
       bsv20Tokens.push(out);
-    } else if (
-      events.some((e) => e.startsWith("origin:")) ||
-      types.some((t) => t.includes("inscription") || t.includes("ord"))
-    ) {
+    } else if (is1Sat) {
       ordinals.push(out);
     } else {
       funding.push(out);
