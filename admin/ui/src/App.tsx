@@ -11,14 +11,25 @@ import "./styles.css";
 type AppState = "loading" | "setup" | "connect" | "ready";
 
 function WalletGate({ children }: { children: React.ReactNode }) {
+  const [checking, setChecking] = useState(true);
+  const [connected, setConnected] = useState(false);
   const [connecting, setConnecting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Try to silently detect an already-connected wallet on mount
+  useEffect(() => {
+    connectWallet()
+      .then(() => setConnected(true))
+      .catch(() => {})
+      .finally(() => setChecking(false));
+  }, []);
 
   async function handleConnect() {
     setConnecting(true);
     setError(null);
     try {
       await connectWallet();
+      setConnected(true);
     } catch (e: any) {
       setError(e.message || "Failed to connect wallet");
     } finally {
@@ -26,7 +37,9 @@ function WalletGate({ children }: { children: React.ReactNode }) {
     }
   }
 
-  if (getIdentityKey()) {
+  if (checking) return null;
+
+  if (connected || getIdentityKey()) {
     return <>{children}</>;
   }
 
