@@ -27,8 +27,9 @@ type RuntimeConfig struct {
 	LogLevel string
 
 	// Auth
-	AuthAPIKey    string
-	AuthSessionTTL string
+	AuthAPIKey      string
+	AuthSessionPath string
+	AuthSessionTTL  string
 
 	// Store
 	StoreMode     string // "embedded" or "disabled"
@@ -145,7 +146,9 @@ func LoadRuntimeConfig(ctx context.Context, cs Store, logger *slog.Logger) (*Run
 	rc.LogLevel = getString(ctx, cs, "logging.level")
 
 	// Auth
+	rc.AuthMode = getString(ctx, cs, "auth.mode")
 	rc.AuthAPIKey = getString(ctx, cs, "auth.api_key")
+	rc.AuthSessionPath = getString(ctx, cs, "auth.session_path")
 	rc.AuthSessionTTL = getString(ctx, cs, "auth.session_ttl")
 
 	// Store

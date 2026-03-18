@@ -46,7 +46,7 @@ type RoutesConfig struct {
 // SetDefaults configures viper defaults for overlay settings
 func (c *Config) SetDefaults(v *viper.Viper, prefix string) {
 	v.SetDefault(prefix+".mode", ModeDisabled)
-	v.SetDefault(prefix+".storage_path", "~/.1sat/overlay")
+	v.SetDefault(prefix+".storage_path", "overlay")
 	v.SetDefault(prefix+".storage_backend", "sqlite")
 	v.SetDefault(prefix+".storage_url", "")
 	v.SetDefault(prefix+".routes.enabled", true)
@@ -54,7 +54,7 @@ func (c *Config) SetDefaults(v *viper.Viper, prefix string) {
 	v.SetDefault(prefix+".p2p.enabled", false)
 	v.SetDefault(prefix+".p2p.port", 9906)
 	v.SetDefault(prefix+".p2p.dht_mode", "off")
-	v.SetDefault(prefix+".p2p.storage_path", "~/.1sat/overlay-p2p")
+	v.SetDefault(prefix+".p2p.storage_path", "overlay-p2p")
 }
 
 // InitializeDeps holds dependencies required for overlay initialization

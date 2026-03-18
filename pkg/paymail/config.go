@@ -52,7 +52,7 @@ func (c *Config) SetDefaults(v *viper.Viper, prefix string) {
 	}
 
 	v.SetDefault(p+"mode", ModeDisabled)
-	v.SetDefault(p+"db_path", "~/.1sat/paymail.db")
+	v.SetDefault(p+"db_path", "paymail.db")
 	v.SetDefault(p+"routes.enabled", true)
 	v.SetDefault(p+"routes.prefix", "/bsvalias")
 }

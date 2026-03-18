@@ -50,7 +50,7 @@ func (c *Config) SetDefaults(v *viper.Viper, prefix string) {
 
 	// Database defaults - SQLite by default
 	v.SetDefault(p+"db.engine", "sqlite")
-	v.SetDefault(p+"db.sqlite.connection_string", "~/.1sat/wallet.sqlite")
+	v.SetDefault(p+"db.sqlite.connection_string", "wallet.sqlite")
 	v.SetDefault(p+"postgres_connection_string", "")
 	v.SetDefault(p+"db.max_idle_connections", 5)
 	v.SetDefault(p+"db.max_open_connections", 5)

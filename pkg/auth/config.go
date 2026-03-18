@@ -29,6 +29,6 @@ func (c *Config) SetDefaults(v *viper.Viper, prefix string) {
 
 	v.SetDefault(p+"allow_unauthenticated", true)
 	v.SetDefault(p+"api_key", "")
-	v.SetDefault(p+"session_path", "~/.1sat/sessions/")
+	v.SetDefault(p+"session_path", "sessions/")
 	v.SetDefault(p+"session_ttl", "24h")
 }

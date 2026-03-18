@@ -314,16 +314,16 @@ func (c *Config) SetDefaults(v *viper.Viper) {
 
 	// External services defaults - use library SetDefaults methods
 	c.P2P.SetDefaults(v, "p2p")
-	v.SetDefault("p2p.storage_path", "~/.1sat/p2p")
+	v.SetDefault("p2p.storage_path", "p2p")
 
 	c.Chaintracks.SetDefaults(v, "chaintracks")
 	v.SetDefault("chaintracks.mode", "embedded")
-	v.SetDefault("chaintracks.storage_path", "~/.1sat/chaintracks")
+	v.SetDefault("chaintracks.storage_path", "chaintracks")
 
 	c.Arcade.SetDefaults(v, "arcade")
 	v.SetDefault("arcade.mode", "embedded")
-	v.SetDefault("arcade.storage_path", "~/.1sat/arcade")
-	v.SetDefault("arcade.database.sqlite_path", "~/.1sat/arcade/arcade.db")
+	v.SetDefault("arcade.storage_path", "arcade")
+	v.SetDefault("arcade.database.sqlite_path", "arcade/arcade.db")
 
 	// Merkle service defaults
 	v.SetDefault("merkle.mode", "disabled")
@@ -360,10 +360,31 @@ func (c *Config) resolvePath(p string) string {
 	if p == "" {
 		return ""
 	}
+	if strings.HasPrefix(p, "~/") {
+		home, _ := os.UserHomeDir()
+		p = filepath.Join(home, p[2:])
+	}
 	if filepath.IsAbs(p) {
 		return p
 	}
 	return filepath.Join(c.DataDir, p)
+}
+
+// resolveAllPaths resolves all path fields on Config against DataDir.
+// Called once after Viper Unmarshal and applyRuntimeConfig, so all paths
+// (whether from Viper defaults or config store) are resolved in one place.
+func (c *Config) resolveAllPaths() {
+	c.Store.Badger.Path = c.resolvePath(c.Store.Badger.Path)
+	c.Auth.SessionPath = c.resolvePath(c.Auth.SessionPath)
+	c.Wallet.DB.SQLite.ConnectionString = c.resolvePath(c.Wallet.DB.SQLite.ConnectionString)
+	c.Chaintracks.StoragePath = c.resolvePath(c.Chaintracks.StoragePath)
+	c.Arcade.StoragePath = c.resolvePath(c.Arcade.StoragePath)
+	c.Arcade.Database.SQLitePath = c.resolvePath(c.Arcade.Database.SQLitePath)
+	c.Overlay.StoragePath = c.resolvePath(c.Overlay.StoragePath)
+	c.Overlay.P2P.StoragePath = c.resolvePath(c.Overlay.P2P.StoragePath)
+	c.P2P.StoragePath = c.resolvePath(c.P2P.StoragePath)
+	c.Paymail.DBPath = c.resolvePath(c.Paymail.DBPath)
+	c.MessageBox.DBPath = c.resolvePath(c.MessageBox.DBPath)
 }
 
 // applyRuntimeConfig populates Config fields from the config store.
@@ -408,6 +429,9 @@ func (c *Config) applyRuntimeConfig(rc *configpkg.RuntimeConfig) {
 	if rc.AuthAPIKey != "" {
 		c.Auth.ApiKey = rc.AuthAPIKey
 	}
+	if rc.AuthSessionPath != "" {
+		c.Auth.SessionPath = rc.AuthSessionPath
+	}
 	if rc.AuthSessionTTL != "" {
 		c.Auth.SessionTTL = rc.AuthSessionTTL
 	}
@@ -420,7 +444,7 @@ func (c *Config) applyRuntimeConfig(rc *configpkg.RuntimeConfig) {
 		c.Store.Provider = rc.StoreProvider
 	}
 	if rc.StoreBadgerPath != "" {
-		c.Store.Badger.Path = c.resolvePath(rc.StoreBadgerPath)
+		c.Store.Badger.Path = rc.StoreBadgerPath
 	}
 	if rc.StoreRedisURL != "" {
 		c.Store.Redis.URL = rc.StoreRedisURL
@@ -437,7 +461,7 @@ func (c *Config) applyRuntimeConfig(rc *configpkg.RuntimeConfig) {
 		c.Wallet.DB.Engine = defs.DBType(rc.WalletDBEngine)
 	}
 	if rc.WalletSQLitePath != "" {
-		c.Wallet.DB.SQLite.ConnectionString = c.resolvePath(rc.WalletSQLitePath)
+		c.Wallet.DB.SQLite.ConnectionString = rc.WalletSQLitePath
 	}
 	if rc.WalletPostgresURL != "" {
 		c.Wallet.PostgresConnectionString = rc.WalletPostgresURL
@@ -448,7 +472,7 @@ func (c *Config) applyRuntimeConfig(rc *configpkg.RuntimeConfig) {
 		c.Chaintracks.Mode = chaintracksconfig.Mode(rc.ChaintracksMode)
 	}
 	if rc.ChaintracksPath != "" {
-		c.Chaintracks.StoragePath = c.resolvePath(rc.ChaintracksPath)
+		c.Chaintracks.StoragePath = rc.ChaintracksPath
 	}
 	if rc.ChaintracksURL != "" {
 		c.Chaintracks.URL = rc.ChaintracksURL
@@ -459,9 +483,8 @@ func (c *Config) applyRuntimeConfig(rc *configpkg.RuntimeConfig) {
 		c.Arcade.Mode = arcadeconfig.Mode(rc.ArcadeMode)
 	}
 	if rc.ArcadePath != "" {
-		resolved := c.resolvePath(rc.ArcadePath)
-		c.Arcade.StoragePath = resolved
-		c.Arcade.Database.SQLitePath = resolved
+		c.Arcade.StoragePath = rc.ArcadePath
+		c.Arcade.Database.SQLitePath = rc.ArcadePath
 	}
 
 	// JungleBus
@@ -497,7 +520,7 @@ func (c *Config) applyRuntimeConfig(rc *configpkg.RuntimeConfig) {
 
 	// Overlay engine (shared)
 	if rc.OverlayStoragePath != "" {
-		c.Overlay.StoragePath = c.resolvePath(rc.OverlayStoragePath)
+		c.Overlay.StoragePath = rc.OverlayStoragePath
 	}
 	if rc.OverlayStorageBackend != "" {
 		c.Overlay.StorageBackend = rc.OverlayStorageBackend
@@ -629,7 +652,7 @@ func (c *Config) applyRuntimeConfig(rc *configpkg.RuntimeConfig) {
 		c.Paymail.Mode = rc.PaymailMode
 	}
 	if rc.PaymailDBPath != "" {
-		c.Paymail.DBPath = c.resolvePath(rc.PaymailDBPath)
+		c.Paymail.DBPath = rc.PaymailDBPath
 	}
 
 	// MessageBox
@@ -637,7 +660,7 @@ func (c *Config) applyRuntimeConfig(rc *configpkg.RuntimeConfig) {
 		c.MessageBox.Mode = rc.MessageBoxMode
 	}
 	if rc.MessageBoxDBPath != "" {
-		c.MessageBox.DBPath = c.resolvePath(rc.MessageBoxDBPath)
+		c.MessageBox.DBPath = rc.MessageBoxDBPath
 	}
 
 	// MongoDB
@@ -680,6 +703,7 @@ func (c *Config) Initialize(ctx context.Context, logger *slog.Logger) (*Services
 		return nil, fmt.Errorf("failed to load runtime config: %w", err)
 	}
 	c.applyRuntimeConfig(runtimeCfg)
+	c.resolveAllPaths()
 
 	// Initialize pubsub
 	start = time.Now()
