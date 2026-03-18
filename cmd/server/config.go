@@ -19,6 +19,8 @@ import (
 	"github.com/b-open-io/1sat-stack/pkg/bsv21"
 	configpkg "github.com/b-open-io/1sat-stack/pkg/config"
 	"github.com/b-open-io/1sat-stack/pkg/httputil"
+
+	"github.com/bsv-blockchain/go-wallet-toolbox/pkg/defs"
 	"github.com/b-open-io/1sat-stack/pkg/indexer"
 	"github.com/b-open-io/1sat-stack/pkg/jbsync"
 	"github.com/b-open-io/1sat-stack/pkg/logging"
@@ -339,6 +341,76 @@ func (c *Config) SetDefaults(v *viper.Viper) {
 	c.MessageBox.SetDefaults(v, "messagebox")
 }
 
+// applyRuntimeConfig overrides Config fields with values from the config store.
+// Only applies values that are actually set — empty strings are ignored.
+func (c *Config) applyRuntimeConfig(rc *configpkg.RuntimeConfig) {
+	if !rc.SetupComplete {
+		return
+	}
+
+	// Auth mode
+	if rc.AuthMode == "local" {
+		c.Auth.AllowUnauthenticated = true
+	} else if rc.AuthMode == "authenticated" {
+		c.Auth.AllowUnauthenticated = false
+	}
+
+	// Overlay toggles
+	if rc.BAPEnabled {
+		c.BAP.Mode = "embedded"
+		c.Overlay.Mode = "embedded"
+	}
+	if rc.OPNSEnabled {
+		c.OPNS.Mode = "embedded"
+		c.Overlay.Mode = "embedded"
+	}
+	if rc.BSV21Enabled {
+		c.BSV21.Mode = "embedded"
+		c.Overlay.Mode = "embedded"
+	}
+	if rc.BSocialEnabled {
+		c.BSocial.Mode = "embedded"
+		c.Overlay.Mode = "embedded"
+	}
+	if rc.OrdLockEnabled {
+		c.OrdLock.Mode = "embedded"
+		c.Overlay.Mode = "embedded"
+	}
+
+	// Wallet database overrides
+	if rc.WalletDBEngine != "" {
+		c.Wallet.DB.Engine = defs.DBType(rc.WalletDBEngine)
+	}
+	if rc.WalletSQLitePath != "" {
+		c.Wallet.DB.SQLite.ConnectionString = rc.WalletSQLitePath
+	}
+	if rc.WalletPostgresURL != "" {
+		c.Wallet.PostgresConnectionString = rc.WalletPostgresURL
+	}
+
+	// Chaintracks overrides
+	if rc.ChaintracksMode != "" {
+		c.Chaintracks.Mode = chaintracksconfig.Mode(rc.ChaintracksMode)
+	}
+	if rc.ChaintracksPath != "" {
+		c.Chaintracks.StoragePath = rc.ChaintracksPath
+	}
+
+	// Arcade overrides
+	if rc.ArcadeMode != "" {
+		c.Arcade.Mode = arcadeconfig.Mode(rc.ArcadeMode)
+	}
+	if rc.ArcadePath != "" {
+		c.Arcade.StoragePath = rc.ArcadePath
+		c.Arcade.Database.SQLitePath = rc.ArcadePath
+	}
+
+	// MessageBox path override
+	if rc.MessageBoxPath != "" {
+		c.MessageBox.DBPath = rc.MessageBoxPath
+	}
+}
+
 // Initialize creates all services from the configuration
 func (c *Config) Initialize(ctx context.Context, logger *slog.Logger) (*Services, error) {
 	if logger == nil {
@@ -374,6 +446,13 @@ func (c *Config) Initialize(ctx context.Context, logger *slog.Logger) (*Services
 	}
 	svc.ConfigStore = configStore
 	logger.Info("config store initialized", "duration", time.Since(start).Round(time.Millisecond))
+
+	// Load runtime config from config store and apply to Config struct
+	runtimeCfg, err := configpkg.LoadRuntimeConfig(ctx, configStore, logger)
+	if err != nil {
+		return nil, fmt.Errorf("failed to load runtime config: %w", err)
+	}
+	c.applyRuntimeConfig(runtimeCfg)
 
 	// Initialize pubsub
 	start = time.Now()

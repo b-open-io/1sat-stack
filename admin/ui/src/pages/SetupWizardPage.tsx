@@ -218,9 +218,44 @@ export default function SetupWizardPage() {
 
   async function handleComplete() {
     setCompleting(true);
-    await new Promise((r) => setTimeout(r, 600));
-    setCompleting(false);
-    navigate("/settings");
+    try {
+      const adminIdx = window.location.pathname.indexOf("/admin");
+      const setupBase =
+        window.location.origin +
+        (adminIdx >= 0 ? window.location.pathname.substring(0, adminIdx + "/admin".length) : "") +
+        "/setup";
+
+      const res = await fetch(setupBase + "/complete", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          authMode: state.authMode,
+          wif: state.wif || undefined,
+          adminIdentityKey: state.adminIdentityKey || undefined,
+          walletBackend: state.walletBackend,
+          walletSqlitePath: state.walletSqlitePath,
+          walletPostgresUrl: state.walletPostgresUrl || undefined,
+          chaintracksBackend: state.chaintracksBackend,
+          chaintracksPath: state.chaintracksPath,
+          chaintracksUrl: state.chaintracksUrl || undefined,
+          arcadeBackend: state.arcadeBackend,
+          arcadePath: state.arcadePath,
+          arcadeUrl: state.arcadeUrl || undefined,
+          messageboxPath: state.messageboxPath,
+        }),
+      });
+
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error || "Setup failed");
+      }
+
+      navigate("/settings");
+    } catch (e: any) {
+      alert(e.message || "Failed to complete setup");
+    } finally {
+      setCompleting(false);
+    }
   }
 
   return (

@@ -3,6 +3,7 @@ package admin
 import (
 	"embed"
 	"encoding/json"
+	"errors"
 	"io/fs"
 	"log/slog"
 	"net/http"
@@ -69,6 +70,8 @@ func (r *Routes) Register(guardedGroup fiber.Router, publicGroup fiber.Router, a
 	publicGroup.Post("/setup", authHandler, r.handleSetup)
 	publicGroup.Post("/setup/request", authHandler, r.handleRequestAccess)
 	publicGroup.Get("/setup/check", authHandler, r.handleCheckAccess)
+	publicGroup.Post("/setup/complete", r.handleSetupComplete)
+	publicGroup.Get("/setup/config", r.handleGetSetupConfig)
 
 	// API routes (require auth via AdminGuard on guardedGroup)
 	guardedGroup.Get("/whitelist", r.handleGetWhitelist)
@@ -987,6 +990,179 @@ func (r *Routes) handleDenyRequest(c *fiber.Ctx) error {
 	r.logger.Info("denied access request", "pubkey", pubkey)
 	return c.JSON(fiber.Map{
 		"message": "request denied",
+	})
+}
+
+// SetupCompleteRequest is the request body for completing the setup wizard.
+type SetupCompleteRequest struct {
+	AuthMode            string `json:"authMode"`
+	WIF                 string `json:"wif"`
+	AdminIdentityKey    string `json:"adminIdentityKey"`
+	WalletBackend       string `json:"walletBackend"`
+	WalletSqlitePath    string `json:"walletSqlitePath"`
+	WalletPostgresUrl   string `json:"walletPostgresUrl"`
+	ChaintracksBackend  string `json:"chaintracksBackend"`
+	ChaintracksPath     string `json:"chaintracksPath"`
+	ChaintracksUrl      string `json:"chaintracksUrl"`
+	ArcadeBackend       string `json:"arcadeBackend"`
+	ArcadePath          string `json:"arcadePath"`
+	ArcadeUrl           string `json:"arcadeUrl"`
+	MessageboxPath      string `json:"messageboxPath"`
+}
+
+// handleSetupComplete writes the full setup wizard configuration to the config store.
+// @Summary Complete setup wizard
+// @Description Writes initial configuration from the setup wizard
+// @Tags admin
+// @Accept json
+// @Produce json
+// @Param body body SetupCompleteRequest true "Setup configuration"
+// @Success 200 {object} map[string]string "status and restart flag"
+// @Failure 400 {object} map[string]string "Bad request"
+// @Failure 500 {object} map[string]string "Internal server error"
+// @Router /admin/setup/complete [post]
+func (r *Routes) handleSetupComplete(c *fiber.Ctx) error {
+	var req SetupCompleteRequest
+	if err := c.BodyParser(&req); err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": "invalid request body",
+		})
+	}
+
+	ctx := c.Context()
+
+	// Always write auth mode
+	if err := r.configStore.Set(ctx, "auth.mode", req.AuthMode); err != nil {
+		r.logger.Error("failed to write auth mode", "error", err)
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"error": "failed to write configuration",
+		})
+	}
+
+	// Only write database paths if the user changed them from defaults
+	overrides := map[string]struct{ value, defaultVal string }{
+		"wallet.db.engine":      {req.WalletBackend, "sqlite"},
+		"wallet.db.sqlite.path": {req.WalletSqlitePath, "~/.1sat/wallet.sqlite"},
+		"wallet.db.postgres.url": {req.WalletPostgresUrl, ""},
+		"chaintracks.mode":      {req.ChaintracksBackend, "embedded"},
+		"chaintracks.path":      {req.ChaintracksPath, "~/.1sat/chaintracks"},
+		"chaintracks.url":       {req.ChaintracksUrl, ""},
+		"arcade.mode":           {req.ArcadeBackend, "embedded"},
+		"arcade.path":           {req.ArcadePath, "~/.1sat/arcade/arcade.db"},
+		"arcade.url":            {req.ArcadeUrl, ""},
+		"messagebox.path":       {req.MessageboxPath, "~/.1sat/messagebox.db"},
+	}
+
+	for key, o := range overrides {
+		if o.value != o.defaultVal {
+			if err := r.configStore.Set(ctx, key, o.value); err != nil {
+				r.logger.Error("failed to write setup config", "error", err, "key", key)
+				return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+					"error": "failed to write configuration",
+				})
+			}
+		}
+	}
+
+	if req.AuthMode == "authenticated" && req.AdminIdentityKey != "" {
+		if err := auth.SaveAdminUser(ctx, r.configStore, auth.AdminUser{
+			Pubkey: req.AdminIdentityKey,
+			Name:   "Admin",
+			Admin:  true,
+		}); err != nil {
+			r.logger.Error("failed to save admin user during setup", "error", err)
+			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+				"error": "failed to save admin user",
+			})
+		}
+	}
+
+	if req.AuthMode == "local" && req.WIF != "" {
+		if err := r.configStore.Set(ctx, "server.private_key", req.WIF); err != nil {
+			r.logger.Error("failed to write private key during setup", "error", err)
+			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+				"error": "failed to write private key",
+			})
+		}
+	}
+
+	if err := r.configStore.Set(ctx, "setup.complete", "true"); err != nil {
+		r.logger.Error("failed to mark setup complete", "error", err)
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"error": "failed to mark setup complete",
+		})
+	}
+
+	r.logger.Info("setup wizard completed", "authMode", req.AuthMode)
+	return c.JSON(fiber.Map{
+		"status":  "complete",
+		"restart": true,
+	})
+}
+
+// SetupConfigResponse is the response for GET /setup/config.
+type SetupConfigResponse struct {
+	AuthMode           string `json:"authMode"`
+	WalletBackend      string `json:"walletBackend"`
+	WalletSqlitePath   string `json:"walletSqlitePath"`
+	WalletPostgresUrl  string `json:"walletPostgresUrl"`
+	ChaintracksBackend string `json:"chaintracksBackend"`
+	ChaintracksPath    string `json:"chaintracksPath"`
+	ChaintracksUrl     string `json:"chaintracksUrl"`
+	ArcadeBackend      string `json:"arcadeBackend"`
+	ArcadePath         string `json:"arcadePath"`
+	ArcadeUrl          string `json:"arcadeUrl"`
+	MessageboxPath     string `json:"messageboxPath"`
+}
+
+// handleGetSetupConfig returns the current setup configuration from the config store.
+// @Summary Get setup configuration
+// @Description Returns current setup configuration for the wizard UI
+// @Tags admin
+// @Produce json
+// @Success 200 {object} SetupConfigResponse "Current setup configuration"
+// @Failure 500 {object} map[string]string "Internal server error"
+// @Router /admin/setup/config [get]
+func (r *Routes) handleGetSetupConfig(c *fiber.Ctx) error {
+	ctx := c.Context()
+
+	keys := map[string]*string{
+		"auth.mode":             new(string),
+		"wallet.db.engine":      new(string),
+		"wallet.db.sqlite.path": new(string),
+		"wallet.db.postgres.url": new(string),
+		"chaintracks.mode":      new(string),
+		"chaintracks.path":      new(string),
+		"chaintracks.url":       new(string),
+		"arcade.mode":           new(string),
+		"arcade.path":           new(string),
+		"arcade.url":            new(string),
+		"messagebox.path":       new(string),
+	}
+
+	for key, dest := range keys {
+		val, err := r.configStore.Get(ctx, key)
+		if err != nil && !errors.Is(err, config.ErrNotFound) {
+			r.logger.Error("failed to read setup config", "error", err, "key", key)
+			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+				"error": "failed to read configuration",
+			})
+		}
+		*dest = val
+	}
+
+	return c.JSON(SetupConfigResponse{
+		AuthMode:           *keys["auth.mode"],
+		WalletBackend:      *keys["wallet.db.engine"],
+		WalletSqlitePath:   *keys["wallet.db.sqlite.path"],
+		WalletPostgresUrl:  *keys["wallet.db.postgres.url"],
+		ChaintracksBackend: *keys["chaintracks.mode"],
+		ChaintracksPath:    *keys["chaintracks.path"],
+		ChaintracksUrl:     *keys["chaintracks.url"],
+		ArcadeBackend:      *keys["arcade.mode"],
+		ArcadePath:         *keys["arcade.path"],
+		ArcadeUrl:          *keys["arcade.url"],
+		MessageboxPath:     *keys["messagebox.path"],
 	})
 }
 
