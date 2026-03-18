@@ -4,21 +4,35 @@ import OpNSPage from "./pages/OpNSPage";
 import BSV21Page from "./pages/BSV21Page";
 import SystemPage from "./pages/SystemPage";
 import UsersPage from "./pages/UsersPage";
+import SetupWizardPage from "./pages/SetupWizardPage";
+import SettingsPage from "./pages/SettingsPage";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { Toaster } from "@/components/ui/sonner";
 import "./styles.css";
 
 function AppContent() {
   return (
-    <Layout>
-      <Routes>
-        <Route path="/" element={<OpNSPage />} />
-        <Route path="/bsv21" element={<BSV21Page />} />
-        <Route path="/system" element={<SystemPage />} />
-        <Route path="/users" element={<UsersPage />} />
-        <Route path="*" element={<Navigate to="/" />} />
-      </Routes>
-    </Layout>
+    <Routes>
+      {/* Standalone pages — no Layout wrapper */}
+      <Route path="/setup" element={<SetupWizardPage />} />
+      <Route path="/settings" element={<SettingsPage />} />
+
+      {/* Admin pages — wrapped in Layout (auth + sidebar) */}
+      <Route
+        path="*"
+        element={
+          <Layout>
+            <Routes>
+              <Route path="/" element={<OpNSPage />} />
+              <Route path="/bsv21" element={<BSV21Page />} />
+              <Route path="/system" element={<SystemPage />} />
+              <Route path="/users" element={<UsersPage />} />
+              <Route path="*" element={<Navigate to="/" />} />
+            </Routes>
+          </Layout>
+        }
+      />
+    </Routes>
   );
 }
 

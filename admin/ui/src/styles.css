@@ -3,44 +3,51 @@
 @custom-variant dark (&:is(.dark *));
 
 @theme {
-  --color-background: #1a1a2e;
-  --color-foreground: #eeeeee;
-  --color-card: #16213e;
-  --color-card-foreground: #eeeeee;
-  --color-popover: #16213e;
-  --color-popover-foreground: #eeeeee;
-  --color-primary: #e94560;
+  --color-background: #111318;
+  --color-foreground: #e8e8ea;
+  --color-card: #191c23;
+  --color-card-foreground: #e8e8ea;
+  --color-popover: #191c23;
+  --color-popover-foreground: #e8e8ea;
+  --color-primary: #3b82f6;
   --color-primary-foreground: #ffffff;
-  --color-secondary: #0f3460;
-  --color-secondary-foreground: #eeeeee;
-  --color-muted: #334155;
-  --color-muted-foreground: #aaaaaa;
-  --color-accent: #0f3460;
-  --color-accent-foreground: #eeeeee;
-  --color-destructive: #e94560;
+  --color-secondary: #1e2330;
+  --color-secondary-foreground: #e8e8ea;
+  --color-muted: #252a36;
+  --color-muted-foreground: #8891a5;
+  --color-accent: #1e2330;
+  --color-accent-foreground: #e8e8ea;
+  --color-destructive: #ef4444;
   --color-destructive-foreground: #ffffff;
-  --color-border: #334155;
-  --color-input: #334155;
-  --color-ring: #e94560;
-  --color-success: #4ade80;
-  --color-warning: #fbbf24;
-  --color-sidebar-background: #16213e;
-  --color-sidebar-foreground: #eeeeee;
-  --color-sidebar-primary: #e94560;
+  --color-border: #252a36;
+  --color-input: #1e2330;
+  --color-ring: #3b82f6;
+  --color-success: #10b981;
+  --color-warning: #f59e0b;
+  --color-sidebar-background: #0e1016;
+  --color-sidebar-foreground: #e8e8ea;
+  --color-sidebar-primary: #3b82f6;
   --color-sidebar-primary-foreground: #ffffff;
-  --color-sidebar-accent: #0f3460;
-  --color-sidebar-accent-foreground: #eeeeee;
-  --color-sidebar-border: #334155;
-  --color-sidebar-ring: #e94560;
-  --color-sidebar-muted-foreground: #aaaaaa;
+  --color-sidebar-accent: #1e2330;
+  --color-sidebar-accent-foreground: #e8e8ea;
+  --color-sidebar-border: #1e2330;
+  --color-sidebar-ring: #3b82f6;
+  --color-sidebar-muted-foreground: #8891a5;
   --radius-sm: 0.25rem;
   --radius-md: 0.5rem;
   --radius-lg: 0.75rem;
   --radius-xl: 1rem;
+  --font-sans: 'Geist', system-ui, sans-serif;
+  --font-mono: 'Geist Mono', 'JetBrains Mono', monospace;
 }
 
 body {
   background: var(--color-background);
   color: var(--color-foreground);
+  font-family: var(--font-sans);
   min-height: 100vh;
+}
+
+code, pre, .font-mono {
+  font-family: var(--font-mono);
 }
