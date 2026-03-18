@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef, useMemo } from "react";
 import { toast } from "sonner";
 import { getConfig, saveConfig, apiFetch } from "@/api";
 import { toastError } from "@/lib/utils";
@@ -1276,6 +1276,7 @@ export default function SettingsPage() {
   const [activeSection, setActiveSection] = useState<SectionId>("node");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const originalConfig = useRef<Record<string, string>>({});
 
   // Overlay toggles
   const [bapEnabled, setBapEnabled] = useState(false);
@@ -1371,6 +1372,7 @@ export default function SettingsPage() {
   useEffect(() => {
     getConfig()
       .then((cfg) => {
+        originalConfig.current = { ...cfg };
         const b = (key: string) => cfg[key] === "true";
         const s = (key: string, fallback: string) => cfg[key] ?? fallback;
 
@@ -1472,6 +1474,49 @@ export default function SettingsPage() {
       .finally(() => setLoading(false));
   }, []);
 
+  // Keys that require a server restart when changed
+  const RESTART_KEYS = new Set([
+    "overlay.bap.enabled", "overlay.opns.enabled", "overlay.bsv21.enabled",
+    "overlay.bsocial.enabled", "overlay.ordlock.enabled",
+    "store.provider", "store.path", "pubsub.provider",
+    "auth.mode", "wallet.db", "chaintracks.path", "arcade.db",
+    "overlay.engine.storage", "overlay.engine.storage_path",
+    "indexer.parsers",
+  ]);
+
+  // Build current values map (same shape as handleSave sends)
+  const currentValues = useMemo(() => ({
+    "overlay.bap.enabled": String(bapEnabled),
+    "overlay.opns.enabled": String(opnsEnabled),
+    "overlay.bsv21.enabled": String(bsv21Enabled),
+    "overlay.bsocial.enabled": String(bsocialEnabled),
+    "overlay.ordlock.enabled": String(ordlockEnabled),
+    "store.provider": storeProvider,
+    "store.path": storePath,
+    "pubsub.provider": pubsubProvider,
+    "auth.mode": authMode,
+    "wallet.db": walletDb,
+    "chaintracks.path": chaintracksPath,
+    "arcade.db": arcadeDb,
+    "overlay.engine.storage": engineStorage,
+    "overlay.engine.storage_path": engineStoragePath,
+    "indexer.parsers": JSON.stringify(activeTags),
+  }), [
+    bapEnabled, opnsEnabled, bsv21Enabled, bsocialEnabled, ordlockEnabled,
+    storeProvider, storePath, pubsubProvider, authMode, walletDb,
+    chaintracksPath, arcadeDb, engineStorage, engineStoragePath, activeTags,
+  ]);
+
+  const needsRestart = useMemo(() => {
+    if (!originalConfig.current || Object.keys(originalConfig.current).length === 0) return false;
+    for (const key of RESTART_KEYS) {
+      const original = originalConfig.current[key] ?? "";
+      const current = currentValues[key as keyof typeof currentValues] ?? "";
+      if (original !== current) return true;
+    }
+    return false;
+  }, [currentValues]);
+
   async function handleSave() {
     setSaving(true);
     try {
@@ -1564,7 +1609,15 @@ export default function SettingsPage() {
       };
 
       await saveConfig(values);
-      toast.success("Settings saved");
+      if (needsRestart) {
+        toast.success("Settings saved — restarting server...");
+        await apiFetch("/restart", { method: "POST" }).catch(() => {});
+        // Wait for server to come back
+        setTimeout(() => window.location.reload(), 3000);
+      } else {
+        toast.success("Settings saved");
+        originalConfig.current = { ...originalConfig.current, ...values };
+      }
     } catch (err) {
       toastError(err instanceof Error ? err.message : "Failed to save config");
     } finally {
@@ -1617,8 +1670,8 @@ export default function SettingsPage() {
                 Overlay engine auto-enabled
               </span>
             )}
-            <Button size="sm" onClick={handleSave} disabled={saving}>
-              {saving ? "Saving..." : "Save changes"}
+            <Button size="sm" onClick={handleSave} disabled={saving} variant={needsRestart ? "destructive" : "default"}>
+              {saving ? "Saving..." : needsRestart ? "Save & Restart" : "Save changes"}
             </Button>
           </div>
         </div>
