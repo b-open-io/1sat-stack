@@ -2,12 +2,12 @@ package ordlock
 
 import (
 	"context"
+	"log/slog"
 
 	"github.com/bitcoin-sv/go-templates/template/ordlock"
 	"github.com/bsv-blockchain/go-overlay-services/pkg/core/engine"
 	"github.com/bsv-blockchain/go-sdk/chainhash"
 	"github.com/bsv-blockchain/go-sdk/overlay"
-	"github.com/bsv-blockchain/go-sdk/script"
 	"github.com/bsv-blockchain/go-sdk/transaction"
 )
 
@@ -23,18 +23,28 @@ func (tm *TopicManager) IdentifyAdmissibleOutputs(ctx context.Context, beef *tra
 		if output.Satoshis != 1 {
 			continue
 		}
-		if ordlock.Decode(output.LockingScript) == nil {
-			continue
+		if ordlock.Decode(output.LockingScript) != nil {
+			admit.OutputsToAdmit = append(admit.OutputsToAdmit, uint32(vout))
 		}
-		admit.OutputsToAdmit = append(admit.OutputsToAdmit, uint32(vout))
 	}
 
-	// Retain inputs that spend previous ordlock outputs so the engine tracks spends
 	for vin, input := range tx.Inputs {
-		if !isOrdlockInput(input) {
+		src := input.SourceTxOutput()
+		if src == nil || src.Satoshis != 1 {
 			continue
 		}
-		admit.CoinsToRetain = append(admit.CoinsToRetain, uint32(vin))
+		if ordlock.Decode(src.LockingScript) != nil {
+			admit.CoinsToRetain = append(admit.CoinsToRetain, uint32(vin))
+		}
+	}
+
+	if len(admit.OutputsToAdmit) > 0 || len(admit.CoinsToRetain) > 0 {
+		slog.Info("ordlock admission",
+			"txid", txid.String(),
+			"outputs", admit.OutputsToAdmit,
+			"retained", admit.CoinsToRetain,
+			"total_outputs", len(tx.Outputs),
+		)
 	}
 
 	return
@@ -46,20 +56,20 @@ func (tm *TopicManager) IdentifyNeededInputs(ctx context.Context, beef *transact
 		return nil, engine.ErrInvalidBeef
 	}
 
-	var needed []*transaction.Outpoint
+	var inputs []*transaction.Outpoint
 	for _, input := range tx.Inputs {
-		if input.SourceTransaction != nil {
+		src := input.SourceTxOutput()
+		if src == nil || src.Satoshis != 1 {
 			continue
 		}
-		if input.SourceTXID == nil {
-			continue
+		if ordlock.Decode(src.LockingScript) != nil {
+			inputs = append(inputs, &transaction.Outpoint{
+				Txid:  *input.SourceTXID,
+				Index: input.SourceTxOutIndex,
+			})
 		}
-		needed = append(needed, &transaction.Outpoint{
-			Txid:  *input.SourceTXID,
-			Index: input.SourceTxOutIndex,
-		})
 	}
-	return needed, nil
+	return inputs, nil
 }
 
 func (tm *TopicManager) GetDocumentation() string {
@@ -68,12 +78,4 @@ func (tm *TopicManager) GetDocumentation() string {
 
 func (tm *TopicManager) GetMetaData() *overlay.MetaData {
 	return &overlay.MetaData{Name: "ordlock"}
-}
-
-func isOrdlockInput(input *transaction.TransactionInput) bool {
-	src := input.SourceTxOutput()
-	if src == nil || src.Satoshis != 1 {
-		return false
-	}
-	return ordlock.Decode(script.NewFromBytes(src.LockingScript.Bytes())) != nil
 }
