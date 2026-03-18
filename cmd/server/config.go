@@ -1086,28 +1086,54 @@ func (c *Config) RegisterRoutes(app *fiber.App, svc *Services) {
 
 	slog.Debug("registering routes", "basePath", c.Server.BasePath)
 
-	// Track enabled capabilities as routes are registered
-	capabilities := []string{}
+	// Always-on capabilities
+	capabilities := []string{
+		"beef", "pubsub", "txo", "ordfs", "indexer",
+		"chaintracks", "arcade", "wallet", "messagebox", "admin",
+	}
+
+	// Overlay capabilities from initialized services
+	if svc.Overlay != nil {
+		capabilities = append(capabilities, "overlay")
+	}
+	if svc.BAP != nil {
+		capabilities = append(capabilities, "bap")
+	}
+	if svc.OPNS != nil {
+		capabilities = append(capabilities, "opns")
+	}
+	if svc.BSV21 != nil {
+		capabilities = append(capabilities, "bsv21")
+	}
+	if svc.BSocial != nil {
+		capabilities = append(capabilities, "bsocial")
+	}
+	if svc.OrdLock != nil {
+		capabilities = append(capabilities, "market")
+	}
+	if svc.Own != nil {
+		capabilities = append(capabilities, "owner")
+	}
+	if svc.Paymail != nil {
+		capabilities = append(capabilities, "paymail")
+	}
 
 	// Register beef routes
 	if svc.Beef != nil && svc.Beef.Routes != nil {
 		beefGroup := api.Group("/beef")
 		svc.Beef.Routes.Register(beefGroup)
-		capabilities = append(capabilities, "beef")
 	}
 
 	// Register pubsub/SSE routes
 	if svc.PubSub != nil && svc.PubSub.Routes != nil {
 		sseGroup := api.Group("/sse")
 		svc.PubSub.Routes.Register(sseGroup)
-		capabilities = append(capabilities, "pubsub")
 	}
 
 	// Register TXO routes (mutable — spend status changes)
 	if svc.TXO != nil && svc.TXO.Routes != nil {
 		txoGroup := api.Group("/txo", httputil.NoStoreMiddleware())
 		svc.TXO.Routes.Register(txoGroup)
-		capabilities = append(capabilities, "txo")
 	}
 
 	// Register owner routes
@@ -1118,7 +1144,6 @@ func (c *Config) RegisterRoutes(app *fiber.App, svc *Services) {
 		}
 		ownGroup := api.Group(prefix, httputil.NoStoreMiddleware())
 		svc.Own.Routes.Register(ownGroup)
-		capabilities = append(capabilities, "owner")
 		slog.Debug("registered owner routes", "prefix", prefix)
 	} else {
 		slog.Debug("owner routes not registered", "ownNil", svc.Own == nil, "ownMode", c.Owner.Mode)
@@ -1133,7 +1158,6 @@ func (c *Config) RegisterRoutes(app *fiber.App, svc *Services) {
 		bsv21Group := api.Group(prefix, httputil.NoStoreMiddleware())
 		svc.BSV21.Routes.Register(bsv21Group)
 
-		capabilities = append(capabilities, "bsv21")
 	}
 
 	// Register BAP routes
@@ -1144,7 +1168,6 @@ func (c *Config) RegisterRoutes(app *fiber.App, svc *Services) {
 		}
 		bapGroup := api.Group(prefix, httputil.NoStoreMiddleware())
 		svc.BAP.Routes.Register(bapGroup)
-		capabilities = append(capabilities, "bap")
 	}
 
 	// Register BSocial routes
@@ -1155,7 +1178,6 @@ func (c *Config) RegisterRoutes(app *fiber.App, svc *Services) {
 		}
 		bsocialGroup := api.Group(prefix, httputil.NoStoreMiddleware())
 		svc.BSocial.Routes.Register(bsocialGroup)
-		capabilities = append(capabilities, "bsocial")
 	}
 
 	// Register OPNS routes
@@ -1166,7 +1188,6 @@ func (c *Config) RegisterRoutes(app *fiber.App, svc *Services) {
 		}
 		opnsGroup := api.Group(prefix, httputil.NoStoreMiddleware())
 		svc.OPNS.Routes.Register(opnsGroup)
-		capabilities = append(capabilities, "opns")
 	}
 
 	// Register OrdLock routes
@@ -1177,7 +1198,6 @@ func (c *Config) RegisterRoutes(app *fiber.App, svc *Services) {
 		}
 		ordlockGroup := api.Group(prefix, httputil.NoStoreMiddleware())
 		svc.OrdLock.Routes.Register(ordlockGroup)
-		capabilities = append(capabilities, "market")
 	}
 
 	// Register per-module overlay routes
@@ -1197,10 +1217,6 @@ func (c *Config) RegisterRoutes(app *fiber.App, svc *Services) {
 		bsv21OverlayGroup := api.Group("/bsv21/overlay", httputil.NoStoreMiddleware())
 		svc.BSV21.OverlayRoutes.Register(bsv21OverlayGroup)
 	}
-	if svc.BAP != nil || svc.BSocial != nil || svc.OPNS != nil || svc.BSV21 != nil {
-		capabilities = append(capabilities, "overlay")
-	}
-
 	// Register ORDFS routes
 	if svc.ORDFS != nil && svc.ORDFS.Routes != nil {
 		prefix := c.ORDFS.Routes.Prefix
@@ -1209,7 +1225,6 @@ func (c *Config) RegisterRoutes(app *fiber.App, svc *Services) {
 		}
 		ordfsGroup := api.Group(prefix)
 		svc.ORDFS.Routes.Register(ordfsGroup)
-		capabilities = append(capabilities, "ordfs")
 
 		// Also register content at root level for compatibility with ordfs protocol
 		contentGroup := app.Group("/content")
@@ -1220,7 +1235,6 @@ func (c *Config) RegisterRoutes(app *fiber.App, svc *Services) {
 	if svc.ChaintracksRoutes != nil {
 		blockGroup := api.Group("/chaintracks")
 		svc.ChaintracksRoutes.Register(blockGroup)
-		capabilities = append(capabilities, "chaintracks")
 		slog.Debug("registered chaintracks routes", "prefix", "/chaintracks")
 	}
 
@@ -1228,7 +1242,6 @@ func (c *Config) RegisterRoutes(app *fiber.App, svc *Services) {
 	if svc.ArcadeRoutes != nil {
 		arcGroup := api.Group("/arcade")
 		svc.ArcadeRoutes.Register(arcGroup)
-		capabilities = append(capabilities, "arcade")
 		slog.Debug("registered arcade routes", "prefix", "/arcade")
 	}
 
@@ -1256,7 +1269,6 @@ func (c *Config) RegisterRoutes(app *fiber.App, svc *Services) {
 		)
 		publicGroup := api.Group(prefix, httputil.PrivateNoStoreMiddleware())
 		svc.Admin.Routes.Register(guardedGroup, publicGroup, svc.AuthMiddleware.Handler())
-		capabilities = append(capabilities, "admin")
 		slog.Debug("registered admin routes", "prefix", prefix)
 	}
 
@@ -1268,7 +1280,6 @@ func (c *Config) RegisterRoutes(app *fiber.App, svc *Services) {
 		}
 		sweepGroup := api.Group(prefix)
 		svc.Sweep.Routes.Register(sweepGroup)
-		capabilities = append(capabilities, "sweep")
 		slog.Debug("registered sweep routes", "prefix", prefix)
 	}
 
@@ -1295,7 +1306,6 @@ func (c *Config) RegisterRoutes(app *fiber.App, svc *Services) {
 		// Declares protocol permissions so dApps get a single grouped prompt.
 		app.Get("/manifest.json", handleManifest())
 
-		capabilities = append(capabilities, "wallet")
 		slog.Debug("registered wallet routes", "prefix", c.Server.BasePath+prefix)
 	}
 
@@ -1309,7 +1319,6 @@ func (c *Config) RegisterRoutes(app *fiber.App, svc *Services) {
 		svc.Paymail.Routes.SetPathPrefix(fullPrefix)
 		paymailGroup := api.Group(prefix)
 		svc.Paymail.Routes.Register(paymailGroup)
-		capabilities = append(capabilities, "paymail")
 		slog.Debug("registered paymail routes", "prefix", fullPrefix)
 
 		// Register /.well-known/bsvalias at app root for capability discovery
@@ -1326,7 +1335,6 @@ func (c *Config) RegisterRoutes(app *fiber.App, svc *Services) {
 		mbHandler := svc.MessageBox.Routes.Handler()
 		authWrappedHandler := svc.AuthMiddleware.HTTPHandler(mbHandler)
 		api.Group(prefix).All("/*", adaptor.HTTPHandler(authWrappedHandler))
-		capabilities = append(capabilities, "messagebox")
 		slog.Debug("registered messagebox routes", "prefix", c.Server.BasePath+prefix)
 	}
 
