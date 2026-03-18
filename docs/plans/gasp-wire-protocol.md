@@ -2,6 +2,10 @@
 
 > **For agentic workers:** REQUIRED: Use superpowers:subagent-driven-development (if subagents available) or superpowers:executing-plans to implement this plan. Steps use checkbox (`- [ ]`) syntax for tracking.
 
+Status: **In Progress**
+
+Linear: OPL-1135 (child)
+
 **Goal:** Define and implement a binary wire protocol for GASP that replaces JSON/HTTP transport with a compact binary envelope suitable for libp2p streams, WebSockets, or raw TCP.
 
 **Architecture:** Two layers. The **GASP wire format** defines binary serialization for all GASP data types (Node, InitialRequest, etc.) — this is transport-agnostic and contributable back to gasp-core and go-overlay-services. The **overlay P2P envelope** is our transport layer that wraps GASP messages with method, status, topic, and payment fields for use over libp2p streams. The P2P remote implements the existing `gasp.Remote` interface, so it plugs into the GASP sync machinery with zero changes to the core algorithm.

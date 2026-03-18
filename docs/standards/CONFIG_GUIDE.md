@@ -541,3 +541,14 @@ func NewSubscriber() *Subscriber {
 ```
 
 **Guideline:** If users would never reasonably need to change a value, it can be a constant. If operators might tune it for performance or behavior, it belongs in config.
+
+---
+
+## Runtime Config Store Integration
+
+This guide covers the **static layer** (Viper-based config loaded at startup). 1sat-stack also has a **runtime config store** (SQLite at `{data_dir}/config.db`) managed via the admin UI.
+
+When adding new configurable settings:
+1. Add the Viper default in `SetDefaults()` as described above — this is the static layer fallback
+2. If the setting should be editable at runtime, add a corresponding field to `RuntimeConfig` in `pkg/config/apply.go`
+3. Add the setting to the admin UI so operators can modify it without SSH access

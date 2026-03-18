@@ -2,6 +2,10 @@
 
 > **For agentic workers:** REQUIRED: Use superpowers:subagent-driven-development (if subagents available) or superpowers:executing-plans to implement this plan. Steps use checkbox (`- [ ]`) syntax for tracking.
 
+Status: **In Progress**
+
+Linear: OPL-700
+
 **Goal:** Standalone sweep UI served at `/1sat/sweep/` that lets users connect a BRC-100 wallet, enter legacy WIF(s), scan for assets via 1sat-stack endpoints, and sweep them into the connected wallet.
 
 **Architecture:** New `sweep/` package in 1sat-stack, parallel to `admin/`. Vite+React SPA embedded via `go:embed`, served by the Go server with no auth required. Client-side wallet connection via `@1sat/connect`'s `connectWallet()`. Scanning uses OwnerClient SSE + TxoClient search from `@1sat/client`. Sweeping uses `@1sat/actions` sweep functions.

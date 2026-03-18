@@ -20,7 +20,8 @@ golangci-lint run                        # Lint (if configured)
 
 - `cmd/server/main.go` - Server entry point
 - `cmd/server/config.go` - Service initialization and wiring
-- `config.yaml` - Runtime configuration
+- `config.yaml` - Static infrastructure config (optional, env vars also work)
+- `~/.1sat/config.db` - Runtime config store (managed via admin UI)
 
 ## Package Map
 
@@ -115,19 +116,29 @@ import (
 
 ## Configuration Pattern
 
-Standard Viper-based config. See `docs/standards/CONFIG_GUIDE.md` for full guide.
+Two-layer configuration model:
 
+1. **Static layer** (Viper): `config.yaml` or `ONESAT_*` env vars. Read once at startup. Covers infrastructure: listen port, data dir, private key, storage backends.
+2. **Config store** (SQLite at `{data_dir}/config.db`): Runtime settings managed via admin UI. Covers application settings: auth mode, overlay toggles, sync settings, tuning parameters.
+
+Only two values live outside both layers:
+- `ONESAT_DATA_DIR` / `--data-dir` — needed to locate the config store itself
+- `ONESAT_PRIVATE_KEY` — server wallet key (secret, never persisted to disk)
+
+See `docs/standards/CONFIG_GUIDE.md` for the static layer Go pattern:
 - Each package has `SetDefaults(v *viper.Viper, prefix string)` and `Initialize(ctx, logger, ...deps) (*Services, error)`
 - All defaults in `SetDefaults()`, never in `Initialize()` or business logic
 - Config files live with their package, not in a central `config/` directory
 - Mode field: `embedded` | `remote` | `disabled`
+
+New config keys that should be editable at runtime need corresponding admin UI exposure.
 
 ## Documentation Structure
 
 ```
 CLAUDE.md                        # This file - project conventions (canonical)
 AGENTS.md                       # Points to CLAUDE.md (for OpenCode compatibility)
-PLAN.md                         # Master consolidation roadmap
+docs/archive/PLAN.md            # Original consolidation roadmap (archived)
 docs/
   architecture/                  # How systems work (current state)
   standards/                     # Patterns to follow (prescriptive)

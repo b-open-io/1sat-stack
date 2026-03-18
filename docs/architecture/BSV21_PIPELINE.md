@@ -16,11 +16,11 @@ BSV21 is a fungible token protocol on BSV. The pipeline:
 |-----------|------|---------|
 | JungleBus Subscriber | `pkg/jbsync/subscriber.go` | Receives transactions, queues to `q:bsv21` |
 | BSV21 Dispatcher | `pkg/bsv21/sync.go` | Routes transactions to per-token queues |
-| Token Manager | `pkg/bsv21/manager.go` | Manages worker lifecycle |
-| Token Worker | `pkg/bsv21/manager.go` | Processes single token via GASP |
+| Token Manager | `pkg/bsv21/manager.go` | Manages worker lifecycle, balance tracking |
+| TopicWorker | `pkg/gasp/topic_worker.go` | Processes single token via GASP |
 | Discovery Topic | `pkg/topic/discovery.go` | Admits all deploy operations |
 | Validated Topic | `pkg/topic/bsv21.go` | Validates token transfers |
-| Lookup Service | `pkg/lookup/bsv21.go` | Indexes BSV21 data |
+| Lookup Service | `pkg/lookup/bsv21.go` | Indexes BSV21 data into per-topic SQLite |
 
 ---
 
@@ -29,8 +29,8 @@ BSV21 is a fungible token protocol on BSV. The pipeline:
 ### Stage 1: Discovery
 
 JungleBus subscription receives all BSV21 transactions and queues them.
-The subscription ID is configured via `bsv21.sync.subscription_id` in config
-(set via `ONESAT_BSV21_SYNC_SUBSCRIPTION_ID` env var).
+The subscription ID is configured via `overlay.bsv21.sub_id` in config store
+(or `ONESAT_OVERLAY_BSV21_SUB_ID` env var).
 
 ```
 JungleBus
@@ -67,22 +67,18 @@ Dispatcher
      │         │
      │         └─→ Overlay.Submit(tm_bsv21)
      │                   │
-     │                   ├─→ z:tp:tm_bsv21      ← outpoint
-     │                   ├─→ z:tp:tm_bsv21:tx   ← txid
-     │                   └─→ BSV21Lookup.OutputAdmittedByTopic()
-     │                             │
-     │                             ├─→ h:{outpoint} ev, dt:bsv21
-     │                             └─→ z:id:{tokenId}, z:sym:{symbol}
+     │                   └─→ Discovery topic DB: outputs, applied_txs
+     │                       BSV21Lookup: token_outputs table
      │
      └─→ For all BSV21 outputs:
                │
-               └─→ q:tok:{tokenId}  ← binary outpoint (36 bytes)
+               └─→ q:tm_{tokenId}  ← binary outpoint (36 bytes)
 ```
 
 **Keys Written:**
-- `q:tok:{tokenId}` - ZAdd binary outpoint
-- Via overlay: `z:tp:tm_bsv21`, `z:tp:tm_bsv21:tx`
-- Via lookup: `z:id:*`, `z:sym:*`, `h:{outpoint}`
+- `q:tm_{tokenId}` - ZAdd binary outpoint (per-token processing queue)
+- Via overlay engine: per-topic SQLite tables (outputs, applied_txs)
+- Via BSV21Lookup: `token_outputs` table in topic database
 
 ### Stage 3: Token Manager Lifecycle
 
@@ -91,42 +87,36 @@ Runs periodically (default: every 5 minutes) to evaluate token status.
 ```
 Token Manager
      │
-     ├─→ Read z:tp:tm_bsv21 (all discovered tokens)
+     ├─→ Phase 1: Register whitelisted tokens upfront
      │
-     ├─→ Read s:bsv21:whitelist
+     ├─→ Phase 2: Query tm_bsv21 topic for discovered tokens
+     │         │
+     │         └─→ For each funded or whitelisted token:
+     │                   │
+     │                   ├─→ Register tm_{tokenId} topic manager
+     │                   │
+     │                   └─→ Create TopicWorker
      │
-     ├─→ Read s:bsv21:blacklist
-     │
-     └─→ For each token:
-               │
-               ├─→ Skip if blacklisted
-               │
-               ├─→ If whitelisted OR has balance:
-               │         │
-               │         ├─→ Register tm_{tokenId} topic
-               │         │
-               │         └─→ Create Token Worker
-               │
-               └─→ If not whitelisted AND no balance:
-                         │
-                         └─→ Stop worker if running
+     └─→ Phase 3: Unregister topics for tokens no longer active
 ```
 
+**Token Status Tracking:**
+Each active token has an in-memory `TokenStatus` tracking credits, debits, and live balance. When balance is exhausted during processing, triggers async re-sync of the fee address.
+
 **Keys Read:**
-- `z:tp:tm_bsv21` - ZRange to get all token outpoints
-- `s:bsv21:whitelist` - SMembers
-- `s:bsv21:blacklist` - SMembers
+- `s:bsv21:whitelist` - SMembers (always-active tokens)
+- `s:bsv21:blacklist` - SMembers (never-active tokens)
 
 ### Stage 4: Token Processing
 
-Token workers process their queue using GASP for dependency resolution.
+TopicWorkers process their queue using GASP for dependency resolution.
 
 ```
-q:tok:{tokenId}
+q:tm_{tokenId}
      │
-     │ Worker reads outpoint
+     │ TopicWorker reads outpoint
      ▼
-Token Worker
+TopicWorker (pkg/gasp/topic_worker.go)
      │
      └─→ GASP Processor
                │
@@ -140,46 +130,56 @@ Token Worker
                          │         │
                          │         └─→ Validate: tokens_in >= tokens_out
                          │
-                         ├─→ z:tp:tm_{tokenId}      ← outpoint
-                         ├─→ z:tp:tm_{tokenId}:tx   ← txid
+                         ├─→ Per-topic SQLite: outputs, applied_txs
                          │
                          └─→ BSV21Lookup.OutputAdmittedByTopic()
                                    │
-                                   ├─→ h:{outpoint} ev, dt:bsv21
-                                   └─→ z:id:*, z:p2pkh:*, etc.
+                                   └─→ token_outputs table in topic DB
 ```
-
-**Keys Written:**
-- Via overlay: `z:tp:tm_{tokenId}`, `z:tp:tm_{tokenId}:tx`
-- Via lookup: `z:id:*`, `z:p2pkh:*`, `z:list:*`, `h:{outpoint}`
 
 ---
 
-## Key Summary
+## Per-Topic Storage
 
-### Queue Keys
+BSV21 uses the overlay's per-topic SQLite isolation. Each token topic (`tm_{tokenId}`) gets its own database file.
+
+### BSV21Lookup Custom Schema
+
+Added lazily to each topic's database on first use:
+
+```sql
+CREATE TABLE IF NOT EXISTS token_outputs (
+    outpoint     BLOB PRIMARY KEY,
+    token_id     TEXT NOT NULL,
+    op           TEXT NOT NULL,
+    lock_type    TEXT NOT NULL,
+    address      TEXT NOT NULL,
+    amount       INTEGER NOT NULL,
+    score        REAL NOT NULL,
+    spend_txid   BLOB,
+    spend_score  REAL
+);
+
+CREATE INDEX idx_token_utxos ON token_outputs(token_id, lock_type, address, score)
+    WHERE spend_txid IS NULL;
+CREATE INDEX idx_token_history ON token_outputs(token_id, lock_type, address, score);
+CREATE INDEX idx_token_deploy ON token_outputs(token_id)
+    WHERE op IN ('deploy+mint', 'deploy+auth');
+```
+
+Lookup services access this via `TopicStorage.DB()` — the raw SQL connection for the topic's database.
+
+---
+
+## Queue Keys
+
 | Key | Member | Score | Purpose |
 |-----|--------|-------|---------|
 | `q:bsv21` | binary txid (32) | HeightScore | Main dispatcher queue |
-| `q:tok:{tokenId}` | binary outpoint (36) | HeightScore | Per-token processing queue |
+| `q:tm_{tokenId}` | binary outpoint (36) | HeightScore | Per-token processing queue |
 
-### Topic Keys
-| Key | Member | Score | Purpose |
-|-----|--------|-------|---------|
-| `z:tp:tm_bsv21` | binary outpoint (36) | HeightScore | Discovered tokens |
-| `z:tp:tm_bsv21:tx` | binary txid (32) | HeightScore | Applied discovery txs |
-| `z:tp:tm_{tokenId}` | binary outpoint (36) | HeightScore | Token outputs |
-| `z:tp:tm_{tokenId}:tx` | binary txid (32) | HeightScore | Applied token txs |
+## Set Keys
 
-### Event Keys
-| Key | Member | Score | Purpose |
-|-----|--------|-------|---------|
-| `z:id:{tokenId}` | binary outpoint (36) | HeightScore | Token by ID |
-| `z:sym:{symbol}` | binary outpoint (36) | HeightScore | Token by symbol |
-| `z:p2pkh:{addr}:{tokenId}` | binary outpoint (36) | HeightScore | P2PKH holder |
-| `z:list:{tokenId}` | binary outpoint (36) | HeightScore | Listed tokens |
-
-### Set Keys
 | Key | Member | Purpose |
 |-----|--------|---------|
 | `s:bsv21:whitelist` | string tokenId | Always-active tokens |
@@ -202,20 +202,11 @@ Deploy operations bypass validation (handled by discovery topic).
 
 ## Fee Address Derivation
 
-Token indexing can require payment. Fee addresses are derived using HD keys:
-
-```go
-// Derive fee address for a token
-feeAddress := GenerateFeeAddress(tokenId)
-
-// Check balance via OwnerSync
-ownerSync.Sync(ctx, feeAddress)
-balance, _ := outputStore.SearchBalance(ctx, cfg.WithEvents("own:" + feeAddress))
-```
+Token indexing can require payment. Fee addresses are derived using HD keys from the token's outpoint. Balance is tracked in-memory and re-synced via OwnerSync when exhausted.
 
 ---
 
 ## Related Documentation
 
-- `docs/architecture/OVERLAY_ARCHITECTURE.md` - General overlay system
-- `pkg/store/KEYS.md` - Complete key reference
+- `docs/architecture/OVERLAY_ARCHITECTURE.md` - General overlay system and per-topic storage
+- `pkg/store/KEYS.md` - Storage key reference for the main data store
