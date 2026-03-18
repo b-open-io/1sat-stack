@@ -17,6 +17,7 @@ import (
 	"github.com/b-open-io/1sat-stack/pkg/beef"
 	"github.com/b-open-io/1sat-stack/pkg/bsocial"
 	"github.com/b-open-io/1sat-stack/pkg/bsv21"
+	configpkg "github.com/b-open-io/1sat-stack/pkg/config"
 	"github.com/b-open-io/1sat-stack/pkg/httputil"
 	"github.com/b-open-io/1sat-stack/pkg/indexer"
 	"github.com/b-open-io/1sat-stack/pkg/jbsync"
@@ -244,6 +245,9 @@ type Services struct {
 	Paymail    *paymail.Services
 	MessageBox *messagebox.Services
 
+	// ConfigStore for admin data (users, progress, settings)
+	ConfigStore configpkg.Store
+
 	// Auth middleware (nil when wallet is disabled)
 	// Used for routes that require authentication (wallet, admin)
 	AuthMiddleware *auth.Middleware
@@ -300,9 +304,11 @@ func (c *Config) SetDefaults(v *viper.Viper) {
 	v.SetDefault("p2p.storage_path", "~/.1sat/p2p")
 
 	c.Chaintracks.SetDefaults(v, "chaintracks")
+	v.SetDefault("chaintracks.mode", "embedded")
 	v.SetDefault("chaintracks.storage_path", "~/.1sat/chaintracks")
 
 	c.Arcade.SetDefaults(v, "arcade")
+	v.SetDefault("arcade.mode", "embedded")
 	v.SetDefault("arcade.storage_path", "~/.1sat/arcade")
 	v.SetDefault("arcade.database.sqlite_path", "~/.1sat/arcade/arcade.db")
 
@@ -350,6 +356,24 @@ func (c *Config) Initialize(ctx context.Context, logger *slog.Logger) (*Services
 	}
 	svc.Store = storeSvc
 	logger.Info("store initialized", "duration", time.Since(start).Round(time.Millisecond))
+
+	// Initialize config store (admin data, users, settings)
+	// Place config.db alongside the data store (derived from store.badger.path parent dir)
+	start = time.Now()
+	configDBDir := filepath.Dir(c.Store.Badger.Path)
+	if configDBDir == "" || configDBDir == "." {
+		configDBDir = "~/.1sat"
+	}
+	if home, err := os.UserHomeDir(); err == nil && strings.HasPrefix(configDBDir, "~/") {
+		configDBDir = filepath.Join(home, configDBDir[2:])
+	}
+	configDBPath := filepath.Join(configDBDir, "config.db")
+	configStore, err := configpkg.NewSQLiteStore(configDBPath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to initialize config store: %w", err)
+	}
+	svc.ConfigStore = configStore
+	logger.Info("config store initialized", "duration", time.Since(start).Round(time.Millisecond))
 
 	// Initialize pubsub
 	start = time.Now()
@@ -497,7 +521,7 @@ func (c *Config) Initialize(ctx context.Context, logger *slog.Logger) (*Services
 	// Initialize BSV21
 	if c.BSV21.Mode != bsv21.ModeDisabled && svc.TXO != nil && moduleDeps != nil {
 		start = time.Now()
-		bsv21Svc, err := c.BSV21.Initialize(ctx, logger, svc.TXO.OutputStore, moduleDeps, svc.Chaintracks, svc.Beef.Storage, svc.JungleBus)
+		bsv21Svc, err := c.BSV21.Initialize(ctx, logger, svc.TXO.OutputStore, moduleDeps, svc.ConfigStore, svc.Chaintracks, svc.Beef.Storage, svc.JungleBus)
 		if err != nil {
 			return nil, fmt.Errorf("failed to initialize bsv21: %w", err)
 		}
@@ -734,6 +758,7 @@ func (c *Config) Initialize(ctx context.Context, logger *slog.Logger) (*Services
 			BeefStorage: svc.Beef.Storage,
 			Indexer:     svc.Indexer.Indexer, // Use shared IngestCtx from indexer services
 			OutputStore: svc.TXO.OutputStore,
+			ConfigStore: svc.ConfigStore,
 		})
 		if err != nil {
 			return nil, fmt.Errorf("failed to initialize own: %w", err)
@@ -763,9 +788,10 @@ func (c *Config) Initialize(ctx context.Context, logger *slog.Logger) (*Services
 		}
 
 		adminDeps := &admin.InitializeDeps{
-			Overlay: svc.Overlay,
-			Engines: engines,
-			Store:   svc.Store.Store,
+			Overlay:     svc.Overlay,
+			Engines:     engines,
+			Store:       svc.Store.Store,
+			ConfigStore: svc.ConfigStore,
 		}
 		if svc.BSV21 != nil {
 			adminDeps.BSV21Sync = svc.BSV21.Sync
@@ -900,7 +926,7 @@ func (c *Config) Initialize(ctx context.Context, logger *slog.Logger) (*Services
 		// BSV21 subscriber (if subscription_id configured)
 		if svc.BSV21 != nil && svc.BSV21.Sync != nil && c.BSV21.Sync != nil && c.BSV21.Sync.SubscriptionID != "" {
 			subCfg := c.BSV21.Sync.SubscriberConfig()
-			sub, err := jbsync.NewSubscriber(subCfg, svc.Store.Store, svc.Chaintracks, svc.JungleBus, logger)
+			sub, err := jbsync.NewSubscriber(subCfg, svc.Store.Store, svc.ConfigStore, svc.Chaintracks, svc.JungleBus, logger)
 			if err != nil {
 				return nil, fmt.Errorf("failed to create bsv21 subscriber: %w", err)
 			}
@@ -911,7 +937,7 @@ func (c *Config) Initialize(ctx context.Context, logger *slog.Logger) (*Services
 		// BAP subscriber (if subscription_id configured)
 		if svc.BAP != nil && c.BAP.Sync != nil && c.BAP.Sync.SubscriptionID != "" {
 			subCfg := c.BAP.Sync.SubscriberConfig()
-			sub, err := jbsync.NewSubscriber(subCfg, svc.Store.Store, svc.Chaintracks, svc.JungleBus, logger)
+			sub, err := jbsync.NewSubscriber(subCfg, svc.Store.Store, svc.ConfigStore, svc.Chaintracks, svc.JungleBus, logger)
 			if err != nil {
 				return nil, fmt.Errorf("failed to create bap subscriber: %w", err)
 			}
@@ -922,7 +948,7 @@ func (c *Config) Initialize(ctx context.Context, logger *slog.Logger) (*Services
 		// BSocial subscriber (if subscription_id configured)
 		if svc.BSocial != nil && c.BSocial.Sync != nil && c.BSocial.Sync.SubscriptionID != "" {
 			subCfg := c.BSocial.Sync.SubscriberConfig()
-			sub, err := jbsync.NewSubscriber(subCfg, svc.Store.Store, svc.Chaintracks, svc.JungleBus, logger)
+			sub, err := jbsync.NewSubscriber(subCfg, svc.Store.Store, svc.ConfigStore, svc.Chaintracks, svc.JungleBus, logger)
 			if err != nil {
 				return nil, fmt.Errorf("failed to create bsocial subscriber: %w", err)
 			}
@@ -944,7 +970,7 @@ func (c *Config) Initialize(ctx context.Context, logger *slog.Logger) (*Services
 				ReorgDepth:     c.Indexer.Sync.ReorgDepth,
 				EnableMempool:  c.Indexer.Sync.EnableMempool,
 			}
-			sub, err := jbsync.NewSubscriber(subCfg, svc.Store.Store, svc.Chaintracks, svc.JungleBus, logger)
+			sub, err := jbsync.NewSubscriber(subCfg, svc.Store.Store, svc.ConfigStore, svc.Chaintracks, svc.JungleBus, logger)
 			if err != nil {
 				return nil, fmt.Errorf("failed to create ingest subscriber %s: %w", subID, err)
 			}
@@ -1134,7 +1160,7 @@ func (c *Config) RegisterRoutes(app *fiber.App, svc *Services) {
 		guardedGroup := api.Group(prefix+"/api",
 			httputil.PrivateNoStoreMiddleware(),
 			svc.AuthMiddleware.Handler(),
-			auth.AdminGuard(svc.Store.Store, slog.Default()),
+			auth.AdminGuard(svc.ConfigStore, slog.Default()),
 		)
 		publicGroup := api.Group(prefix, httputil.PrivateNoStoreMiddleware())
 		svc.Admin.Routes.Register(guardedGroup, publicGroup, svc.AuthMiddleware.Handler())

@@ -2,14 +2,15 @@ package owner
 
 import (
 	"context"
-	"encoding/binary"
+	"errors"
 	"log/slog"
+	"strconv"
 	"sync"
 
 	"github.com/b-open-io/1sat-stack/pkg/beef"
+	"github.com/b-open-io/1sat-stack/pkg/config"
 	"github.com/b-open-io/1sat-stack/pkg/dedup"
 	"github.com/b-open-io/1sat-stack/pkg/indexer"
-	"github.com/b-open-io/1sat-stack/pkg/store"
 	"github.com/b-open-io/1sat-stack/pkg/txo"
 	"github.com/b-open-io/go-junglebus"
 )
@@ -32,6 +33,7 @@ type OwnerSync struct {
 	beefStorage *beef.Storage
 	indexer     *indexer.IngestCtx
 	outputStore *txo.OutputStore
+	configStore config.Store
 	concurrency int
 	logger      *slog.Logger
 	syncDedup   *dedup.Loader[string, struct{}]
@@ -43,6 +45,7 @@ func NewOwnerSync(
 	beefStorage *beef.Storage,
 	idx *indexer.IngestCtx,
 	outputStore *txo.OutputStore,
+	cs config.Store,
 	logger *slog.Logger,
 ) *OwnerSync {
 	if logger == nil {
@@ -53,6 +56,7 @@ func NewOwnerSync(
 		beefStorage: beefStorage,
 		indexer:     idx,
 		outputStore: outputStore,
+		configStore: cs,
 		concurrency: defaultSyncConcurrency,
 		logger:      logger,
 	}
@@ -108,9 +112,11 @@ func (s *OwnerSync) syncWithProgress(ctx context.Context, owner string, progress
 
 	// Get last synced height (0 if not found)
 	var lastHeight float64
-	if progressBytes, err := s.outputStore.Store.HGet(ctx, txo.KeyProgress, []byte(owner)); err == nil && len(progressBytes) == 4 {
-		lastHeight = float64(binary.BigEndian.Uint32(progressBytes))
-	} else if err != nil && err != store.ErrKeyNotFound {
+	if val, err := s.configStore.Get(ctx, "progress:"+owner); err == nil {
+		if parsed, parseErr := strconv.ParseUint(val, 10, 32); parseErr == nil {
+			lastHeight = float64(parsed)
+		}
+	} else if !errors.Is(err, config.ErrNotFound) {
 		s.logger.Error("OwnerSync: failed to get last height", "owner", owner, "error", err)
 		sendProgress(SyncProgress{Phase: "error", Error: err.Error()})
 		return err
@@ -236,9 +242,7 @@ func (s *OwnerSync) syncWithProgress(ctx context.Context, owner string, progress
 	}
 
 	// Update sync progress
-	progressBytes := make([]byte, 4)
-	binary.BigEndian.PutUint32(progressBytes, uint32(newMaxHeight))
-	if err := s.outputStore.Store.HSet(ctx, txo.KeyProgress, []byte(owner), progressBytes); err != nil {
+	if err := s.configStore.Set(ctx, "progress:"+owner, strconv.FormatUint(uint64(newMaxHeight), 10)); err != nil {
 		sendProgress(SyncProgress{Phase: "error", Error: err.Error()})
 		return err
 	}

@@ -73,7 +73,7 @@ func (c *Config) SetDefaults(v *viper.Viper, prefix string) {
 		p = prefix + "."
 	}
 
-	v.SetDefault(p+"mode", ModeDisabled)
+	v.SetDefault(p+"mode", ModeEmbedded)
 	v.SetDefault(p+"routes.enabled", true)
 	// Note: chain defaults are not set here - users must configure explicitly
 }

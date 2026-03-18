@@ -1,302 +1,74 @@
 # 1sat-stack configuration
 #
-# Copy this file to config.yaml and customize for your environment.
-# Sensitive values (private keys, tokens, subscription IDs) should be set via
-# environment variables with the ONESAT_ prefix. Viper automatically binds
-# nested config keys to env vars: bap.sync.subscription_id -> ONESAT_BAP_SYNC_SUBSCRIPTION_ID
+# Most settings are managed through the admin UI after initial setup.
+# This file is only for infrastructure overrides that can't go through the UI:
+# ports, external service URLs, storage backends, and sensitive values.
 #
-# All "mode" fields support: "disabled", "embedded"
-# Disabled modules are skipped entirely at startup.
+# Sensitive values (private keys, tokens) should use environment variables
+# with the ONESAT_ prefix: wallet.server_private_key -> ONESAT_WALLET_SERVER_PRIVATE_KEY
 
 # Network: "main" or "test"
 network: main
 
-# Logging configuration
+# Logging
 logging:
-  # Default log level for all components (debug, info, warn, error)
   level: info
 
-# JungleBus client configuration
-# JungleBus provides filtered blockchain event streams via subscription IDs.
-junglebus:
-  url: https://junglebus.gorillapool.io
-  # token: ""       # Optional API token
-  # ssl: true       # Use SSL (default: true)
-  # version: v1     # API version (default: v1)
-  # debug: false    # Enable debug logging
-
-# HTTP Server settings
+# HTTP Server
 server:
   port: 8080
   host: 0.0.0.0
   base_path: /1sat
-  body_limit: 100mb  # Max request body size (supports: b, kb, mb, gb)
-  pprof:
-    enabled: false       # Enable pprof profiling server (disable in production)
-    port: 6060           # Pprof server port
-    host: localhost       # Pprof server host (localhost for security)
+  # body_limit: 100mb
+  # pprof:
+  #   enabled: false
+  #   port: 6060
 
-# TXO storage - BadgerDB key-value store
-# Stores indexed transaction outputs, overlay progress, and queue state.
-store:
-  mode: embedded
-  provider: badger
-  badger:
-    path: ~/.1sat/store
-    log_level: error  # BadgerDB internal log level (debug, info, warn, error)
-    # in_memory: false
+# JungleBus (optional — needed for historical chain sync)
+junglebus:
+  url: https://junglebus.gorillapool.io
 
-# PubSub for real-time event notifications
-pubsub:
-  mode: embedded
-  provider: channels  # "channels" (in-memory) or "redis" (distributed)
-  channels:
-    buffer_size: 100
-  routes:
-    enabled: true
+# Data store — default is Badger (embedded). Switch to Redis for distributed deployments.
+# store:
+#   provider: redis
+#   redis:
+#     url: redis://localhost:6379/0
 
-# BEEF (Background Evaluation Extended Format) storage
-# Multi-tier storage chain: requests checked in order, first hit wins.
-# LRU cache -> Redis -> JungleBus fallback
-beef:
-  mode: embedded
-  chain:
-    - provider: lru
-      lru:
-        size: 100mb
-    - provider: redis
-      redis:
-        url: redis://localhost:6380/1
-        ttl: 8760h  # 1 year - marks keys as volatile for Redis LRU eviction
-    - provider: junglebus
-  routes:
-    enabled: true
+# BEEF storage chain — default is LRU cache + JungleBus fallback.
+# Add Redis or filesystem tiers for persistence:
+# beef:
+#   chain:
+#     - provider: lru
+#       lru:
+#         size: 100mb
+#     - provider: redis
+#       redis:
+#         url: redis://localhost:6379/1
+#         ttl: 8760h
+#     - provider: junglebus
 
-# TXO indexed output storage and query API
-txo:
-  mode: embedded
-  routes:
-    enabled: true
-
-# Indexer service
-# Processes raw transactions from JungleBus into indexed outputs (TXOs).
-# Tags control which script/protocol parsers are active.
-indexer:
-  mode: embedded
-  verbose: false
-  tags:
-    - 1sat         # 1Sat ordinals
-    - p2pkh        # Pay-to-public-key-hash
-    - lock         # Lock scripts
-    - inscription  # Ordinal inscriptions
-    - bsv21        # BSV21 fungible tokens
-    - ordlock      # Ordinal lock scripts
-    - cosign       # Co-signing scripts
-    - opns         # OpNS mine outputs
-    - bitcom       # Base bitcom parser (required by map, bap)
-    - map          # MAP protocol (emits map:type events for BSocial routing)
-    - bap          # BAP identity (emits bap:{operation} events)
-    - origin       # Origin resolution for transferred 1-sat outputs
-  sync:
-    enabled: true
-    subscription_ids: []    # ONESAT_INDEXER_SYNC_SUBSCRIPTION_IDS (comma-separated)
-    queue_name: "ingest"    # Queue name (prefixed as q:ingest in store)
-    from_block: 783968      # Starting block for JungleBus subscriptions
-    concurrency: 24         # Worker concurrency for processing queue items
-    page_size: 100          # Batch fetch size
-    poll_delay: 1s          # Sleep duration when queue is empty
-    batch_size: 500         # JungleBus batch size per request
-    reorg_depth: 6          # Blocks before a transaction is considered confirmed
-  arcade:
-    enabled: true           # Listen for arcade events (bridges to pubsub)
-    ingest: true            # Ingest transactions on ACCEPTED status
-  log_level: info
-  routes:
-    enabled: true
-
-# P2P client configuration
-p2p:
-  mode: embedded
-  storage_path: ~/.1sat
-
-# Chaintracks - block header tracking and merkle proof validation
+# Chaintracks — block header tracking
 chaintracks:
-  mode: embedded
-  storage_path: ~/.1sat/chaintracks
   bootstrap_url: https://mainnet.gorillanode.io/api/v1
 
-# Arcade - transaction broadcasting via Teranode
+# Arcade — transaction broadcasting
 arcade:
-  mode: embedded
-  storage_path: ~/.1sat/arcade
-  log_level: info
-  database:
-    type: sqlite
-    sqlite_path: ~/.1sat/arcade/arcade.db
-  events:
-    type: memory
-    buffer_size: 1000
   teranode:
     broadcast_urls:
       - https://teranode-eks-mainnet-eu-1-propagation.bsvb.tech
     datahub_urls:
       - https://teranode-eks-mainnet-eu-1.bsvb.tech/api/v1
 
-# BSV21 fungible token overlay (optional)
-# Manages per-token topic subscriptions and balance tracking.
-bsv21:
-  mode: embedded
-  sync:
-    enabled: true
-    subscription_id: ""     # ONESAT_BSV21_SYNC_SUBSCRIPTION_ID
-    from_block: 783968      # BSV21 genesis block
-    batch_size: 1000
-    dispatch_workers: 16
-    token_workers: 32
-    fee_per_output: 1000
-    lifecycle_interval: 5m  # How often to check token balances and manage workers
-    log_level: info
-  routes:
-    enabled: true
+# ORDFS Redis cache (optional — improves content serving performance)
+# ordfs:
+#   redis:
+#     url: redis://localhost:6379/0
 
-# MongoDB (shared by BAP and BSocial overlays)
-mongodb:
-  url: mongodb://mongo:mongo@localhost:27017
+# MongoDB (required only if BSocial overlay is enabled)
+# mongodb:
+#   url: mongodb://mongo:mongo@localhost:27017
 
-# BAP - Bitcoin Attestation Protocol identity overlay (optional)
-# Processes identity creation, attestation, and revocation operations.
-# IMPORTANT: BAP must process sequentially (concurrency is hard-coded to 1)
-# because identity operations validate against current owner state.
-bap:
-  mode: disabled
-  sync:
-    enabled: false
-    subscription_id: ""     # ONESAT_BAP_SYNC_SUBSCRIPTION_ID
-    queue_name: "bap"
-    from_block: 575000
-  routes:
-    enabled: true
-    prefix: /bap
-
-# BSocial - social data overlay (optional)
-# Processes social interactions (posts, likes, follows) on-chain.
-bsocial:
-  mode: disabled
-  sync:
-    enabled: false
-    subscription_id: ""     # ONESAT_BSOCIAL_SYNC_SUBSCRIPTION_ID
-    queue_name: "bsocial"
-    from_block: 575000
-    concurrency: 8
-  routes:
-    enabled: true
-    prefix: /bsocial
-
-# OPNS - On-chain Public Name System domain overlay (optional)
-# Processes domain name registration and management.
-opns:
-  mode: disabled
-  sync:
-    enabled: false
-    subscription_id: ""     # ONESAT_OPNS_SYNC_SUBSCRIPTION_ID
-    queue_name: "opns"
-    from_block: 800000
-    concurrency: 8
-  routes:
-    enabled: true
-    prefix: /opns
-
-# OrdLock marketplace overlay
-# Indexes OrdLock listing and spend transactions.
-ordlock:
-  mode: embedded
-  sync:
-    enabled: true
-    subscription_id: ""     # ONESAT_ORDLOCK_SYNC_SUBSCRIPTION_ID
-    queue_name: "ordlock"
-    from_block: 783968
-    concurrency: 8
-    resolve_dependencies: true
-  routes:
-    enabled: true
-    prefix: /ordlock
-
-# Overlay engine services
-# Manages topic managers and lookup services for the BSV overlay network.
-overlay:
-  mode: embedded
-  storage_backend: sqlite       # "sqlite" or "postgres"
-  # storage_url: ""             # PostgreSQL connection string (required when storage_backend is postgres)
-  topic_whitelist:
-    - tm_bsv21              # Only used for factory-based (dynamic) topics
-    - tm_ordlock
-  # topic_blacklist: []     # Topics to block even if whitelisted
-  routes:
-    enabled: true
-  p2p:
-    enabled: false           # Enable overlay P2P broadcast via libp2p GossipSub
-    port: 9906               # libp2p listen port
-    dht_mode: "off"          # "server" for bootstrap nodes, "off" for clients
-    storage_path: "~/.1sat/overlay-p2p"
-    # bootstrap_peers:       # Multiaddr of bootstrap nodes to connect to
-    #   - "/dns4/bootstrap.example.com/tcp/9906/p2p/12D3KooW..."
-    #
-    # P2P identity is derived from wallet.server_private_key (secp256k1).
-    # This means the peer ID encodes the BRC-100 identity public key,
-    # enabling BRC-42 payment derivation directly from peer IDs.
-    # If wallet is disabled, a random key is generated in storage_path.
-
-# Owner sync - address-based output tracking
-owner:
-  mode: embedded
-  log_level: info
-  routes:
-    enabled: true
-
-# Wallet service - remote wallet storage via BRC-100
-wallet:
-  mode: disabled
-  server_private_key: ""    # ONESAT_WALLET_SERVER_PRIVATE_KEY (hex-encoded)
-  # name: "1sat-wallet"    # Storage name identifier
-  fee_model:
-    type: "sat/kb"
-    value: 100
-  db:
-    engine: sqlite
-    sqlite:
-      connection_string: ~/.1sat/wallet.sqlite
-  routes:
-    enabled: true
-    prefix: /wallet
-
-# Spends - spend lookup service (required by ORDFS)
-spends:
-  mode: embedded
-  chain:
-    - provider: lru
-      lru:
-        size: 50mb
-    - provider: store      # persistent backend (Badger/Redis)
-    - provider: junglebus  # remote fallback
-
-# ORDFS - on-chain content serving (requires spends + beef services)
-ordfs:
-  enabled: true
-  redis:
-    url: redis://localhost:6380/0
-  routes:
-    enabled: true
-
-# Auth middleware - BRC-103/104 mutual authentication
-auth:
-  allow_unauthenticated: true  # Allow requests without auth (set false to require auth)
-  # api_key: ""                # ONESAT_AUTH_API_KEY - static key for dev/agent access (bypasses wallet auth)
-
-# Admin API - progress management, diagnostics
-# Admin access is controlled by BRC-103/104 identity pubkeys stored in the DB.
-# Use the setup wizard to register the first admin identity.
-admin:
-  mode: enabled
-  routes:
-    enabled: true
-    prefix: /admin
+# Auth
+# auth:
+#   api_key: ""            # ONESAT_AUTH_API_KEY — static key for agent/dev access
+#   session_ttl: 24h

@@ -50,7 +50,7 @@ func (c *Config) SetDefaults(v *viper.Viper, prefix string) {
 		p = prefix + "."
 	}
 
-	v.SetDefault(p+"mode", ModeDisabled)
+	v.SetDefault(p+"mode", ModeEmbedded)
 	v.SetDefault(p+"provider", ProviderChannels)
 	v.SetDefault(p+"channels.buffer_size", 100)
 	v.SetDefault(p+"routes.enabled", true)

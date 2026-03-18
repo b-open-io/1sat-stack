@@ -6,6 +6,7 @@ import (
 	"log/slog"
 
 	"github.com/b-open-io/1sat-stack/pkg/beef"
+	"github.com/b-open-io/1sat-stack/pkg/config"
 	lookuppkg "github.com/b-open-io/1sat-stack/pkg/lookup"
 	"github.com/b-open-io/1sat-stack/pkg/overlay"
 	"github.com/b-open-io/1sat-stack/pkg/txo"
@@ -82,6 +83,7 @@ func (c *Config) Initialize(
 	logger *slog.Logger,
 	txoStorage *txo.OutputStore,
 	deps *overlay.ModuleDeps,
+	configStore config.Store,
 	chaintracker chaintracks.Chaintracks,
 	beefStorage *beef.Storage,
 	jbClient *junglebus.Client,
@@ -121,6 +123,7 @@ func (c *Config) Initialize(
 			syncSvc, err := NewSyncServices(
 				c.Sync,
 				txoStorage.Store,
+				configStore,
 				beefStorage,
 				txoStorage,
 				eng,

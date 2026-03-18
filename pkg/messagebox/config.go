@@ -47,7 +47,7 @@ func (c *Config) SetDefaults(v *viper.Viper, prefix string) {
 		p = prefix + "."
 	}
 
-	v.SetDefault(p+"mode", ModeDisabled)
+	v.SetDefault(p+"mode", ModeEnabled)
 	v.SetDefault(p+"db_path", "~/.1sat/messagebox.db")
 	v.SetDefault(p+"routes.enabled", true)
 	v.SetDefault(p+"routes.prefix", "/messagebox")

@@ -48,7 +48,7 @@ func (c *Config) SetDefaults(v *viper.Viper, prefix string) {
 	if prefix != "" {
 		p = prefix + "."
 	}
-	v.SetDefault(p+"mode", ModeDisabled)
+	v.SetDefault(p+"mode", ModeEmbedded)
 	v.SetDefault(p+"provider", ProviderBadger)
 	v.SetDefault(p+"badger.path", "~/.1sat/store")
 	v.SetDefault(p+"badger.in_memory", false)

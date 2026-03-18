@@ -3,21 +3,19 @@ package auth
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"log/slog"
 
-	"github.com/b-open-io/1sat-stack/pkg/store"
+	"github.com/b-open-io/1sat-stack/pkg/config"
 	"github.com/gofiber/fiber/v2"
 )
 
-// KeyAdminUsers is the store key for the hash of admin users.
-// Field: pubkey (string), Value: JSON-encoded AdminUser.
-var KeyAdminUsers = []byte("admin:users")
+const (
+	prefixUser    = "user:"
+	prefixRequest = "request:"
+)
 
-// KeyAdminRequests is the store key for the hash of pending access requests.
-// Field: pubkey (string), Value: JSON-encoded AccessRequest.
-var KeyAdminRequests = []byte("admin:requests")
-
-// AdminUser represents a user entry in the admin users hash.
+// AdminUser represents a user entry.
 type AdminUser struct {
 	Pubkey string `json:"pubkey"`
 	Name   string `json:"name"`
@@ -31,9 +29,7 @@ type AccessRequest struct {
 }
 
 // AdminGuard returns a Fiber middleware that restricts access to admin endpoints.
-// It checks the BRC-103/104 identity against the admin users hash in the store,
-// or allows through if authenticated via API key.
-func AdminGuard(s store.Store, logger *slog.Logger) fiber.Handler {
+func AdminGuard(cs config.Store, logger *slog.Logger) fiber.Handler {
 	return func(c *fiber.Ctx) error {
 		if IsApiKeyAuth(c) {
 			return c.Next()
@@ -51,7 +47,7 @@ func AdminGuard(s store.Store, logger *slog.Logger) fiber.Handler {
 		}
 
 		pubkey := identity.ToDERHex()
-		user, err := GetAdminUser(c.Context(), s, pubkey)
+		user, err := GetAdminUser(c.Context(), cs, pubkey)
 		if err != nil {
 			logger.Error("failed to check admin membership", "error", err)
 			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
@@ -73,8 +69,8 @@ func AdminGuard(s store.Store, logger *slog.Logger) fiber.Handler {
 }
 
 // IsSetup checks whether any admin users have been configured.
-func IsSetup(ctx context.Context, s store.Store) (bool, error) {
-	entries, err := s.HGetAll(ctx, KeyAdminUsers)
+func IsSetup(ctx context.Context, cs config.Store) (bool, error) {
+	entries, err := cs.List(ctx, prefixUser)
 	if err != nil {
 		return false, err
 	}
@@ -82,31 +78,31 @@ func IsSetup(ctx context.Context, s store.Store) (bool, error) {
 }
 
 // GetAdminUser retrieves a single admin user by pubkey.
-func GetAdminUser(ctx context.Context, s store.Store, pubkey string) (*AdminUser, error) {
-	data, err := s.HGet(ctx, KeyAdminUsers, []byte(pubkey))
-	if err != nil {
+func GetAdminUser(ctx context.Context, cs config.Store, pubkey string) (*AdminUser, error) {
+	data, err := cs.Get(ctx, prefixUser+pubkey)
+	if errors.Is(err, config.ErrNotFound) {
 		return nil, nil
 	}
-	if data == nil {
-		return nil, nil
+	if err != nil {
+		return nil, err
 	}
 	var user AdminUser
-	if err := json.Unmarshal(data, &user); err != nil {
+	if err := json.Unmarshal([]byte(data), &user); err != nil {
 		return nil, err
 	}
 	return &user, nil
 }
 
 // ListAdminUsers returns all admin users.
-func ListAdminUsers(ctx context.Context, s store.Store) ([]AdminUser, error) {
-	entries, err := s.HGetAll(ctx, KeyAdminUsers)
+func ListAdminUsers(ctx context.Context, cs config.Store) ([]AdminUser, error) {
+	entries, err := cs.List(ctx, prefixUser)
 	if err != nil {
 		return nil, err
 	}
 	users := make([]AdminUser, 0, len(entries))
 	for _, data := range entries {
 		var user AdminUser
-		if err := json.Unmarshal(data, &user); err != nil {
+		if err := json.Unmarshal([]byte(data), &user); err != nil {
 			continue
 		}
 		users = append(users, user)
@@ -114,39 +110,39 @@ func ListAdminUsers(ctx context.Context, s store.Store) ([]AdminUser, error) {
 	return users, nil
 }
 
-// SaveAdminUser saves an admin user to the hash.
-func SaveAdminUser(ctx context.Context, s store.Store, user AdminUser) error {
+// SaveAdminUser saves an admin user.
+func SaveAdminUser(ctx context.Context, cs config.Store, user AdminUser) error {
 	data, err := json.Marshal(user)
 	if err != nil {
 		return err
 	}
-	return s.HSet(ctx, KeyAdminUsers, []byte(user.Pubkey), data)
+	return cs.Set(ctx, prefixUser+user.Pubkey, string(data))
 }
 
-// DeleteAdminUser removes an admin user from the hash.
-func DeleteAdminUser(ctx context.Context, s store.Store, pubkey string) error {
-	return s.HDel(ctx, KeyAdminUsers, []byte(pubkey))
+// DeleteAdminUser removes an admin user.
+func DeleteAdminUser(ctx context.Context, cs config.Store, pubkey string) error {
+	return cs.Delete(ctx, prefixUser+pubkey)
 }
 
 // SaveAccessRequest saves a pending access request.
-func SaveAccessRequest(ctx context.Context, s store.Store, req AccessRequest) error {
+func SaveAccessRequest(ctx context.Context, cs config.Store, req AccessRequest) error {
 	data, err := json.Marshal(req)
 	if err != nil {
 		return err
 	}
-	return s.HSet(ctx, KeyAdminRequests, []byte(req.Pubkey), data)
+	return cs.Set(ctx, prefixRequest+req.Pubkey, string(data))
 }
 
 // ListAccessRequests returns all pending access requests.
-func ListAccessRequests(ctx context.Context, s store.Store) ([]AccessRequest, error) {
-	entries, err := s.HGetAll(ctx, KeyAdminRequests)
+func ListAccessRequests(ctx context.Context, cs config.Store) ([]AccessRequest, error) {
+	entries, err := cs.List(ctx, prefixRequest)
 	if err != nil {
 		return nil, err
 	}
 	requests := make([]AccessRequest, 0, len(entries))
 	for _, data := range entries {
 		var req AccessRequest
-		if err := json.Unmarshal(data, &req); err != nil {
+		if err := json.Unmarshal([]byte(data), &req); err != nil {
 			continue
 		}
 		requests = append(requests, req)
@@ -155,6 +151,6 @@ func ListAccessRequests(ctx context.Context, s store.Store) ([]AccessRequest, er
 }
 
 // DeleteAccessRequest removes a pending access request.
-func DeleteAccessRequest(ctx context.Context, s store.Store, pubkey string) error {
-	return s.HDel(ctx, KeyAdminRequests, []byte(pubkey))
+func DeleteAccessRequest(ctx context.Context, cs config.Store, pubkey string) error {
+	return cs.Delete(ctx, prefixRequest+pubkey)
 }

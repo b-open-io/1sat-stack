@@ -40,7 +40,7 @@ func (c *Config) SetDefaults(v *viper.Viper, prefix string) {
 		p = prefix + "."
 	}
 
-	v.SetDefault(p+"mode", ModeDisabled)
+	v.SetDefault(p+"mode", ModeEmbedded)
 	v.SetDefault(p+"name", "1sat-wallet")
 	v.SetDefault(p+"server_private_key", "")
 	v.SetDefault(p+"fee_model.type", string(defs.SatPerKB))

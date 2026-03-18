@@ -4,10 +4,12 @@ import (
 	"context"
 	"errors"
 	"log/slog"
+	"strings"
 	"sync"
 	"time"
 
 	"github.com/b-open-io/1sat-stack/pkg/beef"
+	"github.com/b-open-io/1sat-stack/pkg/config"
 	gaspqueue "github.com/b-open-io/1sat-stack/pkg/gasp"
 	lookuppkg "github.com/b-open-io/1sat-stack/pkg/lookup"
 	"github.com/b-open-io/1sat-stack/pkg/store"
@@ -20,12 +22,6 @@ import (
 	"golang.org/x/sync/errgroup"
 )
 
-// Set keys for token management
-var (
-	KeyWhitelist = txo.KeySet("bsv21:whitelist") // Tokens always active regardless of balance
-	KeyBlacklist = txo.KeySet("bsv21:blacklist") // Tokens never active
-)
-
 // OwnerSyncer is an interface for syncing owner data
 type OwnerSyncer interface {
 	Sync(ctx context.Context, owner string) error
@@ -34,6 +30,7 @@ type OwnerSyncer interface {
 // TokenManager manages per-token processor workers
 type TokenManager struct {
 	store             store.Store
+	configStore       config.Store
 	beefStorage       *beef.Storage
 	outputStore       *txo.OutputStore
 	overlay           *engine.Engine
@@ -55,6 +52,7 @@ type TokenManager struct {
 // NewTokenManager creates a new token manager
 func NewTokenManager(
 	s store.Store,
+	cs config.Store,
 	beefStorage *beef.Storage,
 	outputStore *txo.OutputStore,
 	overlaySvc *engine.Engine,
@@ -71,6 +69,7 @@ func NewTokenManager(
 	}
 	return &TokenManager{
 		store:             s,
+		configStore:       cs,
 		beefStorage:       beefStorage,
 		outputStore:       outputStore,
 		overlay:           overlaySvc,
@@ -252,12 +251,12 @@ func (m *TokenManager) manageWorkerLifecycle(ctx context.Context) {
 
 	// Phase 1: Register topic managers for all whitelisted tokens
 	// (They should always be ready to receive transactions, even if no work queued yet)
-	whitelistMembers, err := m.store.SMembers(ctx, KeyWhitelist)
+	whitelistEntries, err := m.configStore.List(ctx, "bsv21.whitelist:")
 	if err != nil {
 		m.logger.Error("failed to load whitelist", "error", err)
 	} else {
-		for _, member := range whitelistMembers {
-			tokenId := string(member)
+		for key := range whitelistEntries {
+			tokenId := strings.TrimPrefix(key, "bsv21.whitelist:")
 			topicName := "tm_" + tokenId
 			if m.overlay != nil {
 				var metadata *sdkoverlay.MetaData
@@ -269,8 +268,8 @@ func (m *TokenManager) manageWorkerLifecycle(ctx context.Context) {
 			}
 			activeTokens[tokenId] = struct{}{}
 		}
-		if len(whitelistMembers) > 0 {
-			m.logger.Debug("registered topic managers for whitelisted tokens", "count", len(whitelistMembers))
+		if len(whitelistEntries) > 0 {
+			m.logger.Debug("registered topic managers for whitelisted tokens", "count", len(whitelistEntries))
 		}
 	}
 

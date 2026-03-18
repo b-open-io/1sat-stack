@@ -2,7 +2,6 @@ package admin
 
 import (
 	"embed"
-	"encoding/binary"
 	"encoding/json"
 	"io/fs"
 	"log/slog"
@@ -13,9 +12,9 @@ import (
 
 	"github.com/b-open-io/1sat-stack/pkg/auth"
 	"github.com/b-open-io/1sat-stack/pkg/bsv21"
+	"github.com/b-open-io/1sat-stack/pkg/config"
 	"github.com/b-open-io/1sat-stack/pkg/overlay"
 	"github.com/b-open-io/1sat-stack/pkg/store"
-	"github.com/b-open-io/1sat-stack/pkg/txo"
 	"github.com/bsv-blockchain/go-overlay-services/pkg/core/engine"
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/middleware/filesystem"
@@ -29,6 +28,7 @@ type Routes struct {
 	overlay          *overlay.Services
 	engines          map[string]*engine.Engine
 	store            store.Store
+	configStore      config.Store
 	bsv21Sync        *bsv21.SyncServices
 	triggerOpnsCrawl OpnsCrawlFunc
 	config           *RoutesConfig
@@ -46,11 +46,12 @@ type UpdateProgressRequest struct {
 }
 
 // NewRoutes creates a new Routes instance
-func NewRoutes(overlaySvc *overlay.Services, engines map[string]*engine.Engine, s store.Store, bsv21Sync *bsv21.SyncServices, triggerCrawl OpnsCrawlFunc, cfg *RoutesConfig, logger *slog.Logger) *Routes {
+func NewRoutes(overlaySvc *overlay.Services, engines map[string]*engine.Engine, s store.Store, cs config.Store, bsv21Sync *bsv21.SyncServices, triggerCrawl OpnsCrawlFunc, cfg *RoutesConfig, logger *slog.Logger) *Routes {
 	return &Routes{
 		overlay:          overlaySvc,
 		engines:          engines,
 		store:            s,
+		configStore:      cs,
 		bsv21Sync:        bsv21Sync,
 		triggerOpnsCrawl: triggerCrawl,
 		config:           cfg,
@@ -153,17 +154,18 @@ func (r *Routes) Register(guardedGroup fiber.Router, publicGroup fiber.Router, a
 // @Security BearerAuth
 // @Router /admin/whitelist [get]
 func (r *Routes) handleGetWhitelist(c *fiber.Ctx) error {
-	members, err := r.store.SMembers(c.Context(), bsv21.KeyWhitelist)
+	entries, err := r.configStore.List(c.Context(), "bsv21.whitelist:")
 	if err != nil {
 		r.logger.Error("failed to get whitelist", "error", err)
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
 			"error": "failed to get whitelist",
 		})
 	}
-	tokens := make([]string, len(members))
-	for i, m := range members {
-		tokens[i] = string(m)
+	tokens := make([]string, 0, len(entries))
+	for key := range entries {
+		tokens = append(tokens, strings.TrimPrefix(key, "bsv21.whitelist:"))
 	}
+	sort.Strings(tokens)
 	return c.JSON(tokens)
 }
 
@@ -195,7 +197,7 @@ func (r *Routes) handleAddToWhitelist(c *fiber.Ctx) error {
 		})
 	}
 
-	if err := r.store.SAdd(c.Context(), bsv21.KeyWhitelist, []byte(req.Topic)); err != nil {
+	if err := r.configStore.Set(c.Context(), "bsv21.whitelist:"+req.Topic, "1"); err != nil {
 		r.logger.Error("failed to add to whitelist", "error", err, "token", req.Topic)
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
 			"error": "failed to add to whitelist",
@@ -227,7 +229,7 @@ func (r *Routes) handleRemoveFromWhitelist(c *fiber.Ctx) error {
 		})
 	}
 
-	if err := r.store.SRem(c.Context(), bsv21.KeyWhitelist, []byte(token)); err != nil {
+	if err := r.configStore.Delete(c.Context(), "bsv21.whitelist:"+token); err != nil {
 		r.logger.Error("failed to remove from whitelist", "error", err, "token", token)
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
 			"error": "failed to remove from whitelist",
@@ -251,17 +253,18 @@ func (r *Routes) handleRemoveFromWhitelist(c *fiber.Ctx) error {
 // @Security BearerAuth
 // @Router /admin/blacklist [get]
 func (r *Routes) handleGetBlacklist(c *fiber.Ctx) error {
-	members, err := r.store.SMembers(c.Context(), bsv21.KeyBlacklist)
+	entries, err := r.configStore.List(c.Context(), "bsv21.blacklist:")
 	if err != nil {
 		r.logger.Error("failed to get blacklist", "error", err)
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
 			"error": "failed to get blacklist",
 		})
 	}
-	topics := make([]string, len(members))
-	for i, m := range members {
-		topics[i] = string(m)
+	topics := make([]string, 0, len(entries))
+	for key := range entries {
+		topics = append(topics, strings.TrimPrefix(key, "bsv21.blacklist:"))
 	}
+	sort.Strings(topics)
 	return c.JSON(topics)
 }
 
@@ -293,7 +296,7 @@ func (r *Routes) handleAddToBlacklist(c *fiber.Ctx) error {
 		})
 	}
 
-	if err := r.store.SAdd(c.Context(), bsv21.KeyBlacklist, []byte(req.Topic)); err != nil {
+	if err := r.configStore.Set(c.Context(), "bsv21.blacklist:"+req.Topic, "1"); err != nil {
 		r.logger.Error("failed to add to blacklist", "error", err, "topic", req.Topic)
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
 			"error": "failed to add to blacklist",
@@ -325,7 +328,7 @@ func (r *Routes) handleRemoveFromBlacklist(c *fiber.Ctx) error {
 		})
 	}
 
-	if err := r.store.SRem(c.Context(), bsv21.KeyBlacklist, []byte(topic)); err != nil {
+	if err := r.configStore.Delete(c.Context(), "bsv21.blacklist:"+topic); err != nil {
 		r.logger.Error("failed to remove from blacklist", "error", err, "topic", topic)
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
 			"error": "failed to remove from blacklist",
@@ -396,12 +399,7 @@ type ProgressItem struct {
 // @Security BearerAuth
 // @Router /admin/progress [get]
 func (r *Routes) handleGetProgress(c *fiber.Ctx) error {
-	if r.store == nil {
-		return c.JSON([]ProgressItem{})
-	}
-
-	// Get all fields from the h:prog hash
-	entries, err := r.store.HGetAll(c.Context(), txo.KeyProgress)
+	entries, err := r.configStore.List(c.Context(), "progress:")
 	if err != nil {
 		r.logger.Error("failed to get progress", "error", err)
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
@@ -410,19 +408,13 @@ func (r *Routes) handleGetProgress(c *fiber.Ctx) error {
 	}
 
 	items := make([]ProgressItem, 0, len(entries))
-	for id, valueBytes := range entries {
+	for key, val := range entries {
 		var block uint32
-		if len(valueBytes) == 4 {
-			// Binary uint32 big-endian (used by jbsync and owner sync)
-			block = binary.BigEndian.Uint32(valueBytes)
-		} else {
-			// Try parsing as string (used by peer interactions)
-			if parsed, err := strconv.ParseFloat(string(valueBytes), 64); err == nil {
-				block = uint32(parsed)
-			}
+		if parsed, err := strconv.ParseUint(val, 10, 32); err == nil {
+			block = uint32(parsed)
 		}
 		items = append(items, ProgressItem{
-			ID:    id,
+			ID:    strings.TrimPrefix(key, "progress:"),
 			Block: block,
 		})
 	}
@@ -449,12 +441,6 @@ func (r *Routes) handleGetProgress(c *fiber.Ctx) error {
 // @Security BearerAuth
 // @Router /admin/progress/{id} [put]
 func (r *Routes) handleUpdateProgress(c *fiber.Ctx) error {
-	if r.store == nil {
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
-			"error": "store not available",
-		})
-	}
-
 	id := c.Params("id")
 	if id == "" {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
@@ -471,12 +457,7 @@ func (r *Routes) handleUpdateProgress(c *fiber.Ctx) error {
 		})
 	}
 
-	// Store as binary uint32 big-endian (matches jbsync and owner sync)
-	progressBytes := make([]byte, 4)
-	binary.BigEndian.PutUint32(progressBytes, req.Block)
-
-	err := r.store.HSet(c.Context(), txo.KeyProgress, []byte(id), progressBytes)
-	if err != nil {
+	if err := r.configStore.Set(c.Context(), "progress:"+id, strconv.FormatUint(uint64(req.Block), 10)); err != nil {
 		r.logger.Error("failed to update progress", "error", err, "id", id)
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
 			"error": "failed to update progress",
@@ -502,12 +483,6 @@ func (r *Routes) handleUpdateProgress(c *fiber.Ctx) error {
 // @Security BearerAuth
 // @Router /admin/progress/{id} [delete]
 func (r *Routes) handleDeleteProgress(c *fiber.Ctx) error {
-	if r.store == nil {
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
-			"error": "store not available",
-		})
-	}
-
 	id := c.Params("id")
 	if id == "" {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
@@ -515,8 +490,7 @@ func (r *Routes) handleDeleteProgress(c *fiber.Ctx) error {
 		})
 	}
 
-	err := r.store.HDel(c.Context(), txo.KeyProgress, []byte(id))
-	if err != nil {
+	if err := r.configStore.Delete(c.Context(), "progress:"+id); err != nil {
 		r.logger.Error("failed to delete progress", "error", err, "id", id)
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
 			"error": "failed to delete progress",
@@ -700,7 +674,7 @@ func (r *Routes) handleGetBSV21Workers(c *fiber.Ctx) error {
 // @Failure 500 {object} map[string]string "Internal server error"
 // @Router /admin/status [get]
 func (r *Routes) handleGetSetupStatus(c *fiber.Ctx) error {
-	configured, err := auth.IsSetup(c.Context(), r.store)
+	configured, err := auth.IsSetup(c.Context(), r.configStore)
 	if err != nil {
 		r.logger.Error("failed to check setup status", "error", err)
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
@@ -731,7 +705,7 @@ func (r *Routes) handleSetup(c *fiber.Ctx) error {
 		})
 	}
 
-	configured, err := auth.IsSetup(c.Context(), r.store)
+	configured, err := auth.IsSetup(c.Context(), r.configStore)
 	if err != nil {
 		r.logger.Error("failed to check setup status", "error", err)
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
@@ -748,7 +722,7 @@ func (r *Routes) handleSetup(c *fiber.Ctx) error {
 		Pubkey: identity.ToDERHex(),
 		Admin:  true,
 	}
-	if err := auth.SaveAdminUser(c.Context(), r.store, user); err != nil {
+	if err := auth.SaveAdminUser(c.Context(), r.configStore, user); err != nil {
 		r.logger.Error("failed to add initial admin", "error", err)
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
 			"error": "internal error",
@@ -762,7 +736,7 @@ func (r *Routes) handleSetup(c *fiber.Ctx) error {
 }
 
 func (r *Routes) handleGetUsers(c *fiber.Ctx) error {
-	users, err := auth.ListAdminUsers(c.Context(), r.store)
+	users, err := auth.ListAdminUsers(c.Context(), r.configStore)
 	if err != nil {
 		r.logger.Error("failed to list users", "error", err)
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
@@ -785,7 +759,7 @@ func (r *Routes) handleAddUser(c *fiber.Ctx) error {
 		})
 	}
 
-	if err := auth.SaveAdminUser(c.Context(), r.store, user); err != nil {
+	if err := auth.SaveAdminUser(c.Context(), r.configStore, user); err != nil {
 		r.logger.Error("failed to add user", "error", err)
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
 			"error": "failed to add user",
@@ -804,7 +778,7 @@ func (r *Routes) handleUpdateUser(c *fiber.Ctx) error {
 		})
 	}
 
-	existing, err := auth.GetAdminUser(c.Context(), r.store, pubkey)
+	existing, err := auth.GetAdminUser(c.Context(), r.configStore, pubkey)
 	if err != nil {
 		r.logger.Error("failed to get user", "error", err)
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
@@ -837,7 +811,7 @@ func (r *Routes) handleUpdateUser(c *fiber.Ctx) error {
 		}
 	}
 
-	if err := auth.SaveAdminUser(c.Context(), r.store, *existing); err != nil {
+	if err := auth.SaveAdminUser(c.Context(), r.configStore, *existing); err != nil {
 		r.logger.Error("failed to update user", "error", err)
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
 			"error": "failed to update user",
@@ -856,7 +830,7 @@ func (r *Routes) handleDeleteUser(c *fiber.Ctx) error {
 		})
 	}
 
-	if err := auth.DeleteAdminUser(c.Context(), r.store, pubkey); err != nil {
+	if err := auth.DeleteAdminUser(c.Context(), r.configStore, pubkey); err != nil {
 		r.logger.Error("failed to delete user", "error", err)
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
 			"error": "failed to delete user",
@@ -878,7 +852,7 @@ func (r *Routes) handleCheckAccess(c *fiber.Ctx) error {
 	}
 
 	pubkey := identity.ToDERHex()
-	user, err := auth.GetAdminUser(c.Context(), r.store, pubkey)
+	user, err := auth.GetAdminUser(c.Context(), r.configStore, pubkey)
 	if err != nil {
 		r.logger.Error("failed to check access", "error", err)
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
@@ -919,7 +893,7 @@ func (r *Routes) handleRequestAccess(c *fiber.Ctx) error {
 		Pubkey: identity.ToDERHex(),
 		Name:   req.Name,
 	}
-	if err := auth.SaveAccessRequest(c.Context(), r.store, accessReq); err != nil {
+	if err := auth.SaveAccessRequest(c.Context(), r.configStore, accessReq); err != nil {
 		r.logger.Error("failed to save access request", "error", err)
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
 			"error": "failed to save request",
@@ -933,7 +907,7 @@ func (r *Routes) handleRequestAccess(c *fiber.Ctx) error {
 }
 
 func (r *Routes) handleGetRequests(c *fiber.Ctx) error {
-	requests, err := auth.ListAccessRequests(c.Context(), r.store)
+	requests, err := auth.ListAccessRequests(c.Context(), r.configStore)
 	if err != nil {
 		r.logger.Error("failed to list requests", "error", err)
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
@@ -959,7 +933,7 @@ func (r *Routes) handleApproveRequest(c *fiber.Ctx) error {
 	}
 
 	// Get the request to preserve the name
-	requests, err := auth.ListAccessRequests(c.Context(), r.store)
+	requests, err := auth.ListAccessRequests(c.Context(), r.configStore)
 	if err != nil {
 		r.logger.Error("failed to list requests", "error", err)
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
@@ -980,14 +954,14 @@ func (r *Routes) handleApproveRequest(c *fiber.Ctx) error {
 		Name:   name,
 		Admin:  req.Admin,
 	}
-	if err := auth.SaveAdminUser(c.Context(), r.store, user); err != nil {
+	if err := auth.SaveAdminUser(c.Context(), r.configStore, user); err != nil {
 		r.logger.Error("failed to approve request", "error", err)
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
 			"error": "failed to approve request",
 		})
 	}
 
-	if err := auth.DeleteAccessRequest(c.Context(), r.store, pubkey); err != nil {
+	if err := auth.DeleteAccessRequest(c.Context(), r.configStore, pubkey); err != nil {
 		r.logger.Error("failed to delete request after approval", "error", err)
 	}
 
@@ -1003,7 +977,7 @@ func (r *Routes) handleDenyRequest(c *fiber.Ctx) error {
 		})
 	}
 
-	if err := auth.DeleteAccessRequest(c.Context(), r.store, pubkey); err != nil {
+	if err := auth.DeleteAccessRequest(c.Context(), r.configStore, pubkey); err != nil {
 		r.logger.Error("failed to deny request", "error", err)
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
 			"error": "failed to deny request",

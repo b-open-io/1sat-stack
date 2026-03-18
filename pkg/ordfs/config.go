@@ -40,7 +40,7 @@ func (c *Config) SetDefaults(v *viper.Viper, prefix string) {
 		p = prefix + "."
 	}
 
-	v.SetDefault(p+"enabled", false)
+	v.SetDefault(p+"enabled", true)
 	v.SetDefault(p+"redis.url", "redis://localhost:6379/0")
 	v.SetDefault(p+"routes.enabled", true)
 	v.SetDefault(p+"routes.prefix", "/ordfs")

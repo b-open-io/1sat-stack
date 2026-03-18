@@ -5,6 +5,7 @@ import (
 	"log/slog"
 
 	"github.com/b-open-io/1sat-stack/pkg/beef"
+	"github.com/b-open-io/1sat-stack/pkg/config"
 	"github.com/b-open-io/1sat-stack/pkg/indexer"
 	"github.com/b-open-io/1sat-stack/pkg/logging"
 	"github.com/b-open-io/1sat-stack/pkg/txo"
@@ -39,7 +40,7 @@ func (c *Config) SetDefaults(v *viper.Viper, prefix string) {
 		p = prefix + "."
 	}
 
-	v.SetDefault(p+"mode", ModeEmbedded)
+	v.SetDefault(p+"mode", ModeDisabled)
 	v.SetDefault(p+"routes.enabled", true)
 	v.SetDefault(p+"routes.prefix", "")
 }
@@ -56,6 +57,7 @@ type InitializeDeps struct {
 	BeefStorage *beef.Storage
 	Indexer     *indexer.IngestCtx
 	OutputStore *txo.OutputStore
+	ConfigStore config.Store
 }
 
 // Initialize creates an owner service from the configuration.
@@ -81,6 +83,7 @@ func (c *Config) Initialize(
 			deps.BeefStorage,
 			deps.Indexer,
 			deps.OutputStore,
+			deps.ConfigStore,
 			ownerLogger,
 		),
 	}

@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/b-open-io/1sat-stack/pkg/beef"
+	"github.com/b-open-io/1sat-stack/pkg/config"
 	"github.com/b-open-io/1sat-stack/pkg/indexer"
 	"github.com/b-open-io/1sat-stack/pkg/jbsync"
 	"github.com/b-open-io/1sat-stack/pkg/logging"
@@ -56,6 +57,7 @@ func (c *SyncConfig) SubscriberConfig() *jbsync.SubscriberConfig {
 type SyncServices struct {
 	config       *SyncConfig
 	store        store.Store
+	configStore  config.Store
 	beefStorage  *beef.Storage
 	outputStore  *txo.OutputStore
 	overlay      *engine.Engine
@@ -71,6 +73,7 @@ type SyncServices struct {
 func NewSyncServices(
 	cfg *SyncConfig,
 	s store.Store,
+	cs config.Store,
 	beefStorage *beef.Storage,
 	outputStore *txo.OutputStore,
 	overlaySvc *engine.Engine,
@@ -112,12 +115,14 @@ func NewSyncServices(
 		beefStorage,
 		idx,
 		outputStore,
+		cs,
 		logger,
 	)
 
 	// Create token manager upfront so it's available for status queries
 	manager := NewTokenManager(
 		s,
+		cs,
 		beefStorage,
 		outputStore,
 		overlaySvc,
@@ -133,6 +138,7 @@ func NewSyncServices(
 	return &SyncServices{
 		config:       cfg,
 		store:        s,
+		configStore:  cs,
 		beefStorage:  beefStorage,
 		outputStore:  outputStore,
 		overlay:      overlaySvc,

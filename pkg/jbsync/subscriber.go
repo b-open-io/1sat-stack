@@ -2,11 +2,12 @@ package jbsync
 
 import (
 	"context"
-	"encoding/binary"
+	"errors"
 	"log/slog"
+	"strconv"
 
+	"github.com/b-open-io/1sat-stack/pkg/config"
 	"github.com/b-open-io/1sat-stack/pkg/store"
-	"github.com/b-open-io/1sat-stack/pkg/txo"
 	"github.com/b-open-io/1sat-stack/pkg/types"
 	"github.com/b-open-io/go-junglebus"
 	"github.com/b-open-io/go-junglebus/models"
@@ -18,13 +19,14 @@ import (
 type Subscriber struct {
 	config       *SubscriberConfig
 	store        store.Store
+	configStore  config.Store
 	chainTracker chaintracks.Chaintracks
 	jbClient     *junglebus.Client
 	logger       *slog.Logger
 }
 
 // NewSubscriber creates a new JungleBus subscriber
-func NewSubscriber(cfg *SubscriberConfig, s store.Store, ct chaintracks.Chaintracks, jbClient *junglebus.Client, logger *slog.Logger) (*Subscriber, error) {
+func NewSubscriber(cfg *SubscriberConfig, s store.Store, cs config.Store, ct chaintracks.Chaintracks, jbClient *junglebus.Client, logger *slog.Logger) (*Subscriber, error) {
 	if logger == nil {
 		logger = slog.Default()
 	}
@@ -40,6 +42,7 @@ func NewSubscriber(cfg *SubscriberConfig, s store.Store, ct chaintracks.Chaintra
 	return &Subscriber{
 		config:       cfg,
 		store:        s,
+		configStore:  cs,
 		chainTracker: ct,
 		jbClient:     jbClient,
 		logger:       logger.With("component", "jbsync", "subscription", cfg.SubscriptionID),
@@ -52,9 +55,13 @@ func (s *Subscriber) Start(ctx context.Context) error {
 
 	// Check for existing progress
 	startBlock := s.config.FromBlock
-	if progressBytes, err := s.store.HGet(ctx, txo.KeyProgress, []byte(s.config.SubscriptionID)); err == nil && len(progressBytes) == 4 {
-		startBlock = uint64(binary.BigEndian.Uint32(progressBytes))
-		s.logger.Info("resuming subscription", "from_block", startBlock)
+	if val, err := s.configStore.Get(ctx, "progress:"+s.config.SubscriptionID); err == nil {
+		if parsed, parseErr := strconv.ParseUint(val, 10, 32); parseErr == nil {
+			startBlock = parsed
+			s.logger.Info("resuming subscription", "from_block", startBlock)
+		}
+	} else if !errors.Is(err, config.ErrNotFound) {
+		s.logger.Error("failed to read progress", "error", err)
 	}
 
 	txcount := 0
@@ -165,9 +172,7 @@ func (s *Subscriber) Start(ctx context.Context) error {
 				}
 
 				// Update progress
-				progressBytes := make([]byte, 4)
-				binary.BigEndian.PutUint32(progressBytes, finalSafeHeight)
-				if err := s.store.HSet(ctx, txo.KeyProgress, []byte(s.config.SubscriptionID), progressBytes); err != nil {
+				if err := s.configStore.Set(ctx, "progress:"+s.config.SubscriptionID, strconv.FormatUint(uint64(finalSafeHeight), 10)); err != nil {
 					if ctx.Err() == nil {
 						s.logger.Error("failed to update progress", "error", err)
 						select {
@@ -247,9 +252,16 @@ func (s *Subscriber) Start(ctx context.Context) error {
 
 // GetProgress returns the current sync progress for this subscription
 func (s *Subscriber) GetProgress(ctx context.Context) (uint64, error) {
-	progressBytes, err := s.store.HGet(ctx, txo.KeyProgress, []byte(s.config.SubscriptionID))
-	if err != nil || len(progressBytes) != 4 {
+	val, err := s.configStore.Get(ctx, "progress:"+s.config.SubscriptionID)
+	if err != nil {
+		if errors.Is(err, config.ErrNotFound) {
+			return s.config.FromBlock, nil
+		}
+		return s.config.FromBlock, err
+	}
+	parsed, err := strconv.ParseUint(val, 10, 32)
+	if err != nil {
 		return s.config.FromBlock, nil
 	}
-	return uint64(binary.BigEndian.Uint32(progressBytes)), nil
+	return parsed, nil
 }

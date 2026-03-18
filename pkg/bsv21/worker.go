@@ -83,8 +83,10 @@ func (m *TokenManager) GetTokenStatus(ctx context.Context, tokenId string) (*Tok
 	}
 
 	// Check whitelist/blacklist status
-	isWhitelisted, _ := m.store.SIsMember(ctx, KeyWhitelist, []byte(tokenId))
-	isBlacklisted, _ := m.store.SIsMember(ctx, KeyBlacklist, []byte(tokenId))
+	_, wlErr := m.configStore.Get(ctx, "bsv21.whitelist:"+tokenId)
+	isWhitelisted := wlErr == nil
+	_, blErr := m.configStore.Get(ctx, "bsv21.blacklist:"+tokenId)
+	isBlacklisted := blErr == nil
 
 	// Output count in topic - always calculate for reporting
 	outputCount, err := m.lookup.CountOutputs(ctx, "tm_"+tokenId)

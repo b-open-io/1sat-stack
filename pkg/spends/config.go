@@ -52,7 +52,7 @@ func (c *Config) SetDefaults(v *viper.Viper, prefix string) {
 	if prefix != "" {
 		p = prefix + "."
 	}
-	v.SetDefault(p+"mode", ModeDisabled)
+	v.SetDefault(p+"mode", ModeEmbedded)
 }
 
 func (c *Config) Initialize(

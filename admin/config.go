@@ -5,6 +5,7 @@ import (
 	"log/slog"
 
 	"github.com/b-open-io/1sat-stack/pkg/bsv21"
+	"github.com/b-open-io/1sat-stack/pkg/config"
 	"github.com/b-open-io/1sat-stack/pkg/overlay"
 	"github.com/b-open-io/1sat-stack/pkg/store"
 	"github.com/bsv-blockchain/go-overlay-services/pkg/core/engine"
@@ -44,6 +45,7 @@ type InitializeDeps struct {
 	Overlay          *overlay.Services
 	Engines          map[string]*engine.Engine // module name -> engine (for topic/lookup listing)
 	Store            store.Store
+	ConfigStore      config.Store
 	BSV21Sync        *bsv21.SyncServices
 	TriggerOpnsCrawl OpnsCrawlFunc
 }
@@ -68,8 +70,8 @@ func (c *Config) Initialize(ctx context.Context, logger *slog.Logger, deps *Init
 	svc := &Services{}
 
 	// Create routes if enabled
-	if c.Routes.Enabled && deps.Store != nil {
-		svc.Routes = NewRoutes(deps.Overlay, deps.Engines, deps.Store, deps.BSV21Sync, deps.TriggerOpnsCrawl, &c.Routes, logger)
+	if c.Routes.Enabled && deps.ConfigStore != nil {
+		svc.Routes = NewRoutes(deps.Overlay, deps.Engines, deps.Store, deps.ConfigStore, deps.BSV21Sync, deps.TriggerOpnsCrawl, &c.Routes, logger)
 	}
 
 	logger.Info("admin service initialized", "mode", c.Mode)

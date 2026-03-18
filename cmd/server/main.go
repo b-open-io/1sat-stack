@@ -9,8 +9,11 @@ import (
 	_ "net/http/pprof"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"syscall"
 	"time"
+
+	"github.com/b-open-io/1sat-stack/pkg/wallet"
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/middleware/cors"
@@ -86,6 +89,20 @@ func main() {
 	// Create logger from config, with command-line override if provided
 	log := cfg.CreateLogger(*logLevel)
 	slog.SetDefault(log)
+
+	// Resolve server private key if wallet is enabled but no key configured
+	if cfg.Wallet.Mode != wallet.ModeDisabled && cfg.Wallet.ServerPrivateKey == "" {
+		keyDir := filepath.Dir(cfg.Store.Badger.Path)
+		if keyDir == "" || keyDir == "." {
+			keyDir = "~/.1sat"
+		}
+		wif, err := wallet.ResolveServerKey(filepath.Join(keyDir, "server.key"), log)
+		if err != nil {
+			log.Error("failed to resolve server private key", "error", err)
+			os.Exit(1)
+		}
+		cfg.Wallet.ServerPrivateKey = wif
+	}
 
 	// Create context that cancels on interrupt
 	ctx, cancel := context.WithCancel(context.Background())
