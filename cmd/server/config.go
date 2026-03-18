@@ -1286,6 +1286,17 @@ func (c *Config) Initialize(ctx context.Context, logger *slog.Logger) (*Services
 			logger.Info("BSocial JungleBus subscriber initialized", "queue", subCfg.QueueName, "from_block", subCfg.FromBlock)
 		}
 
+		// OrdLock subscriber (if subscription_id configured)
+		if svc.OrdLock != nil && c.OrdLock.Sync != nil && c.OrdLock.Sync.SubscriptionID != "" {
+			subCfg := c.OrdLock.Sync.SubscriberConfig()
+			sub, err := jbsync.NewSubscriber(subCfg, svc.Store.Store, svc.ConfigStore, svc.Chaintracks, svc.JungleBus, logger)
+			if err != nil {
+				return nil, fmt.Errorf("failed to create ordlock subscriber: %w", err)
+			}
+			svc.JBSubscribers = append(svc.JBSubscribers, sub)
+			logger.Info("OrdLock JungleBus subscriber initialized", "queue", subCfg.QueueName, "from_block", subCfg.FromBlock)
+		}
+
 		// Ingest subscribers (multiple subscription_ids filling q:ingest)
 		for _, subID := range c.Indexer.Sync.SubscriptionIDs {
 			if subID == "" {
