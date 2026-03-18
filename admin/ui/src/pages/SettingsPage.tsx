@@ -1,4 +1,7 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { toast } from "sonner";
+import { getConfig, saveConfig } from "@/api";
+import { toastError } from "@/lib/utils";
 import {
   Server,
   Database,
@@ -398,22 +401,41 @@ function BeefChainEditor({ chain, onChange }: { chain: BeefProvider[]; onChange:
   );
 }
 
-function StoragePanel() {
-  const [storeProvider, setStoreProvider] = useState<"badger" | "redis">("badger");
-  const [storePath, setStorePath] = useState("~/.1sat/store");
-  const [beefChain, setBeefChain] = useState<BeefProvider[]>([
-    { type: "lru", size: "100mb" },
-    { type: "filesystem", path: "~/.1sat/beef" },
-    { type: "junglebus" },
-  ]);
-  const [pubsubProvider, setPubsubProvider] = useState<"channels" | "redis">("channels");
-  const [pubsubBuffer, setPubsubBuffer] = useState("1000");
-  const [pubsubRedisUrl, setPubsubRedisUrl] = useState("");
-  const [ordfsRedisUrl, setOrdfsRedisUrl] = useState("");
-  const [walletDb, setWalletDb] = useState("~/.1sat/wallet.sqlite");
-  const [chaintracksPath, setChaintracksPath] = useState("~/.1sat/chaintracks");
-  const [arcadeDb, setArcadeDb] = useState("~/.1sat/arcade/arcade.db");
+interface StoragePanelProps {
+  storeProvider: "badger" | "redis";
+  setStoreProvider: (v: "badger" | "redis") => void;
+  storePath: string;
+  setStorePath: (v: string) => void;
+  beefChain: BeefProvider[];
+  setBeefChain: (v: BeefProvider[]) => void;
+  pubsubProvider: "channels" | "redis";
+  setPubsubProvider: (v: "channels" | "redis") => void;
+  pubsubBuffer: string;
+  setPubsubBuffer: (v: string) => void;
+  pubsubRedisUrl: string;
+  setPubsubRedisUrl: (v: string) => void;
+  ordfsRedisUrl: string;
+  setOrdfsRedisUrl: (v: string) => void;
+  walletDb: string;
+  setWalletDb: (v: string) => void;
+  chaintracksPath: string;
+  setChaintracksPath: (v: string) => void;
+  arcadeDb: string;
+  setArcadeDb: (v: string) => void;
+}
 
+function StoragePanel({
+  storeProvider, setStoreProvider,
+  storePath, setStorePath,
+  beefChain, setBeefChain,
+  pubsubProvider, setPubsubProvider,
+  pubsubBuffer, setPubsubBuffer,
+  pubsubRedisUrl, setPubsubRedisUrl,
+  ordfsRedisUrl, setOrdfsRedisUrl,
+  walletDb, setWalletDb,
+  chaintracksPath, setChaintracksPath,
+  arcadeDb, setArcadeDb,
+}: StoragePanelProps) {
   return (
     <div className="space-y-4">
       <PageHeader title="Storage" description="Infrastructure service configuration. Most changes require a restart." />
@@ -500,12 +522,16 @@ const PARSE_TAGS = [
   { id: "sigma", label: "Sigma", description: "Sigma signature protocol" },
 ];
 
-function IndexerPanel() {
-  const [activeTags, setActiveTags] = useState<string[]>(
-    PARSE_TAGS.map((t) => t.id) // all on by default
-  );
-  const [verbose, setVerbose] = useState(false);
-  const [logLevel, setLogLevel] = useState("info");
+interface IndexerPanelProps {
+  activeTags: string[];
+  setActiveTags: React.Dispatch<React.SetStateAction<string[]>>;
+  verbose: boolean;
+  setVerbose: (v: boolean) => void;
+  logLevel: string;
+  setLogLevel: (v: string) => void;
+}
+
+function IndexerPanel({ activeTags, setActiveTags, verbose, setVerbose, logLevel, setLogLevel }: IndexerPanelProps) {
 
   function toggleTag(id: string) {
     setActiveTags((prev) =>
@@ -612,18 +638,26 @@ function MetricsRow({ metrics }: { metrics: { label: string; value: string | num
   );
 }
 
-function BapPanel({
-  enabled,
-  onToggle,
-}: {
+interface OverlayPanelProps {
   enabled: boolean;
   onToggle: (v: boolean) => void;
-}) {
-  const [subId, setSubId] = useState("");
-  const [fromBlock, setFromBlock] = useState("0");
-  const [concurrency, setConcurrency] = useState("4");
-  const [batchSize, setBatchSize] = useState("100");
+  subId: string;
+  setSubId: (v: string) => void;
+  fromBlock: string;
+  setFromBlock: (v: string) => void;
+  concurrency: string;
+  setConcurrency: (v: string) => void;
+  batchSize: string;
+  setBatchSize: (v: string) => void;
+}
 
+function BapPanel({
+  enabled, onToggle,
+  subId, setSubId,
+  fromBlock, setFromBlock,
+  concurrency, setConcurrency,
+  batchSize, setBatchSize,
+}: OverlayPanelProps) {
   return (
     <div className="space-y-4">
       <PageHeader title="BAP" description="Bitcoin Attestation Protocol — identity and attestation indexing." />
@@ -659,19 +693,19 @@ function BapPanel({
   );
 }
 
-function OpnsPanel({
-  enabled,
-  onToggle,
-}: {
-  enabled: boolean;
-  onToggle: (v: boolean) => void;
-}) {
-  const [subId, setSubId] = useState("");
-  const [fromBlock, setFromBlock] = useState("0");
-  const [concurrency, setConcurrency] = useState("4");
-  const [batchSize, setBatchSize] = useState("100");
-  const [paymailEnabled, setPaymailEnabled] = useState(false);
+interface OpnsPanelProps extends OverlayPanelProps {
+  paymailEnabled: boolean;
+  setPaymailEnabled: (v: boolean) => void;
+}
 
+function OpnsPanel({
+  enabled, onToggle,
+  subId, setSubId,
+  fromBlock, setFromBlock,
+  concurrency, setConcurrency,
+  batchSize, setBatchSize,
+  paymailEnabled, setPaymailEnabled,
+}: OpnsPanelProps) {
   return (
     <div className="space-y-4">
       <PageHeader title="OPNS" description="Ordinal Public Name System — name resolution on BSV." />
@@ -721,20 +755,22 @@ function OpnsPanel({
   );
 }
 
-function Bsv21Panel({
-  enabled,
-  onToggle,
-}: {
-  enabled: boolean;
-  onToggle: (v: boolean) => void;
-}) {
-  const [subId, setSubId] = useState("");
-  const [fromBlock, setFromBlock] = useState("0");
-  const [concurrency, setConcurrency] = useState("4");
-  const [batchSize, setBatchSize] = useState("100");
-  const [whitelist, setWhitelist] = useState<string[]>([]);
-  const [blacklist, setBlacklist] = useState<string[]>([]);
+interface Bsv21PanelProps extends OverlayPanelProps {
+  whitelist: string[];
+  setWhitelist: React.Dispatch<React.SetStateAction<string[]>>;
+  blacklist: string[];
+  setBlacklist: React.Dispatch<React.SetStateAction<string[]>>;
+}
 
+function Bsv21Panel({
+  enabled, onToggle,
+  subId, setSubId,
+  fromBlock, setFromBlock,
+  concurrency, setConcurrency,
+  batchSize, setBatchSize,
+  whitelist, setWhitelist,
+  blacklist, setBlacklist,
+}: Bsv21PanelProps) {
   return (
     <div className="space-y-4">
       <PageHeader title="BSV21" description="Fungible token protocol — mint, transfer, and index BSV21 tokens." />
@@ -791,19 +827,19 @@ function Bsv21Panel({
   );
 }
 
-function BsocialPanel({
-  enabled,
-  onToggle,
-}: {
-  enabled: boolean;
-  onToggle: (v: boolean) => void;
-}) {
-  const [subId, setSubId] = useState("");
-  const [fromBlock, setFromBlock] = useState("0");
-  const [concurrency, setConcurrency] = useState("4");
-  const [batchSize, setBatchSize] = useState("100");
-  const [mongoUrl, setMongoUrl] = useState("");
+interface BsocialPanelProps extends OverlayPanelProps {
+  mongoUrl: string;
+  setMongoUrl: (v: string) => void;
+}
 
+function BsocialPanel({
+  enabled, onToggle,
+  subId, setSubId,
+  fromBlock, setFromBlock,
+  concurrency, setConcurrency,
+  batchSize, setBatchSize,
+  mongoUrl, setMongoUrl,
+}: BsocialPanelProps) {
   return (
     <div className="space-y-4">
       <PageHeader title="BSocial" description="Social protocol — posts, likes, and follows on BSV." />
@@ -860,18 +896,26 @@ function BsocialPanel({
   );
 }
 
-function OrdlockPanel({
-  enabled,
-  onToggle,
-}: {
+interface OrdlockPanelProps {
   enabled: boolean;
   onToggle: (v: boolean) => void;
-}) {
-  const [storagePath, setStoragePath] = useState("~/.1sat/store");
-  const [concurrency, setConcurrency] = useState("4");
-  const [fromBlock, setFromBlock] = useState("0");
-  const [batchSize, setBatchSize] = useState("100");
+  storagePath: string;
+  setStoragePath: (v: string) => void;
+  concurrency: string;
+  setConcurrency: (v: string) => void;
+  fromBlock: string;
+  setFromBlock: (v: string) => void;
+  batchSize: string;
+  setBatchSize: (v: string) => void;
+}
 
+function OrdlockPanel({
+  enabled, onToggle,
+  storagePath, setStoragePath,
+  concurrency, setConcurrency,
+  fromBlock, setFromBlock,
+  batchSize, setBatchSize,
+}: OrdlockPanelProps) {
   return (
     <div className="space-y-4">
       <PageHeader title="OrdLock" description="Ordinal lock listings — tracks inscribed satoshi market listings." />
@@ -907,14 +951,29 @@ function OrdlockPanel({
   );
 }
 
-function OverlayEnginePanel() {
-  const [engineStorage, setEngineStorage] = useState<"sqlite" | "postgres">("sqlite");
-  const [engineStoragePath, setEngineStoragePath] = useState("~/.1sat/overlay.db");
-  const [p2pEnabled, setP2pEnabled] = useState(false);
-  const [p2pPort, setP2pPort] = useState("9000");
-  const [p2pDhtMode, setP2pDhtMode] = useState("auto");
-  const [bootstrapPeers, setBootstrapPeers] = useState("");
+interface OverlayEnginePanelProps {
+  engineStorage: "sqlite" | "postgres";
+  setEngineStorage: (v: "sqlite" | "postgres") => void;
+  engineStoragePath: string;
+  setEngineStoragePath: (v: string) => void;
+  p2pEnabled: boolean;
+  setP2pEnabled: (v: boolean) => void;
+  p2pPort: string;
+  setP2pPort: (v: string) => void;
+  p2pDhtMode: string;
+  setP2pDhtMode: (v: string) => void;
+  bootstrapPeers: string;
+  setBootstrapPeers: (v: string) => void;
+}
 
+function OverlayEnginePanel({
+  engineStorage, setEngineStorage,
+  engineStoragePath, setEngineStoragePath,
+  p2pEnabled, setP2pEnabled,
+  p2pPort, setP2pPort,
+  p2pDhtMode, setP2pDhtMode,
+  bootstrapPeers, setBootstrapPeers,
+}: OverlayEnginePanelProps) {
   return (
     <div className="space-y-4">
       <PageHeader
@@ -976,16 +1035,35 @@ function OverlayEnginePanel() {
   );
 }
 
-function SyncPanel() {
-  const [jbUrl, setJbUrl] = useState("https://junglebus.gorillapool.io");
-  const [jbToken, setJbToken] = useState("");
-  const [indexerSubIds, setIndexerSubIds] = useState("");
-  const [indexerFromBlock, setIndexerFromBlock] = useState("0");
-  const [indexerConcurrency, setIndexerConcurrency] = useState("4");
-  const [indexerBatchSize, setIndexerBatchSize] = useState("100");
-  const [indexerMempool, setIndexerMempool] = useState(true);
-  const [ownerSync, setOwnerSync] = useState(false);
+interface SyncPanelProps {
+  jbUrl: string;
+  setJbUrl: (v: string) => void;
+  jbToken: string;
+  setJbToken: (v: string) => void;
+  indexerSubIds: string;
+  setIndexerSubIds: (v: string) => void;
+  indexerFromBlock: string;
+  setIndexerFromBlock: (v: string) => void;
+  indexerConcurrency: string;
+  setIndexerConcurrency: (v: string) => void;
+  indexerBatchSize: string;
+  setIndexerBatchSize: (v: string) => void;
+  indexerMempool: boolean;
+  setIndexerMempool: (v: boolean) => void;
+  ownerSync: boolean;
+  setOwnerSync: (v: boolean) => void;
+}
 
+function SyncPanel({
+  jbUrl, setJbUrl,
+  jbToken, setJbToken,
+  indexerSubIds, setIndexerSubIds,
+  indexerFromBlock, setIndexerFromBlock,
+  indexerConcurrency, setIndexerConcurrency,
+  indexerBatchSize, setIndexerBatchSize,
+  indexerMempool, setIndexerMempool,
+  ownerSync, setOwnerSync,
+}: SyncPanelProps) {
   return (
     <div className="space-y-4">
       <PageHeader title="Sync" description="JungleBus connection and indexer subscription configuration." />
@@ -1044,11 +1122,17 @@ function SyncPanel() {
   );
 }
 
-function AuthPanel() {
-  const [authMode, setAuthMode] = useState<"local" | "authenticated">("local");
-  const [apiKey, setApiKey] = useState("");
+interface AuthPanelProps {
+  authMode: "local" | "authenticated";
+  setAuthMode: (v: "local" | "authenticated") => void;
+  apiKey: string;
+  setApiKey: (v: string) => void;
+  sessionTTL: string;
+  setSessionTTL: (v: string) => void;
+}
+
+function AuthPanel({ authMode, setAuthMode, apiKey, setApiKey, sessionTTL, setSessionTTL }: AuthPanelProps) {
   const [showApiKey, setShowApiKey] = useState(false);
-  const [sessionTTL, setSessionTTL] = useState("24h");
 
   return (
     <div className="space-y-4">
@@ -1102,11 +1186,16 @@ function AuthPanel() {
 }
 
 
-function TuningPanel() {
-  const [defaultConcurrency, setDefaultConcurrency] = useState("4");
-  const [pageSize, setPageSize] = useState("100");
-  const [pollDelay, setPollDelay] = useState("500ms");
+interface TuningPanelProps {
+  defaultConcurrency: string;
+  setDefaultConcurrency: (v: string) => void;
+  pageSize: string;
+  setPageSize: (v: string) => void;
+  pollDelay: string;
+  setPollDelay: (v: string) => void;
+}
 
+function TuningPanel({ defaultConcurrency, setDefaultConcurrency, pageSize, setPageSize, pollDelay, setPollDelay }: TuningPanelProps) {
   return (
     <div className="space-y-4">
       <PageHeader
@@ -1147,12 +1236,303 @@ function TuningPanel() {
 
 export default function SettingsPage() {
   const [activeSection, setActiveSection] = useState<SectionId>("node");
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
 
+  // Overlay toggles
   const [bapEnabled, setBapEnabled] = useState(false);
   const [opnsEnabled, setOpnsEnabled] = useState(false);
   const [bsv21Enabled, setBsv21Enabled] = useState(false);
   const [bsocialEnabled, setBsocialEnabled] = useState(false);
   const [ordlockEnabled, setOrdlockEnabled] = useState(false);
+
+  // Storage
+  const [storeProvider, setStoreProvider] = useState<"badger" | "redis">("badger");
+  const [storePath, setStorePath] = useState("~/.1sat/store");
+  const [beefChain, setBeefChain] = useState<BeefProvider[]>([
+    { type: "lru", size: "100mb" },
+    { type: "filesystem", path: "~/.1sat/beef" },
+    { type: "junglebus" },
+  ]);
+  const [pubsubProvider, setPubsubProvider] = useState<"channels" | "redis">("channels");
+  const [pubsubBuffer, setPubsubBuffer] = useState("1000");
+  const [pubsubRedisUrl, setPubsubRedisUrl] = useState("");
+  const [ordfsRedisUrl, setOrdfsRedisUrl] = useState("");
+  const [walletDb, setWalletDb] = useState("~/.1sat/wallet.sqlite");
+  const [chaintracksPath, setChaintracksPath] = useState("~/.1sat/chaintracks");
+  const [arcadeDb, setArcadeDb] = useState("~/.1sat/arcade/arcade.db");
+
+  // Indexer
+  const [activeTags, setActiveTags] = useState<string[]>(PARSE_TAGS.map((t) => t.id));
+  const [verbose, setVerbose] = useState(false);
+  const [logLevel, setLogLevel] = useState("info");
+
+  // BAP overlay
+  const [bapSubId, setBapSubId] = useState("");
+  const [bapFromBlock, setBapFromBlock] = useState("0");
+  const [bapConcurrency, setBapConcurrency] = useState("4");
+  const [bapBatchSize, setBapBatchSize] = useState("100");
+
+  // OPNS overlay
+  const [opnsSubId, setOpnsSubId] = useState("");
+  const [opnsFromBlock, setOpnsFromBlock] = useState("0");
+  const [opnsConcurrency, setOpnsConcurrency] = useState("4");
+  const [opnsBatchSize, setOpnsBatchSize] = useState("100");
+  const [paymailEnabled, setPaymailEnabled] = useState(false);
+
+  // BSV21 overlay
+  const [bsv21SubId, setBsv21SubId] = useState("");
+  const [bsv21FromBlock, setBsv21FromBlock] = useState("0");
+  const [bsv21Concurrency, setBsv21Concurrency] = useState("4");
+  const [bsv21BatchSize, setBsv21BatchSize] = useState("100");
+  const [bsv21Whitelist, setBsv21Whitelist] = useState<string[]>([]);
+  const [bsv21Blacklist, setBsv21Blacklist] = useState<string[]>([]);
+
+  // BSocial overlay
+  const [bsocialSubId, setBsocialSubId] = useState("");
+  const [bsocialFromBlock, setBsocialFromBlock] = useState("0");
+  const [bsocialConcurrency, setBsocialConcurrency] = useState("4");
+  const [bsocialBatchSize, setBsocialBatchSize] = useState("100");
+  const [bsocialMongoUrl, setBsocialMongoUrl] = useState("");
+
+  // OrdLock overlay
+  const [ordlockStoragePath, setOrdlockStoragePath] = useState("~/.1sat/store");
+  const [ordlockFromBlock, setOrdlockFromBlock] = useState("0");
+  const [ordlockConcurrency, setOrdlockConcurrency] = useState("4");
+  const [ordlockBatchSize, setOrdlockBatchSize] = useState("100");
+
+  // Overlay engine
+  const [engineStorage, setEngineStorage] = useState<"sqlite" | "postgres">("sqlite");
+  const [engineStoragePath, setEngineStoragePath] = useState("~/.1sat/overlay.db");
+  const [p2pEnabled, setP2pEnabled] = useState(false);
+  const [p2pPort, setP2pPort] = useState("9000");
+  const [p2pDhtMode, setP2pDhtMode] = useState("auto");
+  const [bootstrapPeers, setBootstrapPeers] = useState("");
+
+  // Sync
+  const [jbUrl, setJbUrl] = useState("https://junglebus.gorillapool.io");
+  const [jbToken, setJbToken] = useState("");
+  const [indexerSubIds, setIndexerSubIds] = useState("");
+  const [indexerFromBlock, setIndexerFromBlock] = useState("0");
+  const [indexerConcurrency, setIndexerConcurrency] = useState("4");
+  const [indexerBatchSize, setIndexerBatchSize] = useState("100");
+  const [indexerMempool, setIndexerMempool] = useState(true);
+  const [ownerSync, setOwnerSync] = useState(false);
+
+  // Auth
+  const [authMode, setAuthMode] = useState<"local" | "authenticated">("local");
+  const [apiKey, setApiKey] = useState("");
+  const [sessionTTL, setSessionTTL] = useState("24h");
+
+  // Tuning
+  const [defaultConcurrency, setDefaultConcurrency] = useState("4");
+  const [pageSize, setPageSize] = useState("100");
+  const [pollDelay, setPollDelay] = useState("500ms");
+
+  // Load config on mount
+  useEffect(() => {
+    getConfig()
+      .then((cfg) => {
+        const b = (key: string) => cfg[key] === "true";
+        const s = (key: string, fallback: string) => cfg[key] ?? fallback;
+
+        // Overlay toggles
+        setBapEnabled(b("overlay.bap.enabled"));
+        setOpnsEnabled(b("overlay.opns.enabled"));
+        setBsv21Enabled(b("overlay.bsv21.enabled"));
+        setBsocialEnabled(b("overlay.bsocial.enabled"));
+        setOrdlockEnabled(b("overlay.ordlock.enabled"));
+
+        // Storage
+        if (cfg["store.provider"] === "badger" || cfg["store.provider"] === "redis") setStoreProvider(cfg["store.provider"]);
+        setStorePath(s("store.path", "~/.1sat/store"));
+        if (cfg["beef.chain"]) {
+          try { setBeefChain(JSON.parse(cfg["beef.chain"])); } catch { /* keep default */ }
+        }
+        if (cfg["pubsub.provider"] === "channels" || cfg["pubsub.provider"] === "redis") setPubsubProvider(cfg["pubsub.provider"]);
+        setPubsubBuffer(s("pubsub.buffer", "1000"));
+        setPubsubRedisUrl(s("pubsub.redis_url", ""));
+        setOrdfsRedisUrl(s("ordfs.redis_url", ""));
+        setWalletDb(s("wallet.db", "~/.1sat/wallet.sqlite"));
+        setChaintracksPath(s("chaintracks.path", "~/.1sat/chaintracks"));
+        setArcadeDb(s("arcade.db", "~/.1sat/arcade/arcade.db"));
+
+        // Indexer
+        if (cfg["indexer.parsers"]) {
+          try { setActiveTags(JSON.parse(cfg["indexer.parsers"])); } catch { /* keep default */ }
+        }
+        setVerbose(b("indexer.verbose"));
+        setLogLevel(s("indexer.log_level", "info"));
+
+        // BAP
+        setBapSubId(s("overlay.bap.sub_id", ""));
+        setBapFromBlock(s("overlay.bap.from_block", "0"));
+        setBapConcurrency(s("overlay.bap.concurrency", "4"));
+        setBapBatchSize(s("overlay.bap.batch_size", "100"));
+
+        // OPNS
+        setOpnsSubId(s("overlay.opns.sub_id", ""));
+        setOpnsFromBlock(s("overlay.opns.from_block", "0"));
+        setOpnsConcurrency(s("overlay.opns.concurrency", "4"));
+        setOpnsBatchSize(s("overlay.opns.batch_size", "100"));
+        setPaymailEnabled(b("overlay.opns.paymail"));
+
+        // BSV21
+        setBsv21SubId(s("overlay.bsv21.sub_id", ""));
+        setBsv21FromBlock(s("overlay.bsv21.from_block", "0"));
+        setBsv21Concurrency(s("overlay.bsv21.concurrency", "4"));
+        setBsv21BatchSize(s("overlay.bsv21.batch_size", "100"));
+        if (cfg["overlay.bsv21.whitelist"]) {
+          try { setBsv21Whitelist(JSON.parse(cfg["overlay.bsv21.whitelist"])); } catch { /* keep default */ }
+        }
+        if (cfg["overlay.bsv21.blacklist"]) {
+          try { setBsv21Blacklist(JSON.parse(cfg["overlay.bsv21.blacklist"])); } catch { /* keep default */ }
+        }
+
+        // BSocial
+        setBsocialSubId(s("overlay.bsocial.sub_id", ""));
+        setBsocialFromBlock(s("overlay.bsocial.from_block", "0"));
+        setBsocialConcurrency(s("overlay.bsocial.concurrency", "4"));
+        setBsocialBatchSize(s("overlay.bsocial.batch_size", "100"));
+        setBsocialMongoUrl(s("overlay.bsocial.mongo_url", ""));
+
+        // OrdLock
+        setOrdlockStoragePath(s("overlay.ordlock.storage_path", "~/.1sat/store"));
+        setOrdlockFromBlock(s("overlay.ordlock.from_block", "0"));
+        setOrdlockConcurrency(s("overlay.ordlock.concurrency", "4"));
+        setOrdlockBatchSize(s("overlay.ordlock.batch_size", "100"));
+
+        // Overlay engine
+        if (cfg["overlay.engine.storage"] === "sqlite" || cfg["overlay.engine.storage"] === "postgres") setEngineStorage(cfg["overlay.engine.storage"]);
+        setEngineStoragePath(s("overlay.engine.storage_path", "~/.1sat/overlay.db"));
+        setP2pEnabled(b("overlay.engine.p2p.enabled"));
+        setP2pPort(s("overlay.engine.p2p.port", "9000"));
+        setP2pDhtMode(s("overlay.engine.p2p.dht_mode", "auto"));
+        setBootstrapPeers(s("overlay.engine.p2p.bootstrap_peers", ""));
+
+        // Sync
+        setJbUrl(s("junglebus.url", "https://junglebus.gorillapool.io"));
+        setJbToken(s("junglebus.token", ""));
+        setIndexerSubIds(s("indexer.sync.subscription_ids", ""));
+        setIndexerFromBlock(s("indexer.sync.from_block", "0"));
+        setIndexerConcurrency(s("indexer.sync.concurrency", "4"));
+        setIndexerBatchSize(s("indexer.sync.batch_size", "100"));
+        setIndexerMempool(cfg["indexer.sync.mempool"] !== "false");
+        setOwnerSync(b("owner.enabled"));
+
+        // Auth
+        if (cfg["auth.mode"] === "local" || cfg["auth.mode"] === "authenticated") setAuthMode(cfg["auth.mode"]);
+        setApiKey(s("auth.api_key", ""));
+        setSessionTTL(s("auth.session_ttl", "24h"));
+
+        // Tuning
+        setDefaultConcurrency(s("worker.concurrency", "4"));
+        setPageSize(s("worker.page_size", "100"));
+        setPollDelay(s("worker.poll_delay", "500ms"));
+      })
+      .catch((err) => toastError(err.message))
+      .finally(() => setLoading(false));
+  }, []);
+
+  async function handleSave() {
+    setSaving(true);
+    try {
+      const values: Record<string, string> = {
+        // Overlay toggles
+        "overlay.bap.enabled": String(bapEnabled),
+        "overlay.opns.enabled": String(opnsEnabled),
+        "overlay.bsv21.enabled": String(bsv21Enabled),
+        "overlay.bsocial.enabled": String(bsocialEnabled),
+        "overlay.ordlock.enabled": String(ordlockEnabled),
+
+        // Storage
+        "store.provider": storeProvider,
+        "store.path": storePath,
+        "beef.chain": JSON.stringify(beefChain),
+        "pubsub.provider": pubsubProvider,
+        "pubsub.buffer": pubsubBuffer,
+        "pubsub.redis_url": pubsubRedisUrl,
+        "ordfs.redis_url": ordfsRedisUrl,
+        "wallet.db": walletDb,
+        "chaintracks.path": chaintracksPath,
+        "arcade.db": arcadeDb,
+
+        // Indexer
+        "indexer.parsers": JSON.stringify(activeTags),
+        "indexer.verbose": String(verbose),
+        "indexer.log_level": logLevel,
+
+        // BAP
+        "overlay.bap.sub_id": bapSubId,
+        "overlay.bap.from_block": bapFromBlock,
+        "overlay.bap.concurrency": bapConcurrency,
+        "overlay.bap.batch_size": bapBatchSize,
+
+        // OPNS
+        "overlay.opns.sub_id": opnsSubId,
+        "overlay.opns.from_block": opnsFromBlock,
+        "overlay.opns.concurrency": opnsConcurrency,
+        "overlay.opns.batch_size": opnsBatchSize,
+        "overlay.opns.paymail": String(paymailEnabled),
+
+        // BSV21
+        "overlay.bsv21.sub_id": bsv21SubId,
+        "overlay.bsv21.from_block": bsv21FromBlock,
+        "overlay.bsv21.concurrency": bsv21Concurrency,
+        "overlay.bsv21.batch_size": bsv21BatchSize,
+        "overlay.bsv21.whitelist": JSON.stringify(bsv21Whitelist),
+        "overlay.bsv21.blacklist": JSON.stringify(bsv21Blacklist),
+
+        // BSocial
+        "overlay.bsocial.sub_id": bsocialSubId,
+        "overlay.bsocial.from_block": bsocialFromBlock,
+        "overlay.bsocial.concurrency": bsocialConcurrency,
+        "overlay.bsocial.batch_size": bsocialBatchSize,
+        "overlay.bsocial.mongo_url": bsocialMongoUrl,
+
+        // OrdLock
+        "overlay.ordlock.storage_path": ordlockStoragePath,
+        "overlay.ordlock.from_block": ordlockFromBlock,
+        "overlay.ordlock.concurrency": ordlockConcurrency,
+        "overlay.ordlock.batch_size": ordlockBatchSize,
+
+        // Overlay engine
+        "overlay.engine.storage": engineStorage,
+        "overlay.engine.storage_path": engineStoragePath,
+        "overlay.engine.p2p.enabled": String(p2pEnabled),
+        "overlay.engine.p2p.port": p2pPort,
+        "overlay.engine.p2p.dht_mode": p2pDhtMode,
+        "overlay.engine.p2p.bootstrap_peers": bootstrapPeers,
+
+        // Sync
+        "junglebus.url": jbUrl,
+        "junglebus.token": jbToken,
+        "indexer.sync.subscription_ids": indexerSubIds,
+        "indexer.sync.from_block": indexerFromBlock,
+        "indexer.sync.concurrency": indexerConcurrency,
+        "indexer.sync.batch_size": indexerBatchSize,
+        "indexer.sync.mempool": String(indexerMempool),
+        "owner.enabled": String(ownerSync),
+
+        // Auth
+        "auth.mode": authMode,
+        "auth.api_key": apiKey,
+        "auth.session_ttl": sessionTTL,
+
+        // Tuning
+        "worker.concurrency": defaultConcurrency,
+        "worker.page_size": pageSize,
+        "worker.poll_delay": pollDelay,
+      };
+
+      await saveConfig(values);
+      toast.success("Settings saved");
+    } catch (err) {
+      toastError(err instanceof Error ? err.message : "Failed to save config");
+    } finally {
+      setSaving(false);
+    }
+  }
 
   const anyOverlayEnabled = bapEnabled || opnsEnabled || bsv21Enabled || bsocialEnabled || ordlockEnabled;
 
@@ -1175,6 +1555,14 @@ export default function SettingsPage() {
     { type: "item", id: "tuning", label: "Tuning", icon: Cpu },
   ];
 
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <div className="text-sm text-muted-foreground">Loading configuration...</div>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-background flex flex-col">
       {/* Top bar */}
@@ -1191,7 +1579,9 @@ export default function SettingsPage() {
                 Overlay engine auto-enabled
               </span>
             )}
-            <Button size="sm">Save changes</Button>
+            <Button size="sm" onClick={handleSave} disabled={saving}>
+              {saving ? "Saving..." : "Save changes"}
+            </Button>
           </div>
         </div>
       </div>
@@ -1240,17 +1630,112 @@ export default function SettingsPage() {
         {/* Content area */}
         <div className="flex-1 min-w-0 overflow-y-auto p-6">
           {activeSection === "node" && <NodePanel />}
-          {activeSection === "storage" && <StoragePanel />}
-          {activeSection === "indexer" && <IndexerPanel />}
-          {activeSection === "overlays" && <OverlayEnginePanel />}
-          {activeSection === "overlay-bap" && <BapPanel enabled={bapEnabled} onToggle={setBapEnabled} />}
-          {activeSection === "overlay-opns" && <OpnsPanel enabled={opnsEnabled} onToggle={setOpnsEnabled} />}
-          {activeSection === "overlay-bsv21" && <Bsv21Panel enabled={bsv21Enabled} onToggle={setBsv21Enabled} />}
-          {activeSection === "overlay-bsocial" && <BsocialPanel enabled={bsocialEnabled} onToggle={setBsocialEnabled} />}
-          {activeSection === "overlay-ordlock" && <OrdlockPanel enabled={ordlockEnabled} onToggle={setOrdlockEnabled} />}
-          {activeSection === "sync" && <SyncPanel />}
-          {activeSection === "auth" && <AuthPanel />}
-          {activeSection === "tuning" && <TuningPanel />}
+          {activeSection === "storage" && (
+            <StoragePanel
+              storeProvider={storeProvider} setStoreProvider={setStoreProvider}
+              storePath={storePath} setStorePath={setStorePath}
+              beefChain={beefChain} setBeefChain={setBeefChain}
+              pubsubProvider={pubsubProvider} setPubsubProvider={setPubsubProvider}
+              pubsubBuffer={pubsubBuffer} setPubsubBuffer={setPubsubBuffer}
+              pubsubRedisUrl={pubsubRedisUrl} setPubsubRedisUrl={setPubsubRedisUrl}
+              ordfsRedisUrl={ordfsRedisUrl} setOrdfsRedisUrl={setOrdfsRedisUrl}
+              walletDb={walletDb} setWalletDb={setWalletDb}
+              chaintracksPath={chaintracksPath} setChaintracksPath={setChaintracksPath}
+              arcadeDb={arcadeDb} setArcadeDb={setArcadeDb}
+            />
+          )}
+          {activeSection === "indexer" && (
+            <IndexerPanel
+              activeTags={activeTags} setActiveTags={setActiveTags}
+              verbose={verbose} setVerbose={setVerbose}
+              logLevel={logLevel} setLogLevel={setLogLevel}
+            />
+          )}
+          {activeSection === "overlays" && (
+            <OverlayEnginePanel
+              engineStorage={engineStorage} setEngineStorage={setEngineStorage}
+              engineStoragePath={engineStoragePath} setEngineStoragePath={setEngineStoragePath}
+              p2pEnabled={p2pEnabled} setP2pEnabled={setP2pEnabled}
+              p2pPort={p2pPort} setP2pPort={setP2pPort}
+              p2pDhtMode={p2pDhtMode} setP2pDhtMode={setP2pDhtMode}
+              bootstrapPeers={bootstrapPeers} setBootstrapPeers={setBootstrapPeers}
+            />
+          )}
+          {activeSection === "overlay-bap" && (
+            <BapPanel
+              enabled={bapEnabled} onToggle={setBapEnabled}
+              subId={bapSubId} setSubId={setBapSubId}
+              fromBlock={bapFromBlock} setFromBlock={setBapFromBlock}
+              concurrency={bapConcurrency} setConcurrency={setBapConcurrency}
+              batchSize={bapBatchSize} setBatchSize={setBapBatchSize}
+            />
+          )}
+          {activeSection === "overlay-opns" && (
+            <OpnsPanel
+              enabled={opnsEnabled} onToggle={setOpnsEnabled}
+              subId={opnsSubId} setSubId={setOpnsSubId}
+              fromBlock={opnsFromBlock} setFromBlock={setOpnsFromBlock}
+              concurrency={opnsConcurrency} setConcurrency={setOpnsConcurrency}
+              batchSize={opnsBatchSize} setBatchSize={setOpnsBatchSize}
+              paymailEnabled={paymailEnabled} setPaymailEnabled={setPaymailEnabled}
+            />
+          )}
+          {activeSection === "overlay-bsv21" && (
+            <Bsv21Panel
+              enabled={bsv21Enabled} onToggle={setBsv21Enabled}
+              subId={bsv21SubId} setSubId={setBsv21SubId}
+              fromBlock={bsv21FromBlock} setFromBlock={setBsv21FromBlock}
+              concurrency={bsv21Concurrency} setConcurrency={setBsv21Concurrency}
+              batchSize={bsv21BatchSize} setBatchSize={setBsv21BatchSize}
+              whitelist={bsv21Whitelist} setWhitelist={setBsv21Whitelist}
+              blacklist={bsv21Blacklist} setBlacklist={setBsv21Blacklist}
+            />
+          )}
+          {activeSection === "overlay-bsocial" && (
+            <BsocialPanel
+              enabled={bsocialEnabled} onToggle={setBsocialEnabled}
+              subId={bsocialSubId} setSubId={setBsocialSubId}
+              fromBlock={bsocialFromBlock} setFromBlock={setBsocialFromBlock}
+              concurrency={bsocialConcurrency} setConcurrency={setBsocialConcurrency}
+              batchSize={bsocialBatchSize} setBatchSize={setBsocialBatchSize}
+              mongoUrl={bsocialMongoUrl} setMongoUrl={setBsocialMongoUrl}
+            />
+          )}
+          {activeSection === "overlay-ordlock" && (
+            <OrdlockPanel
+              enabled={ordlockEnabled} onToggle={setOrdlockEnabled}
+              storagePath={ordlockStoragePath} setStoragePath={setOrdlockStoragePath}
+              fromBlock={ordlockFromBlock} setFromBlock={setOrdlockFromBlock}
+              concurrency={ordlockConcurrency} setConcurrency={setOrdlockConcurrency}
+              batchSize={ordlockBatchSize} setBatchSize={setOrdlockBatchSize}
+            />
+          )}
+          {activeSection === "sync" && (
+            <SyncPanel
+              jbUrl={jbUrl} setJbUrl={setJbUrl}
+              jbToken={jbToken} setJbToken={setJbToken}
+              indexerSubIds={indexerSubIds} setIndexerSubIds={setIndexerSubIds}
+              indexerFromBlock={indexerFromBlock} setIndexerFromBlock={setIndexerFromBlock}
+              indexerConcurrency={indexerConcurrency} setIndexerConcurrency={setIndexerConcurrency}
+              indexerBatchSize={indexerBatchSize} setIndexerBatchSize={setIndexerBatchSize}
+              indexerMempool={indexerMempool} setIndexerMempool={setIndexerMempool}
+              ownerSync={ownerSync} setOwnerSync={setOwnerSync}
+            />
+          )}
+          {activeSection === "auth" && (
+            <AuthPanel
+              authMode={authMode} setAuthMode={setAuthMode}
+              apiKey={apiKey} setApiKey={setApiKey}
+              sessionTTL={sessionTTL} setSessionTTL={setSessionTTL}
+            />
+          )}
+          {activeSection === "tuning" && (
+            <TuningPanel
+              defaultConcurrency={defaultConcurrency} setDefaultConcurrency={setDefaultConcurrency}
+              pageSize={pageSize} setPageSize={setPageSize}
+              pollDelay={pollDelay} setPollDelay={setPollDelay}
+            />
+          )}
         </div>
       </div>
     </div>

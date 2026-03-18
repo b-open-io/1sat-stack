@@ -107,6 +107,9 @@ func (r *Routes) Register(guardedGroup fiber.Router, publicGroup fiber.Router, a
 
 	guardedGroup.Post("/opns/crawl", r.handleTriggerOpnsCrawl)
 
+	guardedGroup.Get("/config", r.handleGetConfig)
+	guardedGroup.Put("/config", r.handleUpdateConfig)
+
 	dataRoutes := NewDataRoutes(r.store, r.logger)
 	dataRoutes.Register(guardedGroup.Group("/data"))
 
@@ -1163,6 +1166,83 @@ func (r *Routes) handleGetSetupConfig(c *fiber.Ctx) error {
 		ArcadePath:         *keys["arcade.path"],
 		ArcadeUrl:          *keys["arcade.url"],
 		MessageboxPath:     *keys["messagebox.path"],
+	})
+}
+
+// handleGetConfig returns all config store entries as a flat JSON object.
+// @Summary Get all config
+// @Description Returns all current config values from the config store
+// @Tags admin
+// @Produce json
+// @Success 200 {object} map[string]string "All config key-value pairs"
+// @Failure 500 {object} map[string]string "Internal server error"
+// @Security BearerAuth
+// @Router /admin/config [get]
+func (r *Routes) handleGetConfig(c *fiber.Ctx) error {
+	entries, err := r.configStore.List(c.Context(), "")
+	if err != nil {
+		r.logger.Error("failed to list config", "error", err)
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"error": "failed to list config",
+		})
+	}
+	if entries == nil {
+		entries = map[string]string{}
+	}
+	return c.JSON(entries)
+}
+
+// handleUpdateConfig writes config key-value pairs to the config store.
+// @Summary Update config
+// @Description Writes a flat JSON object of key-value pairs to the config store. Empty values delete the key.
+// @Tags admin
+// @Accept json
+// @Produce json
+// @Param body body map[string]string true "Config key-value pairs"
+// @Success 200 {object} map[string]interface{} "status and count of updated keys"
+// @Failure 400 {object} map[string]string "Bad request"
+// @Failure 500 {object} map[string]string "Internal server error"
+// @Security BearerAuth
+// @Router /admin/config [put]
+func (r *Routes) handleUpdateConfig(c *fiber.Ctx) error {
+	var updates map[string]string
+	if err := c.BodyParser(&updates); err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": "invalid request body",
+		})
+	}
+
+	ctx := c.Context()
+	var updated int
+
+	for key, value := range updates {
+		if key == "setup.complete" || strings.HasPrefix(key, "user:") {
+			r.logger.Warn("rejected config write to protected key", "key", key)
+			continue
+		}
+
+		if value == "" {
+			if err := r.configStore.Delete(ctx, key); err != nil {
+				r.logger.Error("failed to delete config key", "error", err, "key", key)
+				return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+					"error": "failed to delete config key: " + key,
+				})
+			}
+		} else {
+			if err := r.configStore.Set(ctx, key, value); err != nil {
+				r.logger.Error("failed to set config key", "error", err, "key", key)
+				return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+					"error": "failed to set config key: " + key,
+				})
+			}
+		}
+		updated++
+	}
+
+	r.logger.Info("config updated", "keys", updated)
+	return c.JSON(fiber.Map{
+		"status":  "ok",
+		"updated": updated,
 	})
 }
 

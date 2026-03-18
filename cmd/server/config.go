@@ -957,12 +957,12 @@ func (c *Config) Initialize(ctx context.Context, logger *slog.Logger) (*Services
 			return nil, fmt.Errorf("failed to create session manager: %w", err)
 		}
 
-		// Create auth middleware (requires authentication)
+		// Create auth middleware
 		svc.AuthMiddleware = auth.NewMiddleware(
 			walletSvc.Wallet,
 			sessionManager,
 			logger,
-			false, // AllowUnauthenticated = false
+			c.Auth.AllowUnauthenticated,
 			c.Auth.ApiKey,
 		)
 
@@ -1252,7 +1252,7 @@ func (c *Config) RegisterRoutes(app *fiber.App, svc *Services) {
 		guardedGroup := api.Group(prefix+"/api",
 			httputil.PrivateNoStoreMiddleware(),
 			svc.AuthMiddleware.Handler(),
-			auth.AdminGuard(svc.ConfigStore, slog.Default()),
+			auth.AdminGuard(svc.ConfigStore, c.Auth.AllowUnauthenticated, slog.Default()),
 		)
 		publicGroup := api.Group(prefix, httputil.PrivateNoStoreMiddleware())
 		svc.Admin.Routes.Register(guardedGroup, publicGroup, svc.AuthMiddleware.Handler())

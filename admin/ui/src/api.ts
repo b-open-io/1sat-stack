@@ -109,6 +109,21 @@ export async function checkAccess(): Promise<{ status: string; admin?: boolean }
   return res.json();
 }
 
+export async function getConfig(): Promise<Record<string, string>> {
+  const res = await apiFetch("/config");
+  if (!res.ok) throw new Error("Failed to load config");
+  return res.json();
+}
+
+export async function saveConfig(values: Record<string, string>): Promise<void> {
+  const res = await apiFetch("/config", {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(values),
+  });
+  if (!res.ok) throw new Error("Failed to save config");
+}
+
 export async function requestAccess(name: string): Promise<{ message: string }> {
   const url = `${SETUP_BASE}/request`;
   let res: Response;

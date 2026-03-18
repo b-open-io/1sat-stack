@@ -29,8 +29,13 @@ type AccessRequest struct {
 }
 
 // AdminGuard returns a Fiber middleware that restricts access to admin endpoints.
-func AdminGuard(cs config.Store, logger *slog.Logger) fiber.Handler {
+// In local mode (allowUnauthenticated=true), all requests pass through.
+func AdminGuard(cs config.Store, allowUnauthenticated bool, logger *slog.Logger) fiber.Handler {
 	return func(c *fiber.Ctx) error {
+		if allowUnauthenticated {
+			return c.Next()
+		}
+
 		if IsApiKeyAuth(c) {
 			return c.Next()
 		}
