@@ -1,5 +1,4 @@
 import { useState } from "react";
-import { useNavigate } from "react-router-dom";
 import { Eye, EyeOff, ChevronDown, ChevronRight, Check, Server, Laptop, Database, Link, HardDrive, Wallet } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -148,7 +147,6 @@ function SummaryRow({ label, value }: { label: string; value: string }) {
 }
 
 export default function SetupWizardPage() {
-  const navigate = useNavigate();
   const [step, setStep] = useState(1);
   const [showWif, setShowWif] = useState(false);
   const [completing, setCompleting] = useState(false);
@@ -250,7 +248,7 @@ export default function SetupWizardPage() {
         throw new Error(data.error || "Setup failed");
       }
 
-      navigate("/settings");
+      window.location.href = window.location.pathname.replace(/\/setup$/, "") || "/";
     } catch (e: any) {
       alert(e.message || "Failed to complete setup");
     } finally {
