@@ -38,21 +38,7 @@ func (l *LookupService) OutputAdmittedByTopic(ctx context.Context, payload *engi
 		return nil
 	}
 
-	score := types.ScoreFromTx(tx, txid)
-
-	_, err = l.ol.db.ExecContext(ctx,
-		`INSERT INTO listings (outpoint, origin, name, content_type, price, seller, score)
-		VALUES (?, ?, ?, ?, ?, ?, ?)
-		ON CONFLICT(outpoint) DO UPDATE SET
-			origin = excluded.origin,
-			name = excluded.name,
-			content_type = excluded.content_type,
-			price = excluded.price,
-			seller = excluded.seller,
-			score = excluded.score`,
-		outpoint.Bytes(), ld.origin.Bytes(), ld.name, ld.contentType, ld.price, ld.seller, score,
-	)
-	return err
+	return l.ol.UpsertListing(ctx, outpoint, ld, types.ScoreFromTx(tx, txid))
 }
 
 func (l *LookupService) OutputSpent(ctx context.Context, payload *engine.OutputSpent) error {
@@ -63,11 +49,7 @@ func (l *LookupService) OutputSpent(ctx context.Context, payload *engine.OutputS
 		}
 	}
 
-	_, err := l.ol.db.ExecContext(ctx,
-		`UPDATE listings SET spend_txid = ?, spend_type = ?, spend_score = ? WHERE outpoint = ?`,
-		payload.SpendingTxid[:], classifySpend(payload.UnlockingScript), spendScore, payload.Outpoint.Bytes(),
-	)
-	return err
+	return l.ol.MarkSpent(ctx, payload.Outpoint, payload.SpendingTxid, classifySpend(payload.UnlockingScript), spendScore)
 }
 
 func (l *LookupService) OutputNoLongerRetainedInHistory(ctx context.Context, outpoint *transaction.Outpoint, topic string) error {
@@ -75,8 +57,7 @@ func (l *LookupService) OutputNoLongerRetainedInHistory(ctx context.Context, out
 }
 
 func (l *LookupService) OutputEvicted(ctx context.Context, outpoint *transaction.Outpoint) error {
-	_, err := l.ol.db.ExecContext(ctx, `DELETE FROM listings WHERE outpoint = ?`, outpoint.Bytes())
-	return err
+	return l.ol.DeleteListing(ctx, outpoint)
 }
 
 func (l *LookupService) OutputBlockHeightUpdated(ctx context.Context, txid *chainhash.Hash, blockHeight uint32, blockIndex uint64) error {

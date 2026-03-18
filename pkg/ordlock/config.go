@@ -78,10 +78,7 @@ func (c *Config) Initialize(
 			return nil, fmt.Errorf("failed to get OrdLock topic storage: %w", err)
 		}
 
-		ol, err := New(ts.DB(), nil, logger)
-		if err != nil {
-			return nil, fmt.Errorf("failed to initialize ordlock: %w", err)
-		}
+		ol := New(ts.DB(), ts.TopicID(), nil, logger)
 
 		lookupSvc := NewLookupService(ol)
 		topicManager := &TopicManager{}
