@@ -23,6 +23,11 @@ import (
 	_ "github.com/b-open-io/1sat-stack/docs"
 )
 
+var (
+	Version   = "dev"
+	startTime = time.Now()
+)
+
 // @title 1Sat Stack API
 // @version 1.0
 // @description Composable BSV blockchain services API

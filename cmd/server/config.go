@@ -1318,7 +1318,7 @@ func (c *Config) RegisterRoutes(app *fiber.App, svc *Services) {
 	}
 
 	// Health check endpoint
-	api.Get("/health", handleHealth)
+	api.Get("/health", handleHealth(svc.Chaintracks))
 
 	// Capabilities endpoint - returns list of enabled services
 	api.Get("/capabilities", handleCapabilities(capabilities))
@@ -1329,15 +1329,26 @@ func (c *Config) RegisterRoutes(app *fiber.App, svc *Services) {
 
 // handleHealth returns the health status
 // @Summary Health check
-// @Description Returns the health status of the service
+// @Description Returns health status with version, uptime, and block height
 // @Tags system
 // @Produce json
-// @Success 200 {object} map[string]string "status: ok"
+// @Success 200 {object} map[string]interface{} "status, version, uptime, height"
 // @Router /health [get]
-func handleHealth(c *fiber.Ctx) error {
-	return c.JSON(fiber.Map{
-		"status": "ok",
-	})
+func handleHealth(ct chaintracks.Chaintracks) fiber.Handler {
+	return func(c *fiber.Ctx) error {
+		resp := fiber.Map{
+			"status":  "ok",
+			"version": Version,
+			"uptime":  int(time.Since(startTime).Seconds()),
+		}
+		if ct != nil {
+			height := ct.GetHeight(c.Context())
+			if height > 0 {
+				resp["height"] = height
+			}
+		}
+		return c.JSON(resp)
+	}
 }
 
 // handleCapabilities returns the list of enabled capabilities
