@@ -934,26 +934,13 @@ function BsocialPanel({
   );
 }
 
-interface OrdlockPanelProps {
-  enabled: boolean;
-  onToggle: (v: boolean) => void;
-  storagePath: string;
-  setStoragePath: (v: string) => void;
-  concurrency: string;
-  setConcurrency: (v: string) => void;
-  fromBlock: string;
-  setFromBlock: (v: string) => void;
-  batchSize: string;
-  setBatchSize: (v: string) => void;
-}
-
 function OrdlockPanel({
   enabled, onToggle,
-  storagePath, setStoragePath,
-  concurrency, setConcurrency,
+  subId, setSubId,
   fromBlock, setFromBlock,
+  concurrency, setConcurrency,
   batchSize, setBatchSize,
-}: OrdlockPanelProps) {
+}: OverlayPanelProps) {
   return (
     <div className="space-y-4">
       <PageHeader title="OrdLock" description="Ordinal lock listings — tracks inscribed satoshi market listings." />
@@ -970,8 +957,8 @@ function OrdlockPanel({
 
       <SectionCard>
         <SectionHeading>Configuration</SectionHeading>
-        <FieldRow label="Storage path">
-          <Input value={storagePath} onChange={(e) => setStoragePath(e.target.value)} className="font-mono text-xs h-8" />
+        <FieldRow label="JungleBus subscription ID">
+          <Input value={subId} onChange={(e) => setSubId(e.target.value)} placeholder="sub_..." className="font-mono text-xs h-8" />
         </FieldRow>
         <div className="grid grid-cols-3 gap-3">
           <FieldRow label="From block">
@@ -1335,7 +1322,7 @@ export default function SettingsPage() {
   const [bsocialMongoUrl, setBsocialMongoUrl] = useState("");
 
   // OrdLock overlay
-  const [ordlockStoragePath, setOrdlockStoragePath] = useState("~/.1sat/store");
+  const [ordlockSubId, setOrdlockSubId] = useState("");
   const [ordlockFromBlock, setOrdlockFromBlock] = useState("0");
   const [ordlockConcurrency, setOrdlockConcurrency] = useState("4");
   const [ordlockBatchSize, setOrdlockBatchSize] = useState("100");
@@ -1437,7 +1424,7 @@ export default function SettingsPage() {
         setBsocialMongoUrl(s("overlay.bsocial.mongo_url", ""));
 
         // OrdLock
-        setOrdlockStoragePath(s("overlay.ordlock.storage_path", "~/.1sat/store"));
+        setOrdlockSubId(s("overlay.ordlock.sub_id", ""));
         setOrdlockFromBlock(s("overlay.ordlock.from_block", "0"));
         setOrdlockConcurrency(s("overlay.ordlock.concurrency", "4"));
         setOrdlockBatchSize(s("overlay.ordlock.batch_size", "100"));
@@ -1574,7 +1561,7 @@ export default function SettingsPage() {
         "overlay.bsocial.mongo_url": bsocialMongoUrl,
 
         // OrdLock
-        "overlay.ordlock.storage_path": ordlockStoragePath,
+        "overlay.ordlock.sub_id": ordlockSubId,
         "overlay.ordlock.from_block": ordlockFromBlock,
         "overlay.ordlock.concurrency": ordlockConcurrency,
         "overlay.ordlock.batch_size": ordlockBatchSize,
@@ -1795,7 +1782,7 @@ export default function SettingsPage() {
           {activeSection === "overlay-ordlock" && (
             <OrdlockPanel
               enabled={ordlockEnabled} onToggle={setOrdlockEnabled}
-              storagePath={ordlockStoragePath} setStoragePath={setOrdlockStoragePath}
+              subId={ordlockSubId} setSubId={setOrdlockSubId}
               fromBlock={ordlockFromBlock} setFromBlock={setOrdlockFromBlock}
               concurrency={ordlockConcurrency} setConcurrency={setOrdlockConcurrency}
               batchSize={ordlockBatchSize} setBatchSize={setOrdlockBatchSize}

@@ -91,7 +91,20 @@ func main() {
 	// Parse command line flags
 	configPath := flag.String("config", "", "Path to config file")
 	logLevel := flag.String("log-level", "", "Log level override (debug, info, warn, error)")
+	dataDir := flag.String("data-dir", "", "Base directory for all data files (default: ~/.1sat)")
 	flag.Parse()
+
+	// Resolve data directory: flag > env > default
+	resolvedDataDir := *dataDir
+	if resolvedDataDir == "" {
+		resolvedDataDir = os.Getenv("ONESAT_DATA_DIR")
+	}
+	if resolvedDataDir == "" {
+		resolvedDataDir = "~/.1sat"
+	}
+	if home, err := os.UserHomeDir(); err == nil && len(resolvedDataDir) >= 2 && resolvedDataDir[:2] == "~/" {
+		resolvedDataDir = filepath.Join(home, resolvedDataDir[2:])
+	}
 
 	// Load configuration first (with basic logger for errors)
 	cfg, err := LoadConfig(*configPath)
@@ -99,6 +112,7 @@ func main() {
 		slog.Error("failed to load config", "error", err)
 		os.Exit(1)
 	}
+	cfg.DataDir = resolvedDataDir
 
 	// Create logger from config, with command-line override if provided
 	log := cfg.CreateLogger(*logLevel)
@@ -106,11 +120,7 @@ func main() {
 
 	// Resolve server private key if wallet is enabled but no key configured
 	if cfg.Wallet.Mode != wallet.ModeDisabled && cfg.Wallet.ServerPrivateKey == "" {
-		keyDir := filepath.Dir(cfg.Store.Badger.Path)
-		if keyDir == "" || keyDir == "." {
-			keyDir = "~/.1sat"
-		}
-		wif, err := wallet.ResolveServerKey(filepath.Join(keyDir, "server.key"), log)
+		wif, err := wallet.ResolveServerKey(filepath.Join(resolvedDataDir, "server.key"), log)
 		if err != nil {
 			log.Error("failed to resolve server private key", "error", err)
 			os.Exit(1)

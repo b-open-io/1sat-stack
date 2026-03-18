@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -59,6 +60,11 @@ import (
 
 // Config holds the complete server configuration
 type Config struct {
+	// DataDir is the base directory for all data files.
+	// Resolved at startup from --data-dir flag, ONESAT_DATA_DIR env, or default ~/.1sat/
+	// Not a Viper field — set directly before Initialize.
+	DataDir string `mapstructure:"-"`
+
 	// Network: "main" or "test"
 	Network string `mapstructure:"network"`
 
@@ -347,73 +353,296 @@ func (c *Config) SetDefaults(v *viper.Viper) {
 	c.MessageBox.SetDefaults(v, "messagebox")
 }
 
-// applyRuntimeConfig overrides Config fields with values from the config store.
-// Only applies values that are actually set — empty strings are ignored.
+// resolvePath resolves a path relative to the data dir.
+// Absolute paths are returned as-is. Empty strings return empty.
+// Relative paths are joined with DataDir.
+func (c *Config) resolvePath(p string) string {
+	if p == "" {
+		return ""
+	}
+	if filepath.IsAbs(p) {
+		return p
+	}
+	return filepath.Join(c.DataDir, p)
+}
+
+// applyRuntimeConfig populates Config fields from the config store.
+// The config store is the sole source of truth for all operational settings.
+// Only values actually present in the store are applied — zero values from
+// missing keys leave the Viper defaults in place.
 func (c *Config) applyRuntimeConfig(rc *configpkg.RuntimeConfig) {
 	if !rc.SetupComplete {
 		return
 	}
 
-	// Auth mode
+	// Server
+	if rc.ServerPort > 0 {
+		c.Server.Port = rc.ServerPort
+	}
+	if rc.ServerHost != "" {
+		c.Server.Host = rc.ServerHost
+	}
+	if rc.ServerBasePath != "" {
+		c.Server.BasePath = rc.ServerBasePath
+	}
+	if rc.ServerBodyLimit != "" {
+		c.Server.BodyLimit = rc.ServerBodyLimit
+	}
+
+	// Network
+	if rc.Network != "" {
+		c.Network = rc.Network
+	}
+
+	// Logging
+	if rc.LogLevel != "" {
+		c.Logging.Level = rc.LogLevel
+	}
+
+	// Auth
 	if rc.AuthMode == "local" {
 		c.Auth.AllowUnauthenticated = true
 	} else if rc.AuthMode == "authenticated" {
 		c.Auth.AllowUnauthenticated = false
 	}
-
-	// Overlay toggles
-	if rc.BAPEnabled {
-		c.BAP.Mode = "embedded"
-		c.Overlay.Mode = "embedded"
+	if rc.AuthAPIKey != "" {
+		c.Auth.ApiKey = rc.AuthAPIKey
 	}
-	if rc.OPNSEnabled {
-		c.OPNS.Mode = "embedded"
-		c.Overlay.Mode = "embedded"
-	}
-	if rc.BSV21Enabled {
-		c.BSV21.Mode = "embedded"
-		c.Overlay.Mode = "embedded"
-	}
-	if rc.BSocialEnabled {
-		c.BSocial.Mode = "embedded"
-		c.Overlay.Mode = "embedded"
-	}
-	if rc.OrdLockEnabled {
-		c.OrdLock.Mode = "embedded"
-		c.Overlay.Mode = "embedded"
+	if rc.AuthSessionTTL != "" {
+		c.Auth.SessionTTL = rc.AuthSessionTTL
 	}
 
-	// Wallet database overrides
+	// Store
+	if rc.StoreMode != "" {
+		c.Store.Mode = rc.StoreMode
+	}
+	if rc.StoreProvider != "" {
+		c.Store.Provider = rc.StoreProvider
+	}
+	if rc.StoreBadgerPath != "" {
+		c.Store.Badger.Path = c.resolvePath(rc.StoreBadgerPath)
+	}
+	if rc.StoreRedisURL != "" {
+		c.Store.Redis.URL = rc.StoreRedisURL
+	}
+
+	// Wallet
+	if rc.WalletMode != "" {
+		c.Wallet.Mode = rc.WalletMode
+	}
+	if rc.WalletName != "" {
+		c.Wallet.Name = rc.WalletName
+	}
 	if rc.WalletDBEngine != "" {
 		c.Wallet.DB.Engine = defs.DBType(rc.WalletDBEngine)
 	}
 	if rc.WalletSQLitePath != "" {
-		c.Wallet.DB.SQLite.ConnectionString = rc.WalletSQLitePath
+		c.Wallet.DB.SQLite.ConnectionString = c.resolvePath(rc.WalletSQLitePath)
 	}
 	if rc.WalletPostgresURL != "" {
 		c.Wallet.PostgresConnectionString = rc.WalletPostgresURL
 	}
 
-	// Chaintracks overrides
+	// Chaintracks
 	if rc.ChaintracksMode != "" {
 		c.Chaintracks.Mode = chaintracksconfig.Mode(rc.ChaintracksMode)
 	}
 	if rc.ChaintracksPath != "" {
-		c.Chaintracks.StoragePath = rc.ChaintracksPath
+		c.Chaintracks.StoragePath = c.resolvePath(rc.ChaintracksPath)
+	}
+	if rc.ChaintracksURL != "" {
+		c.Chaintracks.URL = rc.ChaintracksURL
 	}
 
-	// Arcade overrides
+	// Arcade
 	if rc.ArcadeMode != "" {
 		c.Arcade.Mode = arcadeconfig.Mode(rc.ArcadeMode)
 	}
 	if rc.ArcadePath != "" {
-		c.Arcade.StoragePath = rc.ArcadePath
-		c.Arcade.Database.SQLitePath = rc.ArcadePath
+		resolved := c.resolvePath(rc.ArcadePath)
+		c.Arcade.StoragePath = resolved
+		c.Arcade.Database.SQLitePath = resolved
 	}
 
-	// MessageBox path override
-	if rc.MessageBoxPath != "" {
-		c.MessageBox.DBPath = rc.MessageBoxPath
+	// JungleBus
+	if rc.JungleBusURL != "" {
+		c.JungleBus.URL = rc.JungleBusURL
+	}
+	if rc.JungleBusToken != "" {
+		c.JungleBus.Token = rc.JungleBusToken
+	}
+
+	// Indexer
+	if rc.IndexerMode != "" {
+		c.Indexer.Mode = rc.IndexerMode
+	}
+	if rc.IndexerSyncEnabled {
+		c.Indexer.Sync.Enabled = true
+	}
+	if rc.IndexerSyncSubscriptionIDs != "" {
+		c.Indexer.Sync.SubscriptionIDs = strings.Split(rc.IndexerSyncSubscriptionIDs, ",")
+	}
+	if rc.IndexerSyncFromBlock > 0 {
+		c.Indexer.Sync.FromBlock = rc.IndexerSyncFromBlock
+	}
+	if rc.IndexerSyncConcurrency > 0 {
+		c.Indexer.Sync.Concurrency = rc.IndexerSyncConcurrency
+	}
+	if rc.IndexerSyncBatchSize > 0 {
+		c.Indexer.Sync.BatchSize = rc.IndexerSyncBatchSize
+	}
+	if rc.IndexerSyncMempool {
+		c.Indexer.Sync.EnableMempool = true
+	}
+
+	// Overlay engine (shared)
+	if rc.OverlayStoragePath != "" {
+		c.Overlay.StoragePath = c.resolvePath(rc.OverlayStoragePath)
+	}
+	if rc.OverlayStorageBackend != "" {
+		c.Overlay.StorageBackend = rc.OverlayStorageBackend
+	}
+	if rc.OverlayP2PEnabled {
+		c.Overlay.P2P.Enabled = true
+	}
+	if rc.OverlayP2PPort != "" {
+		if port, err := strconv.Atoi(rc.OverlayP2PPort); err == nil {
+			c.Overlay.P2P.Port = port
+		}
+	}
+	if rc.OverlayP2PDHTMode != "" {
+		c.Overlay.P2P.DHTMode = rc.OverlayP2PDHTMode
+	}
+	if rc.OverlayP2PBootstrapPeers != "" {
+		c.Overlay.P2P.BootstrapPeers = strings.Split(rc.OverlayP2PBootstrapPeers, ",")
+	}
+
+	// BAP overlay
+	if rc.BAPEnabled {
+		c.BAP.Mode = "embedded"
+		c.Overlay.Mode = "embedded"
+		if c.BAP.Sync == nil {
+			c.BAP.Sync = &overlay.OverlaySyncConfig{}
+		}
+		if rc.BAPSyncSubID != "" {
+			c.BAP.Sync.SubscriptionID = rc.BAPSyncSubID
+			c.BAP.Sync.Enabled = true
+		}
+		if rc.BAPSyncFromBlock > 0 {
+			c.BAP.Sync.FromBlock = rc.BAPSyncFromBlock
+		}
+		if rc.BAPSyncConcurrency > 0 {
+			c.BAP.Sync.Concurrency = rc.BAPSyncConcurrency
+		}
+		if rc.BAPSyncBatchSize > 0 {
+			c.BAP.Sync.BatchSize = rc.BAPSyncBatchSize
+		}
+	}
+
+	// BSocial overlay
+	if rc.BSocialEnabled {
+		c.BSocial.Mode = "embedded"
+		c.Overlay.Mode = "embedded"
+		if c.BSocial.Sync == nil {
+			c.BSocial.Sync = &overlay.OverlaySyncConfig{}
+		}
+		if rc.BSocialSyncSubID != "" {
+			c.BSocial.Sync.SubscriptionID = rc.BSocialSyncSubID
+			c.BSocial.Sync.Enabled = true
+		}
+		if rc.BSocialSyncFromBlock > 0 {
+			c.BSocial.Sync.FromBlock = rc.BSocialSyncFromBlock
+		}
+		if rc.BSocialSyncConcurrency > 0 {
+			c.BSocial.Sync.Concurrency = rc.BSocialSyncConcurrency
+		}
+		if rc.BSocialSyncBatchSize > 0 {
+			c.BSocial.Sync.BatchSize = rc.BSocialSyncBatchSize
+		}
+	}
+
+	// OPNS overlay
+	if rc.OPNSEnabled {
+		c.OPNS.Mode = "embedded"
+		c.Overlay.Mode = "embedded"
+		if rc.OPNSCrawlConcurrency > 0 {
+			c.OPNS.Crawl.Concurrency = rc.OPNSCrawlConcurrency
+		}
+	}
+
+	// OrdLock overlay
+	if rc.OrdLockEnabled {
+		c.OrdLock.Mode = "embedded"
+		c.Overlay.Mode = "embedded"
+		if c.OrdLock.Sync == nil {
+			c.OrdLock.Sync = &overlay.OverlaySyncConfig{}
+		}
+		if rc.OrdLockSyncSubID != "" {
+			c.OrdLock.Sync.SubscriptionID = rc.OrdLockSyncSubID
+			c.OrdLock.Sync.Enabled = true
+		}
+		if rc.OrdLockSyncFromBlock > 0 {
+			c.OrdLock.Sync.FromBlock = rc.OrdLockSyncFromBlock
+		}
+		if rc.OrdLockSyncConcurrency > 0 {
+			c.OrdLock.Sync.Concurrency = rc.OrdLockSyncConcurrency
+		}
+		if rc.OrdLockSyncBatchSize > 0 {
+			c.OrdLock.Sync.BatchSize = rc.OrdLockSyncBatchSize
+		}
+	}
+
+	// BSV21
+	if rc.BSV21Enabled {
+		c.BSV21.Mode = "embedded"
+		c.Overlay.Mode = "embedded"
+		if c.BSV21.Sync == nil {
+			c.BSV21.Sync = &bsv21.SyncConfig{}
+		}
+		if rc.BSV21SyncSubID != "" {
+			c.BSV21.Sync.SubscriptionID = rc.BSV21SyncSubID
+			c.BSV21.Sync.Enabled = true
+		}
+		if rc.BSV21SyncFromBlock > 0 {
+			c.BSV21.Sync.FromBlock = rc.BSV21SyncFromBlock
+		}
+		if rc.BSV21SyncBatchSize > 0 {
+			c.BSV21.Sync.BatchSize = rc.BSV21SyncBatchSize
+		}
+	}
+
+	// ORDFS
+	if rc.ORDFSEnabled {
+		c.ORDFS.Enabled = true
+	}
+	if rc.ORDFSRedisURL != "" {
+		c.ORDFS.Redis.URL = rc.ORDFSRedisURL
+	}
+
+	// Owner
+	if rc.OwnerMode != "" {
+		c.Owner.Mode = rc.OwnerMode
+	}
+
+	// Paymail
+	if rc.PaymailMode != "" {
+		c.Paymail.Mode = rc.PaymailMode
+	}
+	if rc.PaymailDBPath != "" {
+		c.Paymail.DBPath = c.resolvePath(rc.PaymailDBPath)
+	}
+
+	// MessageBox
+	if rc.MessageBoxMode != "" {
+		c.MessageBox.Mode = rc.MessageBoxMode
+	}
+	if rc.MessageBoxDBPath != "" {
+		c.MessageBox.DBPath = c.resolvePath(rc.MessageBoxDBPath)
+	}
+
+	// MongoDB
+	if rc.MongoDBURL != "" {
+		c.MongoDB.URL = rc.MongoDBURL
 	}
 }
 
@@ -436,16 +665,8 @@ func (c *Config) Initialize(ctx context.Context, logger *slog.Logger) (*Services
 	logger.Info("store initialized", "duration", time.Since(start).Round(time.Millisecond))
 
 	// Initialize config store (admin data, users, settings)
-	// Place config.db alongside the data store (derived from store.badger.path parent dir)
 	start = time.Now()
-	configDBDir := filepath.Dir(c.Store.Badger.Path)
-	if configDBDir == "" || configDBDir == "." {
-		configDBDir = "~/.1sat"
-	}
-	if home, err := os.UserHomeDir(); err == nil && strings.HasPrefix(configDBDir, "~/") {
-		configDBDir = filepath.Join(home, configDBDir[2:])
-	}
-	configDBPath := filepath.Join(configDBDir, "config.db")
+	configDBPath := filepath.Join(c.DataDir, "config.db")
 	configStore, err := configpkg.NewSQLiteStore(configDBPath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to initialize config store: %w", err)
