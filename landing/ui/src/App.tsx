@@ -7,13 +7,28 @@ import {
   isConnected,
 } from "@/lib/wallet";
 
-const OVERLAY_MAP: Record<string, string> = {
+const DISPLAY_NAMES: Record<string, string> = {
   bsv21: "BSV21 Tokens",
   bap: "BAP Identity",
   opns: "OPNS Domains",
   market: "Marketplace",
   bsocial: "BSocial",
+  beef: "BEEF Storage",
+  txo: "TXO Index",
+  ordfs: "ORDFS",
+  indexer: "Indexer",
+  chaintracks: "Chaintracks",
+  arcade: "Arcade",
+  wallet: "Wallet",
+  paymail: "Paymail",
+  messagebox: "MessageBox",
+  pubsub: "PubSub",
+  admin: "Admin",
+  sweep: "Sweep",
+  owner: "Owner Sync",
 };
+
+const OVERLAYS = new Set(["bsv21", "bap", "opns", "market", "bsocial"]);
 
 function formatUptime(seconds?: number): string {
   if (seconds == null) return "---";
@@ -69,9 +84,8 @@ export default function App() {
     }
   }, [connected]);
 
-  const activeOverlays = overlays
-    ? overlays.filter((c) => c in OVERLAY_MAP)
-    : null;
+  const activeOverlays = overlays?.filter((c) => OVERLAYS.has(c)) ?? null;
+  const coreServices = overlays?.filter((c) => !OVERLAYS.has(c)) ?? null;
 
   return (
     <div className="max-w-3xl mx-auto px-6 py-8">
@@ -123,7 +137,30 @@ export default function App() {
         </div>
       </div>
 
-      {/* Active Overlays */}
+      {/* Capabilities */}
+      <div className="py-4 border-b border-[var(--color-border)]">
+        <div className="text-xs text-[var(--color-text-muted)] mb-2">
+          ├─ services
+        </div>
+        {overlays === null ? (
+          <div className="text-sm text-[var(--color-text-secondary)]">
+            loading...
+          </div>
+        ) : (
+          <div className="flex flex-wrap gap-x-4 gap-y-1 text-sm">
+            {coreServices!.map((key) => (
+              <div key={key} className="flex items-center gap-1.5">
+                <span className="text-[var(--color-status-green)]">●</span>
+                <span className="text-[var(--color-text-secondary)]">
+                  {DISPLAY_NAMES[key] ?? key}
+                </span>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* Overlays */}
       <div className="py-4 border-b border-[var(--color-border)]">
         <div className="text-xs text-[var(--color-text-muted)] mb-2">
           ├─ overlays
@@ -142,7 +179,7 @@ export default function App() {
               <div key={key} className="flex items-center gap-2 text-sm">
                 <span className="text-[var(--color-status-green)]">●</span>
                 <span className="text-[var(--color-text-primary)]">
-                  {OVERLAY_MAP[key]}
+                  {DISPLAY_NAMES[key] ?? key}
                 </span>
                 <span className="text-[var(--color-text-muted)]">{key}</span>
               </div>
