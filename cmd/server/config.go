@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/b-open-io/1sat-stack/admin"
+	"github.com/b-open-io/1sat-stack/landing"
 	"github.com/b-open-io/1sat-stack/sweep"
 	"github.com/b-open-io/1sat-stack/pkg/auth"
 	"github.com/b-open-io/1sat-stack/pkg/bap"
@@ -122,6 +123,9 @@ type Config struct {
 
 	// Sweep UI
 	Sweep sweep.Config `mapstructure:"sweep"`
+
+	// Landing page
+	Landing landing.Config `mapstructure:"landing"`
 
 	// Wallet service
 	Wallet wallet.Config `mapstructure:"wallet"`
@@ -243,6 +247,7 @@ type Services struct {
 	Own        *owner.Services
 	Admin      *admin.Services
 	Sweep      *sweep.Services
+	Landing    *landing.Services
 	Wallet     *wallet.Services
 	Paymail    *paymail.Services
 	MessageBox *messagebox.Services
@@ -335,6 +340,7 @@ func (c *Config) SetDefaults(v *viper.Viper) {
 	c.Owner.SetDefaults(v, "owner")
 	c.Admin.SetDefaults(v, "admin")
 	c.Sweep.SetDefaults(v, "sweep")
+	c.Landing.SetDefaults(v, "landing")
 	c.Wallet.SetDefaults(v, "wallet")
 	c.Auth.SetDefaults(v, "auth")
 	c.Paymail.SetDefaults(v, "paymail")
@@ -911,6 +917,13 @@ func (c *Config) Initialize(ctx context.Context, logger *slog.Logger) (*Services
 		svc.Sweep = sweepSvc
 	}
 
+	// Initialize Landing page
+	landingSvc, err := c.Landing.Initialize(ctx, logger)
+	if err != nil {
+		return nil, fmt.Errorf("landing init: %w", err)
+	}
+	svc.Landing = landingSvc
+
 	// Initialize Wallet service
 	if c.Wallet.Mode != wallet.ModeDisabled && c.Wallet.Mode != "" {
 		walletDeps := &wallet.InitializeDeps{
@@ -1325,6 +1338,18 @@ func (c *Config) RegisterRoutes(app *fiber.App, svc *Services) {
 
 	// Setup API documentation routes
 	registerDocsRoutes(app)
+
+	// Register Landing page routes (no auth required)
+	// MUST be last — the /* wildcard would catch all other routes if registered earlier
+	if svc.Landing != nil && svc.Landing.Routes != nil {
+		prefix := c.Landing.Routes.Prefix
+		if prefix == "" {
+			prefix = "/"
+		}
+		landingGroup := api.Group(prefix)
+		svc.Landing.Routes.Register(landingGroup)
+		slog.Debug("registered landing routes", "prefix", prefix)
+	}
 }
 
 // handleHealth returns the health status

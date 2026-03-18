@@ -9,6 +9,9 @@ echo "Building admin UI..."
 echo "Building sweep UI..."
 (cd sweep/ui && bun install && bun run build)
 
+echo "Building landing UI..."
+(cd landing/ui && bun install && bun run build)
+
 echo "Building server..."
 go build -o server ./cmd/server
 
