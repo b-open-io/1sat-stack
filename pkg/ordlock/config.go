@@ -2,32 +2,25 @@ package ordlock
 
 import (
 	"context"
-	"database/sql"
 	"fmt"
 	"log/slog"
-	"os"
-	"path/filepath"
 
-	"github.com/b-open-io/1sat-stack/pkg/beef"
 	"github.com/b-open-io/1sat-stack/pkg/overlay"
-	"github.com/b-open-io/1sat-stack/pkg/pubsub"
-	"github.com/b-open-io/1sat-stack/pkg/store"
-	"github.com/b-open-io/1sat-stack/pkg/txo"
-	"github.com/b-open-io/1sat-stack/pkg/worker"
+	"github.com/bsv-blockchain/go-overlay-services/pkg/core/engine"
 	"github.com/spf13/viper"
 )
 
 const (
 	ModeDisabled = "disabled"
 	ModeEmbedded = "embedded"
+	TopicName    = "tm_ordlock"
 	QueueName    = "ordlock"
 )
 
 type Config struct {
-	Mode        string       `mapstructure:"mode"`
-	StoragePath string       `mapstructure:"storage_path"`
-	Concurrency int          `mapstructure:"concurrency"`
-	Routes      RoutesConfig `mapstructure:"routes"`
+	Mode   string                     `mapstructure:"mode"`
+	Sync   *overlay.OverlaySyncConfig `mapstructure:"sync"`
+	Routes RoutesConfig               `mapstructure:"routes"`
 }
 
 type RoutesConfig struct {
@@ -42,24 +35,30 @@ func (c *Config) SetDefaults(v *viper.Viper, prefix string) {
 	}
 
 	v.SetDefault(p+"mode", ModeDisabled)
-	v.SetDefault(p+"storage_path", "~/.1sat/ordlock")
-	v.SetDefault(p+"concurrency", 8)
+	v.SetDefault(p+"sync.enabled", false)
+	v.SetDefault(p+"sync.subscription_id", "")
+	v.SetDefault(p+"sync.queue_name", QueueName)
+	v.SetDefault(p+"sync.from_block", 575000)
+	v.SetDefault(p+"sync.concurrency", 8)
+	v.SetDefault(p+"sync.resolve_dependencies", true)
 	v.SetDefault(p+"routes.enabled", true)
 	v.SetDefault(p+"routes.prefix", "/market")
 }
 
 type Services struct {
-	OrdLock *OrdLock
-	Worker  *worker.Worker
-	Routes  *Routes
+	Engine        *engine.Engine
+	Lookup        *LookupService
+	TopicManager  *TopicManager
+	OrdLock       *OrdLock
+	Sync          *overlay.OverlaySync
+	Routes        *Routes
+	OverlayRoutes *overlay.Routes
 }
 
 func (c *Config) Initialize(
 	ctx context.Context,
 	logger *slog.Logger,
-	beefStorage *beef.Storage,
-	kvStore store.Store,
-	ps pubsub.PubSub,
+	deps *overlay.ModuleDeps,
 ) (*Services, error) {
 	if c.Mode == ModeDisabled {
 		return nil, nil
@@ -71,60 +70,40 @@ func (c *Config) Initialize(
 
 	switch c.Mode {
 	case ModeEmbedded:
-		storagePath := c.StoragePath
-		if len(storagePath) > 1 && storagePath[:2] == "~/" {
-			home, _ := os.UserHomeDir()
-			storagePath = filepath.Join(home, storagePath[2:])
+		if deps == nil || deps.Factory == nil {
+			return nil, fmt.Errorf("overlay ModuleDeps with Factory is required for OrdLock")
 		}
-		if err := os.MkdirAll(storagePath, 0755); err != nil {
-			return nil, fmt.Errorf("failed to create ordlock storage dir: %w", err)
+		ts, err := deps.Factory(TopicName)
+		if err != nil {
+			return nil, fmt.Errorf("failed to get OrdLock topic storage: %w", err)
 		}
 
-		dbPath := filepath.Join(storagePath, "listings.db")
-		db, err := sql.Open("sqlite3", dbPath+"?_journal_mode=WAL&_busy_timeout=5000&_synchronous=NORMAL")
+		ol, err := New(ts.DB(), nil, logger)
 		if err != nil {
-			return nil, fmt.Errorf("failed to open ordlock database: %w", err)
-		}
-
-		ol, err := New(db, beefStorage, logger)
-		if err != nil {
-			db.Close()
 			return nil, fmt.Errorf("failed to initialize ordlock: %w", err)
 		}
 
-		svc := &Services{OrdLock: ol}
+		lookupSvc := NewLookupService(ol)
+		topicManager := &TopicManager{}
 
-		concurrency := c.Concurrency
-		if concurrency <= 0 {
-			concurrency = 8
-		}
-		queueKey := string(txo.KeyQueue(QueueName))
+		eng := overlay.NewModuleEngine(deps,
+			map[string]engine.TopicManager{TopicName: topicManager},
+			map[string]engine.LookupService{"ordlock": lookupSvc},
+		)
 
-		svc.Worker = worker.New(&worker.Config{
-			Store:   kvStore,
-			Key:     queueKey,
-			Limiter: make(chan struct{}, concurrency),
-			Handler: ol.Process,
-			Logger:  logger,
-		})
-
-		if ps != nil {
-			bridge := overlay.NewEventBridge(&overlay.EventBridgeConfig{
-				PubSub:   ps,
-				Store:    kvStore,
-				Patterns: []string{"ordlock", "spend:ordlock"},
-				QueueFunc: func(ev pubsub.Event) string {
-					return queueKey
-				},
-				Logger: logger,
-			})
-			if err := bridge.Start(ctx); err != nil {
-				logger.Error("failed to start OrdLock event bridge", "error", err)
-			}
+		svc := &Services{
+			Engine:       eng,
+			Lookup:       lookupSvc,
+			TopicManager: topicManager,
+			OrdLock:      ol,
 		}
 
 		if c.Routes.Enabled {
 			svc.Routes = NewRoutes(ol, logger)
+		}
+
+		if deps.RoutesConfig != nil && deps.RoutesConfig.Enabled {
+			svc.OverlayRoutes = overlay.NewRoutes(eng, deps.RoutesConfig, logger)
 		}
 
 		return svc, nil
@@ -134,15 +113,9 @@ func (c *Config) Initialize(
 	}
 }
 
-func (s *Services) Start(ctx context.Context) {
-	if s.Worker != nil {
-		go s.Worker.Start(ctx)
-	}
-}
-
 func (s *Services) Close() error {
-	if s.Worker != nil {
-		s.Worker.Stop()
+	if s.Sync != nil {
+		s.Sync.Stop()
 	}
 	if s.OrdLock != nil {
 		return s.OrdLock.Close()

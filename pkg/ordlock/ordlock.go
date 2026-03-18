@@ -3,17 +3,12 @@ package ordlock
 import (
 	"context"
 	"database/sql"
-	"encoding/json"
 	"fmt"
 	"log/slog"
 	"strings"
 
-	"github.com/b-open-io/1sat-stack/pkg/beef"
 	"github.com/b-open-io/1sat-stack/pkg/ordfs"
 	"github.com/b-open-io/1sat-stack/pkg/txo"
-	"github.com/b-open-io/1sat-stack/pkg/types"
-	"github.com/bitcoin-sv/go-templates/template/inscription"
-	"github.com/bitcoin-sv/go-templates/template/ordlock"
 	"github.com/bsv-blockchain/go-sdk/chainhash"
 	"github.com/bsv-blockchain/go-sdk/script"
 	"github.com/bsv-blockchain/go-sdk/transaction"
@@ -40,116 +35,24 @@ CREATE INDEX IF NOT EXISTS idx_listings_sales ON listings(spend_type, spend_scor
 `
 
 type OrdLock struct {
-	db          *sql.DB
-	beefStorage *beef.Storage
-	ordfs       *ordfs.Ordfs
-	logger      *slog.Logger
+	db     *sql.DB
+	ordfs  *ordfs.Ordfs
+	logger *slog.Logger
 }
 
-func New(db *sql.DB, beefStorage *beef.Storage, logger *slog.Logger) (*OrdLock, error) {
+func New(db *sql.DB, ordfsClient *ordfs.Ordfs, logger *slog.Logger) (*OrdLock, error) {
 	if _, err := db.Exec(schema); err != nil {
 		return nil, fmt.Errorf("failed to create listings schema: %w", err)
 	}
 	return &OrdLock{
-		db:          db,
-		beefStorage: beefStorage,
-		logger:      logger,
+		db:     db,
+		ordfs:  ordfsClient,
+		logger: logger,
 	}, nil
-}
-
-func (o *OrdLock) SetOrdfs(ordfs *ordfs.Ordfs) {
-	o.ordfs = ordfs
 }
 
 func (o *OrdLock) Close() error {
 	return o.db.Close()
-}
-
-// Process handles a single txid from the queue. The member is a raw 32-byte
-// little-endian txid (chainhash format) matching the JungleBus subscriber convention.
-func (o *OrdLock) Process(ctx context.Context, member string, score float64) error {
-	txid, err := chainhash.NewHash([]byte(member))
-	if err != nil {
-		return fmt.Errorf("invalid txid (len=%d): %w", len(member), err)
-	}
-
-	tx, err := o.beefStorage.BuildFullBeefTx(ctx, txid)
-	if err != nil {
-		return fmt.Errorf("failed to build BEEF for %s: %w", txid.String(), err)
-	}
-
-	txScore := types.ScoreFromTx(tx, txid)
-
-	// Scan outputs for new listings
-	for vout, output := range tx.Outputs {
-		if output.Satoshis != 1 {
-			continue
-		}
-		outpoint := &transaction.Outpoint{Txid: *txid, Index: uint32(vout)}
-		ld := o.extractListingData(ctx, outpoint, output.LockingScript)
-		if ld == nil {
-			continue
-		}
-
-		if _, err := o.db.ExecContext(ctx,
-			`INSERT INTO listings (outpoint, origin, name, content_type, price, seller, score)
-			VALUES (?, ?, ?, ?, ?, ?, ?)
-			ON CONFLICT(outpoint) DO UPDATE SET
-				origin = excluded.origin,
-				name = excluded.name,
-				content_type = excluded.content_type,
-				price = excluded.price,
-				seller = excluded.seller,
-				score = excluded.score`,
-			outpoint.Bytes(), ld.origin.Bytes(), ld.name, ld.contentType, ld.price, ld.seller, txScore,
-		); err != nil {
-			return fmt.Errorf("failed to upsert listing %s: %w", outpoint.String(), err)
-		}
-	}
-
-	// Scan inputs for spent listings
-	for _, txin := range tx.Inputs {
-		sourceOutput := txin.SourceTxOutput()
-		if sourceOutput == nil || sourceOutput.Satoshis != 1 {
-			continue
-		}
-
-		spentOutpoint := &transaction.Outpoint{
-			Txid:  *txin.SourceTXID,
-			Index: txin.SourceTxOutIndex,
-		}
-
-		ld := o.extractListingData(ctx, spentOutpoint, sourceOutput.LockingScript)
-		if ld == nil {
-			continue
-		}
-
-		spentTx := tx.Inputs[0].SourceTransaction
-		if txin.SourceTransaction != nil {
-			spentTx = txin.SourceTransaction
-		}
-		listingScore := types.ScoreFromTx(spentTx, txin.SourceTXID)
-
-		if _, err := o.db.ExecContext(ctx,
-			`INSERT INTO listings (outpoint, origin, name, content_type, price, seller, score, spend_txid, spend_type, spend_score)
-			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-			ON CONFLICT(outpoint) DO UPDATE SET
-				origin = excluded.origin,
-				name = excluded.name,
-				content_type = excluded.content_type,
-				price = excluded.price,
-				seller = excluded.seller,
-				spend_txid = excluded.spend_txid,
-				spend_type = excluded.spend_type,
-				spend_score = excluded.spend_score`,
-			spentOutpoint.Bytes(), ld.origin.Bytes(), ld.name, ld.contentType, ld.price, ld.seller, listingScore,
-			txid[:], classifySpend(txin.UnlockingScript), txScore,
-		); err != nil {
-			return fmt.Errorf("failed to upsert spend %s: %w", spentOutpoint.String(), err)
-		}
-	}
-
-	return nil
 }
 
 type listingData struct {
@@ -158,80 +61,6 @@ type listingData struct {
 	contentType string
 	price       uint64
 	seller      string
-}
-
-func (o *OrdLock) extractListingData(ctx context.Context, outpoint *transaction.Outpoint, lockingScript *script.Script) *listingData {
-	lock := ordlock.Decode(lockingScript)
-	if lock == nil || lock.Price > 2_100_000_000_000_000 {
-		return nil
-	}
-
-	ld := &listingData{
-		price:  lock.Price,
-		seller: lock.Seller.AddressString,
-	}
-
-	insc := inscription.Decode(lockingScript)
-	if insc != nil {
-		ld.contentType = insc.File.Type
-
-		if ld.contentType == "application/bsv-20" {
-			return nil
-		}
-
-		if ld.contentType == "application/op-ns" {
-			ld.name = string(insc.File.Content)
-		}
-
-		if insc.Parent != nil {
-			ld.origin = insc.Parent
-		}
-
-		if ld.name == "" {
-			if nameField, ok := insc.Fields["name"]; ok {
-				ld.name = string(nameField)
-			}
-		}
-	}
-
-	if insc == nil && o.ordfs != nil {
-		seq := 0
-		resp, err := o.ordfs.Load(ctx, &ordfs.Request{
-			Outpoint: outpoint,
-			Seq:      &seq,
-			Content:  true,
-			Map:      true,
-		})
-		if err == nil && resp != nil {
-			if resp.Origin != nil {
-				ld.origin = resp.Origin
-			}
-			if resp.ContentType != "" {
-				ld.contentType = strings.Split(resp.ContentType, ";")[0]
-				ld.contentType = strings.TrimSpace(ld.contentType)
-			}
-			if ld.contentType == "application/bsv-20" {
-				return nil
-			}
-			if ld.contentType == "application/op-ns" && len(resp.Content) > 0 {
-				ld.name = string(resp.Content)
-			}
-			if ld.name == "" && resp.Map != nil {
-				var mapData map[string]string
-				if err := json.Unmarshal(resp.Map, &mapData); err == nil {
-					if n, ok := mapData["name"]; ok && n != "" {
-						ld.name = n
-					}
-				}
-			}
-		}
-	}
-
-	if ld.origin == nil {
-		ld.origin = outpoint
-	}
-
-	return ld
 }
 
 // classifySpend determines whether a spend is a sale or cancel by examining
