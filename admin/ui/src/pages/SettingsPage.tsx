@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { toast } from "sonner";
-import { getConfig, saveConfig } from "@/api";
+import { getConfig, saveConfig, apiFetch } from "@/api";
 import { toastError } from "@/lib/utils";
 import {
   Server,
@@ -706,6 +706,28 @@ function OpnsPanel({
   batchSize, setBatchSize,
   paymailEnabled, setPaymailEnabled,
 }: OpnsPanelProps) {
+  const [crawling, setCrawling] = useState(false);
+  const [crawlError, setCrawlError] = useState<string | null>(null);
+  const [crawlSuccess, setCrawlSuccess] = useState(false);
+
+  async function handleStartCrawl() {
+    setCrawling(true);
+    setCrawlError(null);
+    setCrawlSuccess(false);
+    try {
+      const res = await apiFetch("/opns/crawl", { method: "POST" });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error || "Failed to start crawl");
+      }
+      setCrawlSuccess(true);
+    } catch (e: any) {
+      setCrawlError(e.message);
+    } finally {
+      setCrawling(false);
+    }
+  }
+
   return (
     <div className="space-y-4">
       <PageHeader title="OPNS" description="Ordinal Public Name System — name resolution on BSV." />
@@ -736,6 +758,22 @@ function OpnsPanel({
             <Input value={batchSize} onChange={(e) => setBatchSize(e.target.value)} className="font-mono text-xs h-8" />
           </FieldRow>
         </div>
+      </SectionCard>
+
+      <SectionCard>
+        <SectionHeading>Genesis Crawl</SectionHeading>
+        <p className="text-[11px] text-muted-foreground">
+          Index all existing OPNS name registrations from the blockchain. Only needed once on first setup.
+        </p>
+        <Button
+          variant="secondary"
+          onClick={handleStartCrawl}
+          disabled={crawling}
+        >
+          {crawling ? "Crawling..." : "Start Genesis Crawl"}
+        </Button>
+        {crawlError && <p className="text-xs text-destructive">{crawlError}</p>}
+        {crawlSuccess && <p className="text-xs text-success">Crawl started successfully</p>}
       </SectionCard>
 
       <SectionCard>

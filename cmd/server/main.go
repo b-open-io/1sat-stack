@@ -26,7 +26,16 @@ import (
 var (
 	Version   = "dev"
 	startTime = time.Now()
+	restartCh = make(chan struct{}, 1)
 )
+
+// RequestRestart signals the server to re-exec itself.
+func RequestRestart() {
+	select {
+	case restartCh <- struct{}{}:
+	default:
+	}
+}
 
 // @title 1Sat Stack API
 // @version 1.0
@@ -193,6 +202,21 @@ func main() {
 	}()
 
 	log.Info("server started", "address", addr)
+
+	// Listen for restart requests
+	go func() {
+		<-restartCh
+		log.Info("restarting server...")
+		time.Sleep(500 * time.Millisecond)
+		executable, err := os.Executable()
+		if err != nil {
+			log.Error("failed to get executable path, restart aborted", "error", err)
+			return
+		}
+		if err := syscall.Exec(executable, os.Args, os.Environ()); err != nil {
+			log.Error("failed to exec, restart aborted", "error", err)
+		}
+	}()
 
 	// Wait for interrupt signal
 	quit := make(chan os.Signal, 1)

@@ -873,10 +873,11 @@ func (c *Config) Initialize(ctx context.Context, logger *slog.Logger) (*Services
 		}
 
 		adminDeps := &admin.InitializeDeps{
-			Overlay:     svc.Overlay,
-			Engines:     engines,
-			Store:       svc.Store.Store,
-			ConfigStore: svc.ConfigStore,
+			Overlay:        svc.Overlay,
+			Engines:        engines,
+			Store:          svc.Store.Store,
+			ConfigStore:    svc.ConfigStore,
+			RequestRestart: RequestRestart,
 		}
 		if svc.BSV21 != nil {
 			adminDeps.BSV21Sync = svc.BSV21.Sync

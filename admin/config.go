@@ -48,6 +48,7 @@ type InitializeDeps struct {
 	ConfigStore      config.Store
 	BSV21Sync        *bsv21.SyncServices
 	TriggerOpnsCrawl OpnsCrawlFunc
+	RequestRestart   func()
 }
 
 // SetDefaults sets default configuration values
@@ -71,7 +72,7 @@ func (c *Config) Initialize(ctx context.Context, logger *slog.Logger, deps *Init
 
 	// Create routes if enabled
 	if c.Routes.Enabled && deps.ConfigStore != nil {
-		svc.Routes = NewRoutes(deps.Overlay, deps.Engines, deps.Store, deps.ConfigStore, deps.BSV21Sync, deps.TriggerOpnsCrawl, &c.Routes, logger)
+		svc.Routes = NewRoutes(deps.Overlay, deps.Engines, deps.Store, deps.ConfigStore, deps.BSV21Sync, deps.TriggerOpnsCrawl, deps.RequestRestart, &c.Routes, logger)
 	}
 
 	logger.Info("admin service initialized", "mode", c.Mode)

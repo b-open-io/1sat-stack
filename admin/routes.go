@@ -32,6 +32,7 @@ type Routes struct {
 	configStore      config.Store
 	bsv21Sync        *bsv21.SyncServices
 	triggerOpnsCrawl OpnsCrawlFunc
+	requestRestart   func()
 	config           *RoutesConfig
 	logger           *slog.Logger
 }
@@ -47,7 +48,7 @@ type UpdateProgressRequest struct {
 }
 
 // NewRoutes creates a new Routes instance
-func NewRoutes(overlaySvc *overlay.Services, engines map[string]*engine.Engine, s store.Store, cs config.Store, bsv21Sync *bsv21.SyncServices, triggerCrawl OpnsCrawlFunc, cfg *RoutesConfig, logger *slog.Logger) *Routes {
+func NewRoutes(overlaySvc *overlay.Services, engines map[string]*engine.Engine, s store.Store, cs config.Store, bsv21Sync *bsv21.SyncServices, triggerCrawl OpnsCrawlFunc, requestRestart func(), cfg *RoutesConfig, logger *slog.Logger) *Routes {
 	return &Routes{
 		overlay:          overlaySvc,
 		engines:          engines,
@@ -55,6 +56,7 @@ func NewRoutes(overlaySvc *overlay.Services, engines map[string]*engine.Engine, 
 		configStore:      cs,
 		bsv21Sync:        bsv21Sync,
 		triggerOpnsCrawl: triggerCrawl,
+		requestRestart:   requestRestart,
 		config:           cfg,
 		logger:           logger,
 	}
@@ -106,6 +108,8 @@ func (r *Routes) Register(guardedGroup fiber.Router, publicGroup fiber.Router, a
 	guardedGroup.Delete("/requests/:pubkey", r.handleDenyRequest)
 
 	guardedGroup.Post("/opns/crawl", r.handleTriggerOpnsCrawl)
+
+	guardedGroup.Post("/restart", r.handleRestart)
 
 	guardedGroup.Get("/config", r.handleGetConfig)
 	guardedGroup.Put("/config", r.handleUpdateConfig)
@@ -1263,5 +1267,28 @@ func (r *Routes) handleTriggerOpnsCrawl(c *fiber.Ctx) error {
 
 	return c.JSON(fiber.Map{
 		"message": "OpNS crawl started",
+	})
+}
+
+// handleRestart triggers a server self-restart via syscall.Exec.
+// @Summary Restart server
+// @Description Triggers a server restart by re-executing the current binary
+// @Tags admin
+// @Produce json
+// @Success 200 {object} map[string]string "restarting status"
+// @Failure 503 {object} map[string]string "restart not available"
+// @Security BearerAuth
+// @Router /admin/restart [post]
+func (r *Routes) handleRestart(c *fiber.Ctx) error {
+	if r.requestRestart == nil {
+		return c.Status(fiber.StatusServiceUnavailable).JSON(fiber.Map{
+			"error": "restart not available",
+		})
+	}
+
+	r.logger.Info("server restart requested")
+	r.requestRestart()
+	return c.JSON(fiber.Map{
+		"status": "restarting",
 	})
 }
