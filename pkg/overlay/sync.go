@@ -2,6 +2,7 @@ package overlay
 
 import (
 	"context"
+	"encoding/binary"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -63,6 +64,10 @@ func (c *OverlaySyncConfig) SubscriberConfig() *jbsync.SubscriberConfig {
 
 // OverlaySync processes transactions from a queue and submits them through the overlay engine.
 // This is a generic worker shared by BAP, BSocial, OPNS, and any future overlay topics.
+//
+// Queue members can be either:
+//   - 36 bytes: outpoint (txid + vout) — targets a specific output for GASP processing
+//   - 32 bytes: txid — submits the entire transaction (legacy/spend events)
 type OverlaySync struct {
 	config      *OverlaySyncConfig
 	topicName   string
@@ -71,6 +76,7 @@ type OverlaySync struct {
 	engine      *engine.Engine
 	logger      *slog.Logger
 	worker      *worker.Worker
+	directSeen  sync.Map // txid dedup for processDirect within a batch
 }
 
 // NewOverlaySync creates a new overlay sync worker.
@@ -114,11 +120,14 @@ func (s *OverlaySync) Start(ctx context.Context) error {
 		Limiter: limiter,
 		Handler: s.process,
 		OnError: func(ctx context.Context, id string, score float64, err error) {
-			s.logger.Error("overlay sync error", "txid", id, "score", score, "error", err)
+			s.logger.Error("overlay sync error", "member", id, "score", score, "error", err)
 		},
 		PageSize:  s.config.PageSize,
 		PollDelay: s.config.PollDelay,
 		Logger:    s.logger,
+		OnBatchStart: func() {
+			s.directSeen = sync.Map{}
+		},
 	})
 
 	s.logger.Info("starting overlay sync",
@@ -137,24 +146,47 @@ func (s *OverlaySync) Stop() {
 	}
 }
 
-// process handles a single transaction from the queue.
+// parseQueueMember extracts txid and optional vout from a queue member.
+// 36 bytes = outpoint (txid + vout), 32 bytes = txid only (vout = -1).
+func parseQueueMember(member string) (txid *chainhash.Hash, vout int, err error) {
+	b := []byte(member)
+	switch len(b) {
+	case 36:
+		txid = &chainhash.Hash{}
+		copy(txid[:], b[:32])
+		vout = int(binary.BigEndian.Uint32(b[32:]))
+		return
+	case 32:
+		txid = &chainhash.Hash{}
+		copy(txid[:], b)
+		vout = -1
+		return
+	default:
+		return nil, -1, fmt.Errorf("invalid member length: expected 32 or 36, got %d", len(b))
+	}
+}
+
+// process handles a single item from the queue.
 func (s *OverlaySync) process(ctx context.Context, member string, score float64) error {
-	if len(member) != 32 {
-		return fmt.Errorf("invalid txid length: expected 32, got %d", len(member))
+	txid, vout, err := parseQueueMember(member)
+	if err != nil {
+		return err
 	}
 
-	txid := &chainhash.Hash{}
-	copy(txid[:], []byte(member))
-
-	if s.config.ResolveDependencies {
-		return s.processWithGASP(ctx, txid)
+	if !s.config.ResolveDependencies || vout < 0 {
+		return s.processDirect(ctx, txid)
 	}
-	return s.processDirect(ctx, txid)
+	return s.processWithGASP(ctx, txid, vout)
 }
 
 // processDirect submits a transaction directly without dependency resolution.
-// Used by overlays with independent outputs (BAP, BSocial).
+// Deduplicates by txid within the current batch to avoid redundant submissions
+// when multiple outpoints from the same transaction are queued.
 func (s *OverlaySync) processDirect(ctx context.Context, txid *chainhash.Hash) error {
+	if _, loaded := s.directSeen.LoadOrStore(*txid, struct{}{}); loaded {
+		return nil
+	}
+
 	beefBytes, err := s.beefStorage.BuildFullBeef(ctx, txid)
 	if err != nil {
 		return fmt.Errorf("failed to build BEEF for %s: %w", txid.String(), err)
@@ -175,17 +207,9 @@ func (s *OverlaySync) processDirect(ctx context.Context, txid *chainhash.Hash) e
 	return nil
 }
 
-// processWithGASP uses GASP to resolve input dependencies before submitting.
-// Loads the transaction, enumerates outputs, and runs ProcessUTXOToCompletion
-// for each output. GASP walks the input graph and submits ancestors first.
-// If a dependency can't be resolved, MissingInputError is treated as complete
-// (we've done everything we can for this item).
-func (s *OverlaySync) processWithGASP(ctx context.Context, txid *chainhash.Hash) error {
-	tx, err := s.beefStorage.LoadTx(ctx, txid)
-	if err != nil {
-		return fmt.Errorf("failed to load tx %s: %w", txid.String(), err)
-	}
-
+// processWithGASP uses GASP to resolve input dependencies before submitting
+// a specific outpoint.
+func (s *OverlaySync) processWithGASP(ctx context.Context, txid *chainhash.Hash, vout int) error {
 	beefRemote := gaspqueue.NewBeefRemote(s.beefStorage, s.store, "")
 	gaspStorage := engine.NewOverlayGASPStorage(s.topicName, s.engine, nil)
 	seenNodes := &sync.Map{}
@@ -200,28 +224,24 @@ func (s *OverlaySync) processWithGASP(ctx context.Context, txid *chainhash.Hash)
 		LogPrefix:      &logPrefix,
 	})
 
-	for vout := range tx.Outputs {
-		outpoint := &transaction.Outpoint{
-			Txid:  *txid,
-			Index: uint32(vout),
-		}
+	return s.processOutpoint(ctx, g, &transaction.Outpoint{Txid: *txid, Index: uint32(vout)}, seenNodes)
+}
 
-		if err := g.ProcessUTXOToCompletion(ctx, outpoint, nil, seenNodes); err != nil {
-			var missingErr *MissingInputError
-			if errors.As(err, &missingErr) {
-				s.logger.Info("dependency unresolvable after GASP",
-					"txid", missingErr.TransactionID.String(),
-					"missing_txid", missingErr.MissingTxID.String(),
-					"input_index", missingErr.InputIndex,
-					"topic", missingErr.Topic)
-				continue
-			}
-			if errors.Is(err, gasp.ErrGraphNoTopicalAdmittance) {
-				continue
-			}
-			s.logger.Info("GASP processing failed", "txid", txid.String(), "vout", vout, "error", err)
+func (s *OverlaySync) processOutpoint(ctx context.Context, g *gasp.GASP, outpoint *transaction.Outpoint, seenNodes *sync.Map) error {
+	if err := g.ProcessUTXOToCompletion(ctx, outpoint, nil, seenNodes); err != nil {
+		var missingErr *MissingInputError
+		if errors.As(err, &missingErr) {
+			s.logger.Info("dependency unresolvable after GASP",
+				"txid", missingErr.TransactionID.String(),
+				"missing_txid", missingErr.MissingTxID.String(),
+				"input_index", missingErr.InputIndex,
+				"topic", missingErr.Topic)
+			return nil
 		}
+		if errors.Is(err, gasp.ErrGraphNoTopicalAdmittance) {
+			return nil
+		}
+		s.logger.Info("GASP processing failed", "outpoint", outpoint.String(), "error", err)
 	}
-
 	return nil
 }

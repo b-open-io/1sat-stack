@@ -246,30 +246,29 @@ func (s *OutputStore) SaveTransaction(ctx context.Context, tx *transaction.Trans
 		}
 	}
 
-	// Publish txid-level routing events
+	// Publish outpoint-level routing events
 	if s.PubSub != nil {
-		routingEvents := make(map[string]struct{})
-
-		for _, output := range outputs {
+		for i, output := range outputs {
 			if output == nil {
 				continue
 			}
+			op := transaction.Outpoint{Txid: *txid, Index: uint32(i)}
+			opStr := op.String()
 			for _, event := range output.Events {
-				routingEvents[event] = struct{}{}
+				s.PubSub.Publish(ctx, event, opStr)
 			}
 		}
 
-		for _, spend := range spends {
+		for i, spend := range spends {
 			if spend == nil {
 				continue
 			}
+			input := tx.Inputs[i]
+			spendOp := transaction.Outpoint{Txid: *txid, Index: input.SourceTxOutIndex}
+			spendOpStr := spendOp.String()
 			for _, event := range spend.Events {
-				routingEvents["spend:"+event] = struct{}{}
+				s.PubSub.Publish(ctx, "spend:"+event, spendOpStr)
 			}
-		}
-
-		for event := range routingEvents {
-			s.PubSub.Publish(ctx, event, txidHex)
 		}
 	}
 

@@ -19,15 +19,16 @@ type ErrorHandler func(ctx context.Context, id string, score float64, err error)
 
 // Worker processes items from a sorted set queue with configurable concurrency.
 type Worker struct {
-	store       store.Store
-	key         string
-	limiter     chan struct{}
-	handler     Handler
-	onError     ErrorHandler
-	logger      *slog.Logger
-	pageSize    uint32
-	pollDelay   time.Duration
-	statusDelay time.Duration
+	store        store.Store
+	key          string
+	limiter      chan struct{}
+	handler      Handler
+	onError      ErrorHandler
+	onBatchStart func()
+	logger       *slog.Logger
+	pageSize     uint32
+	pollDelay    time.Duration
+	statusDelay  time.Duration
 
 	// Runtime state
 	cancel context.CancelFunc
@@ -36,15 +37,16 @@ type Worker struct {
 
 // Config holds worker configuration.
 type Config struct {
-	Store       store.Store
-	Key         string           // Sorted set key to consume from
-	Limiter     chan struct{}    // Controls concurrency - required
-	Handler     Handler          // Called for each item
-	OnError     ErrorHandler     // Called on handler error (optional)
-	Logger      *slog.Logger     // Logger (optional)
-	PageSize    uint32           // Items to fetch per batch (default: 100)
-	PollDelay   time.Duration    // Delay when queue is empty (default: 1s)
-	StatusDelay time.Duration    // Status log interval (default: 15s)
+	Store        store.Store
+	Key          string           // Sorted set key to consume from
+	Limiter      chan struct{}    // Controls concurrency - required
+	Handler      Handler          // Called for each item
+	OnError      ErrorHandler     // Called on handler error (optional)
+	OnBatchStart func()          // Called when a new batch is fetched (optional)
+	Logger       *slog.Logger     // Logger (optional)
+	PageSize     uint32           // Items to fetch per batch (default: 100)
+	PollDelay    time.Duration    // Delay when queue is empty (default: 1s)
+	StatusDelay  time.Duration    // Status log interval (default: 15s)
 }
 
 // New creates a new Worker.
@@ -68,15 +70,16 @@ func New(cfg *Config) *Worker {
 	logger := cfg.Logger.With("component", "worker", "queue", cfg.Key)
 
 	return &Worker{
-		store:       cfg.Store,
-		key:         cfg.Key,
-		limiter:     cfg.Limiter,
-		handler:     cfg.Handler,
-		onError:     cfg.OnError,
-		logger:      logger,
-		pageSize:    cfg.PageSize,
-		pollDelay:   cfg.PollDelay,
-		statusDelay: cfg.StatusDelay,
+		store:        cfg.Store,
+		key:          cfg.Key,
+		limiter:      cfg.Limiter,
+		handler:      cfg.Handler,
+		onError:      cfg.OnError,
+		onBatchStart: cfg.OnBatchStart,
+		logger:       logger,
+		pageSize:     cfg.PageSize,
+		pollDelay:    cfg.PollDelay,
+		statusDelay:  cfg.StatusDelay,
 	}
 }
 
@@ -155,6 +158,9 @@ func (w *Worker) Start(ctx context.Context) error {
 				if len(items) == 0 {
 					time.Sleep(w.pollDelay)
 					continue
+				}
+				if w.onBatchStart != nil {
+					w.onBatchStart()
 				}
 				pending = items
 			}

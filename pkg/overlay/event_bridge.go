@@ -8,6 +8,7 @@ import (
 	"github.com/b-open-io/1sat-stack/pkg/store"
 	"github.com/b-open-io/1sat-stack/pkg/types"
 	"github.com/bsv-blockchain/go-sdk/chainhash"
+	"github.com/bsv-blockchain/go-sdk/transaction"
 )
 
 type EventBridgeConfig struct {
@@ -57,19 +58,32 @@ func (eb *EventBridge) run(ctx context.Context, ch <-chan pubsub.Event) {
 			if queueKey == "" {
 				continue
 			}
-			txid, err := chainhash.NewHashFromHex(ev.Member)
+			member, err := parseEventMember(ev.Member)
 			if err != nil {
-				eb.logger.Error("failed to parse txid",
-					"queue", queueKey, "txid", ev.Member, "error", err)
+				eb.logger.Error("failed to parse event member",
+					"queue", queueKey, "member", ev.Member, "error", err)
 				continue
 			}
 			if err := eb.config.Store.ZAdd(ctx, []byte(queueKey), store.ScoredMember{
-				Member: txid[:],
+				Member: member,
 				Score:  types.HeightScore(0, 0),
 			}); err != nil {
-				eb.logger.Error("failed to enqueue txid",
-					"queue", queueKey, "txid", ev.Member, "error", err)
+				eb.logger.Error("failed to enqueue",
+					"queue", queueKey, "member", ev.Member, "error", err)
 			}
 		}
 	}
+}
+
+// parseEventMember converts an event member string to binary queue member.
+// Outpoint strings ("txid.vout") become 36 bytes, plain txid hex becomes 32 bytes.
+func parseEventMember(member string) ([]byte, error) {
+	if op, err := transaction.OutpointFromString(member); err == nil {
+		return op.Bytes(), nil
+	}
+	txid, err := chainhash.NewHashFromHex(member)
+	if err != nil {
+		return nil, err
+	}
+	return txid[:], nil
 }
