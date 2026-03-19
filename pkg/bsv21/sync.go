@@ -217,7 +217,6 @@ func (s *SyncServices) dispatch(ctx context.Context, member string, score float6
 		case string(bsv21.OpDeployMint), string(bsv21.OpDeployAuth):
 			// Deploy operations: tokenId = outpoint, submit for discovery
 			tokenId = outpoint.OrdinalString()
-			s.logger.Info("deploy found", "op", b.Op, "tokenId", tokenId, "txid", txid.String())
 
 			if beefBytes == nil {
 				beefBytes, err = s.beefStorage.BuildFullBeef(ctx, txid)
@@ -225,7 +224,6 @@ func (s *SyncServices) dispatch(ctx context.Context, member string, score float6
 					s.logger.Error("failed to serialize beef for discovery", "error", err, "txid", txid.String())
 					continue
 				}
-				s.logger.Info("built beef for deploy", "txid", txid.String(), "beefLen", len(beefBytes))
 			}
 
 			if _, err := s.overlay.Submit(ctx, sdkoverlay.TaggedBEEF{
@@ -233,8 +231,6 @@ func (s *SyncServices) dispatch(ctx context.Context, member string, score float6
 				Topics: []string{"tm_bsv21"},
 			}, engine.SubmitModeHistorical, nil); err != nil {
 				s.logger.Error("failed to submit to tm_bsv21", "error", err, "txid", txid.String())
-			} else {
-				s.logger.Info("submitted deploy to tm_bsv21", "tokenId", tokenId)
 			}
 
 		default:
