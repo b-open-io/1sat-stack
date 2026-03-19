@@ -62,7 +62,6 @@ type RuntimeConfig struct {
 	IndexerMode              string // "embedded" or "disabled"
 	IndexerSyncEnabled       bool
 	IndexerSyncSubscriptionIDs string // comma-separated
-	IndexerSyncFromBlock     uint64
 	IndexerSyncConcurrency   int
 	IndexerSyncBatchSize     int
 	IndexerSyncMempool       bool
@@ -78,14 +77,12 @@ type RuntimeConfig struct {
 	// BAP overlay
 	BAPEnabled          bool
 	BAPSyncSubID        string
-	BAPSyncFromBlock    uint64
 	BAPSyncConcurrency  int
 	BAPSyncBatchSize    int
 
 	// BSocial overlay
 	BSocialEnabled          bool
 	BSocialSyncSubID        string
-	BSocialSyncFromBlock    uint64
 	BSocialSyncConcurrency  int
 	BSocialSyncBatchSize    int
 
@@ -96,14 +93,12 @@ type RuntimeConfig struct {
 	// OrdLock overlay
 	OrdLockEnabled          bool
 	OrdLockSyncSubID        string
-	OrdLockSyncFromBlock    uint64
 	OrdLockSyncConcurrency  int
 	OrdLockSyncBatchSize    int
 
 	// BSV21
 	BSV21Enabled          bool
 	BSV21SyncSubID        string
-	BSV21SyncFromBlock    uint64
 	BSV21SyncBatchSize    int
 
 	// ORDFS
@@ -182,7 +177,6 @@ func LoadRuntimeConfig(ctx context.Context, cs Store, logger *slog.Logger) (*Run
 	rc.IndexerMode = getString(ctx, cs, "indexer.mode")
 	rc.IndexerSyncEnabled = getBool(ctx, cs, "indexer.sync.enabled")
 	rc.IndexerSyncSubscriptionIDs = getString(ctx, cs, "indexer.sync.subscription_ids")
-	rc.IndexerSyncFromBlock = getUint64(ctx, cs, "indexer.sync.from_block")
 	rc.IndexerSyncConcurrency = getInt(ctx, cs, "indexer.sync.concurrency")
 	rc.IndexerSyncBatchSize = getInt(ctx, cs, "indexer.sync.batch_size")
 	rc.IndexerSyncMempool = getBool(ctx, cs, "indexer.sync.mempool")
@@ -198,14 +192,12 @@ func LoadRuntimeConfig(ctx context.Context, cs Store, logger *slog.Logger) (*Run
 	// BAP
 	rc.BAPEnabled = getBool(ctx, cs, "overlay.bap.enabled")
 	rc.BAPSyncSubID = getString(ctx, cs, "overlay.bap.sub_id")
-	rc.BAPSyncFromBlock = getUint64(ctx, cs, "overlay.bap.from_block")
 	rc.BAPSyncConcurrency = getInt(ctx, cs, "overlay.bap.concurrency")
 	rc.BAPSyncBatchSize = getInt(ctx, cs, "overlay.bap.batch_size")
 
 	// BSocial
 	rc.BSocialEnabled = getBool(ctx, cs, "overlay.bsocial.enabled")
 	rc.BSocialSyncSubID = getString(ctx, cs, "overlay.bsocial.sub_id")
-	rc.BSocialSyncFromBlock = getUint64(ctx, cs, "overlay.bsocial.from_block")
 	rc.BSocialSyncConcurrency = getInt(ctx, cs, "overlay.bsocial.concurrency")
 	rc.BSocialSyncBatchSize = getInt(ctx, cs, "overlay.bsocial.batch_size")
 
@@ -216,14 +208,12 @@ func LoadRuntimeConfig(ctx context.Context, cs Store, logger *slog.Logger) (*Run
 	// OrdLock
 	rc.OrdLockEnabled = getBool(ctx, cs, "overlay.ordlock.enabled")
 	rc.OrdLockSyncSubID = getString(ctx, cs, "overlay.ordlock.sub_id")
-	rc.OrdLockSyncFromBlock = getUint64(ctx, cs, "overlay.ordlock.from_block")
 	rc.OrdLockSyncConcurrency = getInt(ctx, cs, "overlay.ordlock.concurrency")
 	rc.OrdLockSyncBatchSize = getInt(ctx, cs, "overlay.ordlock.batch_size")
 
 	// BSV21
 	rc.BSV21Enabled = getBool(ctx, cs, "overlay.bsv21.enabled")
 	rc.BSV21SyncSubID = getString(ctx, cs, "overlay.bsv21.sub_id")
-	rc.BSV21SyncFromBlock = getUint64(ctx, cs, "overlay.bsv21.from_block")
 	rc.BSV21SyncBatchSize = getInt(ctx, cs, "overlay.bsv21.batch_size")
 
 	// ORDFS

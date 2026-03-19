@@ -505,9 +505,6 @@ func (c *Config) applyRuntimeConfig(rc *configpkg.RuntimeConfig) {
 	if rc.IndexerSyncSubscriptionIDs != "" {
 		c.Indexer.Sync.SubscriptionIDs = strings.Split(rc.IndexerSyncSubscriptionIDs, ",")
 	}
-	if rc.IndexerSyncFromBlock > 0 {
-		c.Indexer.Sync.FromBlock = rc.IndexerSyncFromBlock
-	}
 	if rc.IndexerSyncConcurrency > 0 {
 		c.Indexer.Sync.Concurrency = rc.IndexerSyncConcurrency
 	}
@@ -551,9 +548,6 @@ func (c *Config) applyRuntimeConfig(rc *configpkg.RuntimeConfig) {
 			c.BAP.Sync.SubscriptionID = rc.BAPSyncSubID
 			c.BAP.Sync.Enabled = true
 		}
-		if rc.BAPSyncFromBlock > 0 {
-			c.BAP.Sync.FromBlock = rc.BAPSyncFromBlock
-		}
 		if rc.BAPSyncConcurrency > 0 {
 			c.BAP.Sync.Concurrency = rc.BAPSyncConcurrency
 		}
@@ -572,9 +566,6 @@ func (c *Config) applyRuntimeConfig(rc *configpkg.RuntimeConfig) {
 		if rc.BSocialSyncSubID != "" {
 			c.BSocial.Sync.SubscriptionID = rc.BSocialSyncSubID
 			c.BSocial.Sync.Enabled = true
-		}
-		if rc.BSocialSyncFromBlock > 0 {
-			c.BSocial.Sync.FromBlock = rc.BSocialSyncFromBlock
 		}
 		if rc.BSocialSyncConcurrency > 0 {
 			c.BSocial.Sync.Concurrency = rc.BSocialSyncConcurrency
@@ -604,9 +595,6 @@ func (c *Config) applyRuntimeConfig(rc *configpkg.RuntimeConfig) {
 			c.OrdLock.Sync.SubscriptionID = rc.OrdLockSyncSubID
 			c.OrdLock.Sync.Enabled = true
 		}
-		if rc.OrdLockSyncFromBlock > 0 {
-			c.OrdLock.Sync.FromBlock = rc.OrdLockSyncFromBlock
-		}
 		if rc.OrdLockSyncConcurrency > 0 {
 			c.OrdLock.Sync.Concurrency = rc.OrdLockSyncConcurrency
 		}
@@ -625,9 +613,6 @@ func (c *Config) applyRuntimeConfig(rc *configpkg.RuntimeConfig) {
 		if rc.BSV21SyncSubID != "" {
 			c.BSV21.Sync.SubscriptionID = rc.BSV21SyncSubID
 			c.BSV21.Sync.Enabled = true
-		}
-		if rc.BSV21SyncFromBlock > 0 {
-			c.BSV21.Sync.FromBlock = rc.BSV21SyncFromBlock
 		}
 		if rc.BSV21SyncBatchSize > 0 {
 			c.BSV21.Sync.BatchSize = rc.BSV21SyncBatchSize

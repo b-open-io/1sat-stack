@@ -643,8 +643,6 @@ interface OverlayPanelProps {
   onToggle: (v: boolean) => void;
   subId: string;
   setSubId: (v: string) => void;
-  fromBlock: string;
-  setFromBlock: (v: string) => void;
   concurrency: string;
   setConcurrency: (v: string) => void;
   batchSize: string;
@@ -654,7 +652,6 @@ interface OverlayPanelProps {
 function BapPanel({
   enabled, onToggle,
   subId, setSubId,
-  fromBlock, setFromBlock,
   concurrency, setConcurrency,
   batchSize, setBatchSize,
 }: OverlayPanelProps) {
@@ -677,10 +674,7 @@ function BapPanel({
         <FieldRow label="JungleBus subscription ID">
           <Input value={subId} onChange={(e) => setSubId(e.target.value)} placeholder="sub_..." className="font-mono text-xs h-8" />
         </FieldRow>
-        <div className="grid grid-cols-3 gap-3">
-          <FieldRow label="From block">
-            <Input value={fromBlock} onChange={(e) => setFromBlock(e.target.value)} className="font-mono text-xs h-8" />
-          </FieldRow>
+        <div className="grid grid-cols-2 gap-3">
           <FieldRow label="Concurrency">
             <Input value={concurrency} onChange={(e) => setConcurrency(e.target.value)} className="font-mono text-xs h-8" />
           </FieldRow>
@@ -701,7 +695,6 @@ interface OpnsPanelProps extends OverlayPanelProps {
 function OpnsPanel({
   enabled, onToggle,
   subId, setSubId,
-  fromBlock, setFromBlock,
   concurrency, setConcurrency,
   batchSize, setBatchSize,
   paymailEnabled, setPaymailEnabled,
@@ -747,10 +740,7 @@ function OpnsPanel({
         <FieldRow label="JungleBus subscription ID">
           <Input value={subId} onChange={(e) => setSubId(e.target.value)} placeholder="sub_..." className="font-mono text-xs h-8" />
         </FieldRow>
-        <div className="grid grid-cols-3 gap-3">
-          <FieldRow label="From block">
-            <Input value={fromBlock} onChange={(e) => setFromBlock(e.target.value)} className="font-mono text-xs h-8" />
-          </FieldRow>
+        <div className="grid grid-cols-2 gap-3">
           <FieldRow label="Concurrency">
             <Input value={concurrency} onChange={(e) => setConcurrency(e.target.value)} className="font-mono text-xs h-8" />
           </FieldRow>
@@ -803,7 +793,6 @@ interface Bsv21PanelProps extends OverlayPanelProps {
 function Bsv21Panel({
   enabled, onToggle,
   subId, setSubId,
-  fromBlock, setFromBlock,
   concurrency, setConcurrency,
   batchSize, setBatchSize,
   whitelist, setWhitelist,
@@ -828,10 +817,7 @@ function Bsv21Panel({
         <FieldRow label="JungleBus subscription ID">
           <Input value={subId} onChange={(e) => setSubId(e.target.value)} placeholder="sub_..." className="font-mono text-xs h-8" />
         </FieldRow>
-        <div className="grid grid-cols-3 gap-3">
-          <FieldRow label="From block">
-            <Input value={fromBlock} onChange={(e) => setFromBlock(e.target.value)} className="font-mono text-xs h-8" />
-          </FieldRow>
+        <div className="grid grid-cols-2 gap-3">
           <FieldRow label="Concurrency">
             <Input value={concurrency} onChange={(e) => setConcurrency(e.target.value)} className="font-mono text-xs h-8" />
           </FieldRow>
@@ -873,7 +859,6 @@ interface BsocialPanelProps extends OverlayPanelProps {
 function BsocialPanel({
   enabled, onToggle,
   subId, setSubId,
-  fromBlock, setFromBlock,
   concurrency, setConcurrency,
   batchSize, setBatchSize,
   mongoUrl, setMongoUrl,
@@ -897,10 +882,7 @@ function BsocialPanel({
         <FieldRow label="JungleBus subscription ID">
           <Input value={subId} onChange={(e) => setSubId(e.target.value)} placeholder="sub_..." className="font-mono text-xs h-8" />
         </FieldRow>
-        <div className="grid grid-cols-3 gap-3">
-          <FieldRow label="From block">
-            <Input value={fromBlock} onChange={(e) => setFromBlock(e.target.value)} className="font-mono text-xs h-8" />
-          </FieldRow>
+        <div className="grid grid-cols-2 gap-3">
           <FieldRow label="Concurrency">
             <Input value={concurrency} onChange={(e) => setConcurrency(e.target.value)} className="font-mono text-xs h-8" />
           </FieldRow>
@@ -937,7 +919,6 @@ function BsocialPanel({
 function OrdlockPanel({
   enabled, onToggle,
   subId, setSubId,
-  fromBlock, setFromBlock,
   concurrency, setConcurrency,
   batchSize, setBatchSize,
 }: OverlayPanelProps) {
@@ -960,10 +941,7 @@ function OrdlockPanel({
         <FieldRow label="JungleBus subscription ID">
           <Input value={subId} onChange={(e) => setSubId(e.target.value)} placeholder="sub_..." className="font-mono text-xs h-8" />
         </FieldRow>
-        <div className="grid grid-cols-3 gap-3">
-          <FieldRow label="From block">
-            <Input value={fromBlock} onChange={(e) => setFromBlock(e.target.value)} className="font-mono text-xs h-8" />
-          </FieldRow>
+        <div className="grid grid-cols-2 gap-3">
           <FieldRow label="Concurrency">
             <Input value={concurrency} onChange={(e) => setConcurrency(e.target.value)} className="font-mono text-xs h-8" />
           </FieldRow>
@@ -1067,8 +1045,6 @@ interface SyncPanelProps {
   setJbToken: (v: string) => void;
   indexerSubIds: string;
   setIndexerSubIds: (v: string) => void;
-  indexerFromBlock: string;
-  setIndexerFromBlock: (v: string) => void;
   indexerConcurrency: string;
   setIndexerConcurrency: (v: string) => void;
   indexerBatchSize: string;
@@ -1083,7 +1059,6 @@ function SyncPanel({
   jbUrl, setJbUrl,
   jbToken, setJbToken,
   indexerSubIds, setIndexerSubIds,
-  indexerFromBlock, setIndexerFromBlock,
   indexerConcurrency, setIndexerConcurrency,
   indexerBatchSize, setIndexerBatchSize,
   indexerMempool, setIndexerMempool,
@@ -1114,10 +1089,7 @@ function SyncPanel({
             className="w-full rounded-md border border-input bg-input px-3 py-2 text-xs font-mono resize-none focus:outline-none focus:ring-1 focus:ring-ring"
           />
         </FieldRow>
-        <div className="grid grid-cols-3 gap-3">
-          <FieldRow label="From block">
-            <Input value={indexerFromBlock} onChange={(e) => setIndexerFromBlock(e.target.value)} className="font-mono text-xs h-8" />
-          </FieldRow>
+        <div className="grid grid-cols-2 gap-3">
           <FieldRow label="Concurrency">
             <Input value={indexerConcurrency} onChange={(e) => setIndexerConcurrency(e.target.value)} className="font-mono text-xs h-8" />
           </FieldRow>
@@ -1295,20 +1267,17 @@ export default function SettingsPage() {
 
   // BAP overlay
   const [bapSubId, setBapSubId] = useState("");
-  const [bapFromBlock, setBapFromBlock] = useState("0");
   const [bapConcurrency, setBapConcurrency] = useState("4");
   const [bapBatchSize, setBapBatchSize] = useState("100");
 
   // OPNS overlay
   const [opnsSubId, setOpnsSubId] = useState("");
-  const [opnsFromBlock, setOpnsFromBlock] = useState("0");
   const [opnsConcurrency, setOpnsConcurrency] = useState("4");
   const [opnsBatchSize, setOpnsBatchSize] = useState("100");
   const [paymailEnabled, setPaymailEnabled] = useState(false);
 
   // BSV21 overlay
   const [bsv21SubId, setBsv21SubId] = useState("");
-  const [bsv21FromBlock, setBsv21FromBlock] = useState("0");
   const [bsv21Concurrency, setBsv21Concurrency] = useState("4");
   const [bsv21BatchSize, setBsv21BatchSize] = useState("100");
   const [bsv21Whitelist, setBsv21Whitelist] = useState<string[]>([]);
@@ -1316,14 +1285,12 @@ export default function SettingsPage() {
 
   // BSocial overlay
   const [bsocialSubId, setBsocialSubId] = useState("");
-  const [bsocialFromBlock, setBsocialFromBlock] = useState("0");
   const [bsocialConcurrency, setBsocialConcurrency] = useState("4");
   const [bsocialBatchSize, setBsocialBatchSize] = useState("100");
   const [bsocialMongoUrl, setBsocialMongoUrl] = useState("");
 
   // OrdLock overlay
   const [ordlockSubId, setOrdlockSubId] = useState("");
-  const [ordlockFromBlock, setOrdlockFromBlock] = useState("0");
   const [ordlockConcurrency, setOrdlockConcurrency] = useState("4");
   const [ordlockBatchSize, setOrdlockBatchSize] = useState("100");
 
@@ -1339,7 +1306,6 @@ export default function SettingsPage() {
   const [jbUrl, setJbUrl] = useState("https://junglebus.gorillapool.io");
   const [jbToken, setJbToken] = useState("");
   const [indexerSubIds, setIndexerSubIds] = useState("");
-  const [indexerFromBlock, setIndexerFromBlock] = useState("0");
   const [indexerConcurrency, setIndexerConcurrency] = useState("4");
   const [indexerBatchSize, setIndexerBatchSize] = useState("100");
   const [indexerMempool, setIndexerMempool] = useState(true);
@@ -1393,20 +1359,17 @@ export default function SettingsPage() {
 
         // BAP
         setBapSubId(s("overlay.bap.sub_id", ""));
-        setBapFromBlock(s("overlay.bap.from_block", "0"));
         setBapConcurrency(s("overlay.bap.concurrency", "4"));
         setBapBatchSize(s("overlay.bap.batch_size", "100"));
 
         // OPNS
         setOpnsSubId(s("overlay.opns.sub_id", ""));
-        setOpnsFromBlock(s("overlay.opns.from_block", "0"));
         setOpnsConcurrency(s("overlay.opns.concurrency", "4"));
         setOpnsBatchSize(s("overlay.opns.batch_size", "100"));
         setPaymailEnabled(b("overlay.opns.paymail"));
 
         // BSV21
         setBsv21SubId(s("overlay.bsv21.sub_id", ""));
-        setBsv21FromBlock(s("overlay.bsv21.from_block", "0"));
         setBsv21Concurrency(s("overlay.bsv21.concurrency", "4"));
         setBsv21BatchSize(s("overlay.bsv21.batch_size", "100"));
         if (cfg["overlay.bsv21.whitelist"]) {
@@ -1418,14 +1381,12 @@ export default function SettingsPage() {
 
         // BSocial
         setBsocialSubId(s("overlay.bsocial.sub_id", ""));
-        setBsocialFromBlock(s("overlay.bsocial.from_block", "0"));
         setBsocialConcurrency(s("overlay.bsocial.concurrency", "4"));
         setBsocialBatchSize(s("overlay.bsocial.batch_size", "100"));
         setBsocialMongoUrl(s("overlay.bsocial.mongo_url", ""));
 
         // OrdLock
         setOrdlockSubId(s("overlay.ordlock.sub_id", ""));
-        setOrdlockFromBlock(s("overlay.ordlock.from_block", "0"));
         setOrdlockConcurrency(s("overlay.ordlock.concurrency", "4"));
         setOrdlockBatchSize(s("overlay.ordlock.batch_size", "100"));
 
@@ -1441,7 +1402,6 @@ export default function SettingsPage() {
         setJbUrl(s("junglebus.url", "https://junglebus.gorillapool.io"));
         setJbToken(s("junglebus.token", ""));
         setIndexerSubIds(s("indexer.sync.subscription_ids", ""));
-        setIndexerFromBlock(s("indexer.sync.from_block", "0"));
         setIndexerConcurrency(s("indexer.sync.concurrency", "4"));
         setIndexerBatchSize(s("indexer.sync.batch_size", "100"));
         setIndexerMempool(cfg["indexer.sync.mempool"] !== "false");
@@ -1534,20 +1494,17 @@ export default function SettingsPage() {
 
         // BAP
         "overlay.bap.sub_id": bapSubId,
-        "overlay.bap.from_block": bapFromBlock,
         "overlay.bap.concurrency": bapConcurrency,
         "overlay.bap.batch_size": bapBatchSize,
 
         // OPNS
         "overlay.opns.sub_id": opnsSubId,
-        "overlay.opns.from_block": opnsFromBlock,
         "overlay.opns.concurrency": opnsConcurrency,
         "overlay.opns.batch_size": opnsBatchSize,
         "overlay.opns.paymail": String(paymailEnabled),
 
         // BSV21
         "overlay.bsv21.sub_id": bsv21SubId,
-        "overlay.bsv21.from_block": bsv21FromBlock,
         "overlay.bsv21.concurrency": bsv21Concurrency,
         "overlay.bsv21.batch_size": bsv21BatchSize,
         "overlay.bsv21.whitelist": JSON.stringify(bsv21Whitelist),
@@ -1555,14 +1512,12 @@ export default function SettingsPage() {
 
         // BSocial
         "overlay.bsocial.sub_id": bsocialSubId,
-        "overlay.bsocial.from_block": bsocialFromBlock,
         "overlay.bsocial.concurrency": bsocialConcurrency,
         "overlay.bsocial.batch_size": bsocialBatchSize,
         "overlay.bsocial.mongo_url": bsocialMongoUrl,
 
         // OrdLock
         "overlay.ordlock.sub_id": ordlockSubId,
-        "overlay.ordlock.from_block": ordlockFromBlock,
         "overlay.ordlock.concurrency": ordlockConcurrency,
         "overlay.ordlock.batch_size": ordlockBatchSize,
 
@@ -1578,7 +1533,6 @@ export default function SettingsPage() {
         "junglebus.url": jbUrl,
         "junglebus.token": jbToken,
         "indexer.sync.subscription_ids": indexerSubIds,
-        "indexer.sync.from_block": indexerFromBlock,
         "indexer.sync.concurrency": indexerConcurrency,
         "indexer.sync.batch_size": indexerBatchSize,
         "indexer.sync.mempool": String(indexerMempool),
@@ -1743,7 +1697,6 @@ export default function SettingsPage() {
             <BapPanel
               enabled={bapEnabled} onToggle={setBapEnabled}
               subId={bapSubId} setSubId={setBapSubId}
-              fromBlock={bapFromBlock} setFromBlock={setBapFromBlock}
               concurrency={bapConcurrency} setConcurrency={setBapConcurrency}
               batchSize={bapBatchSize} setBatchSize={setBapBatchSize}
             />
@@ -1752,7 +1705,6 @@ export default function SettingsPage() {
             <OpnsPanel
               enabled={opnsEnabled} onToggle={setOpnsEnabled}
               subId={opnsSubId} setSubId={setOpnsSubId}
-              fromBlock={opnsFromBlock} setFromBlock={setOpnsFromBlock}
               concurrency={opnsConcurrency} setConcurrency={setOpnsConcurrency}
               batchSize={opnsBatchSize} setBatchSize={setOpnsBatchSize}
               paymailEnabled={paymailEnabled} setPaymailEnabled={setPaymailEnabled}
@@ -1762,7 +1714,6 @@ export default function SettingsPage() {
             <Bsv21Panel
               enabled={bsv21Enabled} onToggle={setBsv21Enabled}
               subId={bsv21SubId} setSubId={setBsv21SubId}
-              fromBlock={bsv21FromBlock} setFromBlock={setBsv21FromBlock}
               concurrency={bsv21Concurrency} setConcurrency={setBsv21Concurrency}
               batchSize={bsv21BatchSize} setBatchSize={setBsv21BatchSize}
               whitelist={bsv21Whitelist} setWhitelist={setBsv21Whitelist}
@@ -1773,7 +1724,6 @@ export default function SettingsPage() {
             <BsocialPanel
               enabled={bsocialEnabled} onToggle={setBsocialEnabled}
               subId={bsocialSubId} setSubId={setBsocialSubId}
-              fromBlock={bsocialFromBlock} setFromBlock={setBsocialFromBlock}
               concurrency={bsocialConcurrency} setConcurrency={setBsocialConcurrency}
               batchSize={bsocialBatchSize} setBatchSize={setBsocialBatchSize}
               mongoUrl={bsocialMongoUrl} setMongoUrl={setBsocialMongoUrl}
@@ -1783,7 +1733,6 @@ export default function SettingsPage() {
             <OrdlockPanel
               enabled={ordlockEnabled} onToggle={setOrdlockEnabled}
               subId={ordlockSubId} setSubId={setOrdlockSubId}
-              fromBlock={ordlockFromBlock} setFromBlock={setOrdlockFromBlock}
               concurrency={ordlockConcurrency} setConcurrency={setOrdlockConcurrency}
               batchSize={ordlockBatchSize} setBatchSize={setOrdlockBatchSize}
             />
@@ -1793,7 +1742,6 @@ export default function SettingsPage() {
               jbUrl={jbUrl} setJbUrl={setJbUrl}
               jbToken={jbToken} setJbToken={setJbToken}
               indexerSubIds={indexerSubIds} setIndexerSubIds={setIndexerSubIds}
-              indexerFromBlock={indexerFromBlock} setIndexerFromBlock={setIndexerFromBlock}
               indexerConcurrency={indexerConcurrency} setIndexerConcurrency={setIndexerConcurrency}
               indexerBatchSize={indexerBatchSize} setIndexerBatchSize={setIndexerBatchSize}
               indexerMempool={indexerMempool} setIndexerMempool={setIndexerMempool}

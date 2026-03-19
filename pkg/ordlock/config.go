@@ -38,7 +38,7 @@ func (c *Config) SetDefaults(v *viper.Viper, prefix string) {
 	v.SetDefault(p+"sync.enabled", false)
 	v.SetDefault(p+"sync.subscription_id", "")
 	v.SetDefault(p+"sync.queue_name", QueueName)
-	v.SetDefault(p+"sync.from_block", 575000)
+	v.SetDefault(p+"sync.from_block", 783968)
 	v.SetDefault(p+"sync.concurrency", 8)
 	v.SetDefault(p+"sync.resolve_dependencies", true)
 	v.SetDefault(p+"routes.enabled", true)
