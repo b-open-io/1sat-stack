@@ -156,8 +156,8 @@ func LoadRuntimeConfig(ctx context.Context, cs Store, logger *slog.Logger) (*Run
 	rc.WalletMode = getString(ctx, cs, "wallet.mode")
 	rc.WalletName = getString(ctx, cs, "wallet.name")
 	rc.WalletDBEngine = getString(ctx, cs, "wallet.db.engine")
-	rc.WalletSQLitePath = getString(ctx, cs, "wallet.db.sqlite.path")
-	rc.WalletPostgresURL = getString(ctx, cs, "wallet.db.postgres.url")
+	rc.WalletSQLitePath = getString(ctx, cs, "wallet.db.sqlite.connection_string")
+	rc.WalletPostgresURL = getString(ctx, cs, "wallet.postgres_connection_string")
 
 	// Chaintracks
 	rc.ChaintracksMode = getString(ctx, cs, "chaintracks.mode")
