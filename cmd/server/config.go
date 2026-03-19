@@ -484,8 +484,8 @@ func (c *Config) applyRuntimeConfig(rc *configpkg.RuntimeConfig) {
 		c.Arcade.Mode = arcadeconfig.Mode(rc.ArcadeMode)
 	}
 	if rc.ArcadePath != "" {
-		c.Arcade.StoragePath = rc.ArcadePath
 		c.Arcade.Database.SQLitePath = rc.ArcadePath
+		c.Arcade.StoragePath = filepath.Dir(rc.ArcadePath)
 	}
 
 	// JungleBus
