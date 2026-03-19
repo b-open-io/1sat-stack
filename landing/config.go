@@ -29,7 +29,7 @@ type Services struct {
 func (c *Config) SetDefaults(v *viper.Viper, prefix string) {
 	v.SetDefault(prefix+".mode", ModeEnabled)
 	v.SetDefault(prefix+".routes.enabled", true)
-	v.SetDefault(prefix+".routes.prefix", "/")
+	v.SetDefault(prefix+".routes.prefix", "/home")
 }
 
 func (c *Config) Initialize(ctx context.Context, logger *slog.Logger) (*Services, error) {
