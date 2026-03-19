@@ -1613,14 +1613,19 @@ func (c *Config) RegisterRoutes(app *fiber.App, svc *Services) {
 	registerDocsRoutes(app)
 
 	// Register Landing page routes (no auth required)
-	// MUST be last — the /* wildcard would catch all other routes if registered earlier
 	if svc.Landing != nil && svc.Landing.Routes != nil {
 		prefix := c.Landing.Routes.Prefix
 		if prefix == "" {
-			prefix = "/"
+			prefix = "/home"
 		}
 		landingGroup := api.Group(prefix)
 		svc.Landing.Routes.Register(landingGroup)
+
+		// Redirect base path to landing page
+		api.Get("/", func(c *fiber.Ctx) error {
+			return c.Redirect(c.Path()+prefix+"/", fiber.StatusTemporaryRedirect)
+		})
+
 		slog.Debug("registered landing routes", "prefix", prefix)
 	}
 }
