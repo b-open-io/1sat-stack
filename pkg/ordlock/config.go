@@ -40,6 +40,7 @@ func (c *Config) SetDefaults(v *viper.Viper, prefix string) {
 	v.SetDefault(p+"sync.queue_name", QueueName)
 	v.SetDefault(p+"sync.from_block", 783968)
 	v.SetDefault(p+"sync.concurrency", 8)
+	v.SetDefault(p+"sync.batch_size", 1000)
 	v.SetDefault(p+"sync.resolve_dependencies", true)
 	v.SetDefault(p+"routes.enabled", true)
 	v.SetDefault(p+"routes.prefix", "/market")

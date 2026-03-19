@@ -1268,10 +1268,9 @@ export default function SettingsPage() {
   const [beefChain, setBeefChain] = useState<BeefProvider[]>([
     { type: "lru", size: "100mb" },
     { type: "filesystem", path: "~/.1sat/beef" },
-    { type: "junglebus" },
   ]);
   const [pubsubProvider, setPubsubProvider] = useState<"channels" | "redis">("channels");
-  const [pubsubBuffer, setPubsubBuffer] = useState("1000");
+  const [pubsubBuffer, setPubsubBuffer] = useState("100");
   const [pubsubRedisUrl, setPubsubRedisUrl] = useState("");
   const [ordfsRedisUrl, setOrdfsRedisUrl] = useState("");
   const [walletEngine, setWalletEngine] = useState<"sqlite" | "postgres">("sqlite");
@@ -1286,48 +1285,48 @@ export default function SettingsPage() {
 
   // BAP overlay
   const [bapSubId, setBapSubId] = useState("");
-  const [bapConcurrency, setBapConcurrency] = useState("4");
-  const [bapBatchSize, setBapBatchSize] = useState("100");
+  const [bapConcurrency, setBapConcurrency] = useState("8");
+  const [bapBatchSize, setBapBatchSize] = useState("1000");
 
   // OPNS overlay
   const [opnsSubId, setOpnsSubId] = useState("");
-  const [opnsConcurrency, setOpnsConcurrency] = useState("4");
-  const [opnsBatchSize, setOpnsBatchSize] = useState("100");
+  const [opnsConcurrency, setOpnsConcurrency] = useState("8");
+  const [opnsBatchSize, setOpnsBatchSize] = useState("1000");
   const [paymailEnabled, setPaymailEnabled] = useState(false);
 
   // BSV21 overlay
   const [bsv21SubId, setBsv21SubId] = useState("");
-  const [bsv21Concurrency, setBsv21Concurrency] = useState("4");
-  const [bsv21BatchSize, setBsv21BatchSize] = useState("100");
+  const [bsv21Concurrency, setBsv21Concurrency] = useState("8");
+  const [bsv21BatchSize, setBsv21BatchSize] = useState("1000");
   const [bsv21Whitelist, setBsv21Whitelist] = useState<string[]>([]);
   const [bsv21Blacklist, setBsv21Blacklist] = useState<string[]>([]);
 
   // BSocial overlay
   const [bsocialSubId, setBsocialSubId] = useState("");
-  const [bsocialConcurrency, setBsocialConcurrency] = useState("4");
-  const [bsocialBatchSize, setBsocialBatchSize] = useState("100");
+  const [bsocialConcurrency, setBsocialConcurrency] = useState("8");
+  const [bsocialBatchSize, setBsocialBatchSize] = useState("1000");
   const [bsocialMongoUrl, setBsocialMongoUrl] = useState("");
 
   // OrdLock overlay
   const [ordlockSubId, setOrdlockSubId] = useState("");
-  const [ordlockConcurrency, setOrdlockConcurrency] = useState("4");
-  const [ordlockBatchSize, setOrdlockBatchSize] = useState("100");
+  const [ordlockConcurrency, setOrdlockConcurrency] = useState("8");
+  const [ordlockBatchSize, setOrdlockBatchSize] = useState("1000");
 
   // Overlay engine
   const [engineStorage, setEngineStorage] = useState<"sqlite" | "postgres">("sqlite");
   const [engineStoragePath, setEngineStoragePath] = useState("~/.1sat/overlay.db");
   const [p2pEnabled, setP2pEnabled] = useState(false);
   const [p2pPort, setP2pPort] = useState("9000");
-  const [p2pDhtMode, setP2pDhtMode] = useState("auto");
+  const [p2pDhtMode, setP2pDhtMode] = useState("off");
   const [bootstrapPeers, setBootstrapPeers] = useState("");
 
   // Sync
   const [jbUrl, setJbUrl] = useState("https://junglebus.gorillapool.io");
   const [jbToken, setJbToken] = useState("");
   const [indexerSubIds, setIndexerSubIds] = useState("");
-  const [indexerConcurrency, setIndexerConcurrency] = useState("4");
-  const [indexerBatchSize, setIndexerBatchSize] = useState("100");
-  const [indexerMempool, setIndexerMempool] = useState(true);
+  const [indexerConcurrency, setIndexerConcurrency] = useState("8");
+  const [indexerBatchSize, setIndexerBatchSize] = useState("500");
+  const [indexerMempool, setIndexerMempool] = useState(false);
   const [ownerSync, setOwnerSync] = useState(false);
 
   // Auth
@@ -1357,21 +1356,21 @@ export default function SettingsPage() {
 
         // Storage
         if (cfg["store.provider"] === "badger" || cfg["store.provider"] === "redis") setStoreProvider(cfg["store.provider"]);
-        setStorePath(s("store.path", "~/.1sat/store"));
+        setStorePath(s("store.badger.path", "~/.1sat/store"));
         if (cfg["beef.chain"]) {
           try { setBeefChain(JSON.parse(cfg["beef.chain"])); } catch { /* keep default */ }
         }
         if (cfg["pubsub.provider"] === "channels" || cfg["pubsub.provider"] === "redis") setPubsubProvider(cfg["pubsub.provider"]);
-        setPubsubBuffer(s("pubsub.buffer", "1000"));
-        setPubsubRedisUrl(s("pubsub.redis_url", ""));
-        setOrdfsRedisUrl(s("ordfs.redis_url", ""));
+        setPubsubBuffer(s("pubsub.channels.buffer_size", "100"));
+        setPubsubRedisUrl(s("pubsub.redis.url", ""));
+        setOrdfsRedisUrl(s("ordfs.redis.url", ""));
         const engine = s("wallet.db.engine", "sqlite");
         setWalletEngine(engine === "postgres" ? "postgres" : "sqlite");
         setWalletDb(engine === "postgres"
           ? s("wallet.postgres_connection_string", "")
           : s("wallet.db.sqlite.connection_string", "~/.1sat/wallet.sqlite"));
         setChaintracksPath(s("chaintracks.path", "~/.1sat/chaintracks"));
-        setArcadeDb(s("arcade.db", "~/.1sat/arcade/arcade.db"));
+        setArcadeDb(s("arcade.path", "~/.1sat/arcade/arcade.db"));
 
         // Indexer
         if (cfg["indexer.parsers"]) {
@@ -1382,19 +1381,19 @@ export default function SettingsPage() {
 
         // BAP
         setBapSubId(s("overlay.bap.sub_id", ""));
-        setBapConcurrency(s("overlay.bap.concurrency", "4"));
-        setBapBatchSize(s("overlay.bap.batch_size", "100"));
+        setBapConcurrency(s("overlay.bap.concurrency", "8"));
+        setBapBatchSize(s("overlay.bap.batch_size", "1000"));
 
         // OPNS
         setOpnsSubId(s("overlay.opns.sub_id", ""));
-        setOpnsConcurrency(s("overlay.opns.concurrency", "4"));
-        setOpnsBatchSize(s("overlay.opns.batch_size", "100"));
+        setOpnsConcurrency(s("overlay.opns.concurrency", "8"));
+        setOpnsBatchSize(s("overlay.opns.batch_size", "1000"));
         setPaymailEnabled(b("overlay.opns.paymail"));
 
         // BSV21
         setBsv21SubId(s("overlay.bsv21.sub_id", ""));
-        setBsv21Concurrency(s("overlay.bsv21.concurrency", "4"));
-        setBsv21BatchSize(s("overlay.bsv21.batch_size", "100"));
+        setBsv21Concurrency(s("overlay.bsv21.concurrency", "8"));
+        setBsv21BatchSize(s("overlay.bsv21.batch_size", "1000"));
         if (cfg["overlay.bsv21.whitelist"]) {
           try { setBsv21Whitelist(JSON.parse(cfg["overlay.bsv21.whitelist"])); } catch { /* keep default */ }
         }
@@ -1404,30 +1403,30 @@ export default function SettingsPage() {
 
         // BSocial
         setBsocialSubId(s("overlay.bsocial.sub_id", ""));
-        setBsocialConcurrency(s("overlay.bsocial.concurrency", "4"));
-        setBsocialBatchSize(s("overlay.bsocial.batch_size", "100"));
+        setBsocialConcurrency(s("overlay.bsocial.concurrency", "8"));
+        setBsocialBatchSize(s("overlay.bsocial.batch_size", "1000"));
         setBsocialMongoUrl(s("overlay.bsocial.mongo_url", ""));
 
         // OrdLock
         setOrdlockSubId(s("overlay.ordlock.sub_id", ""));
-        setOrdlockConcurrency(s("overlay.ordlock.concurrency", "4"));
-        setOrdlockBatchSize(s("overlay.ordlock.batch_size", "100"));
+        setOrdlockConcurrency(s("overlay.ordlock.concurrency", "8"));
+        setOrdlockBatchSize(s("overlay.ordlock.batch_size", "1000"));
 
         // Overlay engine
         if (cfg["overlay.engine.storage"] === "sqlite" || cfg["overlay.engine.storage"] === "postgres") setEngineStorage(cfg["overlay.engine.storage"]);
         setEngineStoragePath(s("overlay.engine.storage_path", "~/.1sat/overlay.db"));
         setP2pEnabled(b("overlay.engine.p2p.enabled"));
         setP2pPort(s("overlay.engine.p2p.port", "9000"));
-        setP2pDhtMode(s("overlay.engine.p2p.dht_mode", "auto"));
+        setP2pDhtMode(s("overlay.engine.p2p.dht_mode", "off"));
         setBootstrapPeers(s("overlay.engine.p2p.bootstrap_peers", ""));
 
         // Sync
         setJbUrl(s("junglebus.url", "https://junglebus.gorillapool.io"));
         setJbToken(s("junglebus.token", ""));
         setIndexerSubIds(s("indexer.sync.subscription_ids", ""));
-        setIndexerConcurrency(s("indexer.sync.concurrency", "4"));
-        setIndexerBatchSize(s("indexer.sync.batch_size", "100"));
-        setIndexerMempool(cfg["indexer.sync.mempool"] !== "false");
+        setIndexerConcurrency(s("indexer.sync.concurrency", "8"));
+        setIndexerBatchSize(s("indexer.sync.batch_size", "500"));
+        setIndexerMempool(b("indexer.sync.mempool"));
         setOwnerSync(b("owner.enabled"));
 
         // Auth
@@ -1449,9 +1448,10 @@ export default function SettingsPage() {
     "overlay.bap.enabled", "overlay.opns.enabled", "overlay.bsv21.enabled",
     "overlay.bsocial.enabled", "overlay.ordlock.enabled",
     "owner.enabled",
-    "store.provider", "store.path", "pubsub.provider",
+    "store.provider", "store.badger.path", "pubsub.provider",
     "auth.mode", "wallet.db.engine", "wallet.db.sqlite.connection_string",
-    "wallet.postgres_connection_string", "chaintracks.path", "arcade.db",
+    "wallet.postgres_connection_string", "chaintracks.path", "arcade.path",
+    "beef.chain",
     "overlay.engine.storage", "overlay.engine.storage_path",
     "indexer.parsers",
   ]);
@@ -1465,14 +1465,14 @@ export default function SettingsPage() {
     "overlay.ordlock.enabled": String(ordlockEnabled),
     "owner.enabled": String(ownerSync),
     "store.provider": storeProvider,
-    "store.path": storePath,
+    "store.badger.path": storePath,
     "pubsub.provider": pubsubProvider,
     "auth.mode": authMode,
     "wallet.db.engine": walletEngine,
     "wallet.db.sqlite.connection_string": walletEngine === "sqlite" ? walletDb : "",
     "wallet.postgres_connection_string": walletEngine === "postgres" ? walletDb : "",
     "chaintracks.path": chaintracksPath,
-    "arcade.db": arcadeDb,
+    "arcade.path": arcadeDb,
     "overlay.engine.storage": engineStorage,
     "overlay.engine.storage_path": engineStoragePath,
     "indexer.parsers": JSON.stringify(activeTags),
@@ -1505,17 +1505,17 @@ export default function SettingsPage() {
 
         // Storage
         "store.provider": storeProvider,
-        "store.path": storePath,
+        "store.badger.path": storePath,
         "beef.chain": JSON.stringify(beefChain),
         "pubsub.provider": pubsubProvider,
-        "pubsub.buffer": pubsubBuffer,
-        "pubsub.redis_url": pubsubRedisUrl,
-        "ordfs.redis_url": ordfsRedisUrl,
+        "pubsub.channels.buffer_size": pubsubBuffer,
+        "pubsub.redis.url": pubsubRedisUrl,
+        "ordfs.redis.url": ordfsRedisUrl,
         "wallet.db.engine": walletEngine,
         "wallet.db.sqlite.connection_string": walletEngine === "sqlite" ? walletDb : "",
         "wallet.postgres_connection_string": walletEngine === "postgres" ? walletDb : "",
         "chaintracks.path": chaintracksPath,
-        "arcade.db": arcadeDb,
+        "arcade.path": arcadeDb,
 
         // Indexer
         "indexer.parsers": JSON.stringify(activeTags),

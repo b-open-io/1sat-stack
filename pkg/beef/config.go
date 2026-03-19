@@ -75,7 +75,6 @@ func (c *Config) SetDefaults(v *viper.Viper, prefix string) {
 
 	v.SetDefault(p+"mode", ModeEmbedded)
 	v.SetDefault(p+"routes.enabled", true)
-	// Note: chain defaults are not set here - users must configure explicitly
 }
 
 // DefaultStoragePath returns the default filesystem path for BEEF storage.

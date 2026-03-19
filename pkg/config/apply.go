@@ -118,6 +118,14 @@ type RuntimeConfig struct {
 
 	// MongoDB
 	MongoDBURL string
+
+	// Beef chain (JSON from config DB)
+	BeefChain string
+
+	// PubSub
+	PubSubProvider   string
+	PubSubBufferSize int
+	PubSubRedisURL   string
 }
 
 // LoadRuntimeConfig reads all operational settings from the config store.
@@ -126,7 +134,6 @@ func LoadRuntimeConfig(ctx context.Context, cs Store, logger *slog.Logger) (*Run
 
 	// Setup
 	rc.SetupComplete = getBool(ctx, cs, "setup.complete")
-	rc.AuthMode = getString(ctx, cs, "auth.mode")
 
 	// Server
 	rc.ServerPort = getInt(ctx, cs, "server.port")
@@ -221,9 +228,10 @@ func LoadRuntimeConfig(ctx context.Context, cs Store, logger *slog.Logger) (*Run
 	rc.ORDFSRedisURL = getString(ctx, cs, "ordfs.redis.url")
 
 	// Owner
-	if getBool(ctx, cs, "owner.enabled") {
+	switch getString(ctx, cs, "owner.enabled") {
+	case "true":
 		rc.OwnerMode = "embedded"
-	} else if getString(ctx, cs, "owner.enabled") == "false" {
+	case "false":
 		rc.OwnerMode = "disabled"
 	}
 
@@ -237,6 +245,14 @@ func LoadRuntimeConfig(ctx context.Context, cs Store, logger *slog.Logger) (*Run
 
 	// MongoDB
 	rc.MongoDBURL = getString(ctx, cs, "mongodb.url")
+
+	// Beef chain
+	rc.BeefChain = getString(ctx, cs, "beef.chain")
+
+	// PubSub
+	rc.PubSubProvider = getString(ctx, cs, "pubsub.provider")
+	rc.PubSubBufferSize = getInt(ctx, cs, "pubsub.channels.buffer_size")
+	rc.PubSubRedisURL = getString(ctx, cs, "pubsub.redis.url")
 
 	if rc.SetupComplete {
 		logger.Info("runtime config loaded from config store")

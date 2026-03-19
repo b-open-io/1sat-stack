@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"log/slog"
 	"os"
@@ -652,6 +653,54 @@ func (c *Config) applyRuntimeConfig(rc *configpkg.RuntimeConfig) {
 	if rc.MongoDBURL != "" {
 		c.MongoDB.URL = rc.MongoDBURL
 	}
+
+	// Beef chain
+	if rc.BeefChain != "" {
+		if chain, err := convertBeefChain(rc.BeefChain); err == nil && len(chain) > 0 {
+			c.Beef.Chain = chain
+		}
+	}
+
+	// PubSub
+	if rc.PubSubProvider != "" {
+		c.PubSub.Provider = rc.PubSubProvider
+	}
+	if rc.PubSubBufferSize > 0 {
+		c.PubSub.Channels.BufferSize = rc.PubSubBufferSize
+	}
+	if rc.PubSubRedisURL != "" {
+		// PubSub Redis not yet implemented but store the config
+	}
+}
+
+// convertBeefChain converts the flat admin UI format to the nested Go config format.
+// Admin UI writes: [{"type":"lru","size":"100mb"},{"type":"filesystem","path":"~/.1sat/beef"}]
+// Go expects: [{"provider":"lru","lru":{"size":"100mb"}},{"provider":"filesystem","filesystem":{"path":"~/.1sat/beef"}}]
+func convertBeefChain(jsonStr string) ([]beef.ChainConfig, error) {
+	var flat []map[string]string
+	if err := json.Unmarshal([]byte(jsonStr), &flat); err != nil {
+		return nil, err
+	}
+
+	var chain []beef.ChainConfig
+	for _, item := range flat {
+		provider := item["type"]
+		cc := beef.ChainConfig{Provider: provider}
+		switch provider {
+		case "lru":
+			cc.LRU.Size = item["size"]
+		case "filesystem":
+			cc.Filesystem.Path = item["path"]
+		case "redis":
+			cc.Redis.URL = item["url"]
+		case "badger":
+			cc.Badger.Path = item["path"]
+		case "junglebus", "store":
+			// No additional config needed
+		}
+		chain = append(chain, cc)
+	}
+	return chain, nil
 }
 
 // Initialize creates all services from the configuration
