@@ -1,11 +1,11 @@
-import { AuthFetch, WalletClient } from "@bsv/sdk";
+import { AuthFetch } from "@bsv/sdk";
 import type { WalletInterface } from "@bsv/sdk";
-import { createWebCWI } from "@1sat/wallet";
+import { connectWallet as detectWallet, getAvailableProviders } from "@1sat/connect";
 
 let wallet: WalletInterface | null = null;
 let authFetch: AuthFetch | null = null;
 let identityKey: string | null = null;
-let destroyCWI: (() => void) | null = null;
+let disconnectFn: (() => void) | null = null;
 
 const adminIdx = window.location.pathname.indexOf("/admin");
 const API_BASE =
@@ -19,12 +19,13 @@ const SETUP_BASE =
   "/setup";
 
 export async function connectWallet(): Promise<string> {
-  const client = new WalletClient("auto");
-  await client.connectToSubstrate();
-  wallet = client;
-  await wallet.waitForAuthentication({});
-  const result = await wallet.getPublicKey({ identityKey: true });
-  identityKey = result.publicKey;
+  const result = await detectWallet();
+  if (!result) {
+    throw new Error("No wallet detected");
+  }
+  wallet = result.wallet;
+  identityKey = result.identityKey;
+  disconnectFn = result.disconnect;
   authFetch = new AuthFetch(wallet);
   return identityKey;
 }
@@ -38,22 +39,23 @@ export function getIdentityKey(): string | null {
 }
 
 export async function connectOneSatWallet(): Promise<string> {
-  const { wallet: w, destroy } = createWebCWI({
-    walletUrl: import.meta.env.VITE_ONESAT_WALLET_URL || undefined,
+  const providers = getAvailableProviders({
+    providers: [{ type: "onesat", name: "OneSat Wallet" }],
   });
-  wallet = w;
-  destroyCWI = destroy;
-  await w.waitForAuthentication({});
-  const result = await w.getPublicKey({ identityKey: true });
-  identityKey = result.publicKey;
-  authFetch = new AuthFetch(w);
+  const onesat = providers[0];
+  if (!onesat) throw new Error("OneSat provider not available");
+  const result = await onesat.connect();
+  wallet = result.wallet;
+  identityKey = result.identityKey;
+  disconnectFn = result.disconnect;
+  authFetch = new AuthFetch(wallet);
   return identityKey;
 }
 
 export function disconnectWallet(): void {
-  if (destroyCWI) {
-    destroyCWI();
-    destroyCWI = null;
+  if (disconnectFn) {
+    disconnectFn();
+    disconnectFn = null;
   }
   wallet = null;
   authFetch = null;
@@ -95,7 +97,6 @@ export async function performSetup(): Promise<{ message: string }> {
   }
   return res.json();
 }
-
 
 export async function checkAccess(): Promise<{ status: string; admin?: boolean }> {
   const url = `${SETUP_BASE}/check`;

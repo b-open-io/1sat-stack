@@ -1565,8 +1565,11 @@ func (c *Config) RegisterRoutes(app *fiber.App, svc *Services) {
 		app.All("/.well-known/auth", adaptor.HTTPHandler(authWrappedHandler))
 
 		// Serve /manifest.json for WalletPermissionsManager grouped permission flow.
-		// Declares protocol permissions so dApps get a single grouped prompt.
-		app.Get("/manifest.json", handleManifest())
+		// Registered at both app root and base path so the wallet can find it
+		// regardless of reverse proxy configuration.
+		manifestHandler := handleManifest()
+		app.Get("/manifest.json", manifestHandler)
+		api.Get("/manifest.json", manifestHandler)
 
 		slog.Debug("registered wallet routes", "prefix", c.Server.BasePath+prefix)
 	}
@@ -1665,13 +1668,9 @@ func handleManifest() fiber.Handler {
 			"groupPermissions": fiber.Map{
 				"description": "1Sat Stack Admin",
 				"protocolPermissions": []fiber.Map{
-					{"protocolID": []any{1, "identity key retrieval"}, "counterparty": "self"},
-					{"protocolID": []any{2, "server hmac"}, "counterparty": "self"},
-				},
-			},
-			"counterpartyPermissions": fiber.Map{
-				"protocols": []fiber.Map{
-					{"protocolID": []any{2, "auth message signature"}, "description": "BRC-103/104 authentication signatures"},
+					{"protocolID": []any{1, "identity key retrieval"}, "counterparty": "self", "description": "Identity key for admin authentication"},
+					{"protocolID": []any{2, "server hmac"}, "counterparty": "self", "description": "Server HMAC for session management"},
+					{"protocolID": []any{2, "auth message signature"}, "counterparty": "anyone", "description": "BRC-103/104 authentication signatures"},
 				},
 			},
 		},
