@@ -1048,9 +1048,9 @@ func (r *Routes) handleSetupComplete(c *fiber.Ctx) error {
 
 	// Only write database paths if the user changed them from defaults
 	overrides := map[string]struct{ value, defaultVal string }{
-		"wallet.db.engine":      {req.WalletBackend, "sqlite"},
-		"wallet.db.sqlite.path": {req.WalletSqlitePath, "~/.1sat/wallet.sqlite"},
-		"wallet.db.postgres.url": {req.WalletPostgresUrl, ""},
+		"wallet.db.engine":                 {req.WalletBackend, "sqlite"},
+		"wallet.db.sqlite.connection_string": {req.WalletSqlitePath, "~/.1sat/wallet.sqlite"},
+		"wallet.postgres_connection_string":  {req.WalletPostgresUrl, ""},
 		"chaintracks.mode":      {req.ChaintracksBackend, "embedded"},
 		"chaintracks.path":      {req.ChaintracksPath, "~/.1sat/chaintracks"},
 		"chaintracks.url":       {req.ChaintracksUrl, ""},

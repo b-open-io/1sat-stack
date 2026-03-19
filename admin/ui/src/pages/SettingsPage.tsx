@@ -416,6 +416,8 @@ interface StoragePanelProps {
   setPubsubRedisUrl: (v: string) => void;
   ordfsRedisUrl: string;
   setOrdfsRedisUrl: (v: string) => void;
+  walletEngine: "sqlite" | "postgres";
+  setWalletEngine: (v: "sqlite" | "postgres") => void;
   walletDb: string;
   setWalletDb: (v: string) => void;
   chaintracksPath: string;
@@ -432,6 +434,7 @@ function StoragePanel({
   pubsubBuffer, setPubsubBuffer,
   pubsubRedisUrl, setPubsubRedisUrl,
   ordfsRedisUrl, setOrdfsRedisUrl,
+  walletEngine, setWalletEngine,
   walletDb, setWalletDb,
   chaintracksPath, setChaintracksPath,
   arcadeDb, setArcadeDb,
@@ -496,8 +499,23 @@ function StoragePanel({
       <SectionCard>
         <SectionHeading>Databases</SectionHeading>
         <p className="text-[11px] text-muted-foreground">Set during initial setup. Restart required after any change.</p>
-        <FieldRow label="Wallet" badge={<RestartBadge />}>
-          <Input value={walletDb} onChange={(e) => setWalletDb(e.target.value)} className="font-mono text-xs h-8" />
+        <FieldRow label="Wallet engine" badge={<RestartBadge />}>
+          <SegmentedControl
+            options={[{ value: "sqlite", label: "SQLite" }, { value: "postgres", label: "PostgreSQL" }]}
+            value={walletEngine}
+            onChange={(v) => {
+              setWalletEngine(v as "sqlite" | "postgres");
+              setWalletDb(v === "sqlite" ? "~/.1sat/wallet.sqlite" : "");
+            }}
+          />
+        </FieldRow>
+        <FieldRow label={walletEngine === "sqlite" ? "Path" : "Connection string"} badge={<RestartBadge />}>
+          <Input
+            value={walletDb}
+            onChange={(e) => setWalletDb(e.target.value)}
+            className="font-mono text-xs h-8"
+            placeholder={walletEngine === "sqlite" ? "~/.1sat/wallet.sqlite" : "postgres://user:pass@host:5432/dbname"}
+          />
         </FieldRow>
         <FieldRow label="Chaintracks" badge={<RestartBadge />}>
           <Input value={chaintracksPath} onChange={(e) => setChaintracksPath(e.target.value)} className="font-mono text-xs h-8" />
@@ -1256,6 +1274,7 @@ export default function SettingsPage() {
   const [pubsubBuffer, setPubsubBuffer] = useState("1000");
   const [pubsubRedisUrl, setPubsubRedisUrl] = useState("");
   const [ordfsRedisUrl, setOrdfsRedisUrl] = useState("");
+  const [walletEngine, setWalletEngine] = useState<"sqlite" | "postgres">("sqlite");
   const [walletDb, setWalletDb] = useState("~/.1sat/wallet.sqlite");
   const [chaintracksPath, setChaintracksPath] = useState("~/.1sat/chaintracks");
   const [arcadeDb, setArcadeDb] = useState("~/.1sat/arcade/arcade.db");
@@ -1346,7 +1365,11 @@ export default function SettingsPage() {
         setPubsubBuffer(s("pubsub.buffer", "1000"));
         setPubsubRedisUrl(s("pubsub.redis_url", ""));
         setOrdfsRedisUrl(s("ordfs.redis_url", ""));
-        setWalletDb(s("wallet.db", "~/.1sat/wallet.sqlite"));
+        const engine = s("wallet.db.engine", "sqlite");
+        setWalletEngine(engine === "postgres" ? "postgres" : "sqlite");
+        setWalletDb(engine === "postgres"
+          ? s("wallet.postgres_connection_string", "")
+          : s("wallet.db.sqlite.connection_string", "~/.1sat/wallet.sqlite"));
         setChaintracksPath(s("chaintracks.path", "~/.1sat/chaintracks"));
         setArcadeDb(s("arcade.db", "~/.1sat/arcade/arcade.db"));
 
@@ -1425,8 +1448,10 @@ export default function SettingsPage() {
   const RESTART_KEYS = new Set([
     "overlay.bap.enabled", "overlay.opns.enabled", "overlay.bsv21.enabled",
     "overlay.bsocial.enabled", "overlay.ordlock.enabled",
+    "owner.enabled",
     "store.provider", "store.path", "pubsub.provider",
-    "auth.mode", "wallet.db", "chaintracks.path", "arcade.db",
+    "auth.mode", "wallet.db.engine", "wallet.db.sqlite.connection_string",
+    "wallet.postgres_connection_string", "chaintracks.path", "arcade.db",
     "overlay.engine.storage", "overlay.engine.storage_path",
     "indexer.parsers",
   ]);
@@ -1438,19 +1463,22 @@ export default function SettingsPage() {
     "overlay.bsv21.enabled": String(bsv21Enabled),
     "overlay.bsocial.enabled": String(bsocialEnabled),
     "overlay.ordlock.enabled": String(ordlockEnabled),
+    "owner.enabled": String(ownerSync),
     "store.provider": storeProvider,
     "store.path": storePath,
     "pubsub.provider": pubsubProvider,
     "auth.mode": authMode,
-    "wallet.db": walletDb,
+    "wallet.db.engine": walletEngine,
+    "wallet.db.sqlite.connection_string": walletEngine === "sqlite" ? walletDb : "",
+    "wallet.postgres_connection_string": walletEngine === "postgres" ? walletDb : "",
     "chaintracks.path": chaintracksPath,
     "arcade.db": arcadeDb,
     "overlay.engine.storage": engineStorage,
     "overlay.engine.storage_path": engineStoragePath,
     "indexer.parsers": JSON.stringify(activeTags),
   }), [
-    bapEnabled, opnsEnabled, bsv21Enabled, bsocialEnabled, ordlockEnabled,
-    storeProvider, storePath, pubsubProvider, authMode, walletDb,
+    bapEnabled, opnsEnabled, bsv21Enabled, bsocialEnabled, ordlockEnabled, ownerSync,
+    storeProvider, storePath, pubsubProvider, authMode, walletEngine, walletDb,
     chaintracksPath, arcadeDb, engineStorage, engineStoragePath, activeTags,
   ]);
 
@@ -1483,7 +1511,9 @@ export default function SettingsPage() {
         "pubsub.buffer": pubsubBuffer,
         "pubsub.redis_url": pubsubRedisUrl,
         "ordfs.redis_url": ordfsRedisUrl,
-        "wallet.db": walletDb,
+        "wallet.db.engine": walletEngine,
+        "wallet.db.sqlite.connection_string": walletEngine === "sqlite" ? walletDb : "",
+        "wallet.postgres_connection_string": walletEngine === "postgres" ? walletDb : "",
         "chaintracks.path": chaintracksPath,
         "arcade.db": arcadeDb,
 
@@ -1671,6 +1701,7 @@ export default function SettingsPage() {
               pubsubBuffer={pubsubBuffer} setPubsubBuffer={setPubsubBuffer}
               pubsubRedisUrl={pubsubRedisUrl} setPubsubRedisUrl={setPubsubRedisUrl}
               ordfsRedisUrl={ordfsRedisUrl} setOrdfsRedisUrl={setOrdfsRedisUrl}
+              walletEngine={walletEngine} setWalletEngine={setWalletEngine}
               walletDb={walletDb} setWalletDb={setWalletDb}
               chaintracksPath={chaintracksPath} setChaintracksPath={setChaintracksPath}
               arcadeDb={arcadeDb} setArcadeDb={setArcadeDb}
