@@ -4,10 +4,9 @@ import (
 	"context"
 	"sync/atomic"
 
-	"github.com/b-open-io/1sat-stack/pkg/gasp"
 	"github.com/b-open-io/1sat-stack/pkg/store"
-	gasplib "github.com/bsv-blockchain/go-overlay-services/pkg/core/gasp"
 	"github.com/bsv-blockchain/go-overlay-services/pkg/core/engine"
+	gasplib "github.com/bsv-blockchain/go-overlay-services/pkg/core/gasp"
 )
 
 // Listener is the interface for external data sources that feed the topic queue.
@@ -20,7 +19,7 @@ type Listener interface {
 // Topic represents a first-class topic in the overlay system.
 // A topic encapsulates:
 // - Registration with the overlay engine (TopicManager)
-// - Queue processing (TopicWorker)
+// - Queue processing (OverlaySync)
 // - External data sources (Listeners)
 //
 // Activation is atomic: when a topic is activated, all components start together.
@@ -33,7 +32,7 @@ type Topic struct {
 	Listeners   []Listener           // External data sources (optional)
 
 	// Runtime state (internal)
-	worker   *gasp.TopicWorker
+	worker   *OverlaySync
 	cancel   context.CancelFunc
 	p2pUnsub context.CancelFunc
 	active   atomic.Bool

@@ -243,7 +243,6 @@ func (s *SyncServices) dispatch(ctx context.Context, member string, score float6
 		}
 
 		// Add outpoint to topic queue (q:tm_{tokenId})
-		// This matches the queue key format used by TopicWorker
 		topicQueueKey := []byte("q:tm_" + tokenId)
 		if err := s.store.ZAdd(ctx, topicQueueKey, store.ScoredMember{
 			Member: outpoint.Bytes(),

@@ -47,6 +47,7 @@ type OverlaySyncConfig struct {
 	EnableMempool       bool            `mapstructure:"enable_mempool"`       // JungleBus mempool subscription
 	ResolveDependencies bool            `mapstructure:"resolve_dependencies"` // Use GASP to resolve input dependencies before submit
 	ErrorClassifier     ErrorClassifier `mapstructure:"-"`                    // Classifies Submit errors (set programmatically)
+	OnProcessed         func(string) error `mapstructure:"-"`                 // Called after each successful item with topic name (set programmatically)
 }
 
 // SubscriberConfig creates a jbsync.SubscriberConfig from this overlay sync config.
@@ -114,11 +115,22 @@ func NewOverlaySync(
 // Start begins processing the queue. Blocks until context is cancelled.
 func (s *OverlaySync) Start(ctx context.Context) error {
 	limiter := make(chan struct{}, s.config.Concurrency)
+	handler := s.process
+	if s.config.OnProcessed != nil {
+		inner := handler
+		handler = func(ctx context.Context, member string, score float64) error {
+			if err := inner(ctx, member, score); err != nil {
+				return err
+			}
+			return s.config.OnProcessed(s.topicName)
+		}
+	}
+
 	s.worker = worker.New(&worker.Config{
 		Store:   s.store,
 		Key:     jbsync.QueueKey(s.config.QueueName),
 		Limiter: limiter,
-		Handler: s.process,
+		Handler: handler,
 		OnError: func(ctx context.Context, id string, score float64, err error) {
 			s.logger.Error("overlay sync error", "member", id, "score", score, "error", err)
 		},

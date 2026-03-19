@@ -10,13 +10,12 @@ import (
 
 	"github.com/b-open-io/1sat-stack/pkg/beef"
 	"github.com/b-open-io/1sat-stack/pkg/config"
-	gaspqueue "github.com/b-open-io/1sat-stack/pkg/gasp"
 	lookuppkg "github.com/b-open-io/1sat-stack/pkg/lookup"
+	"github.com/b-open-io/1sat-stack/pkg/overlay"
 	"github.com/b-open-io/1sat-stack/pkg/store"
 	"github.com/b-open-io/1sat-stack/pkg/txo"
 	"github.com/bsv-blockchain/go-chaintracks/chaintracks"
 	"github.com/bsv-blockchain/go-overlay-services/pkg/core/engine"
-	"github.com/bsv-blockchain/go-overlay-services/pkg/core/gasp"
 	sdkoverlay "github.com/bsv-blockchain/go-sdk/overlay"
 	"github.com/bsv-blockchain/go-sdk/transaction"
 	"golang.org/x/sync/errgroup"
@@ -138,27 +137,28 @@ func (m *TokenManager) createWorker(ctx context.Context, status *TokenStatus) er
 	// Create cancellable context for this worker
 	workerCtx, cancel := context.WithCancel(ctx)
 
-	// Create BeefRemote for local BEEF storage access
-	beefRemote := gaspqueue.NewBeefRemote(m.beefStorage, m.store, "")
-
-	// Create TopicWorker with GASP processing
-	tw := gaspqueue.NewTopicWorker(&gaspqueue.TopicWorkerConfig{
-		TopicName:   topicName,
-		Store:       m.store,
-		Engine:      m.overlay,
-		Remotes:     []gasp.Remote{beefRemote},
-		Concurrency: m.concurrency,
-		OnProcessed: func(name string) error {
-			m.onTokenItemProcessed(tokenId)
-			return nil
+	// Create OverlaySync worker for this token's queue
+	syncWorker := overlay.NewOverlaySync(
+		&overlay.OverlaySyncConfig{
+			QueueName:           topicName,
+			Concurrency:         m.concurrency,
+			ResolveDependencies: true,
+			OnProcessed: func(name string) error {
+				m.onTokenItemProcessed(tokenId)
+				return nil
+			},
 		},
-		Logger: m.logger.With("tokenId", tokenId),
-	})
+		topicName,
+		m.store,
+		m.beefStorage,
+		m.overlay,
+		m.logger.With("tokenId", tokenId),
+	)
 
 	tokenWorker := &TokenWorker{
 		tokenId:   tokenId,
 		address:   status.FeeAddress,
-		worker:    nil, // TopicWorker is separate
+		worker:    nil,
 		startedAt: time.Now(),
 		cancel:    cancel,
 	}
@@ -170,7 +170,7 @@ func (m *TokenManager) createWorker(ctx context.Context, status *TokenStatus) er
 	m.g.Go(func() error {
 		defer m.workers.Delete(tokenId)
 		defer m.statuses.Delete(tokenId)
-		err := tw.Start(workerCtx)
+		err := syncWorker.Start(workerCtx)
 		// Workers can be cancelled for valid lifecycle reasons (e.g., underfunding)
 		// Return nil to prevent cascading shutdown of other workers
 		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {

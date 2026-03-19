@@ -98,7 +98,7 @@ func (s *Services) Close() error {
 
 // ActivateTopic activates a topic on a given engine, performing all necessary setup:
 // 1. Registers TopicManager with engine
-// 2. If Remotes configured: checks DB for override, creates and starts TopicWorker
+// 2. If Remotes configured: checks DB for override, creates and starts OverlaySync worker
 // 3. Starts listeners
 // 4. Tracks in topics registry
 //
@@ -143,16 +143,20 @@ func (s *Services) ActivateTopic(ctx context.Context, eng *engine.Engine, topic 
 			topic.Listeners = append(topic.Listeners, sseListeners...)
 		}
 
-		// Create and start TopicWorker
-		topic.worker = gasp.NewTopicWorker(&gasp.TopicWorkerConfig{
-			TopicName:   topic.Name,
-			Store:       s.Store,
-			Engine:      eng,
-			Remotes:     topic.Remotes,
-			Concurrency: 8,
-			OnProcessed: topic.OnProcessed,
-			Logger:      s.logger,
-		})
+		// Create and start OverlaySync worker
+		topic.worker = NewOverlaySync(
+			&OverlaySyncConfig{
+				QueueName:           topic.Name,
+				Concurrency:         8,
+				ResolveDependencies: true,
+				OnProcessed:         topic.OnProcessed,
+			},
+			topic.Name,
+			s.Store,
+			s.beefStorage,
+			eng,
+			s.logger,
+		)
 
 		// Start worker in background
 		g, gCtx := errgroup.WithContext(topicCtx)
