@@ -60,6 +60,9 @@ type RuntimeConfig struct {
 
 	// Indexer
 	IndexerMode              string // "embedded" or "disabled"
+	IndexerLogLevel          string
+	IndexerVerbose           bool
+	IndexerParsers           string // JSON array of parse tag names
 	IndexerSyncEnabled       bool
 	IndexerSyncSubscriptionIDs string // comma-separated
 	IndexerSyncConcurrency   int
@@ -88,7 +91,10 @@ type RuntimeConfig struct {
 
 	// OPNS overlay
 	OPNSEnabled          bool
+	OPNSSyncSubID        string
 	OPNSCrawlConcurrency int
+	OPNSSyncBatchSize    int
+	OPNSPaymail          bool
 
 	// OrdLock overlay
 	OrdLockEnabled          bool
@@ -99,6 +105,7 @@ type RuntimeConfig struct {
 	// BSV21
 	BSV21Enabled          bool
 	BSV21SyncSubID        string
+	BSV21SyncConcurrency  int
 	BSV21SyncBatchSize    int
 
 	// ORDFS
@@ -126,6 +133,11 @@ type RuntimeConfig struct {
 	PubSubProvider   string
 	PubSubBufferSize int
 	PubSubRedisURL   string
+
+	// Worker defaults
+	WorkerConcurrency int
+	WorkerPageSize    int
+	WorkerPollDelay   string
 }
 
 // LoadRuntimeConfig reads all operational settings from the config store.
@@ -182,6 +194,9 @@ func LoadRuntimeConfig(ctx context.Context, cs Store, logger *slog.Logger) (*Run
 
 	// Indexer
 	rc.IndexerMode = getString(ctx, cs, "indexer.mode")
+	rc.IndexerLogLevel = getString(ctx, cs, "indexer.log_level")
+	rc.IndexerVerbose = getBool(ctx, cs, "indexer.verbose")
+	rc.IndexerParsers = getString(ctx, cs, "indexer.parsers")
 	rc.IndexerSyncEnabled = getBool(ctx, cs, "indexer.sync.enabled")
 	rc.IndexerSyncSubscriptionIDs = getString(ctx, cs, "indexer.sync.subscription_ids")
 	rc.IndexerSyncConcurrency = getInt(ctx, cs, "indexer.sync.concurrency")
@@ -210,7 +225,10 @@ func LoadRuntimeConfig(ctx context.Context, cs Store, logger *slog.Logger) (*Run
 
 	// OPNS
 	rc.OPNSEnabled = getBool(ctx, cs, "overlay.opns.enabled")
+	rc.OPNSSyncSubID = getString(ctx, cs, "overlay.opns.sub_id")
 	rc.OPNSCrawlConcurrency = getInt(ctx, cs, "overlay.opns.concurrency")
+	rc.OPNSSyncBatchSize = getInt(ctx, cs, "overlay.opns.batch_size")
+	rc.OPNSPaymail = getBool(ctx, cs, "overlay.opns.paymail")
 
 	// OrdLock
 	rc.OrdLockEnabled = getBool(ctx, cs, "overlay.ordlock.enabled")
@@ -221,6 +239,7 @@ func LoadRuntimeConfig(ctx context.Context, cs Store, logger *slog.Logger) (*Run
 	// BSV21
 	rc.BSV21Enabled = getBool(ctx, cs, "overlay.bsv21.enabled")
 	rc.BSV21SyncSubID = getString(ctx, cs, "overlay.bsv21.sub_id")
+	rc.BSV21SyncConcurrency = getInt(ctx, cs, "overlay.bsv21.concurrency")
 	rc.BSV21SyncBatchSize = getInt(ctx, cs, "overlay.bsv21.batch_size")
 
 	// ORDFS
@@ -244,7 +263,7 @@ func LoadRuntimeConfig(ctx context.Context, cs Store, logger *slog.Logger) (*Run
 	rc.MessageBoxDBPath = getString(ctx, cs, "messagebox.db_path")
 
 	// MongoDB
-	rc.MongoDBURL = getString(ctx, cs, "mongodb.url")
+	rc.MongoDBURL = getString(ctx, cs, "overlay.bsocial.mongo_url")
 
 	// Beef chain
 	rc.BeefChain = getString(ctx, cs, "beef.chain")
@@ -253,6 +272,11 @@ func LoadRuntimeConfig(ctx context.Context, cs Store, logger *slog.Logger) (*Run
 	rc.PubSubProvider = getString(ctx, cs, "pubsub.provider")
 	rc.PubSubBufferSize = getInt(ctx, cs, "pubsub.channels.buffer_size")
 	rc.PubSubRedisURL = getString(ctx, cs, "pubsub.redis.url")
+
+	// Worker defaults
+	rc.WorkerConcurrency = getInt(ctx, cs, "worker.concurrency")
+	rc.WorkerPageSize = getInt(ctx, cs, "worker.page_size")
+	rc.WorkerPollDelay = getString(ctx, cs, "worker.poll_delay")
 
 	if rc.SetupComplete {
 		logger.Info("runtime config loaded from config store")

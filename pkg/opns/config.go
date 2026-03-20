@@ -18,9 +18,10 @@ const (
 
 // Config holds OPNS configuration.
 type Config struct {
-	Mode   string       `mapstructure:"mode"` // disabled, embedded
-	Crawl  CrawlConfig  `mapstructure:"crawl"`
-	Routes RoutesConfig `mapstructure:"routes"`
+	Mode   string                    `mapstructure:"mode"` // disabled, embedded
+	Sync   *overlay.OverlaySyncConfig `mapstructure:"sync"`
+	Crawl  CrawlConfig               `mapstructure:"crawl"`
+	Routes RoutesConfig              `mapstructure:"routes"`
 }
 
 // RoutesConfig holds route configuration.

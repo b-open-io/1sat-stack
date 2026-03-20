@@ -13,7 +13,7 @@
     "@1sat/client": "^0.0.8",
     "@1sat/connect": "^0.0.20",
     "@1sat/types": "^0.0.9",
-    "@bsv/sdk": "^2.0.4",
+    "@bsv/sdk": "^2.0.12",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "lucide-react": "^0.577.0",

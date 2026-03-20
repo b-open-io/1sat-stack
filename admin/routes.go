@@ -1,6 +1,7 @@
 package admin
 
 import (
+	"context"
 	"embed"
 	"encoding/json"
 	"errors"
@@ -1049,15 +1050,15 @@ func (r *Routes) handleSetupComplete(c *fiber.Ctx) error {
 	// Only write database paths if the user changed them from defaults
 	overrides := map[string]struct{ value, defaultVal string }{
 		"wallet.db.engine":                 {req.WalletBackend, "sqlite"},
-		"wallet.db.sqlite.connection_string": {req.WalletSqlitePath, "~/.1sat/wallet.sqlite"},
+		"wallet.db.sqlite.connection_string": {req.WalletSqlitePath, "wallet.sqlite"},
 		"wallet.postgres_connection_string":  {req.WalletPostgresUrl, ""},
 		"chaintracks.mode":      {req.ChaintracksBackend, "embedded"},
-		"chaintracks.path":      {req.ChaintracksPath, "~/.1sat/chaintracks"},
+		"chaintracks.path":      {req.ChaintracksPath, "chaintracks"},
 		"chaintracks.url":       {req.ChaintracksUrl, ""},
 		"arcade.mode":           {req.ArcadeBackend, "embedded"},
-		"arcade.path":           {req.ArcadePath, "~/.1sat/arcade/arcade.db"},
+		"arcade.path":           {req.ArcadePath, "arcade/arcade.db"},
 		"arcade.url":            {req.ArcadeUrl, ""},
-		"messagebox.path":       {req.MessageboxPath, "~/.1sat/messagebox.db"},
+		"messagebox.db_path":    {req.MessageboxPath, "messagebox.db"},
 	}
 
 	for key, o := range overrides {
@@ -1136,15 +1137,15 @@ func (r *Routes) handleGetSetupConfig(c *fiber.Ctx) error {
 	keys := map[string]*string{
 		"auth.mode":             new(string),
 		"wallet.db.engine":      new(string),
-		"wallet.db.sqlite.path": new(string),
-		"wallet.db.postgres.url": new(string),
+		"wallet.db.sqlite.connection_string": new(string),
+		"wallet.postgres_connection_string": new(string),
 		"chaintracks.mode":      new(string),
 		"chaintracks.path":      new(string),
 		"chaintracks.url":       new(string),
 		"arcade.mode":           new(string),
 		"arcade.path":           new(string),
 		"arcade.url":            new(string),
-		"messagebox.path":       new(string),
+		"messagebox.db_path":    new(string),
 	}
 
 	for key, dest := range keys {
@@ -1161,15 +1162,15 @@ func (r *Routes) handleGetSetupConfig(c *fiber.Ctx) error {
 	return c.JSON(SetupConfigResponse{
 		AuthMode:           *keys["auth.mode"],
 		WalletBackend:      *keys["wallet.db.engine"],
-		WalletSqlitePath:   *keys["wallet.db.sqlite.path"],
-		WalletPostgresUrl:  *keys["wallet.db.postgres.url"],
+		WalletSqlitePath:   *keys["wallet.db.sqlite.connection_string"],
+		WalletPostgresUrl:  *keys["wallet.postgres_connection_string"],
 		ChaintracksBackend: *keys["chaintracks.mode"],
 		ChaintracksPath:    *keys["chaintracks.path"],
 		ChaintracksUrl:     *keys["chaintracks.url"],
 		ArcadeBackend:      *keys["arcade.mode"],
 		ArcadePath:         *keys["arcade.path"],
 		ArcadeUrl:          *keys["arcade.url"],
-		MessageboxPath:     *keys["messagebox.path"],
+		MessageboxPath:     *keys["messagebox.db_path"],
 	})
 }
 
@@ -1243,11 +1244,64 @@ func (r *Routes) handleUpdateConfig(c *fiber.Ctx) error {
 		updated++
 	}
 
+	// Sync JSON array keys to individual prefixed keys for whitelist/blacklist
+	for _, mapping := range []struct{ jsonKey, prefix string }{
+		{"overlay.bsv21.whitelist", "bsv21.whitelist:"},
+		{"overlay.bsv21.blacklist", "bsv21.blacklist:"},
+	} {
+		if jsonVal, ok := updates[mapping.jsonKey]; ok {
+			if err := r.syncPrefixedKeys(ctx, mapping.prefix, jsonVal); err != nil {
+				r.logger.Error("failed to sync prefixed keys", "error", err, "prefix", mapping.prefix)
+			}
+		}
+	}
+
 	r.logger.Info("config updated", "keys", updated)
 	return c.JSON(fiber.Map{
 		"status":  "ok",
 		"updated": updated,
 	})
+}
+
+// syncPrefixedKeys replaces all keys with the given prefix to match the JSON array value.
+// Existing prefixed keys not in the array are deleted; new entries are added.
+func (r *Routes) syncPrefixedKeys(ctx context.Context, prefix string, jsonVal string) error {
+	var desired []string
+	if err := json.Unmarshal([]byte(jsonVal), &desired); err != nil {
+		return err
+	}
+
+	desiredSet := make(map[string]struct{}, len(desired))
+	for _, id := range desired {
+		desiredSet[id] = struct{}{}
+	}
+
+	existing, err := r.configStore.List(ctx, prefix)
+	if err != nil {
+		return err
+	}
+
+	// Delete keys that are no longer in the desired set
+	for key := range existing {
+		id := strings.TrimPrefix(key, prefix)
+		if _, ok := desiredSet[id]; !ok {
+			if err := r.configStore.Delete(ctx, key); err != nil {
+				return err
+			}
+		}
+	}
+
+	// Add keys that are new
+	for _, id := range desired {
+		key := prefix + id
+		if _, exists := existing[key]; !exists {
+			if err := r.configStore.Set(ctx, key, "1"); err != nil {
+				return err
+			}
+		}
+	}
+
+	return nil
 }
 
 // handleTriggerOpnsCrawl triggers the OpNS genesis crawl.

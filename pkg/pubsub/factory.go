@@ -18,8 +18,7 @@ func CreatePubSub(connectionString string, logger *slog.Logger) (PubSub, error) 
 
 	switch {
 	case strings.HasPrefix(connectionString, "redis://"):
-		// TODO: Implement Redis pub/sub
-		return nil, fmt.Errorf("redis pub/sub not yet implemented")
+		return NewRedisPubSub(connectionString, logger)
 
 	case strings.HasPrefix(connectionString, "channels://"):
 		return NewChannelPubSub(logger), nil

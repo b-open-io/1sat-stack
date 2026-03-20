@@ -321,9 +321,9 @@ function BeefChainEditor({ chain, onChange }: { chain: BeefProvider[]; onChange:
   function changeType(i: number, type: string) {
     const defaults: Record<string, BeefProvider> = {
       lru: { type: "lru", size: "100mb" },
-      filesystem: { type: "filesystem", path: "~/.1sat/beef" },
+      filesystem: { type: "filesystem", path: "beef" },
       redis: { type: "redis", url: "redis://localhost:6379/0" },
-      badger: { type: "badger", path: "~/.1sat/beef-badger" },
+      badger: { type: "badger", path: "beef-badger" },
       store: { type: "store" },
       junglebus: { type: "junglebus" },
     };
@@ -363,7 +363,7 @@ function BeefChainEditor({ chain, onChange }: { chain: BeefProvider[]; onChange:
               <Input
                 value={p.path}
                 onChange={(e) => updateProvider(i, { ...p, path: e.target.value })}
-                placeholder="~/.1sat/beef"
+                placeholder="beef"
                 className="font-mono text-xs h-7"
               />
             )}
@@ -379,7 +379,7 @@ function BeefChainEditor({ chain, onChange }: { chain: BeefProvider[]; onChange:
               <Input
                 value={p.path}
                 onChange={(e) => updateProvider(i, { ...p, path: e.target.value })}
-                placeholder="~/.1sat/beef-badger"
+                placeholder="beef-badger"
                 className="font-mono text-xs h-7"
               />
             )}
@@ -457,7 +457,7 @@ function StoragePanel({
             value={storePath}
             onChange={(e) => setStorePath(e.target.value)}
             className="font-mono text-xs h-8"
-            placeholder={storeProvider === "badger" ? "~/.1sat/store" : "redis://localhost:6379/0"}
+            placeholder={storeProvider === "badger" ? "store" : "redis://localhost:6379/0"}
           />
         </FieldRow>
       </SectionCard>
@@ -505,7 +505,7 @@ function StoragePanel({
             value={walletEngine}
             onChange={(v) => {
               setWalletEngine(v as "sqlite" | "postgres");
-              setWalletDb(v === "sqlite" ? "~/.1sat/wallet.sqlite" : "");
+              setWalletDb(v === "sqlite" ? "wallet.sqlite" : "");
             }}
           />
         </FieldRow>
@@ -514,7 +514,7 @@ function StoragePanel({
             value={walletDb}
             onChange={(e) => setWalletDb(e.target.value)}
             className="font-mono text-xs h-8"
-            placeholder={walletEngine === "sqlite" ? "~/.1sat/wallet.sqlite" : "postgres://user:pass@host:5432/dbname"}
+            placeholder={walletEngine === "sqlite" ? "wallet.sqlite" : "postgres://user:pass@host:5432/dbname"}
           />
         </FieldRow>
         <FieldRow label="Chaintracks" badge={<RestartBadge />}>
@@ -1016,7 +1016,7 @@ function OverlayEnginePanel({
             value={engineStoragePath}
             onChange={(e) => setEngineStoragePath(e.target.value)}
             className="font-mono text-xs h-8"
-            placeholder={engineStorage === "sqlite" ? "~/.1sat/overlay.db" : "postgres://..."}
+            placeholder={engineStorage === "sqlite" ? "overlay" : "postgres://..."}
           />
         </FieldRow>
       </SectionCard>
@@ -1264,19 +1264,19 @@ export default function SettingsPage() {
 
   // Storage
   const [storeProvider, setStoreProvider] = useState<"badger" | "redis">("badger");
-  const [storePath, setStorePath] = useState("~/.1sat/store");
+  const [storePath, setStorePath] = useState("store");
   const [beefChain, setBeefChain] = useState<BeefProvider[]>([
     { type: "lru", size: "100mb" },
-    { type: "filesystem", path: "~/.1sat/beef" },
+    { type: "filesystem", path: "beef" },
   ]);
   const [pubsubProvider, setPubsubProvider] = useState<"channels" | "redis">("channels");
   const [pubsubBuffer, setPubsubBuffer] = useState("100");
   const [pubsubRedisUrl, setPubsubRedisUrl] = useState("");
   const [ordfsRedisUrl, setOrdfsRedisUrl] = useState("");
   const [walletEngine, setWalletEngine] = useState<"sqlite" | "postgres">("sqlite");
-  const [walletDb, setWalletDb] = useState("~/.1sat/wallet.sqlite");
-  const [chaintracksPath, setChaintracksPath] = useState("~/.1sat/chaintracks");
-  const [arcadeDb, setArcadeDb] = useState("~/.1sat/arcade/arcade.db");
+  const [walletDb, setWalletDb] = useState("wallet.sqlite");
+  const [chaintracksPath, setChaintracksPath] = useState("chaintracks");
+  const [arcadeDb, setArcadeDb] = useState("arcade/arcade.db");
 
   // Indexer
   const [activeTags, setActiveTags] = useState<string[]>(PARSE_TAGS.map((t) => t.id));
@@ -1314,7 +1314,7 @@ export default function SettingsPage() {
 
   // Overlay engine
   const [engineStorage, setEngineStorage] = useState<"sqlite" | "postgres">("sqlite");
-  const [engineStoragePath, setEngineStoragePath] = useState("~/.1sat/overlay.db");
+  const [engineStoragePath, setEngineStoragePath] = useState("overlay");
   const [p2pEnabled, setP2pEnabled] = useState(false);
   const [p2pPort, setP2pPort] = useState("9000");
   const [p2pDhtMode, setP2pDhtMode] = useState("off");
@@ -1356,7 +1356,7 @@ export default function SettingsPage() {
 
         // Storage
         if (cfg["store.provider"] === "badger" || cfg["store.provider"] === "redis") setStoreProvider(cfg["store.provider"]);
-        setStorePath(s("store.badger.path", "~/.1sat/store"));
+        setStorePath(s("store.badger.path", "store"));
         if (cfg["beef.chain"]) {
           try { setBeefChain(JSON.parse(cfg["beef.chain"])); } catch { /* keep default */ }
         }
@@ -1368,9 +1368,9 @@ export default function SettingsPage() {
         setWalletEngine(engine === "postgres" ? "postgres" : "sqlite");
         setWalletDb(engine === "postgres"
           ? s("wallet.postgres_connection_string", "")
-          : s("wallet.db.sqlite.connection_string", "~/.1sat/wallet.sqlite"));
-        setChaintracksPath(s("chaintracks.path", "~/.1sat/chaintracks"));
-        setArcadeDb(s("arcade.path", "~/.1sat/arcade/arcade.db"));
+          : s("wallet.db.sqlite.connection_string", "wallet.sqlite"));
+        setChaintracksPath(s("chaintracks.path", "chaintracks"));
+        setArcadeDb(s("arcade.path", "arcade/arcade.db"));
 
         // Indexer
         if (cfg["indexer.parsers"]) {
@@ -1414,7 +1414,7 @@ export default function SettingsPage() {
 
         // Overlay engine
         if (cfg["overlay.engine.storage"] === "sqlite" || cfg["overlay.engine.storage"] === "postgres") setEngineStorage(cfg["overlay.engine.storage"]);
-        setEngineStoragePath(s("overlay.engine.storage_path", "~/.1sat/overlay.db"));
+        setEngineStoragePath(s("overlay.engine.storage_path", "overlay"));
         setP2pEnabled(b("overlay.engine.p2p.enabled"));
         setP2pPort(s("overlay.engine.p2p.port", "9000"));
         setP2pDhtMode(s("overlay.engine.p2p.dht_mode", "off"));
@@ -1453,7 +1453,16 @@ export default function SettingsPage() {
     "wallet.postgres_connection_string", "chaintracks.path", "arcade.path",
     "beef.chain",
     "overlay.engine.storage", "overlay.engine.storage_path",
+    "overlay.engine.p2p.enabled", "overlay.engine.p2p.port",
+    "overlay.engine.p2p.dht_mode", "overlay.engine.p2p.bootstrap_peers",
     "indexer.parsers",
+    "overlay.bap.sub_id", "overlay.bap.concurrency", "overlay.bap.batch_size",
+    "overlay.opns.sub_id", "overlay.opns.concurrency", "overlay.opns.batch_size",
+    "overlay.bsv21.sub_id", "overlay.bsv21.concurrency", "overlay.bsv21.batch_size",
+    "overlay.bsocial.sub_id", "overlay.bsocial.concurrency", "overlay.bsocial.batch_size",
+    "overlay.bsocial.mongo_url",
+    "overlay.ordlock.sub_id", "overlay.ordlock.concurrency", "overlay.ordlock.batch_size",
+    "indexer.sync.subscription_ids", "indexer.sync.concurrency", "indexer.sync.batch_size",
   ]);
 
   // Build current values map (same shape as handleSave sends)
@@ -1475,11 +1484,41 @@ export default function SettingsPage() {
     "arcade.path": arcadeDb,
     "overlay.engine.storage": engineStorage,
     "overlay.engine.storage_path": engineStoragePath,
+    "overlay.engine.p2p.enabled": String(p2pEnabled),
+    "overlay.engine.p2p.port": p2pPort,
+    "overlay.engine.p2p.dht_mode": p2pDhtMode,
+    "overlay.engine.p2p.bootstrap_peers": bootstrapPeers,
     "indexer.parsers": JSON.stringify(activeTags),
+    "overlay.bap.sub_id": bapSubId,
+    "overlay.bap.concurrency": bapConcurrency,
+    "overlay.bap.batch_size": bapBatchSize,
+    "overlay.opns.sub_id": opnsSubId,
+    "overlay.opns.concurrency": opnsConcurrency,
+    "overlay.opns.batch_size": opnsBatchSize,
+    "overlay.bsv21.sub_id": bsv21SubId,
+    "overlay.bsv21.concurrency": bsv21Concurrency,
+    "overlay.bsv21.batch_size": bsv21BatchSize,
+    "overlay.bsocial.sub_id": bsocialSubId,
+    "overlay.bsocial.concurrency": bsocialConcurrency,
+    "overlay.bsocial.batch_size": bsocialBatchSize,
+    "overlay.bsocial.mongo_url": bsocialMongoUrl,
+    "overlay.ordlock.sub_id": ordlockSubId,
+    "overlay.ordlock.concurrency": ordlockConcurrency,
+    "overlay.ordlock.batch_size": ordlockBatchSize,
+    "indexer.sync.subscription_ids": indexerSubIds,
+    "indexer.sync.concurrency": indexerConcurrency,
+    "indexer.sync.batch_size": indexerBatchSize,
   }), [
     bapEnabled, opnsEnabled, bsv21Enabled, bsocialEnabled, ordlockEnabled, ownerSync,
     storeProvider, storePath, pubsubProvider, authMode, walletEngine, walletDb,
-    chaintracksPath, arcadeDb, engineStorage, engineStoragePath, activeTags,
+    chaintracksPath, arcadeDb, engineStorage, engineStoragePath,
+    p2pEnabled, p2pPort, p2pDhtMode, bootstrapPeers, activeTags,
+    bapSubId, bapConcurrency, bapBatchSize,
+    opnsSubId, opnsConcurrency, opnsBatchSize,
+    bsv21SubId, bsv21Concurrency, bsv21BatchSize,
+    bsocialSubId, bsocialConcurrency, bsocialBatchSize, bsocialMongoUrl,
+    ordlockSubId, ordlockConcurrency, ordlockBatchSize,
+    indexerSubIds, indexerConcurrency, indexerBatchSize,
   ]);
 
   const needsRestart = useMemo(() => {

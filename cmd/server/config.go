@@ -487,6 +487,9 @@ func (c *Config) applyRuntimeConfig(rc *configpkg.RuntimeConfig) {
 		c.Arcade.Database.SQLitePath = rc.ArcadePath
 		c.Arcade.StoragePath = filepath.Dir(rc.ArcadePath)
 	}
+	if rc.ArcadeURL != "" {
+		c.Arcade.URL = rc.ArcadeURL
+	}
 
 	// JungleBus
 	if rc.JungleBusURL != "" {
@@ -496,15 +499,40 @@ func (c *Config) applyRuntimeConfig(rc *configpkg.RuntimeConfig) {
 		c.JungleBus.Token = rc.JungleBusToken
 	}
 
+	// Worker defaults (applied before per-service overrides)
+	if rc.WorkerConcurrency > 0 {
+		c.Indexer.Sync.Concurrency = rc.WorkerConcurrency
+	}
+	if rc.WorkerPageSize > 0 {
+		c.Indexer.Sync.PageSize = uint32(rc.WorkerPageSize)
+	}
+	if rc.WorkerPollDelay != "" {
+		if d, err := time.ParseDuration(rc.WorkerPollDelay); err == nil {
+			c.Indexer.Sync.PollDelay = d
+		}
+	}
+
 	// Indexer
 	if rc.IndexerMode != "" {
 		c.Indexer.Mode = rc.IndexerMode
+	}
+	if rc.IndexerLogLevel != "" {
+		c.Indexer.LogLevel = rc.IndexerLogLevel
+	}
+	if rc.IndexerVerbose {
+		c.Indexer.Verbose = true
+	}
+	if rc.IndexerParsers != "" {
+		var tags []string
+		if err := json.Unmarshal([]byte(rc.IndexerParsers), &tags); err == nil {
+			c.Indexer.Tags = tags
+		}
 	}
 	if rc.IndexerSyncEnabled {
 		c.Indexer.Sync.Enabled = true
 	}
 	if rc.IndexerSyncSubscriptionIDs != "" {
-		c.Indexer.Sync.SubscriptionIDs = strings.Split(rc.IndexerSyncSubscriptionIDs, ",")
+		c.Indexer.Sync.SubscriptionIDs = splitMultiDelim(rc.IndexerSyncSubscriptionIDs)
 	}
 	if rc.IndexerSyncConcurrency > 0 {
 		c.Indexer.Sync.Concurrency = rc.IndexerSyncConcurrency
@@ -535,7 +563,7 @@ func (c *Config) applyRuntimeConfig(rc *configpkg.RuntimeConfig) {
 		c.Overlay.P2P.DHTMode = rc.OverlayP2PDHTMode
 	}
 	if rc.OverlayP2PBootstrapPeers != "" {
-		c.Overlay.P2P.BootstrapPeers = strings.Split(rc.OverlayP2PBootstrapPeers, ",")
+		c.Overlay.P2P.BootstrapPeers = splitMultiDelim(rc.OverlayP2PBootstrapPeers)
 	}
 
 	// BAP overlay
@@ -580,9 +608,22 @@ func (c *Config) applyRuntimeConfig(rc *configpkg.RuntimeConfig) {
 	if rc.OPNSEnabled {
 		c.OPNS.Mode = "embedded"
 		c.Overlay.Mode = "embedded"
+		if c.OPNS.Sync == nil {
+			c.OPNS.Sync = &overlay.OverlaySyncConfig{}
+		}
+		if rc.OPNSSyncSubID != "" {
+			c.OPNS.Sync.SubscriptionID = rc.OPNSSyncSubID
+			c.OPNS.Sync.Enabled = true
+		}
 		if rc.OPNSCrawlConcurrency > 0 {
 			c.OPNS.Crawl.Concurrency = rc.OPNSCrawlConcurrency
 		}
+		if rc.OPNSSyncBatchSize > 0 {
+			c.OPNS.Sync.BatchSize = rc.OPNSSyncBatchSize
+		}
+	}
+	if rc.OPNSPaymail {
+		c.Paymail.Mode = "enabled"
 	}
 
 	// OrdLock overlay
@@ -614,6 +655,9 @@ func (c *Config) applyRuntimeConfig(rc *configpkg.RuntimeConfig) {
 		if rc.BSV21SyncSubID != "" {
 			c.BSV21.Sync.SubscriptionID = rc.BSV21SyncSubID
 			c.BSV21.Sync.Enabled = true
+		}
+		if rc.BSV21SyncConcurrency > 0 {
+			c.BSV21.Sync.DispatchWorkers = rc.BSV21SyncConcurrency
 		}
 		if rc.BSV21SyncBatchSize > 0 {
 			c.BSV21.Sync.BatchSize = rc.BSV21SyncBatchSize
@@ -669,13 +713,31 @@ func (c *Config) applyRuntimeConfig(rc *configpkg.RuntimeConfig) {
 		c.PubSub.Channels.BufferSize = rc.PubSubBufferSize
 	}
 	if rc.PubSubRedisURL != "" {
-		// PubSub Redis not yet implemented but store the config
+		c.PubSub.Redis.URL = rc.PubSubRedisURL
 	}
 }
 
+// splitMultiDelim splits a string by newlines, commas, or both, trimming whitespace
+// and dropping empty entries. The admin UI sends newline-separated textareas but
+// config files may use commas.
+func splitMultiDelim(s string) []string {
+	// Normalize newlines to commas then split
+	s = strings.ReplaceAll(s, "\r\n", ",")
+	s = strings.ReplaceAll(s, "\n", ",")
+	parts := strings.Split(s, ",")
+	var result []string
+	for _, p := range parts {
+		p = strings.TrimSpace(p)
+		if p != "" {
+			result = append(result, p)
+		}
+	}
+	return result
+}
+
 // convertBeefChain converts the flat admin UI format to the nested Go config format.
-// Admin UI writes: [{"type":"lru","size":"100mb"},{"type":"filesystem","path":"~/.1sat/beef"}]
-// Go expects: [{"provider":"lru","lru":{"size":"100mb"}},{"provider":"filesystem","filesystem":{"path":"~/.1sat/beef"}}]
+// Admin UI writes: [{"type":"lru","size":"100mb"},{"type":"filesystem","path":"beef"}]
+// Go expects: [{"provider":"lru","lru":{"size":"100mb"}},{"provider":"filesystem","filesystem":{"path":"beef"}}]
 func convertBeefChain(jsonStr string) ([]beef.ChainConfig, error) {
 	var flat []map[string]string
 	if err := json.Unmarshal([]byte(jsonStr), &flat); err != nil {
@@ -967,10 +1029,12 @@ func (c *Config) Initialize(ctx context.Context, logger *slog.Logger) (*Services
 		}
 
 		if svc.Beef != nil {
-			opnsSyncCfg := &overlay.OverlaySyncConfig{
-				QueueName:           "opns",
-				ResolveDependencies: true,
+			opnsSyncCfg := c.OPNS.Sync
+			if opnsSyncCfg == nil {
+				opnsSyncCfg = &overlay.OverlaySyncConfig{}
 			}
+			opnsSyncCfg.QueueName = "opns"
+			opnsSyncCfg.ResolveDependencies = true
 			svc.OPNS.Sync = overlay.NewOverlaySync(opnsSyncCfg, "tm_opns", svc.Store.Store, svc.Beef.Storage, svc.OPNS.Engine, logger)
 		}
 		logger.Info("opns initialized", "duration", time.Since(start).Round(time.Millisecond))

@@ -19,7 +19,7 @@ const (
 const (
 	ProviderChannels = "channels"
 	// Future providers:
-	// ProviderRedis = "redis"
+	ProviderRedis = "redis"
 )
 
 // Config holds pub/sub configuration.
@@ -27,8 +27,7 @@ type Config struct {
 	Mode     string         `mapstructure:"mode"`     // disabled, embedded, remote
 	Provider string         `mapstructure:"provider"` // channels, redis
 	Channels ChannelsConfig `mapstructure:"channels"` // Channels-specific config (in-memory)
-	// Future providers:
-	// Redis    RedisConfig     `mapstructure:"redis"`
+	Redis    RedisConfig    `mapstructure:"redis"`
 
 	Routes RoutesConfig `mapstructure:"routes"`
 }
@@ -94,9 +93,12 @@ func (c *Config) initializeEmbedded(ctx context.Context, logger *slog.Logger) (*
 	case ProviderChannels, "": // Default to channels if empty
 		pubsub = NewChannelPubSub(logger)
 
-	// Future providers:
-	// case ProviderRedis:
-	//     return c.initializeRedis(ctx, logger)
+	case ProviderRedis:
+		redisPubSub, err := NewRedisPubSub(c.Redis.URL, logger)
+		if err != nil {
+			return nil, fmt.Errorf("failed to initialize redis pubsub: %w", err)
+		}
+		pubsub = redisPubSub
 
 	default:
 		return nil, fmt.Errorf("unknown pubsub provider: %s", c.Provider)

@@ -157,15 +157,15 @@ export default function SetupWizardPage() {
     wif: "",
     adminIdentityKey: "",
     walletBackend: "sqlite",
-    walletSqlitePath: "~/.1sat/wallet.sqlite",
+    walletSqlitePath: "wallet.sqlite",
     walletPostgresUrl: "",
     chaintracksBackend: "embedded",
-    chaintracksPath: "~/.1sat/chaintracks",
+    chaintracksPath: "chaintracks",
     chaintracksUrl: "",
     arcadeBackend: "embedded",
-    arcadePath: "~/.1sat/arcade/arcade.db",
+    arcadePath: "arcade/arcade.db",
     arcadeUrl: "",
-    messageboxPath: "~/.1sat/messagebox.db",
+    messageboxPath: "messagebox.db",
   });
 
   function set<K extends keyof SetupState>(key: K, value: SetupState[K]) {
@@ -430,7 +430,7 @@ export default function SetupWizardPage() {
                   <Input
                     value={state.walletSqlitePath}
                     onChange={(e) => set("walletSqlitePath", e.target.value)}
-                    placeholder="~/.1sat/wallet.sqlite"
+                    placeholder="wallet.sqlite"
                     className="font-mono text-xs"
                   />
                 ) : (
@@ -476,7 +476,7 @@ export default function SetupWizardPage() {
                   <Input
                     value={state.chaintracksPath}
                     onChange={(e) => set("chaintracksPath", e.target.value)}
-                    placeholder="~/.1sat/chaintracks"
+                    placeholder="chaintracks"
                     className="font-mono text-xs"
                   />
                 ) : (
@@ -522,7 +522,7 @@ export default function SetupWizardPage() {
                   <Input
                     value={state.arcadePath}
                     onChange={(e) => set("arcadePath", e.target.value)}
-                    placeholder="~/.1sat/arcade/arcade.db"
+                    placeholder="arcade/arcade.db"
                     className="font-mono text-xs"
                   />
                 ) : (
@@ -541,7 +541,7 @@ export default function SetupWizardPage() {
                 <Input
                   value={state.messageboxPath}
                   onChange={(e) => set("messageboxPath", e.target.value)}
-                  placeholder="~/.1sat/messagebox.db"
+                  placeholder="messagebox.db"
                   className="font-mono text-xs"
                 />
               </div>
