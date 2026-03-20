@@ -414,8 +414,8 @@ interface StoragePanelProps {
   setPubsubBuffer: (v: string) => void;
   pubsubRedisUrl: string;
   setPubsubRedisUrl: (v: string) => void;
-  ordfsRedisUrl: string;
-  setOrdfsRedisUrl: (v: string) => void;
+  ordfsLruSize: string;
+  setOrdfsLruSize: React.Dispatch<React.SetStateAction<string>>;
   walletEngine: "sqlite" | "postgres";
   setWalletEngine: (v: "sqlite" | "postgres") => void;
   walletDb: string;
@@ -433,7 +433,7 @@ function StoragePanel({
   pubsubProvider, setPubsubProvider,
   pubsubBuffer, setPubsubBuffer,
   pubsubRedisUrl, setPubsubRedisUrl,
-  ordfsRedisUrl, setOrdfsRedisUrl,
+  ordfsLruSize, setOrdfsLruSize,
   walletEngine, setWalletEngine,
   walletDb, setWalletDb,
   chaintracksPath, setChaintracksPath,
@@ -490,9 +490,9 @@ function StoragePanel({
 
       <SectionCard>
         <SectionHeading>ORDFS</SectionHeading>
-        <p className="text-[11px] text-muted-foreground">Content serving is always enabled.</p>
-        <FieldRow label="Redis cache URL" hint="Leave blank to disable Redis caching for ORDFS.">
-          <Input value={ordfsRedisUrl} onChange={(e) => setOrdfsRedisUrl(e.target.value)} placeholder="redis://localhost:6379/1" className="font-mono text-xs h-8" />
+        <p className="text-[11px] text-muted-foreground">Content serving with persistent origin chain store (Badger) and in-memory metadata cache.</p>
+        <FieldRow label="Metadata cache size" hint="Number of parsed output entries to keep in the LRU cache." badge={<RestartBadge />}>
+          <Input value={ordfsLruSize} onChange={(e) => setOrdfsLruSize(e.target.value)} placeholder="10000" className="font-mono text-xs h-8 max-w-[120px]" />
         </FieldRow>
       </SectionCard>
 
@@ -1272,7 +1272,7 @@ export default function SettingsPage() {
   const [pubsubProvider, setPubsubProvider] = useState<"channels" | "redis">("channels");
   const [pubsubBuffer, setPubsubBuffer] = useState("100");
   const [pubsubRedisUrl, setPubsubRedisUrl] = useState("");
-  const [ordfsRedisUrl, setOrdfsRedisUrl] = useState("");
+  const [ordfsLruSize, setOrdfsLruSize] = useState("10000");
   const [walletEngine, setWalletEngine] = useState<"sqlite" | "postgres">("sqlite");
   const [walletDb, setWalletDb] = useState("wallet.sqlite");
   const [chaintracksPath, setChaintracksPath] = useState("chaintracks");
@@ -1363,7 +1363,7 @@ export default function SettingsPage() {
         if (cfg["pubsub.provider"] === "channels" || cfg["pubsub.provider"] === "redis") setPubsubProvider(cfg["pubsub.provider"]);
         setPubsubBuffer(s("pubsub.channels.buffer_size", "100"));
         setPubsubRedisUrl(s("pubsub.redis.url", ""));
-        setOrdfsRedisUrl(s("ordfs.redis.url", ""));
+        setOrdfsLruSize(s("ordfs.cache.lru_size", "10000"));
         const engine = s("wallet.db.engine", "sqlite");
         setWalletEngine(engine === "postgres" ? "postgres" : "sqlite");
         setWalletDb(engine === "postgres"
@@ -1451,7 +1451,7 @@ export default function SettingsPage() {
     "store.provider", "store.badger.path", "pubsub.provider",
     "auth.mode", "wallet.db.engine", "wallet.db.sqlite.connection_string",
     "wallet.postgres_connection_string", "chaintracks.path", "arcade.path",
-    "beef.chain",
+    "beef.chain", "ordfs.cache.lru_size",
     "overlay.engine.storage", "overlay.engine.storage_path",
     "overlay.engine.p2p.enabled", "overlay.engine.p2p.port",
     "overlay.engine.p2p.dht_mode", "overlay.engine.p2p.bootstrap_peers",
@@ -1549,7 +1549,7 @@ export default function SettingsPage() {
         "pubsub.provider": pubsubProvider,
         "pubsub.channels.buffer_size": pubsubBuffer,
         "pubsub.redis.url": pubsubRedisUrl,
-        "ordfs.redis.url": ordfsRedisUrl,
+        "ordfs.cache.lru_size": ordfsLruSize,
         "wallet.db.engine": walletEngine,
         "wallet.db.sqlite.connection_string": walletEngine === "sqlite" ? walletDb : "",
         "wallet.postgres_connection_string": walletEngine === "postgres" ? walletDb : "",
@@ -1739,7 +1739,7 @@ export default function SettingsPage() {
               pubsubProvider={pubsubProvider} setPubsubProvider={setPubsubProvider}
               pubsubBuffer={pubsubBuffer} setPubsubBuffer={setPubsubBuffer}
               pubsubRedisUrl={pubsubRedisUrl} setPubsubRedisUrl={setPubsubRedisUrl}
-              ordfsRedisUrl={ordfsRedisUrl} setOrdfsRedisUrl={setOrdfsRedisUrl}
+              ordfsLruSize={ordfsLruSize} setOrdfsLruSize={setOrdfsLruSize}
               walletEngine={walletEngine} setWalletEngine={setWalletEngine}
               walletDb={walletDb} setWalletDb={setWalletDb}
               chaintracksPath={chaintracksPath} setChaintracksPath={setChaintracksPath}

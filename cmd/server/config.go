@@ -672,6 +672,9 @@ func (c *Config) applyRuntimeConfig(rc *configpkg.RuntimeConfig) {
 	if rc.ORDFSEnabled {
 		c.ORDFS.Enabled = true
 	}
+	if rc.ORDFSLRUSize > 0 {
+		c.ORDFS.Cache.LRUSize = rc.ORDFSLRUSize
+	}
 
 	// Owner
 	if rc.OwnerMode != "" {
