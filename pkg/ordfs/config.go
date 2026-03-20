@@ -27,7 +27,9 @@ type Config struct {
 
 // CacheConfig holds cache settings
 type CacheConfig struct {
-	LRUSize int `mapstructure:"lru_size"` // Max entries in LRU cache
+	LRUSize  int    `mapstructure:"lru_size"`  // Max entries in LRU cache
+	RedisURL string `mapstructure:"redis_url"` // Optional Redis cache URL
+	RedisTTL string `mapstructure:"redis_ttl"` // Redis TTL (e.g., "24h"), empty = no expiration
 }
 
 // RoutesConfig holds route configuration
@@ -93,12 +95,23 @@ func (c *Config) Initialize(
 	}
 	logger.Info("ordfs origin store opened", "path", storePath)
 
-	// Cache
+	// Cache chain: LRU → optional Redis
 	lruSize := c.Cache.LRUSize
 	if lruSize <= 0 {
 		lruSize = 10000
 	}
-	cache := NewLRUCache(lruSize)
+	var cache Cache
+	if c.Cache.RedisURL != "" {
+		redisCache, err := NewRedisCache(c.Cache.RedisURL, c.Cache.RedisTTL)
+		if err != nil {
+			return nil, fmt.Errorf("failed to create redis cache: %w", err)
+		}
+		cache = NewCacheChain(NewLRUCache(lruSize), redisCache)
+		logger.Info("ordfs cache: LRU + Redis", "lru_size", lruSize, "redis", c.Cache.RedisURL)
+	} else {
+		cache = NewLRUCache(lruSize)
+		logger.Info("ordfs cache: LRU only", "lru_size", lruSize)
+	}
 
 	// Coordinator
 	coordinator := NewMemoryCoordinator()

@@ -675,6 +675,12 @@ func (c *Config) applyRuntimeConfig(rc *configpkg.RuntimeConfig) {
 	if rc.ORDFSLRUSize > 0 {
 		c.ORDFS.Cache.LRUSize = rc.ORDFSLRUSize
 	}
+	if rc.ORDFSRedisURL != "" {
+		c.ORDFS.Cache.RedisURL = rc.ORDFSRedisURL
+	}
+	if rc.ORDFSRedisTTL != "" {
+		c.ORDFS.Cache.RedisTTL = rc.ORDFSRedisTTL
+	}
 
 	// Owner
 	if rc.OwnerMode != "" {

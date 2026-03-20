@@ -416,6 +416,10 @@ interface StoragePanelProps {
   setPubsubRedisUrl: (v: string) => void;
   ordfsLruSize: string;
   setOrdfsLruSize: React.Dispatch<React.SetStateAction<string>>;
+  ordfsRedisUrl: string;
+  setOrdfsRedisUrl: React.Dispatch<React.SetStateAction<string>>;
+  ordfsRedisTtl: string;
+  setOrdfsRedisTtl: React.Dispatch<React.SetStateAction<string>>;
   walletEngine: "sqlite" | "postgres";
   setWalletEngine: (v: "sqlite" | "postgres") => void;
   walletDb: string;
@@ -434,6 +438,8 @@ function StoragePanel({
   pubsubBuffer, setPubsubBuffer,
   pubsubRedisUrl, setPubsubRedisUrl,
   ordfsLruSize, setOrdfsLruSize,
+  ordfsRedisUrl, setOrdfsRedisUrl,
+  ordfsRedisTtl, setOrdfsRedisTtl,
   walletEngine, setWalletEngine,
   walletDb, setWalletDb,
   chaintracksPath, setChaintracksPath,
@@ -490,10 +496,18 @@ function StoragePanel({
 
       <SectionCard>
         <SectionHeading>ORDFS</SectionHeading>
-        <p className="text-[11px] text-muted-foreground">Content serving with persistent origin chain store (Badger) and in-memory metadata cache.</p>
-        <FieldRow label="Metadata cache size" hint="Number of parsed output entries to keep in the LRU cache." badge={<RestartBadge />}>
+        <p className="text-[11px] text-muted-foreground">Content serving with persistent origin chain store (Badger) and configurable metadata cache.</p>
+        <FieldRow label="LRU cache size" hint="Number of parsed output entries to keep in memory." badge={<RestartBadge />}>
           <Input value={ordfsLruSize} onChange={(e) => setOrdfsLruSize(e.target.value)} placeholder="10000" className="font-mono text-xs h-8 max-w-[120px]" />
         </FieldRow>
+        <FieldRow label="Redis cache URL" hint="Optional. Adds a Redis layer behind the LRU cache. Leave blank to disable." badge={<RestartBadge />}>
+          <Input value={ordfsRedisUrl} onChange={(e) => setOrdfsRedisUrl(e.target.value)} placeholder="redis://localhost:6379/1" className="font-mono text-xs h-8" />
+        </FieldRow>
+        {ordfsRedisUrl && (
+          <FieldRow label="Redis TTL" hint="Cache expiration (e.g., 24h, 720h). Empty = no expiration." badge={<RestartBadge />}>
+            <Input value={ordfsRedisTtl} onChange={(e) => setOrdfsRedisTtl(e.target.value)} placeholder="720h" className="font-mono text-xs h-8 max-w-[120px]" />
+          </FieldRow>
+        )}
       </SectionCard>
 
       <SectionCard>
@@ -1273,6 +1287,8 @@ export default function SettingsPage() {
   const [pubsubBuffer, setPubsubBuffer] = useState("100");
   const [pubsubRedisUrl, setPubsubRedisUrl] = useState("");
   const [ordfsLruSize, setOrdfsLruSize] = useState("10000");
+  const [ordfsRedisUrl, setOrdfsRedisUrl] = useState("");
+  const [ordfsRedisTtl, setOrdfsRedisTtl] = useState("");
   const [walletEngine, setWalletEngine] = useState<"sqlite" | "postgres">("sqlite");
   const [walletDb, setWalletDb] = useState("wallet.sqlite");
   const [chaintracksPath, setChaintracksPath] = useState("chaintracks");
@@ -1364,6 +1380,8 @@ export default function SettingsPage() {
         setPubsubBuffer(s("pubsub.channels.buffer_size", "100"));
         setPubsubRedisUrl(s("pubsub.redis.url", ""));
         setOrdfsLruSize(s("ordfs.cache.lru_size", "10000"));
+        setOrdfsRedisUrl(s("ordfs.cache.redis_url", ""));
+        setOrdfsRedisTtl(s("ordfs.cache.redis_ttl", ""));
         const engine = s("wallet.db.engine", "sqlite");
         setWalletEngine(engine === "postgres" ? "postgres" : "sqlite");
         setWalletDb(engine === "postgres"
@@ -1451,7 +1469,7 @@ export default function SettingsPage() {
     "store.provider", "store.badger.path", "pubsub.provider",
     "auth.mode", "wallet.db.engine", "wallet.db.sqlite.connection_string",
     "wallet.postgres_connection_string", "chaintracks.path", "arcade.path",
-    "beef.chain", "ordfs.cache.lru_size",
+    "beef.chain", "ordfs.cache.lru_size", "ordfs.cache.redis_url", "ordfs.cache.redis_ttl",
     "overlay.engine.storage", "overlay.engine.storage_path",
     "overlay.engine.p2p.enabled", "overlay.engine.p2p.port",
     "overlay.engine.p2p.dht_mode", "overlay.engine.p2p.bootstrap_peers",
@@ -1505,6 +1523,9 @@ export default function SettingsPage() {
     "overlay.ordlock.sub_id": ordlockSubId,
     "overlay.ordlock.concurrency": ordlockConcurrency,
     "overlay.ordlock.batch_size": ordlockBatchSize,
+    "ordfs.cache.lru_size": ordfsLruSize,
+    "ordfs.cache.redis_url": ordfsRedisUrl,
+    "ordfs.cache.redis_ttl": ordfsRedisTtl,
     "indexer.sync.subscription_ids": indexerSubIds,
     "indexer.sync.concurrency": indexerConcurrency,
     "indexer.sync.batch_size": indexerBatchSize,
@@ -1518,6 +1539,7 @@ export default function SettingsPage() {
     bsv21SubId, bsv21Concurrency, bsv21BatchSize,
     bsocialSubId, bsocialConcurrency, bsocialBatchSize, bsocialMongoUrl,
     ordlockSubId, ordlockConcurrency, ordlockBatchSize,
+    ordfsLruSize, ordfsRedisUrl, ordfsRedisTtl,
     indexerSubIds, indexerConcurrency, indexerBatchSize,
   ]);
 
@@ -1550,6 +1572,8 @@ export default function SettingsPage() {
         "pubsub.channels.buffer_size": pubsubBuffer,
         "pubsub.redis.url": pubsubRedisUrl,
         "ordfs.cache.lru_size": ordfsLruSize,
+        "ordfs.cache.redis_url": ordfsRedisUrl,
+        "ordfs.cache.redis_ttl": ordfsRedisTtl,
         "wallet.db.engine": walletEngine,
         "wallet.db.sqlite.connection_string": walletEngine === "sqlite" ? walletDb : "",
         "wallet.postgres_connection_string": walletEngine === "postgres" ? walletDb : "",
@@ -1740,6 +1764,8 @@ export default function SettingsPage() {
               pubsubBuffer={pubsubBuffer} setPubsubBuffer={setPubsubBuffer}
               pubsubRedisUrl={pubsubRedisUrl} setPubsubRedisUrl={setPubsubRedisUrl}
               ordfsLruSize={ordfsLruSize} setOrdfsLruSize={setOrdfsLruSize}
+              ordfsRedisUrl={ordfsRedisUrl} setOrdfsRedisUrl={setOrdfsRedisUrl}
+              ordfsRedisTtl={ordfsRedisTtl} setOrdfsRedisTtl={setOrdfsRedisTtl}
               walletEngine={walletEngine} setWalletEngine={setWalletEngine}
               walletDb={walletDb} setWalletDb={setWalletDb}
               chaintracksPath={chaintracksPath} setChaintracksPath={setChaintracksPath}

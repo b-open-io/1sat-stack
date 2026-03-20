@@ -109,8 +109,10 @@ type RuntimeConfig struct {
 	BSV21SyncBatchSize    int
 
 	// ORDFS
-	ORDFSEnabled  bool
-	ORDFSLRUSize  int
+	ORDFSEnabled      bool
+	ORDFSLRUSize      int
+	ORDFSRedisURL     string
+	ORDFSRedisTTL     string
 
 	// Owner
 	OwnerMode string // "embedded" or "disabled"
@@ -245,6 +247,8 @@ func LoadRuntimeConfig(ctx context.Context, cs Store, logger *slog.Logger) (*Run
 	// ORDFS
 	rc.ORDFSEnabled = getBool(ctx, cs, "ordfs.enabled")
 	rc.ORDFSLRUSize = getInt(ctx, cs, "ordfs.cache.lru_size")
+	rc.ORDFSRedisURL = getString(ctx, cs, "ordfs.cache.redis_url")
+	rc.ORDFSRedisTTL = getString(ctx, cs, "ordfs.cache.redis_ttl")
 
 	// Owner
 	switch getString(ctx, cs, "owner.enabled") {
