@@ -545,11 +545,15 @@ func (c *Config) applyRuntimeConfig(rc *configpkg.RuntimeConfig) {
 	}
 
 	// Overlay engine (shared)
-	if rc.OverlayStoragePath != "" {
-		c.Overlay.StoragePath = rc.OverlayStoragePath
-	}
 	if rc.OverlayStorageBackend != "" {
 		c.Overlay.StorageBackend = rc.OverlayStorageBackend
+	}
+	if rc.OverlayStoragePath != "" {
+		if c.Overlay.StorageBackend == "postgres" {
+			c.Overlay.StorageURL = rc.OverlayStoragePath
+		} else {
+			c.Overlay.StoragePath = rc.OverlayStoragePath
+		}
 	}
 	if rc.OverlayP2PEnabled {
 		c.Overlay.P2P.Enabled = true
