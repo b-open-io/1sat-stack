@@ -43,6 +43,29 @@ func seqKey(prefix []byte, origin *transaction.Outpoint, seq uint32) []byte {
 	return key
 }
 
+// encodeRevValue encodes outpoint + contentLength + contentType for rev entries.
+func encodeRevValue(outpoint *transaction.Outpoint, contentLength uint32, contentType string) []byte {
+	ob := outpoint.Bytes()
+	ct := []byte(contentType)
+	val := make([]byte, outpointSize+4+len(ct))
+	copy(val, ob)
+	binary.BigEndian.PutUint32(val[outpointSize:], contentLength)
+	copy(val[outpointSize+4:], ct)
+	return val
+}
+
+// decodeRevValue decodes a rev entry value into a RevEntry.
+func decodeRevValue(val []byte) *RevEntry {
+	if len(val) < outpointSize+4 {
+		return nil
+	}
+	return &RevEntry{
+		Outpoint:      transaction.NewOutpointFromBytes(val[:outpointSize]),
+		ContentLength: binary.BigEndian.Uint32(val[outpointSize : outpointSize+4]),
+		ContentType:   string(val[outpointSize+4:]),
+	}
+}
+
 func originPrefix(prefix []byte, origin *transaction.Outpoint) []byte {
 	ob := origin.Bytes()
 	key := make([]byte, len(prefix)+outpointSize)
@@ -166,8 +189,33 @@ func (s *BadgerOriginStore) getLatestBefore(prefix []byte, origin *transaction.O
 	return result, nil
 }
 
-func (s *BadgerOriginStore) GetLatestRevBefore(_ context.Context, origin *transaction.Outpoint, seq uint32) (*transaction.Outpoint, error) {
-	return s.getLatestBefore(prefixRev, origin, seq)
+func (s *BadgerOriginStore) GetLatestRevBefore(_ context.Context, origin *transaction.Outpoint, seq uint32) (*RevEntry, error) {
+	var result *RevEntry
+
+	err := s.db.View(func(txn *badger.Txn) error {
+		opts := badger.DefaultIteratorOptions
+		opts.Reverse = true
+		opts.PrefetchValues = true
+
+		it := txn.NewIterator(opts)
+		defer it.Close()
+
+		it.Seek(seqKey(prefixRev, origin, seq+1))
+
+		pfx := originPrefix(prefixRev, origin)
+		if !it.ValidForPrefix(pfx) {
+			return nil
+		}
+
+		return it.Item().Value(func(val []byte) error {
+			result = decodeRevValue(val)
+			return nil
+		})
+	})
+	if err != nil {
+		return nil, err
+	}
+	return result, nil
 }
 
 func (s *BadgerOriginStore) GetLatestMapBefore(_ context.Context, origin *transaction.Outpoint, seq uint32) (*transaction.Outpoint, error) {
@@ -273,7 +321,8 @@ func (s *BadgerOriginStore) WriteBatch(_ context.Context, batch *OriginBatch) er
 			return fmt.Errorf("failed to write seq entry: %w", err)
 		}
 		if entry.HasRev {
-			if err := wb.Set(seqKey(prefixRev, batch.Origin, entry.Seq), opBytes); err != nil {
+			revVal := encodeRevValue(entry.Outpoint, entry.ContentLength, entry.ContentType)
+			if err := wb.Set(seqKey(prefixRev, batch.Origin, entry.Seq), revVal); err != nil {
 				return fmt.Errorf("failed to write rev entry: %w", err)
 			}
 		}
@@ -308,7 +357,8 @@ func (s *BadgerOriginStore) AddEntry(_ context.Context, origin *transaction.Outp
 			return err
 		}
 		if entry.HasRev {
-			if err := txn.Set(seqKey(prefixRev, origin, entry.Seq), opBytes); err != nil {
+			revVal := encodeRevValue(entry.Outpoint, entry.ContentLength, entry.ContentType)
+			if err := txn.Set(seqKey(prefixRev, origin, entry.Seq), revVal); err != nil {
 				return err
 			}
 		}

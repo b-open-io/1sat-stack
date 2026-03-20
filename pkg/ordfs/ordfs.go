@@ -175,6 +175,7 @@ func (o *Ordfs) parseOutput(ctx context.Context, outpoint *transaction.Outpoint,
 
 	var contentType string
 	var content []byte
+	var contentLength int
 	var mapData map[string]string
 	var parent *transaction.Outpoint
 
@@ -185,6 +186,7 @@ func (o *Ordfs) parseOutput(ctx context.Context, outpoint *transaction.Outpoint,
 			if contentType == "" {
 				contentType = "application/octet-stream"
 			}
+			contentLength = len(insc.File.Content)
 			if loadContent {
 				content = insc.File.Content
 			}
@@ -217,6 +219,9 @@ func (o *Ordfs) parseOutput(ctx context.Context, outpoint *transaction.Outpoint,
 							contentType = "application/octet-stream"
 						}
 					}
+					if contentLength == 0 {
+						contentLength = len(bProto.Data)
+					}
 					if content == nil && loadContent {
 						content = bProto.Data
 					}
@@ -227,7 +232,7 @@ func (o *Ordfs) parseOutput(ctx context.Context, outpoint *transaction.Outpoint,
 
 	// Cache parsed output
 	if contentType != "" || len(mapData) > 0 {
-		o.cacheParsedOutput(ctx, outpoint, contentType, len(content), mapData)
+		o.cacheParsedOutput(ctx, outpoint, contentType, contentLength, mapData)
 	}
 
 	var mapJSON json.RawMessage
@@ -260,7 +265,7 @@ func (o *Ordfs) parseOutput(ctx context.Context, outpoint *transaction.Outpoint,
 	return &Response{
 		ContentType:   contentType,
 		Content:       content,
-		ContentLength: len(content),
+		ContentLength: contentLength,
 		Map:           mapJSON,
 		Parent:        parent,
 	}
@@ -494,7 +499,7 @@ func (o *Ordfs) backwardCrawl(ctx context.Context, requestedOutpoint *transactio
 		resp := o.parseOutput(ctx, currentOutpoint, currentOutput, true)
 
 		var entryContentOutpoint, entryMapOutpoint, entryParentOutpoint *transaction.Outpoint
-		if resp.Content != nil {
+		if resp.ContentType != "" {
 			entryContentOutpoint = currentOutpoint
 		}
 		if resp.Map != nil {
@@ -510,6 +515,8 @@ func (o *Ordfs) backwardCrawl(ctx context.Context, requestedOutpoint *transactio
 			ContentOutpoint: entryContentOutpoint,
 			MapOutpoint:     entryMapOutpoint,
 			ParentOutpoint:  entryParentOutpoint,
+			ContentType:     resp.ContentType,
+			ContentLength:   resp.ContentLength,
 		})
 
 		prevOutpoint, err := o.calculatePreviousOrdinalInput(ctx, currentTx, currentOutpoint)
@@ -548,11 +555,13 @@ func (o *Ordfs) migrateToOrigin(ctx context.Context, _ *transaction.Outpoint, or
 	for i, entry := range chain {
 		absoluteSeq := uint32(entry.RelativeSeq + offset)
 		batch.Entries[i] = OriginEntry{
-			Outpoint: entry.Outpoint,
-			Seq:      absoluteSeq,
-			HasRev:   entry.ContentOutpoint != nil,
-			HasMap:   entry.MapOutpoint != nil,
-			HasPar:   entry.ParentOutpoint != nil,
+			Outpoint:      entry.Outpoint,
+			Seq:           absoluteSeq,
+			HasRev:        entry.ContentOutpoint != nil,
+			HasMap:        entry.MapOutpoint != nil,
+			HasPar:        entry.ParentOutpoint != nil,
+			ContentType:   entry.ContentType,
+			ContentLength: uint32(entry.ContentLength),
 		}
 		batch.Origins[i] = entry.Outpoint
 	}
@@ -580,11 +589,13 @@ func (o *Ordfs) forwardCrawl(ctx context.Context, origin, startOutpoint *transac
 		resp := o.parseOutput(ctx, currentOutpoint, output, true)
 
 		entry := &OriginEntry{
-			Outpoint: currentOutpoint,
-			Seq:      uint32(currentSeq),
-			HasRev:   resp.Content != nil,
-			HasMap:   resp.Map != nil,
-			HasPar:   resp.Parent != nil,
+			Outpoint:      currentOutpoint,
+			Seq:           uint32(currentSeq),
+			HasRev:        resp.ContentType != "",
+			HasMap:        resp.Map != nil,
+			HasPar:        resp.Parent != nil,
+			ContentType:   resp.ContentType,
+			ContentLength: uint32(resp.ContentLength),
 		}
 		if err := o.origins.AddEntry(ctx, origin, entry); err != nil {
 			return nil, 0, fmt.Errorf("failed to add origin entry: %w", err)
@@ -680,7 +691,8 @@ func (o *Ordfs) Resolve(ctx context.Context, requestedOutpoint *transaction.Outp
 		Sequence: targetAbsoluteSeq,
 	}
 
-	resolution.Content, _ = o.origins.GetLatestRevBefore(ctx, origin, uint32(targetAbsoluteSeq))
+	revEntry, _ := o.origins.GetLatestRevBefore(ctx, origin, uint32(targetAbsoluteSeq))
+	resolution.Content = revEntry
 	resolution.Map, _ = o.origins.GetLatestMapBefore(ctx, origin, uint32(targetAbsoluteSeq))
 	resolution.Parent, _ = o.origins.GetLatestParentBefore(ctx, origin, uint32(targetAbsoluteSeq))
 
@@ -700,14 +712,16 @@ func (o *Ordfs) loadResolution(ctx context.Context, req *Request, resolution *Re
 	}
 
 	if resolution.Content != nil {
-		output, err := o.loadOutput(ctx, resolution.Content)
-		if err != nil {
-			return nil, fmt.Errorf("failed to load content output: %w", err)
+		response.ContentType = resolution.Content.ContentType
+		response.ContentLength = int(resolution.Content.ContentLength)
+		if req.Content {
+			output, err := o.loadOutput(ctx, resolution.Content.Outpoint)
+			if err != nil {
+				return nil, fmt.Errorf("failed to load content output: %w", err)
+			}
+			parsed := o.parseOutput(ctx, resolution.Content.Outpoint, output, true)
+			response.Content = parsed.Content
 		}
-		parsed := o.parseOutput(ctx, resolution.Content, output, req.Content)
-		response.ContentType = parsed.ContentType
-		response.Content = parsed.Content
-		response.ContentLength = parsed.ContentLength
 	}
 
 	if req.Map && resolution.Map != nil {

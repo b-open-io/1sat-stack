@@ -12,7 +12,7 @@ import (
 //
 //	org: + [36B outpoint] → [36B origin]
 //	seq: + [36B origin] + [4B seq] → [36B outpoint]
-//	rev: + [36B origin] + [4B seq] → [36B outpoint]
+//	rev: + [36B origin] + [4B seq] → [36B outpoint] + [4B contentLength] + [contentType string]
 //	map: + [36B origin] + [4B seq] → [36B outpoint]
 //	par: + [36B origin] + [4B seq] → [36B outpoint]
 type OriginStore interface {
@@ -25,8 +25,8 @@ type OriginStore interface {
 	// GetLatestSeq returns the highest sequence entry for an origin.
 	GetLatestSeq(ctx context.Context, origin *transaction.Outpoint) (*transaction.Outpoint, uint32, error)
 
-	// GetLatestRevBefore returns the most recent content outpoint at or before seq.
-	GetLatestRevBefore(ctx context.Context, origin *transaction.Outpoint, seq uint32) (*transaction.Outpoint, error)
+	// GetLatestRevBefore returns the most recent content revision at or before seq.
+	GetLatestRevBefore(ctx context.Context, origin *transaction.Outpoint, seq uint32) (*RevEntry, error)
 
 	// GetLatestMapBefore returns the most recent MAP outpoint at or before seq.
 	GetLatestMapBefore(ctx context.Context, origin *transaction.Outpoint, seq uint32) (*transaction.Outpoint, error)
@@ -49,13 +49,22 @@ type OriginStore interface {
 	Close() error
 }
 
+// RevEntry holds a content revision outpoint with its metadata.
+type RevEntry struct {
+	Outpoint      *transaction.Outpoint
+	ContentType   string
+	ContentLength uint32
+}
+
 // OriginEntry represents a single entry to write.
 type OriginEntry struct {
-	Outpoint *transaction.Outpoint
-	Seq      uint32
-	HasRev   bool
-	HasMap   bool
-	HasPar   bool
+	Outpoint      *transaction.Outpoint
+	Seq           uint32
+	HasRev        bool
+	HasMap        bool
+	HasPar        bool
+	ContentType   string // populated when HasRev
+	ContentLength uint32 // populated when HasRev
 }
 
 // OriginBatch represents an atomic batch of entries plus origin mappings.

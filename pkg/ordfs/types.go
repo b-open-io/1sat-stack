@@ -33,7 +33,7 @@ type Response struct {
 type Resolution struct {
 	Origin   *transaction.Outpoint
 	Current  *transaction.Outpoint
-	Content  *transaction.Outpoint
+	Content  *RevEntry
 	Map      *transaction.Outpoint
 	Parent   *transaction.Outpoint
 	Sequence int
@@ -46,4 +46,6 @@ type ChainEntry struct {
 	ContentOutpoint *transaction.Outpoint
 	MapOutpoint     *transaction.Outpoint
 	ParentOutpoint  *transaction.Outpoint
+	ContentType     string
+	ContentLength   int
 }
