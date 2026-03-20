@@ -4,10 +4,10 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"path/filepath"
 
 	"github.com/b-open-io/1sat-stack/pkg/beef"
 	"github.com/b-open-io/1sat-stack/pkg/spends"
-	"github.com/redis/go-redis/v9"
 	"github.com/spf13/viper"
 )
 
@@ -15,16 +15,19 @@ import (
 type Config struct {
 	Enabled bool `mapstructure:"enabled"`
 
-	// Redis configuration for ordinal chain caching
-	Redis RedisConfig `mapstructure:"redis"`
+	// Origin store path (Badger data directory)
+	OriginStorePath string `mapstructure:"origin_store_path"`
+
+	// Cache configuration
+	Cache CacheConfig `mapstructure:"cache"`
 
 	// Routes settings
 	Routes RoutesConfig `mapstructure:"routes"`
 }
 
-// RedisConfig holds Redis connection settings
-type RedisConfig struct {
-	URL string `mapstructure:"url"` // e.g., "redis://user:pass@localhost:6379/0"
+// CacheConfig holds cache settings
+type CacheConfig struct {
+	LRUSize int `mapstructure:"lru_size"` // Max entries in LRU cache
 }
 
 // RoutesConfig holds route configuration
@@ -41,22 +44,25 @@ func (c *Config) SetDefaults(v *viper.Viper, prefix string) {
 	}
 
 	v.SetDefault(p+"enabled", true)
-	v.SetDefault(p+"redis.url", "redis://localhost:6379/0")
+	v.SetDefault(p+"origin_store_path", "")
+	v.SetDefault(p+"cache.lru_size", 10000)
 	v.SetDefault(p+"routes.enabled", true)
 	v.SetDefault(p+"routes.prefix", "/ordfs")
 }
 
 // Services holds initialized ORDFS services
 type Services struct {
-	Ordfs  *Ordfs
-	Routes *Routes
-	redis  *redis.Client
+	Ordfs       *Ordfs
+	Routes      *Routes
+	originStore OriginStore
+	coordinator *MemoryCoordinator
 }
 
 // Initialize creates ORDFS services from the configuration
 func (c *Config) Initialize(
 	ctx context.Context,
 	logger *slog.Logger,
+	dataDir string,
 	spendsStorage *spends.Storage,
 	beefStorage *beef.Storage,
 ) (*Services, error) {
@@ -76,29 +82,35 @@ func (c *Config) Initialize(
 		return nil, fmt.Errorf("spends storage is required for ordfs")
 	}
 
-	// Create Redis client
-	opts, err := redis.ParseURL(c.Redis.URL)
+	// Origin store
+	storePath := c.OriginStorePath
+	if storePath == "" {
+		storePath = filepath.Join(dataDir, "ordfs")
+	}
+	originStore, err := NewBadgerOriginStore(storePath)
 	if err != nil {
-		return nil, fmt.Errorf("failed to parse redis url: %w", err)
+		return nil, fmt.Errorf("failed to open origin store: %w", err)
 	}
-	redisClient := redis.NewClient(opts)
+	logger.Info("ordfs origin store opened", "path", storePath)
 
-	// Test connection
-	if err := redisClient.Ping(ctx).Err(); err != nil {
-		return nil, fmt.Errorf("failed to connect to redis: %w", err)
+	// Cache
+	lruSize := c.Cache.LRUSize
+	if lruSize <= 0 {
+		lruSize = 10000
 	}
+	cache := NewLRUCache(lruSize)
 
-	logger.Info("ordfs connected to redis", "url", c.Redis.URL)
+	// Coordinator
+	coordinator := NewMemoryCoordinator()
 
-	// Create ordfs service
-	ordfs := New(spendsStorage, beefStorage, redisClient, logger)
+	ordfs := New(spendsStorage, beefStorage, originStore, cache, coordinator, logger)
 
 	svc := &Services{
-		Ordfs: ordfs,
-		redis: redisClient,
+		Ordfs:       ordfs,
+		originStore: originStore,
+		coordinator: coordinator,
 	}
 
-	// Create routes if enabled
 	if c.Routes.Enabled {
 		svc.Routes = NewRoutes(&RoutesDeps{
 			Ordfs:  ordfs,
@@ -111,8 +123,11 @@ func (c *Config) Initialize(
 
 // Close closes the ORDFS services
 func (s *Services) Close() error {
-	if s.redis != nil {
-		return s.redis.Close()
+	if s.coordinator != nil {
+		s.coordinator.Close()
+	}
+	if s.originStore != nil {
+		return s.originStore.Close()
 	}
 	return nil
 }

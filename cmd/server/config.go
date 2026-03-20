@@ -672,9 +672,6 @@ func (c *Config) applyRuntimeConfig(rc *configpkg.RuntimeConfig) {
 	if rc.ORDFSEnabled {
 		c.ORDFS.Enabled = true
 	}
-	if rc.ORDFSRedisURL != "" {
-		c.ORDFS.Redis.URL = rc.ORDFSRedisURL
-	}
 
 	// Owner
 	if rc.OwnerMode != "" {
@@ -1094,7 +1091,7 @@ func (c *Config) Initialize(ctx context.Context, logger *slog.Logger) (*Services
 		if svc.Beef != nil {
 			beefStorage = svc.Beef.Storage
 		}
-		ordfsSvc, err := c.ORDFS.Initialize(ctx, logger, spendsStorage, beefStorage)
+		ordfsSvc, err := c.ORDFS.Initialize(ctx, logger, c.DataDir, spendsStorage, beefStorage)
 		if err != nil {
 			return nil, fmt.Errorf("failed to initialize ordfs: %w", err)
 		}
