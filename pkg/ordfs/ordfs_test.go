@@ -262,6 +262,38 @@ func TestConfigInitializeNoJungleBus(t *testing.T) {
 	}
 }
 
+func TestParseVoutPlaceholder(t *testing.T) {
+	tests := []struct {
+		name      string
+		pointer   string
+		wantVout  uint32
+		wantMatch bool
+	}{
+		{"vout 0", "{{vout:0}}", 0, true},
+		{"vout 1", "{{vout:1}}", 1, true},
+		{"vout 42", "{{vout:42}}", 42, true},
+		{"outpoint not placeholder", "aabbccdd_0", 0, false},
+		{"bare txid", "aabbccddaabbccddaabbccddaabbccddaabbccddaabbccddaabbccddaabbccdd", 0, false},
+		{"empty braces", "{{vout:}}", 0, false},
+		{"no braces", "vout:3", 0, false},
+		{"single braces", "{vout:3}", 0, false},
+		{"negative vout", "{{vout:-1}}", 0, false},
+		{"text not number", "{{vout:abc}}", 0, false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			vout, ok := parseVoutPlaceholder(tt.pointer)
+			if ok != tt.wantMatch {
+				t.Errorf("parseVoutPlaceholder(%q) match = %v, want %v", tt.pointer, ok, tt.wantMatch)
+			}
+			if ok && vout != tt.wantVout {
+				t.Errorf("parseVoutPlaceholder(%q) vout = %d, want %d", tt.pointer, vout, tt.wantVout)
+			}
+		})
+	}
+}
+
 // Helper function
 func intPtr(i int) *int {
 	return &i

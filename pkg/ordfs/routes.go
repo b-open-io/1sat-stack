@@ -170,6 +170,36 @@ func (r *Routes) handleDirectory(c *fiber.Ctx, resp *Response, pp *pointerPath, 
 
 	// Load the file
 	filePointer = strings.TrimPrefix(filePointer, "ord://")
+
+	// Resolve {{vout:N}} placeholders — sibling outputs in the same transaction
+	if vout, ok := parseVoutPlaceholder(filePointer); ok {
+		if resp.Outpoint == nil {
+			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+				"error": "cannot resolve {{vout:N}} — directory outpoint unknown",
+			})
+		}
+		fileReq := &Request{
+			Outpoint: &transaction.Outpoint{
+				Txid:  resp.Outpoint.Txid,
+				Index: vout,
+			},
+			Content: true,
+			Map:     c.QueryBool("map", false),
+		}
+		fileResp, err := r.ordfs.Load(c.Context(), fileReq)
+		if err != nil {
+			if errors.Is(err, ErrNotFound) {
+				return c.Status(fiber.StatusNotFound).JSON(fiber.Map{
+					"error": fmt.Sprintf("file at vout %d not found", vout),
+				})
+			}
+			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+				"error": err.Error(),
+			})
+		}
+		return r.sendContentResponse(c, fileResp, nil)
+	}
+
 	fileOutpoint, isTxid, err := resolvePointerToOutpoint(filePointer)
 	if err != nil {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
@@ -474,6 +504,22 @@ func parsePointerPath(path string) (*pointerPath, error) {
 		Seq:      seq,
 		FilePath: filePath,
 	}, nil
+}
+
+var voutPlaceholderPattern = regexp.MustCompile(`^\{\{vout:(\d+)\}\}$`)
+
+// parseVoutPlaceholder checks if a string is a {{vout:N}} placeholder
+// referencing a sibling output in the same transaction.
+func parseVoutPlaceholder(pointer string) (uint32, bool) {
+	m := voutPlaceholderPattern.FindStringSubmatch(pointer)
+	if m == nil {
+		return 0, false
+	}
+	vout, err := strconv.ParseUint(m[1], 10, 32)
+	if err != nil {
+		return 0, false
+	}
+	return uint32(vout), true
 }
 
 // resolvePointerToOutpoint attempts to parse pointer as either txid or outpoint
