@@ -171,11 +171,11 @@ func (r *Routes) handleDirectory(c *fiber.Ctx, resp *Response, pp *pointerPath, 
 	// Load the file
 	filePointer = strings.TrimPrefix(filePointer, "ord://")
 
-	// Resolve {{vout:N}} placeholders — sibling outputs in the same transaction
-	if vout, ok := parseVoutPlaceholder(filePointer); ok {
+	// Resolve relative vout references (_N) — sibling outputs in the same transaction
+	if vout, ok := parseRelativeVout(filePointer); ok {
 		if resp.Outpoint == nil {
 			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
-				"error": "cannot resolve {{vout:N}} — directory outpoint unknown",
+				"error": "cannot resolve relative vout — directory outpoint unknown",
 			})
 		}
 		fileReq := &Request{
@@ -506,12 +506,14 @@ func parsePointerPath(path string) (*pointerPath, error) {
 	}, nil
 }
 
-var voutPlaceholderPattern = regexp.MustCompile(`^\{\{vout:(\d+)\}\}$`)
+// relativeVoutPattern matches _N (e.g., "_0", "_8") — a relative reference
+// to a sibling output in the same transaction as the directory inscription.
+var relativeVoutPattern = regexp.MustCompile(`^_(\d+)$`)
 
-// parseVoutPlaceholder checks if a string is a {{vout:N}} placeholder
-// referencing a sibling output in the same transaction.
-func parseVoutPlaceholder(pointer string) (uint32, bool) {
-	m := voutPlaceholderPattern.FindStringSubmatch(pointer)
+// parseRelativeVout checks if a string is a relative vout reference (_N)
+// used in ord-fs/json directories to reference sibling outputs.
+func parseRelativeVout(pointer string) (uint32, bool) {
+	m := relativeVoutPattern.FindStringSubmatch(pointer)
 	if m == nil {
 		return 0, false
 	}
