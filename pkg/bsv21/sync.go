@@ -14,7 +14,7 @@ import (
 	"github.com/b-open-io/1sat-stack/pkg/logging"
 	lookuppkg "github.com/b-open-io/1sat-stack/pkg/lookup"
 	"github.com/b-open-io/1sat-stack/pkg/owner"
-	"github.com/b-open-io/1sat-stack/pkg/store"
+	"github.com/redis/go-redis/v9"
 	"github.com/b-open-io/1sat-stack/pkg/txo"
 	"github.com/b-open-io/1sat-stack/pkg/worker"
 	"github.com/b-open-io/go-junglebus"
@@ -56,7 +56,7 @@ func (c *SyncConfig) SubscriberConfig() *jbsync.SubscriberConfig {
 // SyncServices manages BSV21 sync pipeline
 type SyncServices struct {
 	config       *SyncConfig
-	store        store.Store
+	redis        *redis.Client
 	configStore  config.Store
 	beefStorage  *beef.Storage
 	outputStore  *txo.OutputStore
@@ -72,7 +72,7 @@ type SyncServices struct {
 // NewSyncServices creates a new BSV21 sync service
 func NewSyncServices(
 	cfg *SyncConfig,
-	s store.Store,
+	rdb *redis.Client,
 	cs config.Store,
 	beefStorage *beef.Storage,
 	outputStore *txo.OutputStore,
@@ -121,7 +121,7 @@ func NewSyncServices(
 
 	// Create token manager upfront so it's available for status queries
 	manager := NewTokenManager(
-		s,
+		rdb,
 		cs,
 		beefStorage,
 		outputStore,
@@ -137,7 +137,7 @@ func NewSyncServices(
 
 	return &SyncServices{
 		config:       cfg,
-		store:        s,
+		redis:        rdb,
 		configStore:  cs,
 		beefStorage:  beefStorage,
 		outputStore:  outputStore,
@@ -161,7 +161,7 @@ func (s *SyncServices) Start(ctx context.Context) error {
 	// Start dispatcher - reads from q:bsv21 and routes to per-token queues
 	dispatchLimiter := make(chan struct{}, s.config.DispatchWorkers)
 	s.dispatcher = worker.New(&worker.Config{
-		Store:   s.store,
+		Redis:   s.redis,
 		Key:     jbsync.QueueKey("bsv21"),
 		Limiter: dispatchLimiter,
 		Handler: s.dispatch,
@@ -243,11 +243,11 @@ func (s *SyncServices) dispatch(ctx context.Context, member string, score float6
 		}
 
 		// Add outpoint to topic queue (q:tm_{tokenId})
-		topicQueueKey := []byte("q:tm_" + tokenId)
-		if err := s.store.ZAdd(ctx, topicQueueKey, store.ScoredMember{
-			Member: outpoint.Bytes(),
+		topicQueueKey := "q:tm_" + tokenId
+		if err := s.redis.ZAdd(ctx, topicQueueKey, redis.Z{
+			Member: string(outpoint.Bytes()),
 			Score:  score,
-		}); err != nil {
+		}).Err(); err != nil {
 			return fmt.Errorf("failed to add to topic queue: %w", err)
 		}
 	}

@@ -6,15 +6,15 @@ import (
 	"log/slog"
 
 	"github.com/b-open-io/1sat-stack/pkg/jbsync"
-	"github.com/b-open-io/1sat-stack/pkg/store"
 	"github.com/b-open-io/1sat-stack/pkg/worker"
+	"github.com/redis/go-redis/v9"
 	"github.com/bsv-blockchain/go-sdk/chainhash"
 )
 
 // IngestSync processes transactions from a queue using the indexer.
 type IngestSync struct {
 	config  *SyncConfig
-	store   store.Store
+	redis   *redis.Client
 	indexer *IngestCtx
 	logger  *slog.Logger
 	worker  *worker.Worker
@@ -23,7 +23,7 @@ type IngestSync struct {
 // NewIngestSync creates a new IngestSync instance.
 func NewIngestSync(
 	cfg *SyncConfig,
-	s store.Store,
+	rdb *redis.Client,
 	idx *IngestCtx,
 	logger *slog.Logger,
 ) *IngestSync {
@@ -33,7 +33,7 @@ func NewIngestSync(
 
 	return &IngestSync{
 		config:  cfg,
-		store:   s,
+		redis:   rdb,
 		indexer: idx,
 		logger:  logger.With("component", "ingest-sync"),
 	}
@@ -43,7 +43,7 @@ func NewIngestSync(
 func (s *IngestSync) Start(ctx context.Context) error {
 	limiter := make(chan struct{}, s.config.Concurrency)
 	s.worker = worker.New(&worker.Config{
-		Store:   s.store,
+		Redis:   s.redis,
 		Key:     jbsync.QueueKey(s.config.QueueName),
 		Limiter: limiter,
 		Handler: s.ingest,

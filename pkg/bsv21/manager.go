@@ -12,7 +12,7 @@ import (
 	"github.com/b-open-io/1sat-stack/pkg/config"
 	lookuppkg "github.com/b-open-io/1sat-stack/pkg/lookup"
 	"github.com/b-open-io/1sat-stack/pkg/overlay"
-	"github.com/b-open-io/1sat-stack/pkg/store"
+	"github.com/redis/go-redis/v9"
 	"github.com/b-open-io/1sat-stack/pkg/txo"
 	"github.com/bsv-blockchain/go-chaintracks/chaintracks"
 	"github.com/bsv-blockchain/go-overlay-services/pkg/core/engine"
@@ -28,7 +28,7 @@ type OwnerSyncer interface {
 
 // TokenManager manages per-token processor workers
 type TokenManager struct {
-	store             store.Store
+	redis             *redis.Client
 	configStore       config.Store
 	beefStorage       *beef.Storage
 	outputStore       *txo.OutputStore
@@ -50,7 +50,7 @@ type TokenManager struct {
 
 // NewTokenManager creates a new token manager
 func NewTokenManager(
-	s store.Store,
+	rdb *redis.Client,
 	cs config.Store,
 	beefStorage *beef.Storage,
 	outputStore *txo.OutputStore,
@@ -67,7 +67,7 @@ func NewTokenManager(
 		lifecycleInterval = 5 * time.Minute
 	}
 	return &TokenManager{
-		store:             s,
+		redis:             rdb,
 		configStore:       cs,
 		beefStorage:       beefStorage,
 		outputStore:       outputStore,
@@ -149,7 +149,7 @@ func (m *TokenManager) createWorker(ctx context.Context, status *TokenStatus) er
 			},
 		},
 		topicName,
-		m.store,
+		m.redis,
 		m.beefStorage,
 		m.overlay,
 		m.logger.With("tokenId", tokenId),

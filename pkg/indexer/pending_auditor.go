@@ -3,19 +3,20 @@ package indexer
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
 	"sync"
 	"sync/atomic"
 	"time"
 
 	"github.com/b-open-io/1sat-stack/pkg/beef"
-	"github.com/b-open-io/1sat-stack/pkg/store"
 	"github.com/b-open-io/1sat-stack/pkg/txo"
 	"github.com/b-open-io/1sat-stack/pkg/types"
 	"github.com/bsv-blockchain/arcade/service"
 	"github.com/bsv-blockchain/go-chaintracks/chaintracks"
 	"github.com/bsv-blockchain/go-sdk/chainhash"
 	"github.com/bsv-blockchain/go-sdk/transaction"
+	"github.com/redis/go-redis/v9"
 )
 
 const (
@@ -37,6 +38,7 @@ const (
 // It promotes confirmed+deep transactions to tx:immutable and rolls back
 // stale unconfirmed transactions that have no proof after rollbackAge.
 type PendingAuditor struct {
+	redis         *redis.Client
 	outputStore   *txo.OutputStore
 	beefStorage   *beef.Storage
 	indexer       *IngestCtx
@@ -52,6 +54,7 @@ type PendingAuditor struct {
 
 // NewPendingAuditor creates a new PendingAuditor.
 func NewPendingAuditor(
+	rdb *redis.Client,
 	outputStore *txo.OutputStore,
 	beefStorage *beef.Storage,
 	indexer *IngestCtx,
@@ -63,6 +66,7 @@ func NewPendingAuditor(
 		logger = slog.Default()
 	}
 	return &PendingAuditor{
+		redis:         rdb,
 		outputStore:   outputStore,
 		beefStorage:   beefStorage,
 		indexer:       indexer,
@@ -126,24 +130,23 @@ func (a *PendingAuditor) RunAudit(ctx context.Context, tipHeight uint32) {
 	if tipHeight > txo.ImmutabilityBlocks {
 		immutableThreshold := types.HeightScore(tipHeight-txo.ImmutabilityBlocks, 0)
 		min := float64(0)
-		members, err := a.outputStore.Store.ZRange(ctx, txo.KeyLog(txo.PendingTxLog), store.ScoreRange{
-			Min: &min,
-			Max: &immutableThreshold,
-		})
+		results, err := a.redis.ZRangeByScoreWithScores(ctx, string(txo.KeyLog(txo.PendingTxLog)), &redis.ZRangeBy{
+			Min: fmt.Sprintf("%f", min),
+			Max: fmt.Sprintf("%f", immutableThreshold),
+		}).Result()
 		if err != nil {
 			a.logger.Error("failed to query immutable candidates", "error", err)
 		} else {
-			immutablePromoted, proofsFound = a.processImmutableCandidates(ctx, members)
+			immutablePromoted, proofsFound = a.processImmutableCandidates(ctx, results)
 		}
 	}
 
 	// Range 2: Unconfirmed audit — unconfirmed txs older than proofCheckAge
 	proofCheckCutoff := float64(time.Now().Add(-proofCheckAge).UnixNano()) / 1e9
-	minUnconfirmed := float64(confirmedBoundary)
-	members, err := a.outputStore.Store.ZRange(ctx, txo.KeyLog(txo.PendingTxLog), store.ScoreRange{
-		Min: &minUnconfirmed,
-		Max: &proofCheckCutoff,
-	})
+	members, err := a.redis.ZRangeByScoreWithScores(ctx, string(txo.KeyLog(txo.PendingTxLog)), &redis.ZRangeBy{
+		Min: fmt.Sprintf("%f", float64(confirmedBoundary)),
+		Max: fmt.Sprintf("%f", proofCheckCutoff),
+	}).Result()
 	if err != nil {
 		a.logger.Error("failed to query unconfirmed txs", "error", err)
 	} else {
@@ -163,7 +166,7 @@ func (a *PendingAuditor) RunAudit(ctx context.Context, tipHeight uint32) {
 }
 
 // processImmutableCandidates verifies proofs for confirmed txs and promotes valid ones.
-func (a *PendingAuditor) processImmutableCandidates(ctx context.Context, members []store.ScoredMember) (promoted, refetched int) {
+func (a *PendingAuditor) processImmutableCandidates(ctx context.Context, members []redis.Z) (promoted, refetched int) {
 	limiter := make(chan struct{}, auditConcurrency)
 	var mu sync.Mutex
 	var wg sync.WaitGroup
@@ -173,7 +176,7 @@ func (a *PendingAuditor) processImmutableCandidates(ctx context.Context, members
 			break
 		}
 
-		txid, err := chainhash.NewHash(m.Member)
+		txid, err := chainhash.NewHash([]byte(m.Member.(string)))
 		if err != nil {
 			a.logger.Error("invalid txid in pending set", "error", err)
 			continue
@@ -228,14 +231,14 @@ func (a *PendingAuditor) processImmutableCandidates(ctx context.Context, members
 			}
 
 			// Proof is valid and deep enough — promote to immutable
-			if err := a.outputStore.Store.ZAdd(ctx, txo.KeyLog(txo.ImmutableTxLog), store.ScoredMember{
-				Member: txid[:],
+			if err := a.redis.ZAdd(ctx, string(txo.KeyLog(txo.ImmutableTxLog)), redis.Z{
+				Member: string(txid[:]),
 				Score:  score,
-			}); err != nil {
+			}).Err(); err != nil {
 				a.logger.Error("failed to add to immutable", "txid", txidHex, "error", err)
 				return
 			}
-			if err := a.outputStore.Store.ZRem(ctx, txo.KeyLog(txo.PendingTxLog), txid[:]); err != nil {
+			if err := a.redis.ZRem(ctx, string(txo.KeyLog(txo.PendingTxLog)), string(txid[:])).Err(); err != nil {
 				a.logger.Error("failed to remove from pending", "txid", txidHex, "error", err)
 			}
 
@@ -250,7 +253,7 @@ func (a *PendingAuditor) processImmutableCandidates(ctx context.Context, members
 }
 
 // processUnconfirmed attempts to find proofs for unconfirmed transactions.
-func (a *PendingAuditor) processUnconfirmed(ctx context.Context, members []store.ScoredMember) (proofsFound, rolledBack, stillPending int) {
+func (a *PendingAuditor) processUnconfirmed(ctx context.Context, members []redis.Z) (proofsFound, rolledBack, stillPending int) {
 	rollbackCutoff := float64(time.Now().Add(-rollbackAge).UnixNano()) / 1e9
 	limiter := make(chan struct{}, auditConcurrency)
 	var mu sync.Mutex
@@ -261,7 +264,7 @@ func (a *PendingAuditor) processUnconfirmed(ctx context.Context, members []store
 			break
 		}
 
-		txid, err := chainhash.NewHash(m.Member)
+		txid, err := chainhash.NewHash([]byte(m.Member.(string)))
 		if err != nil {
 			a.logger.Error("invalid txid in pending set", "error", err)
 			continue
@@ -327,9 +330,9 @@ func (a *PendingAuditor) processUnconfirmed(ctx context.Context, members []store
 					return
 				}
 				// Remove from pending, add to rollback log
-				a.outputStore.Store.ZRem(ctx, txo.KeyLog(txo.PendingTxLog), txid[:])
-				a.outputStore.Store.ZAdd(ctx, txo.KeyLog(txo.RollbackTxLog), store.ScoredMember{
-					Member: txid[:],
+				a.redis.ZRem(ctx, string(txo.KeyLog(txo.PendingTxLog)), string(txid[:]))
+				a.redis.ZAdd(ctx, string(txo.KeyLog(txo.RollbackTxLog)), redis.Z{
+					Member: string(txid[:]),
 					Score:  types.HeightScore(0, 0),
 				})
 				mu.Lock()

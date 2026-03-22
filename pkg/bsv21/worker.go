@@ -42,8 +42,7 @@ func (m *TokenManager) ListWorkers(ctx context.Context) []WorkerStatus {
 		}
 
 		// Get queue depth
-		queueKey := []byte(jbsync.TokenQueueKey(tokenId))
-		queueDepth, err := m.store.ZCard(ctx, queueKey)
+		queueDepth, err := m.redis.ZCard(ctx, jbsync.TokenQueueKey(tokenId)).Result()
 		if err != nil {
 			m.logger.Warn("failed to get queue depth", "tokenId", tokenId, "error", err)
 			queueDepth = 0

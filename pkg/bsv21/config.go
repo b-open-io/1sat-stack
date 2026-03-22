@@ -11,6 +11,7 @@ import (
 	"github.com/b-open-io/1sat-stack/pkg/overlay"
 	"github.com/b-open-io/1sat-stack/pkg/txo"
 	"github.com/b-open-io/go-junglebus"
+	"github.com/redis/go-redis/v9"
 	"github.com/bsv-blockchain/go-chaintracks/chaintracks"
 	"github.com/bsv-blockchain/go-overlay-services/pkg/core/engine"
 	"github.com/spf13/viper"
@@ -81,6 +82,7 @@ type Services struct {
 func (c *Config) Initialize(
 	ctx context.Context,
 	logger *slog.Logger,
+	rdb *redis.Client,
 	txoStorage *txo.OutputStore,
 	deps *overlay.ModuleDeps,
 	configStore config.Store,
@@ -122,7 +124,7 @@ func (c *Config) Initialize(
 		if c.Sync != nil && c.Sync.Enabled {
 			syncSvc, err := NewSyncServices(
 				c.Sync,
-				txoStorage.Store,
+				rdb,
 				configStore,
 				beefStorage,
 				txoStorage,

@@ -9,7 +9,7 @@ import (
 	"github.com/b-open-io/1sat-stack/pkg/logging"
 	"github.com/b-open-io/1sat-stack/pkg/ordfs"
 	"github.com/b-open-io/1sat-stack/pkg/pubsub"
-	"github.com/b-open-io/1sat-stack/pkg/store"
+	"github.com/redis/go-redis/v9"
 	"github.com/b-open-io/1sat-stack/pkg/txo"
 	"github.com/bsv-blockchain/arcade/events"
 	"github.com/bsv-blockchain/arcade/service"
@@ -115,7 +115,7 @@ type Services struct {
 
 // InitializeDeps holds dependencies for indexer service initialization.
 type InitializeDeps struct {
-	Store       store.Store
+	Redis       *redis.Client
 	BeefStorage *beef.Storage
 	OutputStore *txo.OutputStore
 	Ordfs       *ordfs.Ordfs
@@ -175,7 +175,7 @@ func (c *Config) Initialize(
 	if c.Sync.Enabled {
 		svc.Sync = NewIngestSync(
 			&c.Sync,
-			deps.Store,
+			deps.Redis,
 			svc.Indexer,
 			indexerLogger,
 		)
@@ -216,7 +216,7 @@ func (s *Services) SetupStatusHandler(deps *StatusHandlerDeps) {
 
 	s.StatusHandler = NewStatusHandler(
 		deps.PubSub,
-		s.initDeps.Store,
+		s.initDeps.Redis,
 		s.initDeps.BeefStorage,
 		deps.OverlayStorage,
 		deps.TopicIndex,
@@ -243,6 +243,7 @@ func (s *Services) SetupPendingAuditor(deps *PendingAuditorDeps) {
 	}
 
 	s.PendingAuditor = NewPendingAuditor(
+		s.initDeps.Redis,
 		s.initDeps.OutputStore,
 		s.initDeps.BeefStorage,
 		s.Indexer,

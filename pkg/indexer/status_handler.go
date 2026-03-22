@@ -9,7 +9,7 @@ import (
 
 	"github.com/b-open-io/1sat-stack/pkg/beef"
 	"github.com/b-open-io/1sat-stack/pkg/pubsub"
-	"github.com/b-open-io/1sat-stack/pkg/store"
+	"github.com/redis/go-redis/v9"
 	"github.com/b-open-io/1sat-stack/pkg/txo"
 	"github.com/b-open-io/1sat-stack/pkg/types"
 	"github.com/bsv-blockchain/go-overlay-services/pkg/core/engine"
@@ -22,7 +22,7 @@ import (
 // This consolidates ingestion, proof validation, and rollback into one handler.
 type StatusHandler struct {
 	pubsub         pubsub.PubSub
-	store          store.Store
+	redis          *redis.Client
 	beefStorage    *beef.Storage
 	overlayStorage engine.Storage                  // For BEEF update + rollback
 	topicIndex     TopicIndexer                    // txid → topic names
@@ -47,7 +47,7 @@ type StatusHandlerConfig struct {
 // NewStatusHandler creates a new status handler.
 func NewStatusHandler(
 	ps pubsub.PubSub,
-	s store.Store,
+	rdb *redis.Client,
 	beefStorage *beef.Storage,
 	overlayStorage engine.Storage,
 	topicIndex TopicIndexer,
@@ -68,7 +68,7 @@ func NewStatusHandler(
 
 	return &StatusHandler{
 		pubsub:         ps,
-		store:          s,
+		redis:          rdb,
 		beefStorage:    beefStorage,
 		overlayStorage: overlayStorage,
 		topicIndex:     topicIndex,
@@ -351,14 +351,14 @@ func (h *StatusHandler) handleRejected(event ArcEvent) {
 	}
 
 	// Log to rollback set and remove from pending
-	if h.store != nil {
-		if err := h.store.ZAdd(h.ctx, txo.KeyLog(txo.RollbackTxLog), store.ScoredMember{
-			Member: txid[:],
+	if h.redis != nil {
+		if err := h.redis.ZAdd(h.ctx, string(txo.KeyLog(txo.RollbackTxLog)), redis.Z{
+			Member: string(txid[:]),
 			Score:  types.HeightScore(0, 0),
-		}); err != nil {
+		}).Err(); err != nil {
 			h.logger.Error("failed to log rollback", "txid", event.TxID, "error", err)
 		}
-		h.store.ZRem(h.ctx, txo.KeyLog(txo.PendingTxLog), txid[:])
+		h.redis.ZRem(h.ctx, string(txo.KeyLog(txo.PendingTxLog)), string(txid[:]))
 	}
 
 	h.logger.Info("rolled back rejected tx", "txid", event.TxID, "outputs", len(outputs))
@@ -366,21 +366,21 @@ func (h *StatusHandler) handleRejected(event ArcEvent) {
 
 // LogPending logs a transaction as pending confirmation.
 func (h *StatusHandler) LogPending(ctx context.Context, txid *chainhash.Hash, score float64) error {
-	if h.store == nil {
+	if h.redis == nil {
 		return nil
 	}
-	return h.store.ZAdd(ctx, txo.KeyLog(txo.PendingTxLog), store.ScoredMember{
-		Member: txid[:],
+	return h.redis.ZAdd(ctx, string(txo.KeyLog(txo.PendingTxLog)), redis.Z{
+		Member: string(txid[:]),
 		Score:  score,
-	})
+	}).Err()
 }
 
 // DequeuePending removes a transaction from the pending log.
 func (h *StatusHandler) DequeuePending(ctx context.Context, txid *chainhash.Hash) error {
-	if h.store == nil {
+	if h.redis == nil {
 		return nil
 	}
-	return h.store.ZRem(ctx, txo.KeyLog(txo.PendingTxLog), txid[:])
+	return h.redis.ZRem(ctx, string(txo.KeyLog(txo.PendingTxLog)), string(txid[:])).Err()
 }
 
 // GetImmutableThreshold returns the current score threshold for immutability.
