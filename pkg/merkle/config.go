@@ -7,7 +7,7 @@ import (
 
 	"github.com/b-open-io/1sat-stack/pkg/beef"
 	"github.com/b-open-io/1sat-stack/pkg/pubsub"
-	"github.com/b-open-io/1sat-stack/pkg/store"
+	"github.com/redis/go-redis/v9"
 	"github.com/bsv-blockchain/go-overlay-services/pkg/core/engine"
 	"github.com/bsv-blockchain/go-sdk/transaction/chaintracker"
 	"github.com/spf13/viper"
@@ -54,7 +54,7 @@ type Services struct {
 func (c *Config) Initialize(
 	ctx context.Context,
 	logger *slog.Logger,
-	s store.Store,
+	r *redis.Client,
 	beefStore *beef.Storage,
 	ps pubsub.PubSub,
 	ct chaintracker.ChainTracker,
@@ -70,7 +70,7 @@ func (c *Config) Initialize(
 
 	switch c.Mode {
 	case ModeEmbedded:
-		service := NewService(s, beefStore, ps, ct, overlayStorage, logger)
+		service := NewService(r, beefStore, ps, ct, overlayStorage, logger)
 
 		svc := &Services{Service: service}
 

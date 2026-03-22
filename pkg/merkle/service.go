@@ -8,7 +8,7 @@ import (
 
 	"github.com/b-open-io/1sat-stack/pkg/beef"
 	"github.com/b-open-io/1sat-stack/pkg/pubsub"
-	"github.com/b-open-io/1sat-stack/pkg/store"
+	"github.com/redis/go-redis/v9"
 	"github.com/b-open-io/1sat-stack/pkg/txo"
 	"github.com/b-open-io/1sat-stack/pkg/types"
 	"github.com/bsv-blockchain/go-overlay-services/pkg/core/engine"
@@ -27,7 +27,7 @@ type ArcCallback struct {
 
 // Service manages merkle proof validation and transaction state transitions.
 type Service struct {
-	store          store.Store
+	redis          *redis.Client
 	beefStore      *beef.Storage
 	pubsub         pubsub.PubSub
 	chaintracks    chaintracker.ChainTracker
@@ -42,7 +42,7 @@ type Service struct {
 
 // NewService creates a new MerkleService.
 func NewService(
-	s store.Store,
+	r *redis.Client,
 	beefStore *beef.Storage,
 	ps pubsub.PubSub,
 	ct chaintracker.ChainTracker,
@@ -54,7 +54,7 @@ func NewService(
 	}
 
 	return &Service{
-		store:          s,
+		redis:          r,
 		beefStore:      beefStore,
 		pubsub:         ps,
 		chaintracks:    ct,
@@ -197,15 +197,15 @@ func (s *Service) handleRejectedCallback(callback ArcCallback) {
 	}
 
 	// Log to rollback set using properly scaled timestamp
-	if err := s.store.ZAdd(s.ctx, txo.KeyLog(txo.RollbackTxLog), store.ScoredMember{
-		Member: txid[:],
+	if err := s.redis.ZAdd(s.ctx, string(txo.KeyLog(txo.RollbackTxLog)), redis.Z{
+		Member: string(txid[:]),
 		Score:  types.HeightScore(0, 0),
-	}); err != nil {
+	}).Err(); err != nil {
 		s.logger.Error("failed to log rollback", "txid", callback.TxID, "error", err)
 	}
 
 	// Remove from pending
-	s.store.ZRem(s.ctx, txo.KeyLog(txo.PendingTxLog), txid[:])
+	s.redis.ZRem(s.ctx, string(txo.KeyLog(txo.PendingTxLog)), string(txid[:]))
 }
 
 // SetChainTip updates the immutability threshold based on the current chain tip.
@@ -273,13 +273,13 @@ func (s *Service) ValidateAndUpdateTx(ctx context.Context, txid *chainhash.Hash,
 		s.logger.Debug("archiving immutable tx", "txid", txid.String())
 
 		// Move from pending to immutable
-		if err := s.store.ZAdd(ctx, txo.KeyLog(txo.ImmutableTxLog), store.ScoredMember{
-			Member: txid[:],
+		if err := s.redis.ZAdd(ctx, string(txo.KeyLog(txo.ImmutableTxLog)), redis.Z{
+			Member: string(txid[:]),
 			Score:  newScore,
-		}); err != nil {
+		}).Err(); err != nil {
 			return err
 		}
-		s.store.ZRem(ctx, txo.KeyLog(txo.PendingTxLog), txid[:])
+		s.redis.ZRem(ctx, string(txo.KeyLog(txo.PendingTxLog)), string(txid[:]))
 	}
 
 	return nil
@@ -287,15 +287,15 @@ func (s *Service) ValidateAndUpdateTx(ctx context.Context, txid *chainhash.Hash,
 
 // LogPending logs a transaction as pending confirmation.
 func (s *Service) LogPending(ctx context.Context, txid *chainhash.Hash, score float64) error {
-	return s.store.ZAdd(ctx, txo.KeyLog(txo.PendingTxLog), store.ScoredMember{
-		Member: txid[:],
+	return s.redis.ZAdd(ctx, string(txo.KeyLog(txo.PendingTxLog)), redis.Z{
+		Member: string(txid[:]),
 		Score:  score,
-	})
+	}).Err()
 }
 
 // DequeuePending removes a transaction from the pending log.
 func (s *Service) DequeuePending(ctx context.Context, txid *chainhash.Hash) error {
-	return s.store.ZRem(ctx, txo.KeyLog(txo.PendingTxLog), txid[:])
+	return s.redis.ZRem(ctx, string(txo.KeyLog(txo.PendingTxLog)), string(txid[:])).Err()
 }
 
 // GetImmutableThreshold returns the current score threshold for immutability.

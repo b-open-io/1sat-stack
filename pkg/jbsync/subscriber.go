@@ -7,7 +7,7 @@ import (
 	"strconv"
 
 	"github.com/b-open-io/1sat-stack/pkg/config"
-	"github.com/b-open-io/1sat-stack/pkg/store"
+	"github.com/redis/go-redis/v9"
 	"github.com/b-open-io/1sat-stack/pkg/types"
 	"github.com/b-open-io/go-junglebus"
 	"github.com/b-open-io/go-junglebus/models"
@@ -18,7 +18,7 @@ import (
 // Subscriber manages a JungleBus subscription and writes transactions to a queue
 type Subscriber struct {
 	config       *SubscriberConfig
-	store        store.Store
+	redis        *redis.Client
 	configStore  config.Store
 	chainTracker chaintracks.Chaintracks
 	jbClient     *junglebus.Client
@@ -26,7 +26,7 @@ type Subscriber struct {
 }
 
 // NewSubscriber creates a new JungleBus subscriber
-func NewSubscriber(cfg *SubscriberConfig, s store.Store, cs config.Store, ct chaintracks.Chaintracks, jbClient *junglebus.Client, logger *slog.Logger) (*Subscriber, error) {
+func NewSubscriber(cfg *SubscriberConfig, r *redis.Client, cs config.Store, ct chaintracks.Chaintracks, jbClient *junglebus.Client, logger *slog.Logger) (*Subscriber, error) {
 	if logger == nil {
 		logger = slog.Default()
 	}
@@ -41,7 +41,7 @@ func NewSubscriber(cfg *SubscriberConfig, s store.Store, cs config.Store, ct cha
 
 	return &Subscriber{
 		config:       cfg,
-		store:        s,
+		redis:        r,
 		configStore:  cs,
 		chainTracker: ct,
 		jbClient:     jbClient,
@@ -71,7 +71,7 @@ func (s *Subscriber) Start(ctx context.Context) error {
 	errChan := make(chan error, 1)
 
 	// Batch management
-	var batchMembers []store.ScoredMember
+	var batchMembers []redis.Z
 	maxBatchSize := s.config.BatchSize
 
 	// Helper function to flush batch
@@ -80,7 +80,7 @@ func (s *Subscriber) Start(ctx context.Context) error {
 			return nil
 		}
 
-		if err := s.store.ZAdd(ctx, queueKey, batchMembers...); err != nil {
+		if err := s.redis.ZAdd(ctx, string(queueKey), batchMembers...).Err(); err != nil {
 			s.logger.Error("failed to add batch to queue", "error", err, "batch_size", len(batchMembers))
 			return err
 		}
@@ -109,8 +109,8 @@ func (s *Subscriber) Start(ctx context.Context) error {
 			score := types.HeightScore(txn.BlockHeight, txn.BlockIndex)
 
 			// Add to batch (binary 32-byte txid)
-			batchMembers = append(batchMembers, store.ScoredMember{
-				Member: txid[:],
+			batchMembers = append(batchMembers, redis.Z{
+				Member: string(txid[:]),
 				Score:  score,
 			})
 
@@ -211,10 +211,10 @@ func (s *Subscriber) Start(ctx context.Context) error {
 			// Mempool transactions use timestamp-based score via HeightScore(0, 0)
 			score := types.HeightScore(0, 0)
 
-			if err := s.store.ZAdd(ctx, queueKey, store.ScoredMember{
-				Member: txid[:],
+			if err := s.redis.ZAdd(ctx, string(queueKey), redis.Z{
+				Member: string(txid[:]),
 				Score:  score,
-			}); err != nil {
+			}).Err(); err != nil {
 				s.logger.Error("failed to add mempool tx to queue", "error", err, "txid", txn.Id)
 			}
 		}
