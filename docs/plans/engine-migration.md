@@ -11,16 +11,24 @@ Replace the custom `Store` interface with the Redis protocol as the canonical da
 
 This is the foundation for the distributed compute vision (see `docs/research/distributed-compute-vision.md`).
 
-## Dual Channel Model
+## Dual Storage Model
 
-Modules receive named storage channels — bidirectional byte streams:
+Modules have two storage mechanisms:
 
-- **Redis channel** — RESP protocol. KV, hashes, sorted sets, pub/sub. Hot-path operational state.
-- **SQLite channel** — SQL protocol. Structured queries, aggregates, joins, text search. Relational data.
+- **Redis channel** — RESP protocol over multiplexed stdin/stdout stream. KV, hashes, sorted sets, pub/sub. Hot-path operational state. Module wraps the stream with whatever RESP client its language provides.
+- **SQLite file** — Native file I/O. Structured queries, aggregates, joins. Used by lookup services only. Module uses SQLite directly. Host handles replication/redundancy (Litestream, LiteFS, etc.) transparently.
 
-A module doesn't receive a Go client or a TCP address. It receives a stream. The module wraps the stream with whatever RESP/SQL client its language provides. The host provides the other end of the stream, backed by whatever storage (Badger, real Redis, SQLite file, IndexedDB, etc.).
+The Redis channel is the stream abstraction — bidirectional bytes, language-agnostic, maps naturally to Go, Zig, TypeScript/AssemblyScript. SQLite is orthogonal — it's just a file, not a stream.
 
-The stream abstraction must map naturally to Go, Zig, TypeScript/AssemblyScript, and any other WASM-targeting language. It's just bytes in, bytes out.
+## Data Serialization
+
+Structured data crossing WASM module boundaries uses **Protocol Buffers**. Static codegen for Go, Zig, TypeScript/AssemblyScript. No runtime reflection.
+
+Key protobuf types: `ParsedBeef` (pre-deserialized, txids computed), `AdmittanceInstructions`, `LookupQuestion/Answer`, `OutputData`.
+
+The engine parses raw BEEF bytes once, serializes to `ParsedBeef` protobuf, passes that across module boundaries. Topic managers skip the expensive rehashing.
+
+See `docs/research/channel-spec.md` for full details on channels, serialization, and WASM architecture.
 
 ## Migration Progress
 
@@ -33,20 +41,23 @@ The stream abstraction must map naturally to Go, Zig, TypeScript/AssemblyScript,
 | Map Store to Redis commands | ✅ Done | OPL-1507 | All methods map cleanly to Redis commands |
 | Redcon RESP server | ✅ Done | OPL-1506 | `pkg/store/redcon.go` — full command handler coverage |
 
-### Phase 1: Channel Abstraction (Next)
+### Phase 1: Channel Abstraction & Module Contract (Next)
 
 Design spec: `docs/research/channel-spec.md`
 
-Multiple data channels multiplexed over WASI stdin/stdout with lightweight framing (`[channel_id][length][payload]`). Each channel carries RESP or SQL bytes. Modules see independent connections via per-language adapters. Function calls (module contract) stay as normal WASM imports/exports. stderr reserved for diagnostics.
+RESP channels multiplexed over WASI stdin/stdout with lightweight framing (`[channel_id][length][payload]`). Modules see independent Redis connections via per-language adapters. Function calls (module contract) stay as normal WASM imports/exports. stderr reserved for diagnostics. SQLite is file I/O, not a channel.
 
 | Task | Status | Linear | Notes |
 |------|--------|--------|-------|
 | Channel spec | **Draft** | OPL-1526 | `docs/research/channel-spec.md` — framing, mux, adapters, WASI compat |
+| Define `.proto` types | **Not Started** | | ParsedBeef, AdmittanceInstructions, LookupQuestion/Answer, OutputData |
+| Define module contract (exported functions) | **Not Started** | OPL-1510 | `admit(ParsedBeef) → AdmittanceInstructions`, `lookup(LookupQuestion) → LookupAnswer` |
 | Build mux + Go adapter | **Not Started** | OPL-1526 | Framing protocol, `net.Conn` adapter for go-redis |
+| Build Go shim (WasmTopicManager, WasmLookupService) | **Not Started** | | Implements Go interfaces, calls WASM modules via protobuf |
 | Migrate modules to channels | **Not Started** | OPL-1527 | Modules receive channels, create own clients internally |
 | Remove `Store` interface | **Not Started** | OPL-1508 | After all modules migrated to channels |
 
-**IMPORTANT**: Previous work (commits `93ec622`..`271d5e3`) swapped `store.Store` → `*redis.Client` across 12 packages. This was the **wrong approach** — it just replaced one Go-specific dependency with another. Modules must receive channels (byte streams), not injected clients. That work needs to be redone once the channel abstraction exists.
+**IMPORTANT**: Previous work (commits `93ec622`..`271d5e3`) swapped `store.Store` → `*redis.Client` across 10 packages. This was the **wrong approach** — it just replaced one Go-specific dependency with another. Modules must receive channels (byte streams), not injected clients. That work needs to be redone once the channel abstraction exists.
 
 ### Phase 2: Engine Storage Redesign
 
@@ -73,16 +84,18 @@ Lookups stay on SQLite channel. Engine storage (Phase 2) and lookup storage are 
 
 ## Key Decisions
 
-1. **Channels are bidirectional byte streams** — not Go interfaces, not TCP addresses, not injected clients. A stream that carries RESP or SQL bytes. The module wraps it with whatever client library its language provides.
-2. **Channel abstraction must be language-agnostic** — must map naturally to Go, Zig, TypeScript, AssemblyScript, and any WASM-targeting language. Just bytes in, bytes out.
-3. **Modules create their own clients from the stream** — the host provides the channel, the module wraps it. Module is self-contained.
-4. **Multiple named channels per module** — a module might receive `txo` (redis) and `bap_db` (sqlite). Each is a separate stream.
-5. **Host manages isolation** — which channels a module can access is configuration, not module choice.
-6. **Redis protocol is the data interface** — not a Go abstraction. RESP bytes are the contract.
-7. **SQLite as second channel type** — for relational data (BAP, BSV21) where Redis primitives are insufficient.
-8. **Engine storage moves back to Redis channel** — `EngineAdapter`/`TopicStorage` engine ops are single-table CRUD that maps to Redis hashes and sorted sets.
-9. **Event methods belong in lookup layer, not engine storage** — `SaveEvent`/`DeleteEvent`/`FindByEvent` serve lookups, not the engine. Pull them out.
-10. **BSV21 demonstrates both channels** — queue ops on Redis channel, token_outputs on SQLite channel, joined in application code.
+1. **Redis channel is a bidirectional byte stream** — RESP bytes multiplexed over stdin/stdout. Module wraps it with whatever RESP client its language provides. Not Go interfaces, not TCP addresses, not injected clients.
+2. **SQLite is a file, not a channel** — Lookup services use SQLite natively. Host handles replication (Litestream, LiteFS, custom VFS). No SQL wire protocol over the mux.
+3. **Channel abstraction is language-agnostic** — maps naturally to Go, Zig, TypeScript, AssemblyScript. Just bytes in, bytes out.
+4. **Modules create their own clients from the stream** — host provides the channel, module wraps it. Module is self-contained.
+5. **Host manages isolation** — which channels/files a module can access is configuration, not module choice.
+6. **Protobuf for module boundary data** — structured data crossing WASM boundaries uses protobuf. Static codegen, no runtime reflection. `.proto` files define the module contract.
+7. **Engine targets WASM** — pure decision logic. Host owns concurrency and I/O. Engine module calls topic managers via host-mediated `call_module()`.
+8. **Go shim for host integration** — implements Go interfaces (`TopicManager`, `LookupService`, `Storage`), internally calls WASM modules via protobuf. Native Go modules keep working alongside WASM modules.
+9. **Function calls are WASM imports/exports** — module contract functions (`admit`, `lookup`, `parse`) are direct WASM calls with protobuf bytes. Data channels are for storage access.
+10. **Engine storage moves back to Redis channel** — `EngineAdapter`/`TopicStorage` engine ops are single-table CRUD that maps to Redis hashes and sorted sets.
+11. **Event methods belong in lookup layer, not engine storage** — `SaveEvent`/`DeleteEvent`/`FindByEvent` serve lookups, not the engine. Pull them out.
+12. **BSV21 demonstrates both storage types** — queue ops on Redis channel, token_outputs on SQLite file, joined in application code.
 
 ## Store Interface Audit Summary
 

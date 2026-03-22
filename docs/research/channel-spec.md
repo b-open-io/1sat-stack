@@ -84,12 +84,19 @@ The module's Redis client library handles RESP encoding/decoding. The channel is
 
 ### SQLite Channel
 
-Payload format TBD — needs a wire protocol for SQL queries and result sets. Options:
-- Simple length-prefixed SQL string → JSON/msgpack result rows
-- SQLite's built-in serialization format
-- A minimal custom format (query string in, column-typed rows out)
+**Decision: SQLite is not a channel type.** Lookup services use SQLite as a native file, not as a wire protocol over the mux. The module reads/writes a SQLite file directly. The host manages the file lifecycle and handles redundancy/replication (via Litestream to S3, LiteFS, custom VFS, or other mechanisms). The module doesn't know or care how replication works.
 
-This is less standardized than RESP. Needs its own design pass.
+This means the mux only carries RESP. SQLite is orthogonal — it's file I/O, not a stream.
+
+For WASM modules, the SQLite file is accessed through WASI filesystem APIs (`fd_open`, `fd_read`, `fd_write`). SQLite compiles to WASM natively (sql.js, etc.), so modules can carry their own SQLite instance.
+
+Available SQLite replication backends (host concern, transparent to module):
+- **Litestream** — streams WAL to S3/GCS/Azure Blob
+- **LiteFS** — FUSE-based distributed SQLite
+- **Turso/libSQL** — SQLite fork with built-in replication
+- **rqlite/dqlite** — distributed SQLite over Raft
+- **cr-sqlite** — CRDT-based conflict-free replication
+- **Custom VFS** — SQLite's VFS layer is pluggable
 
 ## PubSub
 
@@ -183,10 +190,73 @@ This design uses only WASI Preview 1 primitives:
 
 No resource handles, no Preview 2, no component model required. Works on Wazero, Wasmtime, Wasmer, and any other WASI Preview 1 runtime. When Preview 2 resource handles become available across runtimes, channels could migrate to native stream resources — but the framing protocol and adapter pattern would stay the same.
 
+## Module Contract & Serialization
+
+Data crossing the WASM boundary (function call arguments and return values) uses **Protocol Buffers**. Protobuf provides:
+- Schema-defined types with static codegen for Go, Zig, TypeScript/AssemblyScript
+- No runtime reflection or dynamic parsing inside WASM
+- Compact binary format
+- Schema evolution via field numbering
+
+The `.proto` files define the module contract alongside the exported function signatures.
+
+### Key protobuf types needed:
+
+- **ParsedBeef** — pre-deserialized BEEF with txids already computed (avoids rehashing per module)
+- **AdmittanceInstructions** — topic manager output
+- **LookupQuestion / LookupAnswer** — lookup service interface
+- **OutputData** — outpoint metadata for engine storage operations
+
+The engine parses raw BEEF bytes once, serializes to `ParsedBeef` protobuf, then passes that across module boundaries. Topic managers skip the expensive hashing.
+
+### Why protobuf, not WIT/Component Model:
+
+WIT is the standards-track future for WASM interfaces but Zig support isn't there yet (no `wit-bindgen` backend). Protobuf works across all target languages today. When WIT matures, the boundary layer can migrate without changing the data formats.
+
+**Karmem** (github.com/inkeliz/karmem) is a potential alternative — specifically optimized for WASM, supports Zig/Go/AssemblyScript, claims better performance than FlatBuffers. Worth evaluating against protobuf.
+
+## WASM Module Architecture
+
+### The engine is also a WASM module
+
+The overlay engine targets WASM — it's pure decision logic (receive parsed BEEF, run through topic pipeline, return results). The host owns concurrency and I/O. The engine module:
+
+- Receives `ParsedBeef` via exported functions
+- Uses its Redis channel for output membership state
+- Calls topic managers through host-mediated function calls: `call_module(module_id, function_name, protobuf_bytes)`
+- Returns `AdmittanceInstructions` as protobuf bytes
+
+### Go shim for host integration
+
+The current Go engine expects Go interfaces (`TopicManager`, `LookupService`, `Storage`). A thin shim implements these Go interfaces, internally calling into WASM modules:
+
+```go
+type WasmTopicManager struct {
+    runtime WasmRuntime
+    module  WasmModule
+}
+
+func (w *WasmTopicManager) IdentifyAdmissibleOutputs(beef *ParsedBeef) (*AdmittanceInstructions, error) {
+    reqBytes, _ := proto.Marshal(beef)
+    respBytes := w.runtime.Call(w.module, "identify_admissible_outputs", reqBytes)
+    var resp AdmittanceInstructions
+    proto.Unmarshal(respBytes, &resp)
+    return &resp, nil
+}
+```
+
+Native Go topic managers keep working as-is alongside WASM modules. The shim is just translation between Go interfaces and the WASM module contract.
+
+### Inter-module communication
+
+Modules don't call each other directly. All inter-module calls are host-mediated:
+- **Function calls**: `call_module(module_id, function, protobuf_bytes)` — host routes to target module
+- **Shared state**: Two modules that need shared data both receive channels to the same backing store
+
 ## Open Questions
 
-1. **SQLite wire protocol**: What format for SQL queries and result sets over the channel?
-2. **Concurrency**: Can a module have multiple in-flight requests on the same channel? If so, the framing needs a request ID for correlation. RESP pipelining assumes ordered responses, which works if the mux preserves ordering per channel.
-3. **Channel provisioning**: Exact mechanism for passing the channel table to the module at init time.
-4. **Backpressure**: What happens when the module writes faster than the host can process? Stdout buffering handles this to a point, but may need explicit flow control.
-5. **Error signaling**: How does the host signal a channel-level error (e.g., backend unavailable)?
+1. **Concurrency**: Can a module have multiple in-flight requests on the same channel? If so, the framing needs a request ID for correlation. RESP pipelining assumes ordered responses, which works if the mux preserves ordering per channel.
+2. **Channel provisioning**: Exact mechanism for passing the channel table to the module at init time.
+3. **Backpressure**: What happens when the module writes faster than the host can process? Stdout buffering handles this to a point, but may need explicit flow control.
+4. **Error signaling**: How does the host signal a channel-level error (e.g., backend unavailable)?
+5. **Protobuf vs Karmem**: Evaluate Karmem for WASM-optimized serialization. May be worth benchmarking against protobuf for our use case.
