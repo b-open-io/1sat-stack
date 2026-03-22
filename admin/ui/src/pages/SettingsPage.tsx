@@ -544,7 +544,7 @@ function StoragePanel({
 
 const PARSE_TAGS = [
   { id: "p2pkh", label: "P2PKH", description: "Standard pay-to-public-key-hash outputs" },
-  { id: "inscription", label: "Inscriptions", description: "1Sat Ordinal inscriptions" },
+  { id: "insc", label: "Inscriptions", description: "1Sat Ordinal inscriptions" },
   { id: "bsv21", label: "BSV21", description: "BSV21 fungible token protocol" },
   { id: "bap", label: "BAP", description: "Bitcoin Attestation Protocol identities" },
   { id: "bsocial", label: "BSocial", description: "Social protocol (posts, likes, follows)" },
