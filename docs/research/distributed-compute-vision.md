@@ -83,19 +83,46 @@ The full 1sat-stack has distinct functional areas, each with different distribut
 
 All distributable. All loadable at runtime. All behind standard interfaces. All inscribable on-chain.
 
+### The Server Is Wiring
+
+The 1sat-stack server reduces to:
+
+1. **Boot** — create storage backends (Badger instances, SQLite files), start redcon listeners
+2. **Wire** — for each module, create the right set of named channels scoped to what that module needs
+3. **Run** — modules work through their channels. Host bridges between modules and external interfaces.
+
+The entire dependency injection surface becomes: **which channels does this module get**. No custom interfaces, no wrapper types, no facade layers. Configuration becomes: what channels exist, what backends they point at, which modules access which channels.
+
+Channel scopes:
+
+| Scope | Example | Purpose |
+|-------|---------|---------|
+| **Shared** | `txo`, `progress` | Cross-module state (output metadata, sync progress) |
+| **Module-scoped** | `beef`, `bap_db` | Isolated to one module |
+| **Topic-scoped** | `q:tm_bap`, `bsv21:{tokenId}` | Per-overlay-topic storage |
+
+### PubSub Collapses Into Redis
+
+PubSub is a Redis primitive (`PUBLISH`/`SUBSCRIBE`). Modules that need to publish or subscribe to events do so through their Redis channel — no separate PubSub interface needed.
+
+The host bridges Redis PubSub to external transports:
+- **SSE** — host subscribes internally, streams to HTTP clients
+- **P2P** — host subscribes internally, broadcasts via libp2p
+- **WebSocket** — host subscribes internally, forwards to WS clients
+
+Modules don't know or care about the external transport. They `PUBLISH` an event; the host routes it.
+
 ### Host Responsibilities (Never modules)
 
 - WASM runtime (Wazero) — executes modules in sandbox
-- Store registry — manages named stores, controls which stores each module can access
-- Store channels — provides per-consumer byte streams for store communication
-- Queue infrastructure — worker scheduling, sorted set management
-- P2P transport — libp2p messaging, GASP coordination
+- Channel registry — manages named channels (Redis + SQLite), controls access per module
+- Channel provisioning — creates per-consumer streams for each module's declared dependencies
+- P2P transport — libp2p messaging, GASP coordination (bridges to Redis PubSub)
 - Auth/session management — security boundary
 - Wallet services — key management, signing, broadcasting
-- HTTP server scaffold — routes requests to API modules
+- HTTP server scaffold — routes requests to API modules, bridges SSE from Redis PubSub
 - Module resolution — fetches modules from ORDFS by outpoint + content type
 - Data resolution — serves content-addressable lookups, locally or via peer negotiation
-- PubSub — event distribution across modules and to external subscribers
 
 ### Module Contract — Two Channel Types
 
