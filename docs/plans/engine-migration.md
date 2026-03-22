@@ -48,15 +48,28 @@ Both deterministic. Both well-specified. Both compile to WASM. Both universally 
 | Remove `Store` interface | Pending | After all packages migrated |
 | Multi-store configuration | Pending | Named stores (txo, beef, topics, config) with separate backends |
 
-### Phase 3: Overlay Lookup Services
+### Phase 3: Engine Storage Redesign
 
-| Overlay | Current Store | Migration Path |
-|---------|--------------|----------------|
-| OPNS | TopicStorage events (sorted sets) | Redis channel — already event-shaped |
-| OrdLock | Custom in-memory struct | Redis channel |
-| BAP | SQLite (3 tables, joins, text search) | SQLite channel |
-| BSV21 | Per-topic SQLite (token_outputs table) | SQLite channel |
-| BSocial | MongoDB (aggregation pipelines) | Needs migration anyway — evaluate Redis vs SQLite |
+Move `EngineAdapter`/`TopicStorage` from native SQLite back to Redis channel.
+
+| Task | Status | Notes |
+|------|--------|-------|
+| Pull `SaveEvent`/`DeleteEvent`/`FindByEvent` out of `TopicStorage` | Pending | Move to lookup layer — these serve lookups, not the engine |
+| Reimplement engine output ops against `*redis.Client` | Pending | Follow pattern from deleted `engine_storage.go` (commit `71570c9`). Hash per outpoint, sorted set for topic membership/UTXO ordering, KV for applied txs and peer timestamps |
+| Update `EngineAdapter` to route to per-topic Redis keys | Pending | Replace per-topic SQLite factory with per-topic Redis key prefixes |
+| Remove `pkg/overlay/storage/sqlite.go` engine tables | Pending | Keep `outputs` table removal separate from lookup schema |
+
+### Phase 4: Overlay Lookup Services
+
+Lookups stay on SQLite channel. Engine storage (Phase 3) and lookup storage are now cleanly separated.
+
+| Overlay | Lookup Storage | Channel | Notes |
+|---------|---------------|---------|-------|
+| OPNS | TopicStorage events | Redis | Already event-shaped, no relational queries |
+| OrdLock | Custom in-memory struct | Redis | Minimal storage |
+| BAP | 3 tables, joins, text search | SQLite | Relational queries required |
+| BSV21 | `token_outputs` table (per-token DB via `DB()` escape hatch) | SQLite | Balance aggregates, address queries, history |
+| BSocial | MongoDB (aggregation pipelines) | TBD | Needs migration — evaluate Redis vs SQLite |
 
 ## Key Decisions
 
@@ -65,6 +78,9 @@ Both deterministic. Both well-specified. Both compile to WASM. Both universally 
 3. **Multiple named stores per app** — txo, beef, topics, config are separate databases, not namespaces
 4. **SQLite as second channel type** — for relational data (BAP, BSV21) where Redis primitives are insufficient
 5. **Host manages isolation** — which stores a module can access is configuration, not module choice
+6. **Engine storage moves back to Redis channel** — The `EngineAdapter`/`TopicStorage` currently uses native SQLite for overlay output membership. This was originally Badger-backed (`pkg/txo/engine_storage.go`, deleted in `71570c9`). The core engine operations (InsertOutput, GetOutput, FindOutputs, MarkSpent, FindUTXOs, DeleteOutput, Rollback, applied txs, peer interactions) are all single-table CRUD that maps cleanly to Redis hashes and sorted sets. Move back to Redis channel using the pattern from the deleted `engine_storage.go`.
+7. **Event methods belong in lookup layer, not engine storage** — `SaveEvent`, `DeleteEvent`, `FindByEvent` are in `TopicStorage` but serve lookups, not the engine. `FindByEvent` does a JOIN between events and outputs — that's a lookup concern. Pull these out of `TopicStorage` into the lookup services. Lookups that need to join event data back to output data do the join in code.
+8. **BSV21 already demonstrates both channels** — BSV21 has three layers: (a) queue ops via `store.Store` (ZAdd, ZCard) → Redis channel, (b) `BSV21Lookup` with `token_outputs` table via `TopicStorage.DB()` → SQLite channel, (c) routes join across both channels in application code (e.g. `GetBlockData` searches Redis OutputStore events then loads from SQLite lookup). This is the pattern for all overlays.
 
 ## Store Interface Audit Summary
 
