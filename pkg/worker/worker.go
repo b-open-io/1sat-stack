@@ -4,11 +4,12 @@ import (
 	"context"
 	"log/slog"
 	"runtime/debug"
+	"strconv"
 	"sync"
 	"time"
 
-	"github.com/b-open-io/1sat-stack/pkg/store"
 	"github.com/b-open-io/1sat-stack/pkg/types"
+	"github.com/redis/go-redis/v9"
 )
 
 // Handler processes a single work item. Returns error if processing fails.
@@ -19,14 +20,14 @@ type ErrorHandler func(ctx context.Context, id string, score float64, err error)
 
 // Worker processes items from a sorted set queue with configurable concurrency.
 type Worker struct {
-	store        store.Store
+	redis        *redis.Client
 	key          string
 	limiter      chan struct{}
 	handler      Handler
 	onError      ErrorHandler
 	onBatchStart func()
 	logger       *slog.Logger
-	pageSize     uint32
+	pageSize     int64
 	pollDelay    time.Duration
 	statusDelay  time.Duration
 
@@ -37,7 +38,7 @@ type Worker struct {
 
 // Config holds worker configuration.
 type Config struct {
-	Store        store.Store
+	Redis        *redis.Client
 	Key          string           // Sorted set key to consume from
 	Limiter      chan struct{}    // Controls concurrency - required
 	Handler      Handler          // Called for each item
@@ -70,17 +71,27 @@ func New(cfg *Config) *Worker {
 	logger := cfg.Logger.With("component", "worker", "queue", cfg.Key)
 
 	return &Worker{
-		store:        cfg.Store,
+		redis:        cfg.Redis,
 		key:          cfg.Key,
 		limiter:      cfg.Limiter,
 		handler:      cfg.Handler,
 		onError:      cfg.OnError,
 		onBatchStart: cfg.OnBatchStart,
 		logger:       logger,
-		pageSize:     cfg.PageSize,
+		pageSize:     int64(cfg.PageSize),
 		pollDelay:    cfg.PollDelay,
 		statusDelay:  cfg.StatusDelay,
 	}
+}
+
+// fetchBatch retrieves a batch of items from the queue up to the current time score.
+func (w *Worker) fetchBatch(ctx context.Context) ([]redis.Z, error) {
+	to := types.HeightScore(0, 0)
+	return w.redis.ZRangeByScoreWithScores(ctx, w.key, &redis.ZRangeBy{
+		Min:   "-inf",
+		Max:   strconv.FormatFloat(to, 'f', -1, 64),
+		Count: w.pageSize,
+	}).Result()
 }
 
 // Start begins processing the queue. Blocks until context is cancelled.
@@ -100,7 +111,7 @@ func (w *Worker) Start(ctx context.Context) error {
 	processedCount := 0
 	statusTime := time.Now()
 	var lastScore float64
-	var pending []store.ScoredMember
+	var pending []redis.Z
 
 	for {
 		select {
@@ -144,12 +155,7 @@ func (w *Worker) Start(ctx context.Context) error {
 
 		default:
 			if len(pending) == 0 {
-				to := types.HeightScore(0, 0)
-				items, err := w.store.Search(ctx, &store.SearchCfg{
-					Keys:  [][]byte{[]byte(w.key)},
-					Limit: w.pageSize,
-					To:    &to,
-				})
+				items, err := w.fetchBatch(ctx)
 				if err != nil {
 					w.logger.Error("search error", "key", w.key, "error", err)
 					time.Sleep(w.pollDelay)
@@ -168,7 +174,7 @@ func (w *Worker) Start(ctx context.Context) error {
 			item := pending[0]
 			pending = pending[1:]
 
-			id := string(item.Member)
+			id := item.Member.(string)
 			lastScore = item.Score
 
 			inflightMu.Lock()
@@ -198,19 +204,18 @@ func (w *Worker) Start(ctx context.Context) error {
 				}()
 
 				if err := w.handler(ctx, id, score); err != nil {
-					// Re-score 30s in the future so other items process immediately
 					retryScore := float64(time.Now().Add(30*time.Second).UnixNano()) / 1e9
-					if rerr := w.store.ZAdd(ctx, []byte(w.key), store.ScoredMember{
-						Member: []byte(id),
+					if rerr := w.redis.ZAdd(ctx, w.key, redis.Z{
+						Member: id,
 						Score:  retryScore,
-					}); rerr != nil {
+					}).Err(); rerr != nil {
 						w.logger.Error("failed to re-score for retry", "key", w.key, "id", id, "error", rerr)
 					}
 					errChan <- workerError{id: id, score: score, err: err}
 					return
 				}
 
-				if err := w.store.ZRem(ctx, []byte(w.key), []byte(id)); err != nil {
+				if err := w.redis.ZRem(ctx, w.key, id).Err(); err != nil {
 					w.logger.Error("failed to remove from queue", "key", w.key, "id", id, "error", err)
 				}
 			}(id, item.Score)
@@ -238,12 +243,7 @@ func (w *Worker) ProcessOnce(ctx context.Context) error {
 	var wg sync.WaitGroup
 
 	for {
-		to := types.HeightScore(0, 0)
-		items, err := w.store.Search(ctx, &store.SearchCfg{
-			Keys:  [][]byte{[]byte(w.key)},
-			Limit: w.pageSize,
-			To:    &to,
-		})
+		items, err := w.fetchBatch(ctx)
 		if err != nil {
 			return err
 		}
@@ -253,7 +253,7 @@ func (w *Worker) ProcessOnce(ctx context.Context) error {
 		}
 
 		for _, item := range items {
-			id := string(item.Member)
+			id := item.Member.(string)
 			score := item.Score
 
 			w.limiter <- struct{}{}
