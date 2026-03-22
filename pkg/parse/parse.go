@@ -23,6 +23,7 @@ type ParseContext struct {
 	Outpoint      *transaction.Outpoint // The outpoint being parsed
 	LockingScript []byte                // Raw locking script
 	Satoshis      uint64                // Output value
+	IsOrigin      bool                  // True if this 1-sat output is an ordinal origin (not a transfer)
 	Ctx           context.Context       // For parsers that need network calls (optional)
 	Ordfs         *ordfs.Ordfs          // Origin resolution via ORDFS (optional)
 
@@ -72,26 +73,10 @@ var DefaultTags = []string{
 	TagOrigin,      // Origin resolution for transferred 1-sat outputs (must come after insc)
 }
 
-// ParseOptions holds optional parameters for Parse.
-type ParseOptions struct {
-	Ctx   context.Context
-	Ordfs *ordfs.Ordfs
-}
-
 // Parse runs the specified parsers on an output and returns the results.
 // If tags is nil or empty, all default parsers are run.
-func Parse(outpoint *transaction.Outpoint, lockingScript []byte, satoshis uint64, tags []string, opts *ParseOptions) (map[string]*ParseResult, error) {
-	ctx := &ParseContext{
-		Outpoint:      outpoint,
-		LockingScript: lockingScript,
-		Satoshis:      satoshis,
-		Results:       make(map[string]*ParseResult),
-	}
-
-	if opts != nil {
-		ctx.Ctx = opts.Ctx
-		ctx.Ordfs = opts.Ordfs
-	}
+func Parse(ctx *ParseContext, tags []string) (map[string]*ParseResult, error) {
+	ctx.Results = make(map[string]*ParseResult)
 
 	// Use default tags if none specified
 	if len(tags) == 0 {
@@ -103,7 +88,7 @@ func Parse(outpoint *transaction.Outpoint, lockingScript []byte, satoshis uint64
 		if parser, ok := Parsers[tag]; ok {
 			result, err := parser(ctx)
 			if err != nil {
-				return nil, fmt.Errorf("parser %s failed for %s: %w", tag, outpoint.String(), err)
+				return nil, fmt.Errorf("parser %s failed for %s: %w", tag, ctx.Outpoint.String(), err)
 			}
 			if result != nil {
 				ctx.Results[result.Tag] = result

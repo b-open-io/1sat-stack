@@ -67,12 +67,45 @@ func (idxCtx *IndexContext) ParseTxn() error {
 	return idxCtx.ParseOutputs()
 }
 
+// computeOrigins determines which 1-sat outputs are ordinal origins vs transfers.
+// A 1-sat output is a transfer if its corresponding satoshi came from a 1-sat input
+// (by summing input/output satoshis in order). Otherwise it's an origin.
+func computeOrigins(tx *transaction.Transaction) []bool {
+	origins := make([]bool, len(tx.Outputs))
+
+	// Build input satoshi prefix sums to map output satoshi positions to inputs
+	inputSats := make([]uint64, len(tx.Inputs))
+	for i, inp := range tx.Inputs {
+		if inp.SourceTransaction != nil {
+			inputSats[i] = inp.SourceTransaction.Outputs[inp.SourceTxOutIndex].Satoshis
+		}
+	}
+
+	var outputSatsBefore uint64
+	for vout, txout := range tx.Outputs {
+		if txout.Satoshis == 1 {
+			var inputSatsBefore uint64
+			isTransfer := false
+			for _, sats := range inputSats {
+				if inputSatsBefore+sats > outputSatsBefore {
+					if sats == 1 {
+						isTransfer = true
+					}
+					break
+				}
+				inputSatsBefore += sats
+			}
+			origins[vout] = !isTransfer
+		}
+		outputSatsBefore += txout.Satoshis
+	}
+
+	return origins
+}
+
 // ParseOutputs parses all outputs of the transaction using parse.Parse directly
 func (idxCtx *IndexContext) ParseOutputs() error {
-	opts := &parse.ParseOptions{
-		Ctx:   idxCtx.Ctx,
-		Ordfs: idxCtx.Ordfs,
-	}
+	origins := computeOrigins(idxCtx.Tx)
 
 	for vout, txout := range idxCtx.Tx.Outputs {
 		outpoint := &transaction.Outpoint{
@@ -89,7 +122,14 @@ func (idxCtx *IndexContext) ParseOutputs() error {
 			Data:        make(map[string]any),
 		}
 
-		results, err := parse.Parse(outpoint, txout.LockingScript.Bytes(), txout.Satoshis, idxCtx.Tags, opts)
+		results, err := parse.Parse(&parse.ParseContext{
+			Outpoint:      outpoint,
+			LockingScript: txout.LockingScript.Bytes(),
+			Satoshis:      txout.Satoshis,
+			IsOrigin:      origins[vout],
+			Ctx:           idxCtx.Ctx,
+			Ordfs:         idxCtx.Ordfs,
+		}, idxCtx.Tags)
 		if err != nil {
 			return err
 		}
@@ -143,7 +183,11 @@ func (idxCtx *IndexContext) ParseSpends() error {
 		}
 
 		// Parse the spent output to derive events (no origin resolution needed for spends)
-		results, err := parse.Parse(outpoint, spentOutput.LockingScript.Bytes(), spentOutput.Satoshis, idxCtx.Tags, nil)
+		results, err := parse.Parse(&parse.ParseContext{
+			Outpoint:      outpoint,
+			LockingScript: spentOutput.LockingScript.Bytes(),
+			Satoshis:      spentOutput.Satoshis,
+		}, idxCtx.Tags)
 		if err != nil {
 			return err
 		}

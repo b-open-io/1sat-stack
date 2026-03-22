@@ -60,8 +60,8 @@ function enrichOrdinal(out: IndexedOutput): EnrichedOrdinal {
 }
 
 /** Resolve icon reference — "_0" means vout 0 of the same txid */
-function resolveIconOutpoint(tokenId: string, icon?: string): string {
-  if (!icon) return tokenId;
+function resolveIconOutpoint(tokenId: string, icon?: string): string | undefined {
+  if (!icon) return undefined;
   if (icon.startsWith("_")) {
     const txid = tokenId.split("_")[0];
     return `${txid}${icon}`;
@@ -112,7 +112,7 @@ async function groupBsv21Tokens(outputs: IndexedOutput[]): Promise<TokenBalance[
     balances.push({
       tokenId,
       symbol: detail?.token?.sym,
-      icon: services.ordfs.getContentUrl(iconOutpoint),
+      icon: iconOutpoint ? services.ordfs.getContentUrl(iconOutpoint) : "",
       decimals: Number(detail?.token?.dec ?? 0),
       totalAmount: group.totalAmount,
       outputs: group.outputs,

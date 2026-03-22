@@ -2,13 +2,14 @@ import { useState, useCallback } from "react";
 import { toast } from "sonner";
 import { toastError } from "@/lib/utils";
 import { getServices } from "@/lib/services";
-import { apiFetch, getWallet } from "@/api";
+import { apiFetch } from "@/api";
+import { useWallet } from "@1sat/react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { PrivateKey } from "@bsv/sdk";
-import type { WalletOutput } from "@bsv/sdk";
+import type { WalletInterface, WalletOutput } from "@bsv/sdk";
 import type { IndexedOutput } from "@1sat/types";
 import {
   sweepOrdinals,
@@ -57,9 +58,7 @@ function getServerBase(): string {
   return `${window.location.origin}${basePath}`;
 }
 
-function buildContext(): OneSatContext {
-  const wallet = getWallet();
-  if (!wallet) throw new Error("No wallet connected");
+function buildContext(wallet: WalletInterface): OneSatContext {
   return {
     wallet,
     services: getServices(),
@@ -90,6 +89,7 @@ function isPublished(tags?: string[]): boolean {
 // ============================================================================
 
 export default function OpNSPage() {
+  const { wallet } = useWallet();
   // Import section state
   const [wif, setWif] = useState("");
   const [importAddress, setImportAddress] = useState<string | null>(null);
@@ -219,7 +219,8 @@ export default function OpNSPage() {
 
     setSweeping(name.outpoint);
     try {
-      const ctx = buildContext();
+      if (!wallet) throw new Error("No wallet connected");
+      const ctx = buildContext(wallet);
 
       // Prepare sweep input by fetching BEEF and extracting locking script
       const utxos: IndexedOutput[] = [{
@@ -253,7 +254,6 @@ export default function OpNSPage() {
   const loadWalletNames = useCallback(async () => {
     setLoadingWallet(true);
     try {
-      const wallet = getWallet();
       if (!wallet) {
         toastError("No wallet connected");
         return;
@@ -287,9 +287,8 @@ export default function OpNSPage() {
   const publishName = useCallback(async (wn: WalletName) => {
     setPublishing(wn.output.outpoint);
     try {
-      const ctx = buildContext();
-      const wallet = getWallet();
       if (!wallet) throw new Error("No wallet connected");
+      const ctx = buildContext(wallet);
 
       const listResult = await wallet.listOutputs({
         basket: "opns",
@@ -317,9 +316,8 @@ export default function OpNSPage() {
   const unpublishName = useCallback(async (wn: WalletName) => {
     setPublishing(wn.output.outpoint);
     try {
-      const ctx = buildContext();
-      const wallet = getWallet();
       if (!wallet) throw new Error("No wallet connected");
+      const ctx = buildContext(wallet);
 
       const listResult = await wallet.listOutputs({
         basket: "opns",

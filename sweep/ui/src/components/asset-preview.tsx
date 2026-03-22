@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { formatSats, formatTokenAmount } from "@/lib/utils";
 import type { EnrichedOrdinal, TokenBalance } from "@/lib/scanner";
 import type { IndexedOutput } from "@1sat/types";
@@ -106,20 +107,61 @@ function OrdinalCard({
 // Funding Section
 // ============================================================================
 
-export function FundingSection({ funding, totalBsv }: { funding: IndexedOutput[]; totalBsv: number }) {
+export function FundingSection({
+  funding,
+  totalBsv,
+  sweepAmount,
+  onSweepAmountChange,
+}: {
+  funding: IndexedOutput[];
+  totalBsv: number;
+  sweepAmount: number | null;
+  onSweepAmountChange: (amount: number | null) => void;
+}) {
   if (funding.length === 0) return null;
+
+  const isMax = sweepAmount === null;
+
   return (
     <div className="border border-green-500/20 bg-green-500/5 p-4 rounded-lg">
       <div className="flex items-center gap-2 mb-2">
         <span className="h-2 w-2 rounded-full bg-green-500" />
         <span className="text-sm font-semibold text-green-500">BSV Funding</span>
       </div>
-      <div className="flex items-baseline justify-between">
+      <div className="flex items-baseline justify-between mb-3">
         <div>
           <div className="text-2xl font-bold text-green-500">{formatSats(totalBsv)} sats</div>
           <div className="text-xs text-muted-foreground">{(totalBsv / 100_000_000).toFixed(8)} BSV</div>
         </div>
         <Badge variant="secondary">{funding.length} UTXO{funding.length !== 1 ? "s" : ""}</Badge>
+      </div>
+      <div className="flex items-center gap-2">
+        <Input
+          type="number"
+          min={0}
+          max={totalBsv}
+          placeholder="Max"
+          value={isMax ? "" : sweepAmount}
+          onChange={(e) => {
+            const val = e.target.value;
+            if (val === "") {
+              onSweepAmountChange(null);
+            } else {
+              onSweepAmountChange(Math.max(0, Math.min(totalBsv, Number(val))));
+            }
+          }}
+          className="flex-1 font-mono"
+        />
+        <span className="text-xs text-muted-foreground">sats</span>
+        <Button
+          variant="outline"
+          size="sm"
+          className="h-9 text-xs"
+          onClick={() => onSweepAmountChange(null)}
+          disabled={isMax}
+        >
+          Max
+        </Button>
       </div>
     </div>
   );

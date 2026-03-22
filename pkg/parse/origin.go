@@ -25,7 +25,6 @@ func ParseOrigin(ctx *ParseContext) (*ParseResult, error) {
 
 	var owners []*types.PKHash
 	var events []string
-	isInscription := ctx.Results[TagInscription] != nil
 
 	// Extract owner from composite scripts where P2PKH is the first 25 bytes.
 	// Pure P2PKH (exactly 25 bytes) is already handled by ParseP2PKH.
@@ -38,41 +37,56 @@ func ParseOrigin(ctx *ParseContext) (*ParseResult, error) {
 		}
 	}
 
-	// Resolve origin metadata via ORDFS for non-inscription 1-sat outputs
-	if !isInscription && ctx.Ordfs != nil && ctx.Ctx != nil {
-		seq := 0
-		resp, err := ctx.Ordfs.Load(ctx.Ctx, &ordfs.Request{
-			Outpoint: ctx.Outpoint,
-			Seq:      &seq,
-			Content:  false,
-			Map:      true,
-		})
-		if err != nil {
-			if errors.Is(err, ordfs.ErrNotFound) {
-				// Not found is expected for outputs without ordinal history
-			} else {
-				return nil, fmt.Errorf("origin resolution failed for %s: %w", ctx.Outpoint.String(), err)
-			}
-		} else {
-			if resp.Origin != nil {
-				events = append(events, "origin:"+resp.Origin.String())
-			}
-			if resp.ContentType != "" {
-				fullType := strings.Split(resp.ContentType, ";")[0]
-				fullType = strings.TrimSpace(fullType)
-				if fullType != "" {
-					parts := strings.Split(fullType, "/")
-					if len(parts) > 0 && parts[0] != "" {
-						events = append(events, "type:"+parts[0])
-					}
-					events = append(events, "type:"+fullType)
+	if ctx.IsOrigin {
+		// This satoshi was born here — the origin is this outpoint
+		events = append(events, "origin:"+ctx.Outpoint.String())
+	} else {
+		// This is a transfer — resolve origin via ORDFS unless it's a fungible token
+		isFungible := false
+		if inscResult := ctx.Results[TagInscription]; inscResult != nil {
+			for _, ev := range inscResult.Events {
+				if ev == "type:application/bsv-20" {
+					isFungible = true
+					break
 				}
 			}
-			if resp.Map != nil {
-				var mapData map[string]string
-				if err := json.Unmarshal(resp.Map, &mapData); err == nil {
-					if name, ok := mapData["name"]; ok && name != "" && len(name) <= maxEventValueLen {
-						events = append(events, "name:"+name)
+		}
+
+		if !isFungible && ctx.Ordfs != nil && ctx.Ctx != nil {
+			seq := 0
+			resp, err := ctx.Ordfs.Load(ctx.Ctx, &ordfs.Request{
+				Outpoint: ctx.Outpoint,
+				Seq:      &seq,
+				Content:  false,
+				Map:      true,
+			})
+			if err != nil {
+				if errors.Is(err, ordfs.ErrNotFound) {
+					// Not found is expected for outputs without ordinal history
+				} else {
+					return nil, fmt.Errorf("origin resolution failed for %s: %w", ctx.Outpoint.String(), err)
+				}
+			} else {
+				if resp.Origin != nil {
+					events = append(events, "origin:"+resp.Origin.String())
+				}
+				if resp.ContentType != "" {
+					fullType := strings.Split(resp.ContentType, ";")[0]
+					fullType = strings.TrimSpace(fullType)
+					if fullType != "" {
+						parts := strings.Split(fullType, "/")
+						if len(parts) > 0 && parts[0] != "" {
+							events = append(events, "type:"+parts[0])
+						}
+						events = append(events, "type:"+fullType)
+					}
+				}
+				if resp.Map != nil {
+					var mapData map[string]string
+					if err := json.Unmarshal(resp.Map, &mapData); err == nil {
+						if name, ok := mapData["name"]; ok && name != "" && len(name) <= maxEventValueLen {
+							events = append(events, "name:"+name)
+						}
 					}
 				}
 			}

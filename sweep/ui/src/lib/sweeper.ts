@@ -22,9 +22,10 @@ export async function executeSweep(params: {
   funding: IndexedOutput[];
   ordinals: IndexedOutput[];
   bsv21Tokens: IndexedOutput[];
+  amount?: number;
   onProgress: (stage: string) => void;
 }): Promise<SweepResult> {
-  const { wallet, wif, funding, ordinals, bsv21Tokens, onProgress } = params;
+  const { wallet, wif, funding, ordinals, bsv21Tokens, amount, onProgress } = params;
   const ctx = createContext(wallet, { services: getServices(), chain: "main" });
 
   const result: SweepResult = {
@@ -38,7 +39,7 @@ export async function executeSweep(params: {
     onProgress(`Sweeping ${funding.length} BSV UTXOs...`);
     try {
       const inputs = await prepareSweepInputs(ctx, funding);
-      const bsvResult = await sweepBsv.execute(ctx, { inputs, wif });
+      const bsvResult = await sweepBsv.execute(ctx, { inputs, wif, amount });
       if (bsvResult.error) result.errors.push(`BSV: ${bsvResult.error}`);
       else if (bsvResult.txid) result.bsvTxid = bsvResult.txid;
     } catch (e) {

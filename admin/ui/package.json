@@ -12,6 +12,7 @@
     "@1sat/actions": "0.0.18",
     "@1sat/client": "^0.0.8",
     "@1sat/connect": "^0.0.20",
+    "@1sat/react": "^0.0.36",
     "@1sat/types": "^0.0.9",
     "@bsv/sdk": "^2.0.12",
     "class-variance-authority": "^0.7.1",

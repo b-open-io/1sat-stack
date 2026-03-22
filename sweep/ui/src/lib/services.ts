@@ -4,7 +4,7 @@ let _services: OneSatServices | null = null;
 
 export function getServices(): OneSatServices {
   if (!_services) {
-    _services = new OneSatServices("main", window.location.origin);
+    _services = new OneSatServices("main");
   }
   return _services;
 }

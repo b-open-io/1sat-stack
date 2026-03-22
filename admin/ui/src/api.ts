@@ -1,11 +1,7 @@
 import { AuthFetch } from "@bsv/sdk";
 import type { WalletInterface } from "@bsv/sdk";
-import { connectWallet as detectWallet, getAvailableProviders } from "@1sat/connect";
 
-let wallet: WalletInterface | null = null;
 let authFetch: AuthFetch | null = null;
-let identityKey: string | null = null;
-let disconnectFn: (() => void) | null = null;
 
 const adminIdx = window.location.pathname.indexOf("/admin");
 const API_BASE =
@@ -18,48 +14,8 @@ const SETUP_BASE =
   (adminIdx >= 0 ? window.location.pathname.substring(0, adminIdx + "/admin".length) : "") +
   "/setup";
 
-export async function connectWallet(): Promise<string> {
-  const result = await detectWallet();
-  if (!result) {
-    throw new Error("No wallet detected");
-  }
-  wallet = result.wallet;
-  identityKey = result.identityKey;
-  disconnectFn = result.disconnect;
-  authFetch = new AuthFetch(wallet);
-  return identityKey;
-}
-
-export function getWallet(): WalletInterface | null {
-  return wallet;
-}
-
-export function getIdentityKey(): string | null {
-  return identityKey;
-}
-
-export async function connectOneSatWallet(): Promise<string> {
-  const providers = getAvailableProviders({
-    providers: [{ type: "onesat", name: "OneSat Wallet" }],
-  });
-  const onesat = providers[0];
-  if (!onesat) throw new Error("OneSat provider not available");
-  const result = await onesat.connect();
-  wallet = result.wallet;
-  identityKey = result.identityKey;
-  disconnectFn = result.disconnect;
-  authFetch = new AuthFetch(wallet);
-  return identityKey;
-}
-
-export function disconnectWallet(): void {
-  if (disconnectFn) {
-    disconnectFn();
-    disconnectFn = null;
-  }
-  wallet = null;
-  authFetch = null;
-  identityKey = null;
+export function setWallet(w: WalletInterface | null): void {
+  authFetch = w ? new AuthFetch(w) : null;
 }
 
 export async function apiFetch(
@@ -85,12 +41,15 @@ export async function getSetupStatus(): Promise<{ configured: boolean }> {
 
 export async function performSetup(): Promise<{ message: string }> {
   const url = SETUP_BASE;
-  let res: Response;
   if (authFetch) {
-    res = await authFetch.fetch(url, { method: "POST" });
-  } else {
-    res = await fetch(url, { method: "POST" });
+    const res = await authFetch.fetch(url, { method: "POST" });
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      throw new Error(data.error || "Setup failed");
+    }
+    return res.json();
   }
+  const res = await fetch(url, { method: "POST" });
   if (!res.ok) {
     const data = await res.json().catch(() => ({}));
     throw new Error(data.error || "Setup failed");
@@ -100,12 +59,12 @@ export async function performSetup(): Promise<{ message: string }> {
 
 export async function checkAccess(): Promise<{ status: string; admin?: boolean }> {
   const url = `${SETUP_BASE}/check`;
-  let res: Response;
   if (authFetch) {
-    res = await authFetch.fetch(url, { method: "GET" });
-  } else {
-    res = await fetch(url);
+    const res = await authFetch.fetch(url, { method: "GET" });
+    if (!res.ok) throw new Error("Failed to check access");
+    return res.json();
   }
+  const res = await fetch(url);
   if (!res.ok) throw new Error("Failed to check access");
   return res.json();
 }
@@ -127,20 +86,23 @@ export async function saveConfig(values: Record<string, string>): Promise<void> 
 
 export async function requestAccess(name: string): Promise<{ message: string }> {
   const url = `${SETUP_BASE}/request`;
-  let res: Response;
   if (authFetch) {
-    res = await authFetch.fetch(url, {
+    const res = await authFetch.fetch(url, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ name }),
     });
-  } else {
-    res = await fetch(url, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name }),
-    });
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      throw new Error(data.error || "Request failed");
+    }
+    return res.json();
   }
+  const res = await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ name }),
+  });
   if (!res.ok) {
     const data = await res.json().catch(() => ({}));
     throw new Error(data.error || "Request failed");

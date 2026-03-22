@@ -1,5 +1,6 @@
 import { useState } from "react";
-import { performSetup, getIdentityKey } from "../api";
+import { useWallet } from "@1sat/react";
+import { performSetup } from "../api";
 import { toast } from "sonner";
 import { toastError } from "@/lib/utils";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -11,7 +12,7 @@ interface Props {
 
 export default function SetupWizard({ onComplete }: Props) {
   const [submitting, setSubmitting] = useState(false);
-  const identityKey = getIdentityKey();
+  const { identityKey } = useWallet();
 
   async function handleSetup() {
     setSubmitting(true);

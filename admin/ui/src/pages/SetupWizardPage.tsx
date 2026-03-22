@@ -1,10 +1,10 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Eye, EyeOff, ChevronDown, ChevronRight, Check, Server, Laptop, Database, Link, HardDrive, Wallet } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
-import { connectWallet, disconnectWallet } from "@/api";
+import { useWallet } from "@1sat/react";
 
 type AuthMode = "local" | "authenticated" | null;
 type WalletBackend = "sqlite" | "postgres";
@@ -147,10 +147,10 @@ function SummaryRow({ label, value }: { label: string; value: string }) {
 }
 
 export default function SetupWizardPage() {
+  const { connect, disconnect, identityKey: walletIdentityKey, status: walletStatus } = useWallet();
   const [step, setStep] = useState(1);
   const [showWif, setShowWif] = useState(false);
   const [completing, setCompleting] = useState(false);
-  const [walletConnecting, setWalletConnecting] = useState(false);
   const [walletError, setWalletError] = useState<string | null>(null);
   const [state, setState] = useState<SetupState>({
     authMode: null,
@@ -172,9 +172,16 @@ export default function SetupWizardPage() {
     setState((s) => ({ ...s, [key]: value }));
   }
 
+  // Sync wallet identity key into setup state
+  useEffect(() => {
+    if (walletIdentityKey) {
+      set("adminIdentityKey", walletIdentityKey);
+    }
+  }, [walletIdentityKey]);
+
   function setAuthMode(mode: AuthMode) {
     if (mode !== "authenticated" && state.adminIdentityKey) {
-      disconnectWallet();
+      disconnect();
       set("adminIdentityKey", "");
     }
     set("authMode", mode);
@@ -182,20 +189,16 @@ export default function SetupWizardPage() {
   }
 
   async function handleConnectWallet() {
-    setWalletConnecting(true);
     setWalletError(null);
     try {
-      const identityKey = await connectWallet();
-      set("adminIdentityKey", identityKey);
+      await connect();
     } catch (e: any) {
       setWalletError(e.message || "Failed to connect wallet");
-    } finally {
-      setWalletConnecting(false);
     }
   }
 
   function handleDisconnectWallet() {
-    disconnectWallet();
+    disconnect();
     set("adminIdentityKey", "");
   }
 
@@ -365,10 +368,10 @@ export default function SetupWizardPage() {
                       variant="secondary"
                       className="w-full"
                       onClick={handleConnectWallet}
-                      disabled={walletConnecting}
+                      disabled={walletStatus === "connecting"}
                     >
                       <Wallet className="w-4 h-4 mr-2" />
-                      {walletConnecting ? "Connecting..." : "Connect Wallet"}
+                      {walletStatus === "connecting" ? "Connecting..." : "Connect Wallet"}
                     </Button>
                     {walletError && (
                       <p className="text-xs text-destructive">{walletError}</p>

@@ -1,8 +1,10 @@
 import { useState, useEffect } from "react";
-import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
+import { BrowserRouter, Routes, Route } from "react-router-dom";
+import type { WalletProviderConfig } from "@1sat/connect";
+import { WalletProvider, ConnectDialogProvider, useWallet } from "@1sat/react";
 import SetupWizardPage from "./pages/SetupWizardPage";
 import SettingsPage from "./pages/SettingsPage";
-import { connectWallet, getIdentityKey } from "@/api";
+import { setWallet } from "@/api";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { Toaster } from "@/components/ui/sonner";
 import { Button } from "@/components/ui/button";
@@ -10,36 +12,23 @@ import "./styles.css";
 
 type AppState = "loading" | "setup" | "connect" | "ready";
 
+const providers: WalletProviderConfig[] = [
+  {
+    type: "onesat",
+    name: "OneSat Wallet",
+  },
+];
+
 function WalletGate({ children }: { children: React.ReactNode }) {
-  const [checking, setChecking] = useState(true);
-  const [connected, setConnected] = useState(false);
-  const [connecting, setConnecting] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const { wallet, status, connect } = useWallet();
 
-  // Try to silently detect an already-connected wallet on mount
   useEffect(() => {
-    connectWallet()
-      .then(() => setConnected(true))
-      .catch(() => {})
-      .finally(() => setChecking(false));
-  }, []);
+    setWallet(wallet);
+  }, [wallet]);
 
-  async function handleConnect() {
-    setConnecting(true);
-    setError(null);
-    try {
-      await connectWallet();
-      setConnected(true);
-    } catch (e: any) {
-      setError(e.message || "Failed to connect wallet");
-    } finally {
-      setConnecting(false);
-    }
-  }
+  if (status === "detecting") return null;
 
-  if (checking) return null;
-
-  if (connected || getIdentityKey()) {
+  if (status === "connected" && wallet) {
     return <>{children}</>;
   }
 
@@ -62,12 +51,11 @@ function WalletGate({ children }: { children: React.ReactNode }) {
         </div>
         <Button
           className="w-full"
-          onClick={handleConnect}
-          disabled={connecting}
+          onClick={() => connect()}
+          disabled={status === "connecting" || status === "selecting"}
         >
-          {connecting ? "Connecting..." : "Connect Wallet"}
+          {status === "connecting" ? "Connecting..." : "Connect Wallet"}
         </Button>
-        {error && <p className="text-xs text-destructive">{error}</p>}
       </div>
     </div>
   );
@@ -90,7 +78,6 @@ function AppContent() {
           setState("setup");
           return;
         }
-        // Check auth mode
         return fetch(setupBase + "/config")
           .then((res) => res.json())
           .then((config) => {
@@ -130,12 +117,16 @@ const basename =
 export default function App() {
   return (
     <BrowserRouter basename={basename}>
-      <TooltipProvider>
-        <Routes>
-          <Route path="*" element={<AppContent />} />
-        </Routes>
-        <Toaster position="bottom-right" theme="dark" />
-      </TooltipProvider>
+      <WalletProvider autoReconnect providers={providers}>
+        <ConnectDialogProvider>
+          <TooltipProvider>
+            <Routes>
+              <Route path="*" element={<AppContent />} />
+            </Routes>
+            <Toaster position="bottom-right" theme="dark" />
+          </TooltipProvider>
+        </ConnectDialogProvider>
+      </WalletProvider>
     </BrowserRouter>
   );
 }

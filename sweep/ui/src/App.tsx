@@ -29,6 +29,7 @@ export default function App() {
   const [sweepProgress, setSweepProgress] = useState("");
   const [sweepResult, setSweepResult] = useState<SweepResult | null>(null);
   const [selectedOrdinals, setSelectedOrdinals] = useState<Set<string>>(new Set());
+  const [sweepAmount, setSweepAmount] = useState<number | null>(null);
 
   const handleToggleOrdinal = useCallback((outpoint: string) => {
     setSelectedOrdinals((prev) => {
@@ -53,6 +54,7 @@ export default function App() {
     setAssets(null);
     setSweepResult(null);
     setSelectedOrdinals(new Set());
+    setSweepAmount(null);
     setWifs({ pay: payWif, ord: ordWif });
 
     try {
@@ -95,12 +97,25 @@ export default function App() {
       );
       const bsv21Outputs = assets.bsv21Tokens.flatMap((t) => t.outputs);
 
+      // Select funding UTXOs: if amount specified, walk linearly until we have enough
+      let selectedFunding = assets.funding;
+      if (sweepAmount !== null) {
+        selectedFunding = [];
+        let accumulated = 0;
+        for (const utxo of assets.funding) {
+          selectedFunding.push(utxo);
+          accumulated += utxo.satoshis;
+          if (accumulated >= sweepAmount) break;
+        }
+      }
+
       const result = await executeSweep({
         wallet,
         wif: wifs.pay,
-        funding: assets.funding,
+        funding: selectedFunding,
         ordinals: selectedOrdinalOutputs,
         bsv21Tokens: bsv21Outputs,
+        amount: sweepAmount ?? undefined,
         onProgress: setSweepProgress,
       });
 
@@ -118,13 +133,14 @@ export default function App() {
     } finally {
       setSweeping(false);
     }
-  }, [wifs, assets, selectedOrdinals]);
+  }, [wifs, assets, selectedOrdinals, sweepAmount]);
 
   const handleReset = useCallback(() => {
     setAssets(null);
     setSweepResult(null);
     setWifs(null);
     setSelectedOrdinals(new Set());
+    setSweepAmount(null);
     setState(walletConnected ? "input" : "connect");
   }, [walletConnected]);
 
@@ -171,7 +187,12 @@ export default function App() {
 
         {assets && !sweeping && (
           <div className="space-y-3">
-            <FundingSection funding={assets.funding} totalBsv={assets.totalBsv} />
+            <FundingSection
+              funding={assets.funding}
+              totalBsv={assets.totalBsv}
+              sweepAmount={sweepAmount}
+              onSweepAmountChange={setSweepAmount}
+            />
             <OrdinalsSection
               ordinals={assets.ordinals}
               selectedOrdinals={selectedOrdinals}
