@@ -86,8 +86,8 @@ All distributable. All loadable at runtime. All behind standard interfaces. All 
 ### Host Responsibilities (Never modules)
 
 - WASM runtime (Wazero) — executes modules in sandbox
-- Storage layer — `Store` interface (Badger/Redis) exposed as host functions
-- BEEF storage — multi-backend facade, exposed as host functions
+- Store registry — manages named stores, controls which stores each module can access
+- Store channels — provides per-consumer byte streams for store communication
 - Queue infrastructure — worker scheduling, sorted set management
 - P2P transport — libp2p messaging, GASP coordination
 - Auth/session management — security boundary
@@ -111,6 +111,60 @@ The Redis protocol is the contract in the middle. Both sides are open:
 - **Frontend** — go-redis, ioredis, redis-py, redis-cli, or any RESP client in any language
 
 Neither side knows or cares about the other. The current `Store` interface was a Go-specific abstraction mimicking go-redis method signatures. The shift is: make Redis the actual protocol, not a pattern we imitate.
+
+#### Store Channels — How Modules Access Data
+
+A module doesn't receive a connection address or a typed client object. It receives a **channel** — a bidirectional byte stream carrying RESP-encoded commands and responses. The host provides the transport; the module provides the protocol logic.
+
+```
+Module                          Host
+  │                               │
+  │  store_request(store_id,      │
+  │    command_bytes)             │
+  │  ─────────────────────────►   │
+  │                               │  decode RESP → execute against
+  │                               │  backend → encode RESP response
+  │  ◄─────────────────────────   │
+  │  response_bytes               │
+  │                               │
+```
+
+The host function signature for WASM modules:
+
+```
+store_request(store_id, command_ptr, command_len) → (response_ptr, response_len)
+```
+
+The module side has a tiny RESP encoder/decoder (trivial in any language), wraps it in whatever Redis client abstraction it prefers, and calls the host function. No TCP, no sockets, no networking. Works in Wazero, works in browser WASM, works anywhere.
+
+For each environment:
+
+| Environment | Channel Implementation |
+|-------------|----------------------|
+| **WASM in Wazero** | Host functions (`store_request`) backed by Badger |
+| **In-process Go** | TCP to embedded redcon listener, or direct function call |
+| **Browser WASM** | Host functions backed by IndexedDB or in-memory |
+| **External process** | TCP connection to redcon RESP listener |
+| **redis-cli / tooling** | TCP to redcon — works for free |
+
+Every language's Redis client library needs only a custom connection adapter that routes to the host function instead of a TCP socket. The byte-level protocol is identical to what goes over the wire to a real Redis server.
+
+#### Multiple Named Stores
+
+A single 1sat-stack instance manages many separate logical databases. These are NOT intermixed — each has its own storage, its own namespace, its own backend.
+
+| Store | Purpose | Backend |
+|-------|---------|---------|
+| `txo` | Indexed output metadata, events, merkle state | Badger |
+| `beef` | Transaction proof storage | Filesystem + JungleBus fallback |
+| `topics` | Topic manager state per overlay | Badger |
+| `config` | Runtime application settings | SQLite |
+| `wallet` | Wallet state, keys, certificates | GORM/SQLite |
+| Per-token stores | BSV21 per-tokenId overlay state | Badger (dynamic) |
+
+A module receives channel handles to specific named stores. An engine module for BSV21 gets `txo` and its token-specific store, but not `wallet` or `config`. The host controls which stores a module can access — this is the security/isolation boundary.
+
+Each channel is exclusive to its consumer. If two modules need the same underlying store, the host creates two separate channels that both route to the same backend. The backend handles concurrency (Badger's transaction conflict retry). No two consumers share a byte stream — that would corrupt the RESP framing.
 
 #### Why Redis Over Alternatives
 
