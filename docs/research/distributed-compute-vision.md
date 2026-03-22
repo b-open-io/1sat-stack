@@ -97,80 +97,109 @@ All distributable. All loadable at runtime. All behind standard interfaces. All 
 - Data resolution — serves content-addressable lookups, locally or via peer negotiation
 - PubSub — event distribution across modules and to external subscribers
 
-### Module Contract — Redis as the Universal Data Interface
+### Module Contract — Two Channel Types
 
-The data access layer for modules is the Redis command set. Not a custom interface — actual Redis semantics. This is a prerequisite for the distributed compute model because it provides:
+Modules access data through two complementary channel types. Both are deterministic, well-specified, universally known, and compile to WASM. A module declares which channel types it needs; the host provides them backed by whatever.
 
-- **A universally understood API** — any developer writing a module already knows `GET`, `HSET`, `ZADD`
-- **Interchangeable backends** — the host resolves commands against whatever storage is appropriate
-- **On-chain state compatibility** — reinscribed ordinals with key-value pairs implement the same interface
+#### Redis Channel — Operational Data
 
-The Redis protocol is the contract in the middle. Both sides are open:
+For KV, hashes, sorted sets, pub/sub. The hot-path operational interface.
 
-- **Backend** — Badger, RocksDB, on-chain state, whatever implements the storage
-- **Frontend** — go-redis, ioredis, redis-py, redis-cli, or any RESP client in any language
+- **Semantics**: Redis command set (GET, SET, HSET, ZADD, PUBLISH, etc.)
+- **Use cases**: Queues, caches, events, topic state, configuration, pub/sub
+- **Backend**: Badger (via redcon), real Redis, on-chain state, IndexedDB
+- **Frontend**: go-redis, ioredis, redis-py, redis-cli, or any RESP client
 
-Neither side knows or cares about the other. The current `Store` interface was a Go-specific abstraction mimicking go-redis method signatures. The shift is: make Redis the actual protocol, not a pattern we imitate.
+#### SQLite Channel — Structured Data
 
-#### Store Channels — How Modules Access Data
+For indexed queries, aggregates, joins, text search. The analytical/relational interface.
 
-A module doesn't receive a connection address or a typed client object. It receives a **channel** — a bidirectional byte stream carrying RESP-encoded commands and responses. The host provides the transport; the module provides the protocol logic.
+- **Semantics**: SQLite SQL dialect (precisely defined, deterministic)
+- **Use cases**: Identity lookups (BAP), token balances (BSV21), text search, multi-field queries
+- **Backend**: SQLite file, in-memory SQLite, or a Postgres adapter that accepts SQLite-dialect SQL
+- **Frontend**: Any SQLite client library, or raw SQL over the channel
+- **WASM**: SQLite compiles to WASM natively (sql.js, official WASM build) — modules can carry their own instance in browser environments
+
+The two interfaces are complementary, not overlapping. Redis for operational state, SQLite for structured queries. Both deterministic, both portable.
+
+#### Channel Model
+
+A module doesn't receive a connection address or a typed client object. It receives **named channels** — bidirectional byte streams. The host provides the transport; the module provides the protocol logic.
 
 ```
 Module                          Host
   │                               │
-  │  store_request(store_id,      │
+  │  channel_request(channel_id,  │
   │    command_bytes)             │
   │  ─────────────────────────►   │
-  │                               │  decode RESP → execute against
-  │                               │  backend → encode RESP response
+  │                               │  route to backend by channel type
+  │                               │  (RESP or SQL) → execute → encode
   │  ◄─────────────────────────   │
   │  response_bytes               │
   │                               │
 ```
 
+Each channel has a type (redis or sqlite) and a name. A module might receive:
+- `txo` (redis) — operational output state
+- `bap_db` (sqlite) — identity records with relational queries
+- `topics` (redis) — topic manager state
+
 The host function signature for WASM modules:
 
 ```
-store_request(store_id, command_ptr, command_len) → (response_ptr, response_len)
+channel_request(channel_id, command_ptr, command_len) → (response_ptr, response_len)
 ```
-
-The module side has a tiny RESP encoder/decoder (trivial in any language), wraps it in whatever Redis client abstraction it prefers, and calls the host function. No TCP, no sockets, no networking. Works in Wazero, works in browser WASM, works anywhere.
 
 For each environment:
 
-| Environment | Channel Implementation |
-|-------------|----------------------|
-| **WASM in Wazero** | Host functions (`store_request`) backed by Badger |
-| **In-process Go** | TCP to embedded redcon listener, or direct function call |
-| **Browser WASM** | Host functions backed by IndexedDB or in-memory |
-| **External process** | TCP connection to redcon RESP listener |
-| **redis-cli / tooling** | TCP to redcon — works for free |
+| Environment | Redis Channel | SQLite Channel |
+|-------------|--------------|----------------|
+| **WASM in Wazero** | Host functions backed by Badger | Host functions backed by SQLite file |
+| **In-process Go** | go-redis to embedded redcon | database/sql to SQLite |
+| **Browser WASM** | Host functions backed by IndexedDB | sql.js (WASM SQLite) |
+| **External process** | TCP to redcon RESP listener | SQLite wire protocol or HTTP |
+| **Tooling** | redis-cli | sqlite3 CLI, DBeaver |
 
 Every language's Redis client library needs only a custom connection adapter that routes to the host function instead of a TCP socket. The byte-level protocol is identical to what goes over the wire to a real Redis server.
 
-#### Multiple Named Stores
+#### Multiple Named Channels
 
-A single 1sat-stack instance manages many separate logical databases. These are NOT intermixed — each has its own storage, its own namespace, its own backend.
+A single 1sat-stack instance manages many separate logical databases. These are NOT intermixed — each has its own storage, its own namespace, its own backend. Each channel has a type.
 
-| Store | Purpose | Backend |
-|-------|---------|---------|
-| `txo` | Indexed output metadata, events, merkle state | Badger |
-| `beef` | Transaction proof storage | Filesystem + JungleBus fallback |
-| `topics` | Topic manager state per overlay | Badger |
-| `config` | Runtime application settings | SQLite |
-| `wallet` | Wallet state, keys, certificates | GORM/SQLite |
-| Per-token stores | BSV21 per-tokenId overlay state | Badger (dynamic) |
+| Channel | Type | Purpose | Backend |
+|---------|------|---------|---------|
+| `txo` | redis | Indexed output metadata, events, merkle state | Badger |
+| `beef` | redis | Transaction proof storage | Filesystem + JungleBus fallback |
+| `topics` | redis | Topic manager state per overlay | Badger |
+| `config` | sqlite | Runtime application settings | SQLite |
+| `wallet` | sqlite | Wallet state, keys, certificates | SQLite |
+| `bap_db` | sqlite | BAP identities, addresses, attestations | SQLite |
+| `bsv21:{tokenId}` | sqlite | Per-token output records, balances | SQLite (dynamic) |
+| Per-token event state | redis | Queue state, scores, events | Badger (dynamic) |
 
-A module receives channel handles to specific named stores. An engine module for BSV21 gets `txo` and its token-specific store, but not `wallet` or `config`. The host controls which stores a module can access — this is the security/isolation boundary.
+A module receives channel handles to specific named channels. An engine module for BSV21 gets `txo` (redis) for event state and `bsv21:{tokenId}` (sqlite) for token queries, but not `wallet` or `config`. The host controls which channels a module can access — this is the security/isolation boundary.
 
-Each channel is exclusive to its consumer. If two modules need the same underlying store, the host creates two separate channels that both route to the same backend. The backend handles concurrency (Badger's transaction conflict retry). No two consumers share a byte stream — that would corrupt the RESP framing.
+Each channel is exclusive to its consumer. If two modules need the same underlying store, the host creates two separate channels that both route to the same backend. The backend handles concurrency. No two consumers share a byte stream.
 
-#### Why Redis Over Alternatives
+#### Channel Types Per Overlay
+
+| Overlay | Redis Channels | SQLite Channels | Notes |
+|---------|---------------|-----------------|-------|
+| **OPNS** | events, txo | — | Already event-based, clean Redis fit |
+| **OrdLock** | events, txo | — | In-memory struct, minimal storage |
+| **BAP** | events | bap_db | Identities, addresses, attestations need relational queries |
+| **BSV21** | events, txo | bsv21:{tokenId} | Token balances, UTXO queries, aggregates |
+| **BSocial** | events | bsocial_db | Posts, follows, full-text search |
+
+#### Why These Two Interfaces
 
 Evaluated: SQL, gRPC/Protobuf, S3 API, Arrow Flight, NATS KV, FoundationDB layers.
 
-Redis command semantics hit a sweet spot. Multiple data structure types (KV, hashes, sorted sets, sets, pub/sub, atomic operations) under one protocol with well-understood behavior. SQL is more powerful for querying but worse for operational hot-path patterns. Everything else is either too narrow (pure KV) or too custom (back to designing your own interface). The sorted set + hash + pub/sub combination is exactly what overlay indexing uses.
+Redis command semantics hit a sweet spot for operational data. Multiple data structure types (KV, hashes, sorted sets, sets, pub/sub, atomic operations) under one protocol with well-understood behavior.
+
+SQLite fills the gap Redis can't — structured queries, aggregates, joins, text search. Critically, SQLite is deterministic (same query + same data = same result, always). A Postgres adapter that accepts SQLite-dialect SQL gives flexibility at the backend without compromising the module contract.
+
+Everything else evaluated was either too narrow (pure KV), too complex (full Postgres wire protocol), or too custom (inventing a query language).
 
 #### Implementation: redcon + Badger
 
