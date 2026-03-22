@@ -7,7 +7,7 @@ import (
 	"time"
 
 	"github.com/b-open-io/1sat-stack/pkg/p2p"
-	"github.com/b-open-io/1sat-stack/pkg/store"
+	"github.com/redis/go-redis/v9"
 	msgbus "github.com/bsv-blockchain/go-p2p-message-bus"
 	"github.com/bsv-blockchain/go-sdk/chainhash"
 	"github.com/bsv-blockchain/go-sdk/overlay"
@@ -25,15 +25,15 @@ type P2PConfig struct {
 // P2PBus wraps a msgbus.Client for overlay topic pub/sub.
 type P2PBus struct {
 	client msgbus.Client
-	store  store.Store
+	redis  *redis.Client
 	logger *slog.Logger
 }
 
 // NewP2PBus creates a P2PBus from a msgbus.Client.
-func NewP2PBus(client msgbus.Client, s store.Store, logger *slog.Logger) *P2PBus {
+func NewP2PBus(client msgbus.Client, r *redis.Client, logger *slog.Logger) *P2PBus {
 	return &P2PBus{
 		client: client,
-		store:  s,
+		redis:  r,
 		logger: logger,
 	}
 }
@@ -103,13 +103,13 @@ func (b *P2PBus) Subscribe(ctx context.Context, topicName string) context.Cancel
 					continue
 				}
 
-				queueKey := []byte("q:" + topicName)
+				queueKey := "q:" + topicName
 				for _, vout := range steakMsg.Instructions.OutputsToAdmit {
 					outpoint := fmt.Sprintf("%s_%d", steakMsg.Txid, vout)
-					if err := b.store.ZAdd(ctx, queueKey, store.ScoredMember{
-						Member: []byte(outpoint),
+					if err := b.redis.ZAdd(ctx, queueKey, redis.Z{
+						Member: outpoint,
 						Score:  float64(time.Now().Unix()),
-					}); err != nil {
+					}).Err(); err != nil {
 						b.logger.Error("failed to queue inbound outpoint",
 							"topic", topicName,
 							"outpoint", outpoint,

@@ -12,7 +12,7 @@ import (
 	"github.com/b-open-io/1sat-stack/pkg/beef"
 	"github.com/b-open-io/1sat-stack/pkg/gasp"
 	overlaystorage "github.com/b-open-io/1sat-stack/pkg/overlay/storage"
-	"github.com/b-open-io/1sat-stack/pkg/store"
+	"github.com/redis/go-redis/v9"
 	"github.com/bsv-blockchain/go-overlay-services/pkg/core/engine"
 	gasplib "github.com/bsv-blockchain/go-overlay-services/pkg/core/gasp"
 	"golang.org/x/sync/errgroup"
@@ -38,7 +38,7 @@ type RemoteConfig struct {
 
 // Services holds shared overlay infrastructure. Each module creates its own engine via NewModuleEngine.
 type Services struct {
-	Store  store.Store // For DB remote config lookup
+	Redis  *redis.Client // For remote config and queue operations
 	P2P    *P2PBus
 	logger *slog.Logger
 
@@ -152,7 +152,7 @@ func (s *Services) ActivateTopic(ctx context.Context, eng *engine.Engine, topic 
 				OnProcessed:         topic.OnProcessed,
 			},
 			topic.Name,
-			s.Store,
+			s.Redis,
 			s.beefStorage,
 			eng,
 			s.logger,
@@ -268,7 +268,7 @@ func (s *Services) createRemoteFromConfig(topicName string, cfg RemoteConfig) ga
 			return nil
 		}
 		s.logger.Debug("creating beef remote", "topic", topicName)
-		return gasp.NewBeefRemote(s.beefStorage, s.Store, "")
+		return gasp.NewBeefRemote(s.beefStorage, s.Redis, "")
 
 	case "http":
 		if cfg.URL == "" {
@@ -297,7 +297,7 @@ func (s *Services) createListenersFromConfig(topicName string, configs []RemoteC
 				PeerURL:   cfg.URL,
 				TopicName: topicName,
 				QueueKey:  []byte("q:" + topicName),
-				Store:     s.Store,
+				Redis:     s.Redis,
 				Logger:    s.logger,
 			})
 			listeners = append(listeners, listener)
@@ -310,8 +310,8 @@ func (s *Services) createListenersFromConfig(topicName string, configs []RemoteC
 
 // SaveRemoteConfig saves remote configuration for a topic to the database.
 func (s *Services) SaveRemoteConfig(ctx context.Context, topicName string, configs []RemoteConfig) error {
-	if s.Store == nil {
-		return errors.New("store not configured")
+	if s.Redis == nil {
+		return errors.New("redis not configured")
 	}
 
 	data, err := json.Marshal(configs)
@@ -319,28 +319,28 @@ func (s *Services) SaveRemoteConfig(ctx context.Context, topicName string, confi
 		return fmt.Errorf("failed to marshal remote config: %w", err)
 	}
 
-	key := []byte(remoteConfigKeyPrefix + topicName)
-	return s.Store.Set(ctx, key, data)
+	return s.Redis.Set(ctx, remoteConfigKeyPrefix+topicName, data, 0).Err()
 }
 
 // DeleteRemoteConfig removes remote configuration for a topic from the database.
 func (s *Services) DeleteRemoteConfig(ctx context.Context, topicName string) error {
-	if s.Store == nil {
-		return errors.New("store not configured")
+	if s.Redis == nil {
+		return errors.New("redis not configured")
 	}
 
-	key := []byte(remoteConfigKeyPrefix + topicName)
-	return s.Store.Del(ctx, key)
+	return s.Redis.Del(ctx, remoteConfigKeyPrefix+topicName).Err()
 }
 
 // GetRemoteConfig retrieves the remote configuration for a topic.
 func (s *Services) GetRemoteConfig(ctx context.Context, topicName string) ([]RemoteConfig, error) {
-	if s.Store == nil {
-		return nil, errors.New("store not configured")
+	if s.Redis == nil {
+		return nil, errors.New("redis not configured")
 	}
 
-	key := []byte(remoteConfigKeyPrefix + topicName)
-	data, err := s.Store.Get(ctx, key)
+	data, err := s.Redis.Get(ctx, remoteConfigKeyPrefix+topicName).Bytes()
+	if err == redis.Nil {
+		return nil, nil
+	}
 	if err != nil {
 		return nil, err
 	}

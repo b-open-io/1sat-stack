@@ -10,7 +10,7 @@ import (
 
 	"github.com/b-open-io/1sat-stack/pkg/beef"
 	overlaystorage "github.com/b-open-io/1sat-stack/pkg/overlay/storage"
-	"github.com/b-open-io/1sat-stack/pkg/store"
+	"github.com/redis/go-redis/v9"
 	"github.com/b-open-io/1sat-stack/pkg/txo"
 	"github.com/bsv-blockchain/go-overlay-services/pkg/core/engine"
 	"github.com/bsv-blockchain/go-sdk/transaction"
@@ -61,7 +61,7 @@ func (c *Config) SetDefaults(v *viper.Viper, prefix string) {
 type InitializeDeps struct {
 	OutputStore  *txo.OutputStore
 	ChainTracker chaintracker.ChainTracker
-	Store        store.Store   // For remote config and queue operations
+	Redis        *redis.Client // For remote config and queue operations
 	BeefStorage  *beef.Storage // For BEEF remote creation
 	P2PBus       *P2PBus       // For overlay P2P broadcast (optional)
 }
@@ -72,7 +72,7 @@ type ModuleDeps struct {
 	TxTopicIndex overlaystorage.TxTopicIndexer
 	BeefStorage  *beef.Storage
 	ChainTracker chaintracker.ChainTracker
-	Store        store.Store
+	Redis        *redis.Client
 	IngestTx     overlaystorage.IngestTxFunc
 	RoutesConfig *RoutesConfig
 	P2PBus       *P2PBus
@@ -152,7 +152,7 @@ func (c *Config) Initialize(ctx context.Context, logger *slog.Logger, deps *Init
 
 	svc := &Services{
 		logger:       logger,
-		Store:        deps.Store,
+		Redis:        deps.Redis,
 		beefStorage:  deps.BeefStorage,
 		factory:      factory,
 		txTopicIndex: txTopicIndex,
@@ -161,7 +161,7 @@ func (c *Config) Initialize(ctx context.Context, logger *slog.Logger, deps *Init
 			TxTopicIndex: txTopicIndex,
 			BeefStorage:  deps.BeefStorage,
 			ChainTracker: deps.ChainTracker,
-			Store:        deps.Store,
+			Redis:        deps.Redis,
 			IngestTx:     ingestTx,
 			RoutesConfig: &c.Routes,
 			P2PBus:       deps.P2PBus,

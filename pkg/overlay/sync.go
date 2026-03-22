@@ -12,7 +12,7 @@ import (
 	"github.com/b-open-io/1sat-stack/pkg/beef"
 	gaspqueue "github.com/b-open-io/1sat-stack/pkg/gasp"
 	"github.com/b-open-io/1sat-stack/pkg/jbsync"
-	"github.com/b-open-io/1sat-stack/pkg/store"
+	"github.com/redis/go-redis/v9"
 	"github.com/b-open-io/1sat-stack/pkg/worker"
 	"github.com/bsv-blockchain/go-overlay-services/pkg/core/engine"
 	"github.com/bsv-blockchain/go-overlay-services/pkg/core/gasp"
@@ -72,7 +72,7 @@ func (c *OverlaySyncConfig) SubscriberConfig() *jbsync.SubscriberConfig {
 type OverlaySync struct {
 	config      *OverlaySyncConfig
 	topicName   string
-	store       store.Store
+	redis       *redis.Client
 	beefStorage *beef.Storage
 	engine      *engine.Engine
 	logger      *slog.Logger
@@ -84,7 +84,7 @@ type OverlaySync struct {
 func NewOverlaySync(
 	cfg *OverlaySyncConfig,
 	topicName string,
-	s store.Store,
+	r *redis.Client,
 	beefStorage *beef.Storage,
 	eng *engine.Engine,
 	logger *slog.Logger,
@@ -105,7 +105,7 @@ func NewOverlaySync(
 	return &OverlaySync{
 		config:      cfg,
 		topicName:   topicName,
-		store:       s,
+		redis:       r,
 		beefStorage: beefStorage,
 		engine:      eng,
 		logger:      logger.With("component", "overlay-sync", "topic", topicName),
@@ -127,7 +127,7 @@ func (s *OverlaySync) Start(ctx context.Context) error {
 	}
 
 	s.worker = worker.New(&worker.Config{
-		Store:   s.store,
+		Redis:   s.redis,
 		Key:     jbsync.QueueKey(s.config.QueueName),
 		Limiter: limiter,
 		Handler: handler,
@@ -222,7 +222,7 @@ func (s *OverlaySync) processDirect(ctx context.Context, txid *chainhash.Hash) e
 // processWithGASP uses GASP to resolve input dependencies before submitting
 // a specific outpoint.
 func (s *OverlaySync) processWithGASP(ctx context.Context, txid *chainhash.Hash, vout int) error {
-	beefRemote := gaspqueue.NewBeefRemote(s.beefStorage, s.store, "")
+	beefRemote := gaspqueue.NewBeefRemote(s.beefStorage, s.redis, "")
 	gaspStorage := engine.NewOverlayGASPStorage(s.topicName, s.engine, nil)
 	seenNodes := &sync.Map{}
 

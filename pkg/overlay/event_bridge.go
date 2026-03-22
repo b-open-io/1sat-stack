@@ -5,7 +5,7 @@ import (
 	"log/slog"
 
 	"github.com/b-open-io/1sat-stack/pkg/pubsub"
-	"github.com/b-open-io/1sat-stack/pkg/store"
+	"github.com/redis/go-redis/v9"
 	"github.com/b-open-io/1sat-stack/pkg/types"
 	"github.com/bsv-blockchain/go-sdk/chainhash"
 	"github.com/bsv-blockchain/go-sdk/transaction"
@@ -13,7 +13,7 @@ import (
 
 type EventBridgeConfig struct {
 	PubSub    pubsub.PubSub
-	Store     store.Store
+	Redis     *redis.Client
 	Patterns  []string
 	QueueFunc func(pubsub.Event) string
 	Logger    *slog.Logger
@@ -64,10 +64,10 @@ func (eb *EventBridge) run(ctx context.Context, ch <-chan pubsub.Event) {
 					"queue", queueKey, "member", ev.Member, "error", err)
 				continue
 			}
-			if err := eb.config.Store.ZAdd(ctx, []byte(queueKey), store.ScoredMember{
-				Member: member,
+			if err := eb.config.Redis.ZAdd(ctx, queueKey, redis.Z{
+				Member: string(member),
 				Score:  types.HeightScore(0, 0),
-			}); err != nil {
+			}).Err(); err != nil {
 				eb.logger.Error("failed to enqueue",
 					"queue", queueKey, "member", ev.Member, "error", err)
 			}
