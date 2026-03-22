@@ -135,7 +135,11 @@ func (r *Routes) HandleContent(c *fiber.Ctx) error {
 	return r.sendContentResponse(c, resp, pp.Seq)
 }
 
-// handleDirectory handles ord-fs/json directory content
+const maxDirectoryDepth = 8
+
+// handleDirectory handles ord-fs/json directory content with recursive traversal.
+// Subdirectory entries pointing to other ord-fs/json inscriptions are followed
+// automatically, allowing nested directory trees (e.g., /content/root/refs/api.md).
 func (r *Routes) handleDirectory(c *fiber.Ctx, resp *Response, pp *pointerPath, seq *int) error {
 	// Parse directory JSON
 	var directory map[string]string
@@ -145,67 +149,138 @@ func (r *Routes) handleDirectory(c *fiber.Ctx, resp *Response, pp *pointerPath, 
 		})
 	}
 
-	// No file path - redirect to index.html (unless raw query param)
+	// No file path — redirect to index.html (unless raw query param)
 	if pp.FilePath == "" {
 		if c.Query("raw") != "" {
 			return r.sendContentResponse(c, resp, seq)
 		}
-		// Redirect to index.html
 		redirectURL := fmt.Sprintf("%s/index.html", c.Path())
 		return c.Redirect(redirectURL)
 	}
 
-	// Look up file in directory
-	filePointer, exists := directory[pp.FilePath]
+	// Split path into segments for recursive traversal
+	segments := strings.Split(pp.FilePath, "/")
 
-	// SPA fallback: if file doesn't exist, try index.html
-	if !exists {
-		filePointer, exists = directory["index.html"]
-		if !exists {
-			return c.Status(fiber.StatusNotFound).JSON(fiber.Map{
-				"error": "file not found and no index.html",
-			})
-		}
+	return r.resolveDirectoryPath(c, resp, directory, segments, 0)
+}
+
+// resolveDirectoryPath walks a directory tree by path segments.
+// If a segment resolves to another ord-fs/json inscription, it recurses.
+func (r *Routes) resolveDirectoryPath(
+	c *fiber.Ctx,
+	dirResp *Response,
+	directory map[string]string,
+	segments []string,
+	depth int,
+) error {
+	if depth >= maxDirectoryDepth {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": "directory nesting too deep",
+		})
 	}
 
-	// Load the file
-	filePointer = strings.TrimPrefix(filePointer, "ord://")
-	fileOutpoint, isTxid, err := resolvePointerToOutpoint(filePointer)
+	segment := segments[0]
+	remaining := segments[1:]
+
+	// Look up this segment in the directory
+	filePointer, exists := directory[segment]
+
+	// SPA fallback: if not found, try index.html (only for the final segment)
+	if !exists && len(remaining) == 0 {
+		filePointer, exists = directory["index.html"]
+	}
+	if !exists {
+		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{
+			"error": fmt.Sprintf("'%s' not found in directory", segment),
+		})
+	}
+
+	// Resolve the pointer to a file
+	fileResp, err := r.loadDirectoryEntry(c, dirResp, filePointer)
 	if err != nil {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+		return err // already an HTTP response
+	}
+
+	// If there are more path segments and this entry is a subdirectory, recurse
+	if len(remaining) > 0 && fileResp.ContentType == "ord-fs/json" {
+		var subdir map[string]string
+		if err := json.Unmarshal(fileResp.Content, &subdir); err != nil {
+			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+				"error": "invalid subdirectory format",
+			})
+		}
+		return r.resolveDirectoryPath(c, fileResp, subdir, remaining, depth+1)
+	}
+
+	// Final segment or non-directory — serve the content
+	return r.sendContentResponse(c, fileResp, nil)
+}
+
+// loadDirectoryEntry resolves a single directory entry pointer and loads its content.
+// Handles relative vout (_N), ord:// prefixes, outpoints, and bare txids.
+func (r *Routes) loadDirectoryEntry(
+	c *fiber.Ctx,
+	dirResp *Response,
+	pointer string,
+) (*Response, error) {
+	pointer = strings.TrimPrefix(pointer, "ord://")
+
+	// Relative vout reference (_N) — sibling output in same transaction
+	if vout, ok := parseRelativeVout(pointer); ok {
+		if dirResp.Outpoint == nil {
+			return nil, c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+				"error": "cannot resolve relative vout — directory outpoint unknown",
+			})
+		}
+		fileResp, err := r.ordfs.Load(c.Context(), &Request{
+			Outpoint: &transaction.Outpoint{
+				Txid:  dirResp.Outpoint.Txid,
+				Index: vout,
+			},
+			Content: true,
+			Map:     c.QueryBool("map", false),
+		})
+		if err != nil {
+			if errors.Is(err, ErrNotFound) {
+				return nil, c.Status(fiber.StatusNotFound).JSON(fiber.Map{
+					"error": fmt.Sprintf("file at vout %d not found", vout),
+				})
+			}
+			return nil, c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+				"error": err.Error(),
+			})
+		}
+		return fileResp, nil
+	}
+
+	// Absolute outpoint or txid
+	outpoint, isTxid, err := resolvePointerToOutpoint(pointer)
+	if err != nil {
+		return nil, c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
 			"error": fmt.Sprintf("invalid file pointer: %v", err),
 		})
 	}
 
-	var fileReq *Request
+	var req *Request
 	if isTxid {
-		fileReq = &Request{
-			Txid:    &fileOutpoint.Txid,
-			Content: true,
-			Map:     c.QueryBool("map", false),
-		}
+		req = &Request{Txid: &outpoint.Txid, Content: true, Map: c.QueryBool("map", false)}
 	} else {
-		fileReq = &Request{
-			Outpoint: fileOutpoint,
-			Content:  true,
-			Map:      c.QueryBool("map", false),
-		}
+		req = &Request{Outpoint: outpoint, Content: true, Map: c.QueryBool("map", false)}
 	}
 
-	fileResp, err := r.ordfs.Load(c.Context(), fileReq)
+	fileResp, err := r.ordfs.Load(c.Context(), req)
 	if err != nil {
 		if errors.Is(err, ErrNotFound) {
-			return c.Status(fiber.StatusNotFound).JSON(fiber.Map{
+			return nil, c.Status(fiber.StatusNotFound).JSON(fiber.Map{
 				"error": "file not found",
 			})
 		}
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+		return nil, c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
 			"error": err.Error(),
 		})
 	}
 
-	// Files from directory don't have seq tracking
-	return r.sendContentResponse(c, fileResp, nil)
+	return fileResp, nil
 }
 
 // sendContentResponse sends a content response with appropriate headers
@@ -474,6 +549,24 @@ func parsePointerPath(path string) (*pointerPath, error) {
 		Seq:      seq,
 		FilePath: filePath,
 	}, nil
+}
+
+// relativeVoutPattern matches _N (e.g., "_0", "_8") — a relative reference
+// to a sibling output in the same transaction as the directory inscription.
+var relativeVoutPattern = regexp.MustCompile(`^_(\d+)$`)
+
+// parseRelativeVout checks if a string is a relative vout reference (_N)
+// used in ord-fs/json directories to reference sibling outputs.
+func parseRelativeVout(pointer string) (uint32, bool) {
+	m := relativeVoutPattern.FindStringSubmatch(pointer)
+	if m == nil {
+		return 0, false
+	}
+	vout, err := strconv.ParseUint(m[1], 10, 32)
+	if err != nil {
+		return 0, false
+	}
+	return uint32(vout), true
 }
 
 // resolvePointerToOutpoint attempts to parse pointer as either txid or outpoint
