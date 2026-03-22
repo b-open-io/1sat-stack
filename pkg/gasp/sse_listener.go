@@ -10,25 +10,18 @@ import (
 	"strings"
 	"time"
 
-	"github.com/b-open-io/1sat-stack/pkg/store"
 	"github.com/bsv-blockchain/go-sdk/transaction"
+	"github.com/redis/go-redis/v9"
 )
 
 // SSEListenerConfig configures an SSE listener for a topic.
 type SSEListenerConfig struct {
-	// PeerURL is the base URL of the remote peer (e.g., "https://peer.example.com")
-	PeerURL string
-	// TopicName is the topic to subscribe to
-	TopicName string
-	// QueueKey is the key for the local queue to write incoming items
-	QueueKey []byte
-	// Store is the store for queue operations
-	Store store.Store
-	// HTTPClient is the HTTP client to use (optional, defaults to http.DefaultClient)
-	HTTPClient *http.Client
-	// Logger is the logger to use
-	Logger *slog.Logger
-	// ReconnectDelay is the delay between reconnection attempts (default: 5s)
+	PeerURL        string
+	TopicName      string
+	QueueKey       []byte
+	Redis          *redis.Client
+	HTTPClient     *http.Client
+	Logger         *slog.Logger
 	ReconnectDelay time.Duration
 }
 
@@ -91,7 +84,6 @@ func (l *SSEListener) Stop() {
 
 // connect establishes an SSE connection and processes events.
 func (l *SSEListener) connect(ctx context.Context) error {
-	// Build SSE URL - peer should expose /sse/topics/{topicName} or similar
 	url := fmt.Sprintf("%s/sse/topics/%s", l.config.PeerURL, l.config.TopicName)
 
 	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
@@ -122,7 +114,6 @@ func (l *SSEListener) connect(ctx context.Context) error {
 		line := scanner.Text()
 
 		if line == "" {
-			// Empty line = end of event
 			if eventData != "" {
 				if err := l.handleEvent(ctx, eventType, eventData); err != nil {
 					l.logger.Error("failed to handle event", "error", err, "type", eventType)
@@ -138,7 +129,6 @@ func (l *SSEListener) connect(ctx context.Context) error {
 		} else if strings.HasPrefix(line, "data:") {
 			eventData = strings.TrimSpace(strings.TrimPrefix(line, "data:"))
 		}
-		// Ignore id: and retry: fields for now
 	}
 
 	if err := scanner.Err(); err != nil {
@@ -150,25 +140,20 @@ func (l *SSEListener) connect(ctx context.Context) error {
 
 // handleEvent processes an incoming SSE event.
 func (l *SSEListener) handleEvent(ctx context.Context, eventType, data string) error {
-	// Event type should match topic name, data should be outpoint in ordinal format (txid_vout)
 	if eventType != l.config.TopicName && eventType != "" {
-		// Ignore events for other topics
 		return nil
 	}
 
-	// Parse outpoint from data (expected format: "txid_vout" in hex)
 	outpoint, err := parseOutpoint(data)
 	if err != nil {
 		l.logger.Debug("failed to parse outpoint", "data", data, "error", err)
-		return nil // Don't fail on parse errors, just skip
+		return nil
 	}
 
-	// Queue the outpoint for processing
-	// Use current time as score (will be processed in order received)
-	if err := l.config.Store.ZAdd(ctx, l.config.QueueKey, store.ScoredMember{
-		Member: outpoint.Bytes(),
+	if err := l.config.Redis.ZAdd(ctx, string(l.config.QueueKey), redis.Z{
+		Member: string(outpoint.Bytes()),
 		Score:  float64(time.Now().Unix()),
-	}); err != nil {
+	}).Err(); err != nil {
 		return fmt.Errorf("failed to queue outpoint: %w", err)
 	}
 
