@@ -371,6 +371,42 @@ func (m *TokenManager) refreshInactiveTokens(ctx context.Context) {
 	}
 }
 
+// ListTokenStatuses returns token statuses. By default only active/whitelisted tokens
+// (from the live statuses map) are returned. When includeAll is true, all known tokens
+// are fetched via ListTokenIds and their status is calculated from the DB.
+func (m *TokenManager) ListTokenStatuses(ctx context.Context, includeAll bool) []*TokenStatus {
+	if !includeAll {
+		var statuses []*TokenStatus
+		m.statuses.Range(func(_, value any) bool {
+			statuses = append(statuses, value.(*TokenStatus))
+			return true
+		})
+		return statuses
+	}
+
+	tokenIds, err := m.lookup.ListTokenIds(ctx, "tm_bsv21")
+	if err != nil {
+		m.logger.Error("failed to list token IDs", "error", err)
+		return nil
+	}
+
+	statuses := make([]*TokenStatus, 0, len(tokenIds))
+	for _, tokenId := range tokenIds {
+		// Use live status if available
+		if val, ok := m.statuses.Load(tokenId); ok {
+			statuses = append(statuses, val.(*TokenStatus))
+			continue
+		}
+		status, err := m.GetTokenStatus(ctx, tokenId)
+		if err != nil {
+			m.logger.Debug("failed to get token status", "tokenId", tokenId, "error", err)
+			continue
+		}
+		statuses = append(statuses, status)
+	}
+	return statuses
+}
+
 // getTokenMetadata fetches token metadata from the output store for topic manager registration
 func (m *TokenManager) getTokenMetadata(ctx context.Context, outpoint *transaction.Outpoint) *sdkoverlay.MetaData {
 	cfg := &txo.OutputSearchCfg{

@@ -51,6 +51,7 @@ func NewRoutes(cfg *RoutesDeps) *Routes {
 // Register registers the BSV21 routes with the Fiber router
 func (r *Routes) Register(router fiber.Router) {
 	// Static routes must be registered before parameterized routes
+	router.Get("/tokens", r.ListTokens)
 	router.Post("/lookup", r.LookupTokens)
 
 	// Output validation routes
@@ -118,6 +119,19 @@ type BalanceResponse struct {
 // ErrorResponse represents an error response
 type ErrorResponse struct {
 	Message string `json:"message"`
+}
+
+// ListTokens returns all known token statuses
+// @Summary List BSV21 token statuses
+// @Description Returns active/whitelisted tokens by default. Pass ?all=true to include inactive/unfunded tokens.
+// @Tags bsv21
+// @Produce json
+// @Param all query bool false "Include inactive/unfunded tokens"
+// @Success 200 {array} TokenStatus
+// @Router /bsv21/tokens [get]
+func (r *Routes) ListTokens(c *fiber.Ctx) error {
+	includeAll := c.Query("all") == "true"
+	return c.JSON(r.manager.ListTokenStatuses(c.Context(), includeAll))
 }
 
 // GetToken retrieves BSV21 token details and funding status

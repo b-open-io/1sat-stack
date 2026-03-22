@@ -7,6 +7,60 @@ definitions:
       id:
         type: string
     type: object
+  admin.SetupCompleteRequest:
+    properties:
+      adminIdentityKey:
+        type: string
+      arcadeBackend:
+        type: string
+      arcadePath:
+        type: string
+      arcadeUrl:
+        type: string
+      authMode:
+        type: string
+      chaintracksBackend:
+        type: string
+      chaintracksPath:
+        type: string
+      chaintracksUrl:
+        type: string
+      messageboxPath:
+        type: string
+      walletBackend:
+        type: string
+      walletPostgresUrl:
+        type: string
+      walletSqlitePath:
+        type: string
+      wif:
+        type: string
+    type: object
+  admin.SetupConfigResponse:
+    properties:
+      arcadeBackend:
+        type: string
+      arcadePath:
+        type: string
+      arcadeUrl:
+        type: string
+      authMode:
+        type: string
+      chaintracksBackend:
+        type: string
+      chaintracksPath:
+        type: string
+      chaintracksUrl:
+        type: string
+      messageboxPath:
+        type: string
+      walletBackend:
+        type: string
+      walletPostgresUrl:
+        type: string
+      walletSqlitePath:
+        type: string
+    type: object
   admin.TopicRequest:
     properties:
       topic:
@@ -254,6 +308,30 @@ definitions:
         items:
           type: integer
         type: array
+    type: object
+  pkg_bap.ValidByAddressRequest:
+    properties:
+      address:
+        type: string
+      block:
+        type: integer
+    type: object
+  pkg_bap.ValidByAddressResponse:
+    properties:
+      identity:
+        $ref: '#/definitions/pkg_bap.Identity'
+      profile:
+        additionalProperties: {}
+        type: object
+      validityRecord:
+        $ref: '#/definitions/pkg_bap.ValidityRecord'
+    type: object
+  pkg_bap.ValidityRecord:
+    properties:
+      block:
+        type: integer
+      valid:
+        type: boolean
     type: object
   pkg_bsv21.BalanceResponse:
     properties:
@@ -651,6 +729,68 @@ paths:
       summary: Get BSV21 workers
       tags:
       - admin
+  /admin/config:
+    get:
+      description: Returns all current config values from the config store
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: All config key-value pairs
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Get all config
+      tags:
+      - admin
+    put:
+      consumes:
+      - application/json
+      description: Writes a flat JSON object of key-value pairs to the config store.
+        Empty values delete the key.
+      parameters:
+      - description: Config key-value pairs
+        in: body
+        name: body
+        required: true
+        schema:
+          additionalProperties:
+            type: string
+          type: object
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: status and count of updated keys
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: Bad request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Update config
+      tags:
+      - admin
   /admin/lookups/active:
     get:
       description: Returns the list of currently active lookup services from the overlay
@@ -757,6 +897,29 @@ paths:
       summary: Update progress
       tags:
       - admin
+  /admin/restart:
+    post:
+      description: Triggers a server restart by re-executing the current binary
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: restarting status
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "503":
+          description: restart not available
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Restart server
+      tags:
+      - admin
   /admin/setup:
     post:
       description: Adds the authenticated identity as the first admin
@@ -788,6 +951,61 @@ paths:
               type: string
             type: object
       summary: Perform admin setup
+      tags:
+      - admin
+  /admin/setup/complete:
+    post:
+      consumes:
+      - application/json
+      description: Writes initial configuration from the setup wizard
+      parameters:
+      - description: Setup configuration
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/admin.SetupCompleteRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: status and restart flag
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "400":
+          description: Bad request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Complete setup wizard
+      tags:
+      - admin
+  /admin/setup/config:
+    get:
+      description: Returns current setup configuration for the wizard UI
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Current setup configuration
+          schema:
+            $ref: '#/definitions/admin.SetupConfigResponse'
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Get setup configuration
       tags:
       - admin
   /admin/status:
@@ -1323,6 +1541,236 @@ paths:
       summary: Search identities
       tags:
       - bap
+  /bap/identity/validByAddress:
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: Address and optional block height
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/pkg_bap.ValidByAddressRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/pkg_bap.ValidByAddressResponse'
+        "400":
+          description: Bad Request
+          schema:
+            properties:
+              message:
+                type: string
+            type: object
+        "404":
+          description: Not Found
+          schema:
+            properties:
+              message:
+                type: string
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            properties:
+              message:
+                type: string
+            type: object
+      summary: Check address validity for identity
+      tags:
+      - bap
+  /bap/overlay/listLookupServiceProviders:
+    get:
+      description: Returns BAP overlay lookup service providers
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+      summary: List BAP lookup services
+      tags:
+      - bap-overlay
+  /bap/overlay/listTopicManagers:
+    get:
+      description: Returns BAP overlay topic managers
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+      summary: List BAP topic managers
+      tags:
+      - bap-overlay
+  /bap/overlay/lookup:
+    post:
+      consumes:
+      - application/json
+      description: Query the BAP overlay lookup service
+      parameters:
+      - description: Lookup query
+        in: body
+        name: query
+        required: true
+        schema:
+          type: object
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: BAP overlay lookup
+      tags:
+      - bap-overlay
+  /bap/overlay/requestForeignGASPNode:
+    post:
+      consumes:
+      - application/json
+      description: Request a GASP node from the BAP overlay
+      parameters:
+      - description: Topic identifier
+        in: header
+        name: X-BSV-Topic
+        required: true
+        type: string
+      - description: Request with graphID, txID, and outputIndex
+        in: body
+        name: request
+        required: true
+        schema:
+          type: object
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: BAP overlay foreign GASP node
+      tags:
+      - bap-overlay
+  /bap/overlay/requestSyncResponse:
+    post:
+      consumes:
+      - application/json
+      description: Request GASP synchronization data from BAP overlay
+      parameters:
+      - description: Topic identifier
+        in: header
+        name: X-BSV-Topic
+        required: true
+        type: string
+      - description: Sync request
+        in: body
+        name: request
+        required: true
+        schema:
+          type: object
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: BAP overlay sync response
+      tags:
+      - bap-overlay
+  /bap/overlay/submit:
+    post:
+      consumes:
+      - application/octet-stream
+      description: Submit a transaction to the BAP overlay engine for processing
+      parameters:
+      - collectionFormat: csv
+        description: Topic names to submit to
+        in: header
+        items:
+          type: string
+        name: x-topics
+        required: true
+        type: array
+      - description: Serialized transaction data
+        in: body
+        name: transaction
+        required: true
+        schema:
+          items:
+            type: integer
+          type: array
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: STEAK response
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Submit transaction to BAP overlay
+      tags:
+      - bap-overlay
   /bap/profile:
     get:
       parameters:
@@ -1455,6 +1903,194 @@ paths:
       summary: Get transaction
       tags:
       - beef
+  /bsocial/overlay/listLookupServiceProviders:
+    get:
+      description: Returns BSocial overlay lookup service providers
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+      summary: List BSocial lookup services
+      tags:
+      - bsocial-overlay
+  /bsocial/overlay/listTopicManagers:
+    get:
+      description: Returns BSocial overlay topic managers
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+      summary: List BSocial topic managers
+      tags:
+      - bsocial-overlay
+  /bsocial/overlay/lookup:
+    post:
+      consumes:
+      - application/json
+      description: Query the BSocial overlay lookup service
+      parameters:
+      - description: Lookup query
+        in: body
+        name: query
+        required: true
+        schema:
+          type: object
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: BSocial overlay lookup
+      tags:
+      - bsocial-overlay
+  /bsocial/overlay/requestForeignGASPNode:
+    post:
+      consumes:
+      - application/json
+      description: Request a GASP node from the BSocial overlay
+      parameters:
+      - description: Topic identifier
+        in: header
+        name: X-BSV-Topic
+        required: true
+        type: string
+      - description: Request with graphID, txID, and outputIndex
+        in: body
+        name: request
+        required: true
+        schema:
+          type: object
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: BSocial overlay foreign GASP node
+      tags:
+      - bsocial-overlay
+  /bsocial/overlay/requestSyncResponse:
+    post:
+      consumes:
+      - application/json
+      description: Request GASP synchronization data from BSocial overlay
+      parameters:
+      - description: Topic identifier
+        in: header
+        name: X-BSV-Topic
+        required: true
+        type: string
+      - description: Sync request
+        in: body
+        name: request
+        required: true
+        schema:
+          type: object
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: BSocial overlay sync response
+      tags:
+      - bsocial-overlay
+  /bsocial/overlay/submit:
+    post:
+      consumes:
+      - application/octet-stream
+      description: Submit a transaction to the BSocial overlay engine for processing
+      parameters:
+      - collectionFormat: csv
+        description: Topic names to submit to
+        in: header
+        items:
+          type: string
+        name: x-topics
+        required: true
+        type: array
+      - description: Serialized transaction data
+        in: body
+        name: transaction
+        required: true
+        schema:
+          items:
+            type: integer
+          type: array
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: STEAK response
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Submit transaction to BSocial overlay
+      tags:
+      - bsocial-overlay
   /bsocial/post/search:
     get:
       parameters:
@@ -1853,6 +2489,215 @@ paths:
       summary: Bulk lookup BSV21 token details with funding status
       tags:
       - bsv21
+  /bsv21/overlay/listLookupServiceProviders:
+    get:
+      description: Returns BSV21 overlay lookup service providers
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+      summary: List BSV21 lookup services
+      tags:
+      - bsv21-overlay
+  /bsv21/overlay/listTopicManagers:
+    get:
+      description: Returns BSV21 overlay topic managers
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+      summary: List BSV21 topic managers
+      tags:
+      - bsv21-overlay
+  /bsv21/overlay/lookup:
+    post:
+      consumes:
+      - application/json
+      description: Query the BSV21 overlay lookup service
+      parameters:
+      - description: Lookup query
+        in: body
+        name: query
+        required: true
+        schema:
+          type: object
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: BSV21 overlay lookup
+      tags:
+      - bsv21-overlay
+  /bsv21/overlay/requestForeignGASPNode:
+    post:
+      consumes:
+      - application/json
+      description: Request a GASP node from the BSV21 overlay
+      parameters:
+      - description: Topic identifier
+        in: header
+        name: X-BSV-Topic
+        required: true
+        type: string
+      - description: Request with graphID, txID, and outputIndex
+        in: body
+        name: request
+        required: true
+        schema:
+          type: object
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: BSV21 overlay foreign GASP node
+      tags:
+      - bsv21-overlay
+  /bsv21/overlay/requestSyncResponse:
+    post:
+      consumes:
+      - application/json
+      description: Request GASP synchronization data from BSV21 overlay
+      parameters:
+      - description: Topic identifier
+        in: header
+        name: X-BSV-Topic
+        required: true
+        type: string
+      - description: Sync request
+        in: body
+        name: request
+        required: true
+        schema:
+          type: object
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: BSV21 overlay sync response
+      tags:
+      - bsv21-overlay
+  /bsv21/overlay/submit:
+    post:
+      consumes:
+      - application/octet-stream
+      description: Submit a transaction to the BSV21 overlay engine for processing
+      parameters:
+      - collectionFormat: csv
+        description: Topic names to submit to
+        in: header
+        items:
+          type: string
+        name: x-topics
+        required: true
+        type: array
+      - description: Serialized transaction data
+        in: body
+        name: transaction
+        required: true
+        schema:
+          items:
+            type: integer
+          type: array
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: STEAK response
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Submit transaction to BSV21 overlay
+      tags:
+      - bsv21-overlay
+  /bsv21/tokens:
+    get:
+      description: Returns active/whitelisted tokens by default. Pass ?all=true to
+        include inactive/unfunded tokens.
+      parameters:
+      - description: Include inactive/unfunded tokens
+        in: query
+        name: all
+        type: boolean
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/pkg_bsv21.TokenStatus'
+            type: array
+      summary: List BSV21 token statuses
+      tags:
+      - bsv21
   /capabilities:
     get:
       description: Returns the list of enabled service capabilities
@@ -2046,15 +2891,14 @@ paths:
       - ordfs
   /health:
     get:
-      description: Returns the health status of the service
+      description: Returns health status with version, uptime, and block height
       produces:
       - application/json
       responses:
         "200":
-          description: 'status: ok'
+          description: status, version, uptime, height
           schema:
-            additionalProperties:
-              type: string
+            additionalProperties: true
             type: object
       summary: Health check
       tags:
@@ -2336,6 +3180,194 @@ paths:
       summary: Bulk validate OpNS origins
       tags:
       - opns
+  /opns/overlay/listLookupServiceProviders:
+    get:
+      description: Returns OPNS overlay lookup service providers
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+      summary: List OPNS lookup services
+      tags:
+      - opns-overlay
+  /opns/overlay/listTopicManagers:
+    get:
+      description: Returns OPNS overlay topic managers
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+      summary: List OPNS topic managers
+      tags:
+      - opns-overlay
+  /opns/overlay/lookup:
+    post:
+      consumes:
+      - application/json
+      description: Query the OPNS overlay lookup service
+      parameters:
+      - description: Lookup query
+        in: body
+        name: query
+        required: true
+        schema:
+          type: object
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: OPNS overlay lookup
+      tags:
+      - opns-overlay
+  /opns/overlay/requestForeignGASPNode:
+    post:
+      consumes:
+      - application/json
+      description: Request a GASP node from the OPNS overlay
+      parameters:
+      - description: Topic identifier
+        in: header
+        name: X-BSV-Topic
+        required: true
+        type: string
+      - description: Request with graphID, txID, and outputIndex
+        in: body
+        name: request
+        required: true
+        schema:
+          type: object
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: OPNS overlay foreign GASP node
+      tags:
+      - opns-overlay
+  /opns/overlay/requestSyncResponse:
+    post:
+      consumes:
+      - application/json
+      description: Request GASP synchronization data from OPNS overlay
+      parameters:
+      - description: Topic identifier
+        in: header
+        name: X-BSV-Topic
+        required: true
+        type: string
+      - description: Sync request
+        in: body
+        name: request
+        required: true
+        schema:
+          type: object
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: OPNS overlay sync response
+      tags:
+      - opns-overlay
+  /opns/overlay/submit:
+    post:
+      consumes:
+      - application/octet-stream
+      description: Submit a transaction to the OPNS overlay engine for processing
+      parameters:
+      - collectionFormat: csv
+        description: Topic names to submit to
+        in: header
+        items:
+          type: string
+        name: x-topics
+        required: true
+        type: array
+      - description: Serialized transaction data
+        in: body
+        name: transaction
+        required: true
+        schema:
+          items:
+            type: integer
+          type: array
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: STEAK response
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Submit transaction to OPNS overlay
+      tags:
+      - opns-overlay
   /ordfs/metadata:
     post:
       consumes:
@@ -2480,301 +3512,6 @@ paths:
       summary: Stream content
       tags:
       - ordfs
-  /overlay/admin/startGASPSync:
-    post:
-      description: Start GASP synchronization (requires admin bearer token)
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: message field with status
-          schema:
-            additionalProperties:
-              type: string
-            type: object
-      security:
-      - BearerAuth: []
-      summary: Start GASP sync
-      tags:
-      - overlay-admin
-  /overlay/admin/syncAdvertisements:
-    post:
-      description: Trigger advertisement sync (requires admin bearer token)
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: message field with status
-          schema:
-            additionalProperties:
-              type: string
-            type: object
-        "500":
-          description: Internal server error
-          schema:
-            additionalProperties:
-              type: string
-            type: object
-      security:
-      - BearerAuth: []
-      summary: Sync advertisements
-      tags:
-      - overlay-admin
-  /overlay/getDocumentationForLookupServiceProvider:
-    get:
-      description: Returns markdown documentation for a specific lookup service
-      parameters:
-      - description: Name of the lookup service
-        in: query
-        name: lookupService
-        required: true
-        type: string
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: documentation field with markdown content
-          schema:
-            additionalProperties:
-              type: string
-            type: object
-        "400":
-          description: Bad request
-          schema:
-            additionalProperties:
-              type: string
-            type: object
-        "500":
-          description: Internal server error
-          schema:
-            additionalProperties:
-              type: string
-            type: object
-      summary: Get lookup service documentation
-      tags:
-      - overlay
-  /overlay/getDocumentationForTopicManager:
-    get:
-      description: Returns markdown documentation for a specific topic manager
-      parameters:
-      - description: Name of the topic manager
-        in: query
-        name: topicManager
-        required: true
-        type: string
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: documentation field with markdown content
-          schema:
-            additionalProperties:
-              type: string
-            type: object
-        "400":
-          description: Bad request
-          schema:
-            additionalProperties:
-              type: string
-            type: object
-        "500":
-          description: Internal server error
-          schema:
-            additionalProperties:
-              type: string
-            type: object
-      summary: Get topic manager documentation
-      tags:
-      - overlay
-  /overlay/listLookupServiceProviders:
-    get:
-      description: Returns a list of all registered lookup service providers with
-        their metadata
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: Map of lookup service names to metadata
-          schema:
-            additionalProperties: true
-            type: object
-      summary: List lookup service providers
-      tags:
-      - overlay
-  /overlay/listTopicManagers:
-    get:
-      description: Returns a list of all registered topic managers with their metadata
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: Map of topic manager names to metadata
-          schema:
-            additionalProperties: true
-            type: object
-      summary: List topic managers
-      tags:
-      - overlay
-  /overlay/lookup:
-    post:
-      consumes:
-      - application/json
-      description: Query a lookup service for outputs matching the query
-      parameters:
-      - description: Lookup query with service name and query params
-        in: body
-        name: query
-        required: true
-        schema:
-          type: object
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: Lookup response with outputs
-          schema:
-            additionalProperties: true
-            type: object
-        "400":
-          description: Bad request
-          schema:
-            additionalProperties:
-              type: string
-            type: object
-        "500":
-          description: Internal server error
-          schema:
-            additionalProperties:
-              type: string
-            type: object
-      summary: Lookup query
-      tags:
-      - overlay
-  /overlay/requestForeignGASPNode:
-    post:
-      consumes:
-      - application/json
-      description: Request a GASP node from a foreign overlay
-      parameters:
-      - description: Topic identifier
-        in: header
-        name: X-BSV-Topic
-        required: true
-        type: string
-      - description: Request with graphID, txID, and outputIndex
-        in: body
-        name: request
-        required: true
-        schema:
-          type: object
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: GASP node data
-          schema:
-            additionalProperties: true
-            type: object
-        "400":
-          description: Bad request
-          schema:
-            additionalProperties:
-              type: string
-            type: object
-        "500":
-          description: Internal server error
-          schema:
-            additionalProperties:
-              type: string
-            type: object
-      summary: Request foreign GASP node
-      tags:
-      - overlay
-  /overlay/requestSyncResponse:
-    post:
-      consumes:
-      - application/json
-      description: Request synchronization data for a topic (GASP protocol)
-      parameters:
-      - description: Topic identifier
-        in: header
-        name: X-BSV-Topic
-        required: true
-        type: string
-      - description: Sync request with version and since parameters
-        in: body
-        name: request
-        required: true
-        schema:
-          type: object
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: Sync response with UTXOList
-          schema:
-            additionalProperties: true
-            type: object
-        "400":
-          description: Bad request
-          schema:
-            additionalProperties:
-              type: string
-            type: object
-        "500":
-          description: Internal server error
-          schema:
-            additionalProperties:
-              type: string
-            type: object
-      summary: Request sync response
-      tags:
-      - overlay
-  /overlay/submit:
-    post:
-      consumes:
-      - application/octet-stream
-      description: Submit a transaction to the overlay engine for processing
-      parameters:
-      - collectionFormat: csv
-        description: Topic names to submit to
-        in: header
-        items:
-          type: string
-        name: x-topics
-        required: true
-        type: array
-      - description: Serialized transaction data
-        in: body
-        name: transaction
-        required: true
-        schema:
-          items:
-            type: integer
-          type: array
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: STEAK response with admission results
-          schema:
-            additionalProperties: true
-            type: object
-        "400":
-          description: Bad request
-          schema:
-            additionalProperties:
-              type: string
-            type: object
-        "500":
-          description: Internal server error
-          schema:
-            additionalProperties:
-              type: string
-            type: object
-      summary: Submit transaction
-      tags:
-      - overlay
   /owner/{owner}/balance:
     get:
       description: Get the satoshi balance for a specific owner

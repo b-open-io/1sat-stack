@@ -213,6 +213,102 @@
                 }
             }
         },
+        "/admin/config": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Returns all current config values from the config store",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "admin"
+                ],
+                "summary": "Get all config",
+                "responses": {
+                    "200": {
+                        "description": "All config key-value pairs",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            },
+            "put": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Writes a flat JSON object of key-value pairs to the config store. Empty values delete the key.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "admin"
+                ],
+                "summary": "Update config",
+                "parameters": [
+                    {
+                        "description": "Config key-value pairs",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "status and count of updated keys",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "400": {
+                        "description": "Bad request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
         "/admin/lookups/active": {
             "get": {
                 "security": [
@@ -380,6 +476,43 @@
                 }
             }
         },
+        "/admin/restart": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Triggers a server restart by re-executing the current binary",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "admin"
+                ],
+                "summary": "Restart server",
+                "responses": {
+                    "200": {
+                        "description": "restarting status",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "503": {
+                        "description": "restart not available",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
         "/admin/setup": {
             "post": {
                 "description": "Adds the authenticated identity as the first admin",
@@ -416,6 +549,90 @@
                             "additionalProperties": {
                                 "type": "string"
                             }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/admin/setup/complete": {
+            "post": {
+                "description": "Writes initial configuration from the setup wizard",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "admin"
+                ],
+                "summary": "Complete setup wizard",
+                "parameters": [
+                    {
+                        "description": "Setup configuration",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/admin.SetupCompleteRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "status and restart flag",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Bad request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/admin/setup/config": {
+            "get": {
+                "description": "Returns current setup configuration for the wizard UI",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "admin"
+                ],
+                "summary": "Get setup configuration",
+                "responses": {
+                    "200": {
+                        "description": "Current setup configuration",
+                        "schema": {
+                            "$ref": "#/definitions/admin.SetupConfigResponse"
                         }
                     },
                     "500": {
@@ -1248,6 +1465,354 @@
                 }
             }
         },
+        "/bap/identity/validByAddress": {
+            "post": {
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "bap"
+                ],
+                "summary": "Check address validity for identity",
+                "parameters": [
+                    {
+                        "description": "Address and optional block height",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/pkg_bap.ValidByAddressRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/pkg_bap.ValidByAddressResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "type": "object",
+                            "properties": {
+                                "message": {
+                                    "type": "string"
+                                }
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "type": "object",
+                            "properties": {
+                                "message": {
+                                    "type": "string"
+                                }
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "type": "object",
+                            "properties": {
+                                "message": {
+                                    "type": "string"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/bap/overlay/listLookupServiceProviders": {
+            "get": {
+                "description": "Returns BAP overlay lookup service providers",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "bap-overlay"
+                ],
+                "summary": "List BAP lookup services",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    }
+                }
+            }
+        },
+        "/bap/overlay/listTopicManagers": {
+            "get": {
+                "description": "Returns BAP overlay topic managers",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "bap-overlay"
+                ],
+                "summary": "List BAP topic managers",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    }
+                }
+            }
+        },
+        "/bap/overlay/lookup": {
+            "post": {
+                "description": "Query the BAP overlay lookup service",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "bap-overlay"
+                ],
+                "summary": "BAP overlay lookup",
+                "parameters": [
+                    {
+                        "description": "Lookup query",
+                        "name": "query",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "type": "object"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/bap/overlay/requestForeignGASPNode": {
+            "post": {
+                "description": "Request a GASP node from the BAP overlay",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "bap-overlay"
+                ],
+                "summary": "BAP overlay foreign GASP node",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Topic identifier",
+                        "name": "X-BSV-Topic",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "description": "Request with graphID, txID, and outputIndex",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "type": "object"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/bap/overlay/requestSyncResponse": {
+            "post": {
+                "description": "Request GASP synchronization data from BAP overlay",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "bap-overlay"
+                ],
+                "summary": "BAP overlay sync response",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Topic identifier",
+                        "name": "X-BSV-Topic",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "description": "Sync request",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "type": "object"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/bap/overlay/submit": {
+            "post": {
+                "description": "Submit a transaction to the BAP overlay engine for processing",
+                "consumes": [
+                    "application/octet-stream"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "bap-overlay"
+                ],
+                "summary": "Submit transaction to BAP overlay",
+                "parameters": [
+                    {
+                        "type": "array",
+                        "items": {
+                            "type": "string"
+                        },
+                        "collectionFormat": "csv",
+                        "description": "Topic names to submit to",
+                        "name": "x-topics",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "description": "Serialized transaction data",
+                        "name": "transaction",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "type": "integer"
+                            }
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "STEAK response",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
         "/bap/profile": {
             "get": {
                 "produces": [
@@ -1450,6 +2015,288 @@
                 }
             }
         },
+        "/bsocial/overlay/listLookupServiceProviders": {
+            "get": {
+                "description": "Returns BSocial overlay lookup service providers",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "bsocial-overlay"
+                ],
+                "summary": "List BSocial lookup services",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    }
+                }
+            }
+        },
+        "/bsocial/overlay/listTopicManagers": {
+            "get": {
+                "description": "Returns BSocial overlay topic managers",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "bsocial-overlay"
+                ],
+                "summary": "List BSocial topic managers",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    }
+                }
+            }
+        },
+        "/bsocial/overlay/lookup": {
+            "post": {
+                "description": "Query the BSocial overlay lookup service",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "bsocial-overlay"
+                ],
+                "summary": "BSocial overlay lookup",
+                "parameters": [
+                    {
+                        "description": "Lookup query",
+                        "name": "query",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "type": "object"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/bsocial/overlay/requestForeignGASPNode": {
+            "post": {
+                "description": "Request a GASP node from the BSocial overlay",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "bsocial-overlay"
+                ],
+                "summary": "BSocial overlay foreign GASP node",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Topic identifier",
+                        "name": "X-BSV-Topic",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "description": "Request with graphID, txID, and outputIndex",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "type": "object"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/bsocial/overlay/requestSyncResponse": {
+            "post": {
+                "description": "Request GASP synchronization data from BSocial overlay",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "bsocial-overlay"
+                ],
+                "summary": "BSocial overlay sync response",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Topic identifier",
+                        "name": "X-BSV-Topic",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "description": "Sync request",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "type": "object"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/bsocial/overlay/submit": {
+            "post": {
+                "description": "Submit a transaction to the BSocial overlay engine for processing",
+                "consumes": [
+                    "application/octet-stream"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "bsocial-overlay"
+                ],
+                "summary": "Submit transaction to BSocial overlay",
+                "parameters": [
+                    {
+                        "type": "array",
+                        "items": {
+                            "type": "string"
+                        },
+                        "collectionFormat": "csv",
+                        "description": "Topic names to submit to",
+                        "name": "x-topics",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "description": "Serialized transaction data",
+                        "name": "transaction",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "type": "integer"
+                            }
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "STEAK response",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
         "/bsocial/post/search": {
             "get": {
                 "produces": [
@@ -1539,6 +2386,319 @@
                             "type": "array",
                             "items": {
                                 "$ref": "#/definitions/pkg_bsv21.TokenDetailResponse"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/bsv21/overlay/listLookupServiceProviders": {
+            "get": {
+                "description": "Returns BSV21 overlay lookup service providers",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "bsv21-overlay"
+                ],
+                "summary": "List BSV21 lookup services",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    }
+                }
+            }
+        },
+        "/bsv21/overlay/listTopicManagers": {
+            "get": {
+                "description": "Returns BSV21 overlay topic managers",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "bsv21-overlay"
+                ],
+                "summary": "List BSV21 topic managers",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    }
+                }
+            }
+        },
+        "/bsv21/overlay/lookup": {
+            "post": {
+                "description": "Query the BSV21 overlay lookup service",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "bsv21-overlay"
+                ],
+                "summary": "BSV21 overlay lookup",
+                "parameters": [
+                    {
+                        "description": "Lookup query",
+                        "name": "query",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "type": "object"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/bsv21/overlay/requestForeignGASPNode": {
+            "post": {
+                "description": "Request a GASP node from the BSV21 overlay",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "bsv21-overlay"
+                ],
+                "summary": "BSV21 overlay foreign GASP node",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Topic identifier",
+                        "name": "X-BSV-Topic",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "description": "Request with graphID, txID, and outputIndex",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "type": "object"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/bsv21/overlay/requestSyncResponse": {
+            "post": {
+                "description": "Request GASP synchronization data from BSV21 overlay",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "bsv21-overlay"
+                ],
+                "summary": "BSV21 overlay sync response",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Topic identifier",
+                        "name": "X-BSV-Topic",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "description": "Sync request",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "type": "object"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/bsv21/overlay/submit": {
+            "post": {
+                "description": "Submit a transaction to the BSV21 overlay engine for processing",
+                "consumes": [
+                    "application/octet-stream"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "bsv21-overlay"
+                ],
+                "summary": "Submit transaction to BSV21 overlay",
+                "parameters": [
+                    {
+                        "type": "array",
+                        "items": {
+                            "type": "string"
+                        },
+                        "collectionFormat": "csv",
+                        "description": "Topic names to submit to",
+                        "name": "x-topics",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "description": "Serialized transaction data",
+                        "name": "transaction",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "type": "integer"
+                            }
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "STEAK response",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/bsv21/tokens": {
+            "get": {
+                "description": "Returns active/whitelisted tokens by default. Pass ?all=true to include inactive/unfunded tokens.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "bsv21"
+                ],
+                "summary": "List BSV21 token statuses",
+                "parameters": [
+                    {
+                        "type": "boolean",
+                        "description": "Include inactive/unfunded tokens",
+                        "name": "all",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/pkg_bsv21.TokenStatus"
                             }
                         }
                     }
@@ -2338,7 +3498,7 @@
         },
         "/health": {
             "get": {
-                "description": "Returns the health status of the service",
+                "description": "Returns health status with version, uptime, and block height",
                 "produces": [
                     "application/json"
                 ],
@@ -2348,12 +3508,10 @@
                 "summary": "Health check",
                 "responses": {
                     "200": {
-                        "description": "status: ok",
+                        "description": "status, version, uptime, height",
                         "schema": {
                             "type": "object",
-                            "additionalProperties": {
-                                "type": "string"
-                            }
+                            "additionalProperties": true
                         }
                     }
                 }
@@ -2790,6 +3948,288 @@
                 }
             }
         },
+        "/opns/overlay/listLookupServiceProviders": {
+            "get": {
+                "description": "Returns OPNS overlay lookup service providers",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "opns-overlay"
+                ],
+                "summary": "List OPNS lookup services",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    }
+                }
+            }
+        },
+        "/opns/overlay/listTopicManagers": {
+            "get": {
+                "description": "Returns OPNS overlay topic managers",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "opns-overlay"
+                ],
+                "summary": "List OPNS topic managers",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    }
+                }
+            }
+        },
+        "/opns/overlay/lookup": {
+            "post": {
+                "description": "Query the OPNS overlay lookup service",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "opns-overlay"
+                ],
+                "summary": "OPNS overlay lookup",
+                "parameters": [
+                    {
+                        "description": "Lookup query",
+                        "name": "query",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "type": "object"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/opns/overlay/requestForeignGASPNode": {
+            "post": {
+                "description": "Request a GASP node from the OPNS overlay",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "opns-overlay"
+                ],
+                "summary": "OPNS overlay foreign GASP node",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Topic identifier",
+                        "name": "X-BSV-Topic",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "description": "Request with graphID, txID, and outputIndex",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "type": "object"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/opns/overlay/requestSyncResponse": {
+            "post": {
+                "description": "Request GASP synchronization data from OPNS overlay",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "opns-overlay"
+                ],
+                "summary": "OPNS overlay sync response",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Topic identifier",
+                        "name": "X-BSV-Topic",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "description": "Sync request",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "type": "object"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/opns/overlay/submit": {
+            "post": {
+                "description": "Submit a transaction to the OPNS overlay engine for processing",
+                "consumes": [
+                    "application/octet-stream"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "opns-overlay"
+                ],
+                "summary": "Submit transaction to OPNS overlay",
+                "parameters": [
+                    {
+                        "type": "array",
+                        "items": {
+                            "type": "string"
+                        },
+                        "collectionFormat": "csv",
+                        "description": "Topic names to submit to",
+                        "name": "x-topics",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "description": "Serialized transaction data",
+                        "name": "transaction",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "type": "integer"
+                            }
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "STEAK response",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
         "/ordfs/metadata": {
             "post": {
                 "description": "Get metadata for multiple outpoints in a single request",
@@ -2997,453 +4437,6 @@
                     },
                     "404": {
                         "description": "Not found",
-                        "schema": {
-                            "type": "object",
-                            "additionalProperties": {
-                                "type": "string"
-                            }
-                        }
-                    }
-                }
-            }
-        },
-        "/overlay/admin/startGASPSync": {
-            "post": {
-                "security": [
-                    {
-                        "BearerAuth": []
-                    }
-                ],
-                "description": "Start GASP synchronization (requires admin bearer token)",
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "overlay-admin"
-                ],
-                "summary": "Start GASP sync",
-                "responses": {
-                    "200": {
-                        "description": "message field with status",
-                        "schema": {
-                            "type": "object",
-                            "additionalProperties": {
-                                "type": "string"
-                            }
-                        }
-                    }
-                }
-            }
-        },
-        "/overlay/admin/syncAdvertisements": {
-            "post": {
-                "security": [
-                    {
-                        "BearerAuth": []
-                    }
-                ],
-                "description": "Trigger advertisement sync (requires admin bearer token)",
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "overlay-admin"
-                ],
-                "summary": "Sync advertisements",
-                "responses": {
-                    "200": {
-                        "description": "message field with status",
-                        "schema": {
-                            "type": "object",
-                            "additionalProperties": {
-                                "type": "string"
-                            }
-                        }
-                    },
-                    "500": {
-                        "description": "Internal server error",
-                        "schema": {
-                            "type": "object",
-                            "additionalProperties": {
-                                "type": "string"
-                            }
-                        }
-                    }
-                }
-            }
-        },
-        "/overlay/getDocumentationForLookupServiceProvider": {
-            "get": {
-                "description": "Returns markdown documentation for a specific lookup service",
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "overlay"
-                ],
-                "summary": "Get lookup service documentation",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "description": "Name of the lookup service",
-                        "name": "lookupService",
-                        "in": "query",
-                        "required": true
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "documentation field with markdown content",
-                        "schema": {
-                            "type": "object",
-                            "additionalProperties": {
-                                "type": "string"
-                            }
-                        }
-                    },
-                    "400": {
-                        "description": "Bad request",
-                        "schema": {
-                            "type": "object",
-                            "additionalProperties": {
-                                "type": "string"
-                            }
-                        }
-                    },
-                    "500": {
-                        "description": "Internal server error",
-                        "schema": {
-                            "type": "object",
-                            "additionalProperties": {
-                                "type": "string"
-                            }
-                        }
-                    }
-                }
-            }
-        },
-        "/overlay/getDocumentationForTopicManager": {
-            "get": {
-                "description": "Returns markdown documentation for a specific topic manager",
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "overlay"
-                ],
-                "summary": "Get topic manager documentation",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "description": "Name of the topic manager",
-                        "name": "topicManager",
-                        "in": "query",
-                        "required": true
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "documentation field with markdown content",
-                        "schema": {
-                            "type": "object",
-                            "additionalProperties": {
-                                "type": "string"
-                            }
-                        }
-                    },
-                    "400": {
-                        "description": "Bad request",
-                        "schema": {
-                            "type": "object",
-                            "additionalProperties": {
-                                "type": "string"
-                            }
-                        }
-                    },
-                    "500": {
-                        "description": "Internal server error",
-                        "schema": {
-                            "type": "object",
-                            "additionalProperties": {
-                                "type": "string"
-                            }
-                        }
-                    }
-                }
-            }
-        },
-        "/overlay/listLookupServiceProviders": {
-            "get": {
-                "description": "Returns a list of all registered lookup service providers with their metadata",
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "overlay"
-                ],
-                "summary": "List lookup service providers",
-                "responses": {
-                    "200": {
-                        "description": "Map of lookup service names to metadata",
-                        "schema": {
-                            "type": "object",
-                            "additionalProperties": true
-                        }
-                    }
-                }
-            }
-        },
-        "/overlay/listTopicManagers": {
-            "get": {
-                "description": "Returns a list of all registered topic managers with their metadata",
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "overlay"
-                ],
-                "summary": "List topic managers",
-                "responses": {
-                    "200": {
-                        "description": "Map of topic manager names to metadata",
-                        "schema": {
-                            "type": "object",
-                            "additionalProperties": true
-                        }
-                    }
-                }
-            }
-        },
-        "/overlay/lookup": {
-            "post": {
-                "description": "Query a lookup service for outputs matching the query",
-                "consumes": [
-                    "application/json"
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "overlay"
-                ],
-                "summary": "Lookup query",
-                "parameters": [
-                    {
-                        "description": "Lookup query with service name and query params",
-                        "name": "query",
-                        "in": "body",
-                        "required": true,
-                        "schema": {
-                            "type": "object"
-                        }
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "Lookup response with outputs",
-                        "schema": {
-                            "type": "object",
-                            "additionalProperties": true
-                        }
-                    },
-                    "400": {
-                        "description": "Bad request",
-                        "schema": {
-                            "type": "object",
-                            "additionalProperties": {
-                                "type": "string"
-                            }
-                        }
-                    },
-                    "500": {
-                        "description": "Internal server error",
-                        "schema": {
-                            "type": "object",
-                            "additionalProperties": {
-                                "type": "string"
-                            }
-                        }
-                    }
-                }
-            }
-        },
-        "/overlay/requestForeignGASPNode": {
-            "post": {
-                "description": "Request a GASP node from a foreign overlay",
-                "consumes": [
-                    "application/json"
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "overlay"
-                ],
-                "summary": "Request foreign GASP node",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "description": "Topic identifier",
-                        "name": "X-BSV-Topic",
-                        "in": "header",
-                        "required": true
-                    },
-                    {
-                        "description": "Request with graphID, txID, and outputIndex",
-                        "name": "request",
-                        "in": "body",
-                        "required": true,
-                        "schema": {
-                            "type": "object"
-                        }
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "GASP node data",
-                        "schema": {
-                            "type": "object",
-                            "additionalProperties": true
-                        }
-                    },
-                    "400": {
-                        "description": "Bad request",
-                        "schema": {
-                            "type": "object",
-                            "additionalProperties": {
-                                "type": "string"
-                            }
-                        }
-                    },
-                    "500": {
-                        "description": "Internal server error",
-                        "schema": {
-                            "type": "object",
-                            "additionalProperties": {
-                                "type": "string"
-                            }
-                        }
-                    }
-                }
-            }
-        },
-        "/overlay/requestSyncResponse": {
-            "post": {
-                "description": "Request synchronization data for a topic (GASP protocol)",
-                "consumes": [
-                    "application/json"
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "overlay"
-                ],
-                "summary": "Request sync response",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "description": "Topic identifier",
-                        "name": "X-BSV-Topic",
-                        "in": "header",
-                        "required": true
-                    },
-                    {
-                        "description": "Sync request with version and since parameters",
-                        "name": "request",
-                        "in": "body",
-                        "required": true,
-                        "schema": {
-                            "type": "object"
-                        }
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "Sync response with UTXOList",
-                        "schema": {
-                            "type": "object",
-                            "additionalProperties": true
-                        }
-                    },
-                    "400": {
-                        "description": "Bad request",
-                        "schema": {
-                            "type": "object",
-                            "additionalProperties": {
-                                "type": "string"
-                            }
-                        }
-                    },
-                    "500": {
-                        "description": "Internal server error",
-                        "schema": {
-                            "type": "object",
-                            "additionalProperties": {
-                                "type": "string"
-                            }
-                        }
-                    }
-                }
-            }
-        },
-        "/overlay/submit": {
-            "post": {
-                "description": "Submit a transaction to the overlay engine for processing",
-                "consumes": [
-                    "application/octet-stream"
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "overlay"
-                ],
-                "summary": "Submit transaction",
-                "parameters": [
-                    {
-                        "type": "array",
-                        "items": {
-                            "type": "string"
-                        },
-                        "collectionFormat": "csv",
-                        "description": "Topic names to submit to",
-                        "name": "x-topics",
-                        "in": "header",
-                        "required": true
-                    },
-                    {
-                        "description": "Serialized transaction data",
-                        "name": "transaction",
-                        "in": "body",
-                        "required": true,
-                        "schema": {
-                            "type": "array",
-                            "items": {
-                                "type": "integer"
-                            }
-                        }
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "STEAK response with admission results",
-                        "schema": {
-                            "type": "object",
-                            "additionalProperties": true
-                        }
-                    },
-                    "400": {
-                        "description": "Bad request",
-                        "schema": {
-                            "type": "object",
-                            "additionalProperties": {
-                                "type": "string"
-                            }
-                        }
-                    },
-                    "500": {
-                        "description": "Internal server error",
                         "schema": {
                             "type": "object",
                             "additionalProperties": {
@@ -4391,6 +5384,88 @@
                 }
             }
         },
+        "admin.SetupCompleteRequest": {
+            "type": "object",
+            "properties": {
+                "adminIdentityKey": {
+                    "type": "string"
+                },
+                "arcadeBackend": {
+                    "type": "string"
+                },
+                "arcadePath": {
+                    "type": "string"
+                },
+                "arcadeUrl": {
+                    "type": "string"
+                },
+                "authMode": {
+                    "type": "string"
+                },
+                "chaintracksBackend": {
+                    "type": "string"
+                },
+                "chaintracksPath": {
+                    "type": "string"
+                },
+                "chaintracksUrl": {
+                    "type": "string"
+                },
+                "messageboxPath": {
+                    "type": "string"
+                },
+                "walletBackend": {
+                    "type": "string"
+                },
+                "walletPostgresUrl": {
+                    "type": "string"
+                },
+                "walletSqlitePath": {
+                    "type": "string"
+                },
+                "wif": {
+                    "type": "string"
+                }
+            }
+        },
+        "admin.SetupConfigResponse": {
+            "type": "object",
+            "properties": {
+                "arcadeBackend": {
+                    "type": "string"
+                },
+                "arcadePath": {
+                    "type": "string"
+                },
+                "arcadeUrl": {
+                    "type": "string"
+                },
+                "authMode": {
+                    "type": "string"
+                },
+                "chaintracksBackend": {
+                    "type": "string"
+                },
+                "chaintracksPath": {
+                    "type": "string"
+                },
+                "chaintracksUrl": {
+                    "type": "string"
+                },
+                "messageboxPath": {
+                    "type": "string"
+                },
+                "walletBackend": {
+                    "type": "string"
+                },
+                "walletPostgresUrl": {
+                    "type": "string"
+                },
+                "walletSqlitePath": {
+                    "type": "string"
+                }
+            }
+        },
         "admin.TopicRequest": {
             "type": "object",
             "properties": {
@@ -4746,6 +5821,43 @@
                     "items": {
                         "type": "integer"
                     }
+                }
+            }
+        },
+        "pkg_bap.ValidByAddressRequest": {
+            "type": "object",
+            "properties": {
+                "address": {
+                    "type": "string"
+                },
+                "block": {
+                    "type": "integer"
+                }
+            }
+        },
+        "pkg_bap.ValidByAddressResponse": {
+            "type": "object",
+            "properties": {
+                "identity": {
+                    "$ref": "#/definitions/pkg_bap.Identity"
+                },
+                "profile": {
+                    "type": "object",
+                    "additionalProperties": {}
+                },
+                "validityRecord": {
+                    "$ref": "#/definitions/pkg_bap.ValidityRecord"
+                }
+            }
+        },
+        "pkg_bap.ValidityRecord": {
+            "type": "object",
+            "properties": {
+                "block": {
+                    "type": "integer"
+                },
+                "valid": {
+                    "type": "boolean"
                 }
             }
         },
