@@ -6,8 +6,8 @@ import (
 	"log/slog"
 
 	"github.com/b-open-io/1sat-stack/pkg/beef"
-	"github.com/b-open-io/1sat-stack/pkg/store"
 	"github.com/b-open-io/go-junglebus"
+	"github.com/redis/go-redis/v9"
 	"github.com/spf13/viper"
 )
 
@@ -58,7 +58,7 @@ func (c *Config) SetDefaults(v *viper.Viper, prefix string) {
 func (c *Config) Initialize(
 	ctx context.Context,
 	logger *slog.Logger,
-	s store.Store,
+	client *redis.Client,
 	jbClient *junglebus.Client,
 ) (*Services, error) {
 	if c.Mode == ModeDisabled {
@@ -71,7 +71,7 @@ func (c *Config) Initialize(
 
 	switch c.Mode {
 	case ModeEmbedded:
-		return c.initializeEmbedded(logger, s, jbClient)
+		return c.initializeEmbedded(logger, client, jbClient)
 	default:
 		return nil, fmt.Errorf("unknown spends mode: %s", c.Mode)
 	}
@@ -79,18 +79,18 @@ func (c *Config) Initialize(
 
 func (c *Config) initializeEmbedded(
 	logger *slog.Logger,
-	s store.Store,
+	client *redis.Client,
 	jbClient *junglebus.Client,
 ) (*Services, error) {
 	var storages []BaseSpendStorage
 
 	if len(c.Chain) == 0 {
-		if s != nil {
-			storages = append(storages, NewStoreSpendStorage(s))
+		if client != nil {
+			storages = append(storages, NewStoreSpendStorage(client))
 		}
 	} else {
 		for i, chainItem := range c.Chain {
-			storage, err := createStorageFromConfig(chainItem, s, jbClient)
+			storage, err := createStorageFromConfig(chainItem, client, jbClient)
 			if err != nil {
 				return nil, fmt.Errorf("failed to create storage at chain index %d: %w", i, err)
 			}
@@ -111,7 +111,7 @@ func (c *Config) initializeEmbedded(
 
 func createStorageFromConfig(
 	cfg ChainConfig,
-	s store.Store,
+	client *redis.Client,
 	jbClient *junglebus.Client,
 ) (BaseSpendStorage, error) {
 	switch cfg.Provider {
@@ -126,10 +126,10 @@ func createStorageFromConfig(
 		return NewLRUSpendStorage(size), nil
 
 	case ProviderStore:
-		if s == nil {
+		if client == nil {
 			return nil, nil
 		}
-		return NewStoreSpendStorage(s), nil
+		return NewStoreSpendStorage(client), nil
 
 	case ProviderJungleBus:
 		if jbClient == nil {

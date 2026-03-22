@@ -3,24 +3,24 @@ package spends
 import (
 	"context"
 
-	"github.com/b-open-io/1sat-stack/pkg/store"
 	"github.com/bsv-blockchain/go-sdk/chainhash"
 	"github.com/bsv-blockchain/go-sdk/transaction"
+	"github.com/redis/go-redis/v9"
 )
 
-var spendHashKey = []byte("spnd")
+const spendHashKey = "spnd"
 
 type StoreSpendStorage struct {
-	store store.Store
+	client *redis.Client
 }
 
-func NewStoreSpendStorage(s store.Store) *StoreSpendStorage {
-	return &StoreSpendStorage{store: s}
+func NewStoreSpendStorage(client *redis.Client) *StoreSpendStorage {
+	return &StoreSpendStorage{client: client}
 }
 
 func (s *StoreSpendStorage) GetSpend(ctx context.Context, outpoint *transaction.Outpoint) (*chainhash.Hash, error) {
-	spendBytes, err := s.store.HGet(ctx, spendHashKey, outpoint.Bytes())
-	if err == store.ErrKeyNotFound {
+	spendBytes, err := s.client.HGet(ctx, spendHashKey, string(outpoint.Bytes())).Bytes()
+	if err == redis.Nil {
 		return nil, nil
 	}
 	if err != nil {
@@ -38,33 +38,35 @@ func (s *StoreSpendStorage) GetSpends(ctx context.Context, outpoints []*transact
 	if len(outpoints) == 0 {
 		return nil, nil
 	}
-	fields := make([][]byte, len(outpoints))
+	fields := make([]string, len(outpoints))
 	for i, op := range outpoints {
 		if op != nil {
-			fields[i] = op.Bytes()
+			fields[i] = string(op.Bytes())
 		}
 	}
-	values, err := s.store.HMGet(ctx, spendHashKey, fields...)
+	values, err := s.client.HMGet(ctx, spendHashKey, fields...).Result()
 	if err != nil {
 		return nil, err
 	}
 	results := make([]*chainhash.Hash, len(outpoints))
 	for i, v := range values {
-		if len(v) == 32 {
-			txid := &chainhash.Hash{}
-			copy(txid[:], v)
-			results[i] = txid
+		if v != nil {
+			if b, ok := v.(string); ok && len(b) == 32 {
+				txid := &chainhash.Hash{}
+				copy(txid[:], b)
+				results[i] = txid
+			}
 		}
 	}
 	return results, nil
 }
 
 func (s *StoreSpendStorage) PutSpend(ctx context.Context, outpoint *transaction.Outpoint, spendTxid *chainhash.Hash) error {
-	return s.store.HSet(ctx, spendHashKey, outpoint.Bytes(), spendTxid[:])
+	return s.client.HSet(ctx, spendHashKey, string(outpoint.Bytes()), spendTxid[:]).Err()
 }
 
 func (s *StoreSpendStorage) DeleteSpend(ctx context.Context, outpoint *transaction.Outpoint) error {
-	return s.store.HDel(ctx, spendHashKey, outpoint.Bytes())
+	return s.client.HDel(ctx, spendHashKey, string(outpoint.Bytes())).Err()
 }
 
 func (s *StoreSpendStorage) Close() error {
