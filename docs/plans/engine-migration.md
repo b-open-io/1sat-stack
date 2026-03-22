@@ -7,61 +7,57 @@ Branch: `engine` (worktree at `/Users/davidcase/Source/1sat/1sat-engine/`)
 
 ## Goal
 
-Replace the custom `Store` interface with the Redis protocol as the canonical data interface. Consumers use go-redis (or any Redis client in any language). Backend is redcon + Badger in-process.
+Replace the custom `Store` interface with the Redis protocol as the canonical data interface. Modules receive bidirectional byte streams (channels) carrying RESP protocol. Backend is redcon + Badger in-process.
 
 This is the foundation for the distributed compute vision (see `docs/research/distributed-compute-vision.md`).
 
 ## Dual Channel Model
 
-Modules receive named storage channels, not Go interfaces:
+Modules receive named storage channels — bidirectional byte streams:
 
-- **Redis channel** — KV, hashes, sorted sets, pub/sub. Hot-path operational state.
-- **SQLite channel** — structured queries, aggregates, joins, text search. Relational data.
+- **Redis channel** — RESP protocol. KV, hashes, sorted sets, pub/sub. Hot-path operational state.
+- **SQLite channel** — SQL protocol. Structured queries, aggregates, joins, text search. Relational data.
 
-Both deterministic. Both well-specified. Both compile to WASM. Both universally known.
+A module doesn't receive a Go client or a TCP address. It receives a stream. The module wraps the stream with whatever RESP/SQL client its language provides. The host provides the other end of the stream, backed by whatever storage (Badger, real Redis, SQLite file, IndexedDB, etc.).
+
+The stream abstraction must map naturally to Go, Zig, TypeScript/AssemblyScript, and any other WASM-targeting language. It's just bytes in, bytes out.
 
 ## Migration Progress
 
-### Phase 1: Store → go-redis (Package Migration)
+### Phase 0: Foundation (Complete)
 
-| Package | Status | Store Methods Used | Notes |
-|---------|--------|--------------------|-------|
-| `pkg/store/redcon/` | ✅ Done | — | RESP server backed by BadgerStore |
-| `pkg/spends/` | ✅ Done | HGet, HMGet, HSet, HDel | 4 hash calls, simplest package |
-| `pkg/overlay/services.go` | ✅ Done | Get, Set, Del | 3 KV calls for remote config |
-| `pkg/overlay/event_bridge.go` | ✅ Done | ZAdd | 1 sorted set call |
-| `pkg/overlay/p2p.go` | ✅ Done | ZAdd | 1 sorted set call |
-| `pkg/overlay/topic.go` | ✅ Done | ZCard | 1 sorted set call |
-| `pkg/worker/` | ✅ Done | ZRangeByScore, ZAdd, ZRem | Queue processing |
-| `pkg/gasp/` | ✅ Done | ZRangeByScore, ZAdd | 3 files, queue + SSE |
-| `pkg/jbsync/` | ✅ Done | ZAdd (batch + single) | JungleBus subscription |
-| `pkg/merkle/` | ✅ Done | ZAdd, ZRem | Log lifecycle (pending/immutable/rollback) |
-| `pkg/bsv21/manager+sync` | Pending | ZAdd, ZCard | Token service queue ops |
-| `pkg/indexer/` | Pending | ZAdd, ZRem, ZRange | Pending auditor + status handler |
-| `pkg/txo/` | Pending | HSet, HGet, HGetAll, HDel, HMGet, ZAdd, ZRem, ZScore, Scan | Heaviest user — 19 hash + sorted set calls |
+| Task | Status | Linear | Notes |
+|------|--------|--------|-------|
+| Research redcon + Badger | ✅ Done | OPL-1524 | Spike validated, go-redis connects, commands work |
+| Audit Store interface usage | ✅ Done | OPL-1525 | 18 of 25 methods used, 63 calls, command matrix built |
+| Map Store to Redis commands | ✅ Done | OPL-1507 | All methods map cleanly to Redis commands |
+| Redcon RESP server | ✅ Done | OPL-1506 | `pkg/store/redcon.go` — full command handler coverage |
 
-### Phase 2: Wiring
+### Phase 1: Channel Abstraction (Next)
 
-| Task | Status | Notes |
-|------|--------|-------|
-| Update `cmd/server/config.go` | Pending | Central wiring — create redcon server, pass `*redis.Client` to all packages |
-| Remove `Store` interface | Pending | After all packages migrated |
-| Multi-store configuration | Pending | Named stores (txo, beef, topics, config) with separate backends |
+| Task | Status | Linear | Notes |
+|------|--------|--------|-------|
+| Design channel type | **Not Started** | OPL-1526 | Bidirectional byte stream carrying RESP. Must work across Go, Zig, WASM runtimes. Language-agnostic. |
+| Build channel package | **Not Started** | OPL-1526 | Lightweight — just a stream that RESP clients can connect through |
+| Migrate modules to channels | **Not Started** | OPL-1527 | Modules receive channel streams, create own clients internally |
+| Remove `Store` interface | **Not Started** | OPL-1508 | After all modules migrated to channels |
 
-### Phase 3: Engine Storage Redesign
+**IMPORTANT**: Previous work (commits `93ec622`..`271d5e3`) swapped `store.Store` → `*redis.Client` across 12 packages. This was the **wrong approach** — it just replaced one Go-specific dependency with another. Modules must receive channels (byte streams), not injected clients. That work needs to be redone once the channel abstraction exists.
+
+### Phase 2: Engine Storage Redesign
 
 Move `EngineAdapter`/`TopicStorage` from native SQLite back to Redis channel.
 
-| Task | Status | Notes |
-|------|--------|-------|
-| Pull `SaveEvent`/`DeleteEvent`/`FindByEvent` out of `TopicStorage` | Pending | Move to lookup layer — these serve lookups, not the engine |
-| Reimplement engine output ops against `*redis.Client` | Pending | Follow pattern from deleted `engine_storage.go` (commit `71570c9`). Hash per outpoint, sorted set for topic membership/UTXO ordering, KV for applied txs and peer timestamps |
-| Update `EngineAdapter` to route to per-topic Redis keys | Pending | Replace per-topic SQLite factory with per-topic Redis key prefixes |
-| Remove `pkg/overlay/storage/sqlite.go` engine tables | Pending | Keep `outputs` table removal separate from lookup schema |
+| Task | Status | Linear | Notes |
+|------|--------|--------|-------|
+| Pull `SaveEvent`/`DeleteEvent`/`FindByEvent` out of `TopicStorage` | Not Started | OPL-1529 | Move to lookup layer — these serve lookups, not the engine |
+| Reimplement engine output ops on Redis channel | Not Started | OPL-1530 | Follow pattern from deleted `engine_storage.go` (commit `71570c9`) |
+| Update `EngineAdapter` to route to per-topic Redis channels | Not Started | | Replace per-topic SQLite factory with per-topic channel routing |
+| Remove `pkg/overlay/storage/sqlite.go` engine tables | Not Started | | Keep `outputs` table removal separate from lookup schema |
 
-### Phase 4: Overlay Lookup Services
+### Phase 3: Overlay Lookup Services
 
-Lookups stay on SQLite channel. Engine storage (Phase 3) and lookup storage are now cleanly separated.
+Lookups stay on SQLite channel. Engine storage (Phase 2) and lookup storage are now cleanly separated.
 
 | Overlay | Lookup Storage | Channel | Notes |
 |---------|---------------|---------|-------|
@@ -73,14 +69,16 @@ Lookups stay on SQLite channel. Engine storage (Phase 3) and lookup storage are 
 
 ## Key Decisions
 
-1. **Redis protocol is the canonical data interface** — not a Go abstraction
-2. **Modules receive channels, not typed clients** — the channel is the address/stream, consumer wraps it in whatever Redis client they prefer
-3. **Multiple named stores per app** — txo, beef, topics, config are separate databases, not namespaces
-4. **SQLite as second channel type** — for relational data (BAP, BSV21) where Redis primitives are insufficient
-5. **Host manages isolation** — which stores a module can access is configuration, not module choice
-6. **Engine storage moves back to Redis channel** — The `EngineAdapter`/`TopicStorage` currently uses native SQLite for overlay output membership. This was originally Badger-backed (`pkg/txo/engine_storage.go`, deleted in `71570c9`). The core engine operations (InsertOutput, GetOutput, FindOutputs, MarkSpent, FindUTXOs, DeleteOutput, Rollback, applied txs, peer interactions) are all single-table CRUD that maps cleanly to Redis hashes and sorted sets. Move back to Redis channel using the pattern from the deleted `engine_storage.go`.
-7. **Event methods belong in lookup layer, not engine storage** — `SaveEvent`, `DeleteEvent`, `FindByEvent` are in `TopicStorage` but serve lookups, not the engine. `FindByEvent` does a JOIN between events and outputs — that's a lookup concern. Pull these out of `TopicStorage` into the lookup services. Lookups that need to join event data back to output data do the join in code.
-8. **BSV21 already demonstrates both channels** — BSV21 has three layers: (a) queue ops via `store.Store` (ZAdd, ZCard) → Redis channel, (b) `BSV21Lookup` with `token_outputs` table via `TopicStorage.DB()` → SQLite channel, (c) routes join across both channels in application code (e.g. `GetBlockData` searches Redis OutputStore events then loads from SQLite lookup). This is the pattern for all overlays.
+1. **Channels are bidirectional byte streams** — not Go interfaces, not TCP addresses, not injected clients. A stream that carries RESP or SQL bytes. The module wraps it with whatever client library its language provides.
+2. **Channel abstraction must be language-agnostic** — must map naturally to Go, Zig, TypeScript, AssemblyScript, and any WASM-targeting language. Just bytes in, bytes out.
+3. **Modules create their own clients from the stream** — the host provides the channel, the module wraps it. Module is self-contained.
+4. **Multiple named channels per module** — a module might receive `txo` (redis) and `bap_db` (sqlite). Each is a separate stream.
+5. **Host manages isolation** — which channels a module can access is configuration, not module choice.
+6. **Redis protocol is the data interface** — not a Go abstraction. RESP bytes are the contract.
+7. **SQLite as second channel type** — for relational data (BAP, BSV21) where Redis primitives are insufficient.
+8. **Engine storage moves back to Redis channel** — `EngineAdapter`/`TopicStorage` engine ops are single-table CRUD that maps to Redis hashes and sorted sets.
+9. **Event methods belong in lookup layer, not engine storage** — `SaveEvent`/`DeleteEvent`/`FindByEvent` serve lookups, not the engine. Pull them out.
+10. **BSV21 demonstrates both channels** — queue ops on Redis channel, token_outputs on SQLite channel, joined in application code.
 
 ## Store Interface Audit Summary
 
