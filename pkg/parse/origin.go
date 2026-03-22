@@ -19,7 +19,7 @@ const maxEventValueLen = 256
 // 1. Owner extraction from composite scripts (P2PKH prefix on scripts > 25 bytes)
 // 2. Origin/type/name resolution via ORDFS for non-inscription outputs
 func ParseOrigin(ctx *ParseContext) (*ParseResult, error) {
-	if ctx.Results[Tag1Sat] == nil {
+	if ctx.Satoshis != 1 {
 		return nil, nil
 	}
 
