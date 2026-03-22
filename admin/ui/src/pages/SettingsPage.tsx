@@ -552,6 +552,7 @@ const PARSE_TAGS = [
   { id: "ordlock", label: "OrdLock", description: "Ordinal listing/locking protocol" },
   { id: "map", label: "MAP", description: "Magic Attribute Protocol metadata" },
   { id: "sigma", label: "Sigma", description: "Sigma signature protocol" },
+  { id: "origin", label: "Origin", description: "Ordinal origin resolution and metadata via ORDFS" },
 ];
 
 interface IndexerPanelProps {
