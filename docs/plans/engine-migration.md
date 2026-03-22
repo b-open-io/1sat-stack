@@ -35,11 +35,15 @@ The stream abstraction must map naturally to Go, Zig, TypeScript/AssemblyScript,
 
 ### Phase 1: Channel Abstraction (Next)
 
+Design spec: `docs/research/channel-spec.md`
+
+Multiple data channels multiplexed over WASI stdin/stdout with lightweight framing (`[channel_id][length][payload]`). Each channel carries RESP or SQL bytes. Modules see independent connections via per-language adapters. Function calls (module contract) stay as normal WASM imports/exports. stderr reserved for diagnostics.
+
 | Task | Status | Linear | Notes |
 |------|--------|--------|-------|
-| Design channel type | **Not Started** | OPL-1526 | Bidirectional byte stream carrying RESP. Must work across Go, Zig, WASM runtimes. Language-agnostic. |
-| Build channel package | **Not Started** | OPL-1526 | Lightweight — just a stream that RESP clients can connect through |
-| Migrate modules to channels | **Not Started** | OPL-1527 | Modules receive channel streams, create own clients internally |
+| Channel spec | **Draft** | OPL-1526 | `docs/research/channel-spec.md` — framing, mux, adapters, WASI compat |
+| Build mux + Go adapter | **Not Started** | OPL-1526 | Framing protocol, `net.Conn` adapter for go-redis |
+| Migrate modules to channels | **Not Started** | OPL-1527 | Modules receive channels, create own clients internally |
 | Remove `Store` interface | **Not Started** | OPL-1508 | After all modules migrated to channels |
 
 **IMPORTANT**: Previous work (commits `93ec622`..`271d5e3`) swapped `store.Store` → `*redis.Client` across 12 packages. This was the **wrong approach** — it just replaced one Go-specific dependency with another. Modules must receive channels (byte streams), not injected clients. That work needs to be redone once the channel abstraction exists.
