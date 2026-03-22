@@ -22,9 +22,8 @@ const providers: WalletProviderConfig[] = [
 function WalletGate({ children }: { children: React.ReactNode }) {
   const { wallet, status, connect } = useWallet();
 
-  useEffect(() => {
-    setWallet(wallet);
-  }, [wallet]);
+  // Set wallet synchronously so authFetch is ready before children render
+  setWallet(wallet);
 
   if (status === "detecting") return null;
 
