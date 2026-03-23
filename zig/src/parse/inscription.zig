@@ -111,10 +111,10 @@ pub fn parse(ctx: *ParseContext) anyerror!?ParseResult {
 
         const f = field orelse continue;
 
-        const val_data = switch (val_chunk) {
+        const val_data: []const u8 = switch (val_chunk) {
             .push_data => |pd| pd.data,
-            .opcode => continue,
-            .op_return_data => continue,
+            .opcode => |op| if (op == .OP_0) &[_]u8{} else break, // OP_0 = empty data, other opcodes = done
+            .op_return_data => break,
         };
 
         switch (f) {

@@ -30,11 +30,11 @@ pub fn parseP2PKH(ctx: *ParseContext) !?ParseResult {
 pub const lock = @import("lock.zig");
 pub const inscription = @import("inscription.zig");
 pub const cosign = @import("cosign.zig");
+pub const bitcom = @import("bitcom.zig");
 // pub const bsv21 = @import("bsv21.zig");
 // pub const ordlock = @import("ordlock.zig");
 // pub const opns = @import("opns.zig");
 // pub const shrug = @import("shrug.zig");
-// pub const bitcom = @import("bitcom.zig");
 
 /// Default parser execution order matching Go's DefaultTags.
 const default_parsers = [_]context.ParserFn{
@@ -43,6 +43,12 @@ const default_parsers = [_]context.ParserFn{
     lock.parse,
     inscription.parse,
     cosign.parse,
+    bitcom.parseBitcom,
+    bitcom.parseB,
+    bitcom.parseMAP,
+    bitcom.parseAIP,
+    bitcom.parseBAP,
+    bitcom.parseSigma,
 };
 
 /// Run all parsers on a single output in order.
