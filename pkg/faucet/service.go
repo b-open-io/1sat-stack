@@ -30,6 +30,7 @@ type Service struct {
 // Services holds the initialized faucet service and optional routes.
 type Services struct {
 	Service *Service
+	Routes  *Routes
 	store   *Store
 }
 
@@ -96,6 +97,10 @@ func (c *Config) Initialize(
 	services := &Services{
 		Service: svc,
 		store:   store,
+	}
+
+	if c.Routes.Enabled {
+		services.Routes = NewRoutes(svc, logger)
 	}
 
 	logger.Info("faucet service initialized",
