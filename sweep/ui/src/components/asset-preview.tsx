@@ -112,11 +112,13 @@ export function FundingSection({
   totalBsv,
   sweepAmount,
   onSweepAmountChange,
+  onSweep,
 }: {
   funding: IndexedOutput[];
   totalBsv: number;
   sweepAmount: number | null;
   onSweepAmountChange: (amount: number | null) => void;
+  onSweep: () => void;
 }) {
   if (funding.length === 0) return null;
 
@@ -163,6 +165,13 @@ export function FundingSection({
           Max
         </Button>
       </div>
+      <Button
+        onClick={onSweep}
+        className="w-full mt-3"
+        size="sm"
+      >
+        Sweep {isMax ? formatSats(totalBsv) : formatSats(sweepAmount!)} sats
+      </Button>
     </div>
   );
 }
@@ -177,12 +186,14 @@ export function OrdinalsSection({
   onToggle,
   onSelectAll,
   onDeselectAll,
+  onSweep,
 }: {
   ordinals: EnrichedOrdinal[];
   selectedOrdinals: Set<string>;
   onToggle: (outpoint: string) => void;
   onSelectAll: () => void;
   onDeselectAll: () => void;
+  onSweep: () => void;
 }) {
   const [page, setPage] = useState(0);
 
@@ -260,6 +271,16 @@ export function OrdinalsSection({
             Next
           </Button>
         </div>
+      )}
+
+      {selectedOrdinals.size > 0 && (
+        <Button
+          onClick={onSweep}
+          className="w-full mt-3"
+          size="sm"
+        >
+          Sweep {selectedOrdinals.size} Ordinal{selectedOrdinals.size !== 1 ? "s" : ""}
+        </Button>
       )}
     </div>
   );

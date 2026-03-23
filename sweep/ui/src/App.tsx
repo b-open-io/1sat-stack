@@ -67,7 +67,7 @@ export default function App() {
       );
 
       setAssets(result);
-      setSelectedOrdinals(new Set(result.ordinals.map((o) => o.outpoint)));
+      setSelectedOrdinals(new Set());
 
       const total = result.funding.length + result.ordinals.length +
         result.bsv21Tokens.reduce((n, t) => n + t.outputs.length, 0) +
@@ -135,6 +135,87 @@ export default function App() {
     }
   }, [wifs, assets, selectedOrdinals, sweepAmount]);
 
+  const handleSweepBsv = useCallback(async () => {
+    const wallet = getWallet();
+    if (!wallet || !wifs || !assets) return;
+
+    setSweeping(true);
+    setState("sweeping");
+
+    try {
+      let selectedFunding = assets.funding;
+      if (sweepAmount !== null) {
+        selectedFunding = [];
+        let accumulated = 0;
+        for (const utxo of assets.funding) {
+          selectedFunding.push(utxo);
+          accumulated += utxo.satoshis ?? 0;
+          if (accumulated >= sweepAmount) break;
+        }
+      }
+
+      const result = await executeSweep({
+        wallet,
+        wif: wifs.pay,
+        funding: selectedFunding,
+        ordinals: [],
+        bsv21Tokens: [],
+        amount: sweepAmount ?? undefined,
+        onProgress: setSweepProgress,
+      });
+
+      setSweepResult(result);
+      setState("complete");
+
+      if (result.errors.length === 0) {
+        toast.success("BSV sweep complete!");
+      } else {
+        toast.warning("BSV sweep completed with errors");
+      }
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "BSV sweep failed");
+      setState("preview");
+    } finally {
+      setSweeping(false);
+    }
+  }, [wifs, assets, sweepAmount]);
+
+  const handleSweepOrdinals = useCallback(async () => {
+    const wallet = getWallet();
+    if (!wallet || !wifs || !assets) return;
+
+    const selected = assets.ordinals.filter((o) => selectedOrdinals.has(o.outpoint));
+    if (selected.length === 0) return;
+
+    setSweeping(true);
+    setState("sweeping");
+
+    try {
+      const result = await executeSweep({
+        wallet,
+        wif: wifs.pay,
+        funding: [],
+        ordinals: selected,
+        bsv21Tokens: [],
+        onProgress: setSweepProgress,
+      });
+
+      setSweepResult(result);
+      setState("complete");
+
+      if (result.errors.length === 0) {
+        toast.success(`Swept ${selected.length} ordinal${selected.length !== 1 ? "s" : ""}!`);
+      } else {
+        toast.warning("Ordinal sweep completed with errors");
+      }
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Ordinal sweep failed");
+      setState("preview");
+    } finally {
+      setSweeping(false);
+    }
+  }, [wifs, assets, selectedOrdinals]);
+
   const handleReset = useCallback(() => {
     setAssets(null);
     setSweepResult(null);
@@ -192,6 +273,7 @@ export default function App() {
               totalBsv={assets.totalBsv}
               sweepAmount={sweepAmount}
               onSweepAmountChange={setSweepAmount}
+              onSweep={handleSweepBsv}
             />
             <OrdinalsSection
               ordinals={assets.ordinals}
@@ -199,14 +281,15 @@ export default function App() {
               onToggle={handleToggleOrdinal}
               onSelectAll={handleSelectAll}
               onDeselectAll={handleDeselectAll}
+              onSweep={handleSweepOrdinals}
             />
             <Bsv21Section tokens={assets.bsv21Tokens} />
             <Bsv20Section tokens={assets.bsv20Tokens} />
             <LockedSection locked={assets.locked} />
 
             {sweepableCount > 0 && state === "preview" && (
-              <Button onClick={handleSweep} className="w-full h-12 text-base" size="lg">
-                Sweep {sweepableCount} Asset{sweepableCount !== 1 ? "s" : ""}
+              <Button onClick={handleSweep} className="w-full h-12 text-base" size="lg" disabled title="Use per-section sweep buttons above">
+                Sweep All ({sweepableCount})
               </Button>
             )}
           </div>
