@@ -5,7 +5,8 @@
 
 import { parseOutpoint } from "@1sat/utils";
 import type { IndexedOutput } from "@1sat/types";
-import { P2PKH, PrivateKey, Transaction, Utils } from "@bsv/sdk";
+import { MAP_PREFIX } from "@1sat/types";
+import { OP, P2PKH, PrivateKey, Script, Transaction, Utils } from "@bsv/sdk";
 import { deriveAddress } from "./scanner";
 import { getServices } from "./services";
 import type { LegacyKeys } from "@/components/wif-input";
@@ -173,6 +174,74 @@ export async function legacySendOrdinals(params: {
   }
 
   // Change output — fee() fills in the satoshis
+  tx.addOutput({
+    lockingScript: p2pkh.lock(sourceAddress),
+    change: true,
+  });
+
+  await tx.fee();
+  await tx.sign();
+
+  const rawTx = tx.toBinary();
+  const result = await getServices().arcade.submitTransaction(rawTx);
+
+  return {
+    txid: result.txid,
+    rawtx: Utils.toHex(rawTx),
+  };
+}
+
+export async function legacyBurnOrdinals(params: {
+  ordinals: IndexedOutput[];
+  funding: IndexedOutput[];
+  keys: LegacyKeys;
+}): Promise<LegacySendResult> {
+  const { ordinals, funding, keys } = params;
+  if (!ordinals.length) throw new Error("No ordinals to burn");
+
+  const keyMap = buildKeyMap(keys);
+  const payKey = PrivateKey.fromWif(keys.payPk);
+  const sourceAddress = payKey.toPublicKey().toAddress();
+  const p2pkh = new P2PKH();
+  const tx = new Transaction();
+
+  for (const ord of ordinals) {
+    const { txid, vout } = parseOutpoint(ord.outpoint);
+    const key = keyForOutput(ord, keyMap, payKey);
+    tx.addInput({
+      sourceTXID: txid,
+      sourceOutputIndex: vout,
+      sourceTransaction: await fetchSourceTx(txid),
+      unlockingScriptTemplate: p2pkh.unlock(key),
+      sequence: 0xffffffff,
+    });
+  }
+
+  for (const utxo of funding) {
+    const { txid, vout } = parseOutpoint(utxo.outpoint);
+    const key = keyForOutput(utxo, keyMap, payKey);
+    tx.addInput({
+      sourceTXID: txid,
+      sourceOutputIndex: vout,
+      sourceTransaction: await fetchSourceTx(txid),
+      unlockingScriptTemplate: p2pkh.unlock(key),
+      sequence: 0xffffffff,
+    });
+  }
+
+  const burnScript = new Script()
+    .writeOpCode(OP.OP_FALSE)
+    .writeOpCode(OP.OP_RETURN)
+    .writeBin(Utils.toArray(MAP_PREFIX))
+    .writeBin(Utils.toArray("SET"))
+    .writeBin(Utils.toArray("app"))
+    .writeBin(Utils.toArray("1sat-sweep"))
+    .writeBin(Utils.toArray("type"))
+    .writeBin(Utils.toArray("ord"))
+    .writeBin(Utils.toArray("op"))
+    .writeBin(Utils.toArray("burn"));
+  tx.addOutput({ satoshis: 0, lockingScript: burnScript });
+
   tx.addOutput({
     lockingScript: p2pkh.lock(sourceAddress),
     change: true,

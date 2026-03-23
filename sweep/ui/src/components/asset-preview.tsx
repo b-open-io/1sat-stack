@@ -211,6 +211,7 @@ export function OrdinalsSection({
   onDeselectAll,
   onSweep,
   onSend,
+  onBurn,
   walletConnected,
 }: {
   ordinals: EnrichedOrdinal[];
@@ -220,6 +221,7 @@ export function OrdinalsSection({
   onDeselectAll: () => void;
   onSweep: () => void;
   onSend: (destination: string) => void;
+  onBurn: () => void;
   walletConnected: boolean;
 }) {
   const [page, setPage] = useState(0);
@@ -328,6 +330,13 @@ export function OrdinalsSection({
               title={walletConnected ? undefined : "Connect BRC-100 wallet to sweep"}
             >
               Sweep to Wallet
+            </Button>
+            <Button
+              variant="destructive"
+              size="sm"
+              onClick={onBurn}
+            >
+              Burn
             </Button>
           </div>
         </div>

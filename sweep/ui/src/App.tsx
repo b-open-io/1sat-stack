@@ -17,7 +17,7 @@ import { OpnsSection } from "@/components/opns-section";
 import { SweepProgress } from "@/components/sweep-progress";
 import { deriveAddress, scanAddresses, type ScannedAssets } from "@/lib/scanner";
 import { executeSweep, type SweepResult } from "@/lib/sweeper";
-import { legacySendBsv, legacySendOrdinals } from "@/lib/legacy-send";
+import { legacySendBsv, legacySendOrdinals, legacyBurnOrdinals } from "@/lib/legacy-send";
 import { getWallet } from "@/lib/wallet";
 
 type TabId = "ordinals" | "opns" | "bsv21" | "bsv20" | "locks";
@@ -339,6 +339,66 @@ export default function App() {
     }
   }, [legacyKeys, assets, selectedOpns]);
 
+  // --- Ordinals burn ---
+  const handleBurnOrdinals = useCallback(async () => {
+    if (!legacyKeys || !assets) return;
+
+    const selected = assets.ordinals.filter((o) => selectedOrdinals.has(o.outpoint));
+    if (selected.length === 0) return;
+
+    setSweeping(true);
+    setSweepProgress(`Burning ${selected.length} ordinal${selected.length !== 1 ? "s" : ""}...`);
+
+    try {
+      const result = await legacyBurnOrdinals({
+        ordinals: selected,
+        funding: assets.funding,
+        keys: legacyKeys,
+      });
+
+      setSweepResult({
+        ordinalTxids: [result.txid],
+        bsv21Txids: [],
+        errors: [],
+      });
+      toast.success(`Burned ${selected.length} ordinal${selected.length !== 1 ? "s" : ""}!`);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Burn failed");
+    } finally {
+      setSweeping(false);
+    }
+  }, [legacyKeys, assets, selectedOrdinals]);
+
+  // --- OPNS burn ---
+  const handleBurnOpns = useCallback(async () => {
+    if (!legacyKeys || !assets) return;
+
+    const selected = assets.opnsNames.filter((o) => selectedOpns.has(o.outpoint));
+    if (selected.length === 0) return;
+
+    setSweeping(true);
+    setSweepProgress(`Burning ${selected.length} domain${selected.length !== 1 ? "s" : ""}...`);
+
+    try {
+      const result = await legacyBurnOrdinals({
+        ordinals: selected,
+        funding: assets.funding,
+        keys: legacyKeys,
+      });
+
+      setSweepResult({
+        ordinalTxids: [result.txid],
+        bsv21Txids: [],
+        errors: [],
+      });
+      toast.success(`Burned ${selected.length} domain${selected.length !== 1 ? "s" : ""}!`);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Burn failed");
+    } finally {
+      setSweeping(false);
+    }
+  }, [legacyKeys, assets, selectedOpns]);
+
   return (
     <div className="min-h-screen bg-background text-foreground">
       <Toaster position="top-right" />
@@ -402,6 +462,7 @@ export default function App() {
                     onDeselectAll={handleDeselectAllOrdinals}
                     onSweep={handleSweepOrdinals}
                     onSend={handleSendOrdinals}
+                    onBurn={handleBurnOrdinals}
                     walletConnected={walletConnected}
                   />
                 </TabsContent>
@@ -415,6 +476,7 @@ export default function App() {
                     onDeselectAll={handleDeselectAllOpns}
                     onSweep={handleSweepOpns}
                     onSend={handleSendOpns}
+                    onBurn={handleBurnOpns}
                     walletConnected={walletConnected}
                   />
                 </TabsContent>

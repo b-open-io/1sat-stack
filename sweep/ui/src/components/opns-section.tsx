@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import type { EnrichedOrdinal } from "@/lib/scanner";
+import { getServices } from "@/lib/services";
 
 export function OpnsSection({
   opnsNames,
@@ -11,6 +12,7 @@ export function OpnsSection({
   onDeselectAll,
   onSweep,
   onSend,
+  onBurn,
   walletConnected,
 }: {
   opnsNames: EnrichedOrdinal[];
@@ -20,10 +22,13 @@ export function OpnsSection({
   onDeselectAll: () => void;
   onSweep: () => void;
   onSend: (destination: string) => void;
+  onBurn: () => void;
   walletConnected: boolean;
 }) {
   const [address, setAddress] = useState("");
   const [resolvedNames, setResolvedNames] = useState<Map<string, string>>(new Map());
+  const [overlayValid, setOverlayValid] = useState<Map<string, boolean>>(new Map());
+  const [validating, setValidating] = useState(false);
 
   useEffect(() => {
     if (opnsNames.length === 0) return;
@@ -49,6 +54,40 @@ export function OpnsSection({
     });
 
     return () => controller.abort();
+  }, [opnsNames]);
+
+  useEffect(() => {
+    if (opnsNames.length === 0) return;
+
+    let cancelled = false;
+    setValidating(true);
+
+    const originToOutpoints = new Map<string, string[]>();
+    for (const item of opnsNames) {
+      const origin = item.origin ?? item.outpoint;
+      const list = originToOutpoints.get(origin) ?? [];
+      list.push(item.outpoint);
+      originToOutpoints.set(origin, list);
+    }
+
+    getServices()
+      .opns.validateOrigins([...originToOutpoints.keys()])
+      .then((result) => {
+        if (cancelled) return;
+        const map = new Map<string, boolean>();
+        for (const [origin, valid] of Object.entries(result)) {
+          for (const outpoint of originToOutpoints.get(origin) ?? []) {
+            map.set(outpoint, valid);
+          }
+        }
+        setOverlayValid(map);
+      })
+      .catch(() => {})
+      .finally(() => {
+        if (!cancelled) setValidating(false);
+      });
+
+    return () => { cancelled = true; };
   }, [opnsNames]);
 
   if (opnsNames.length === 0) return null;
@@ -109,6 +148,13 @@ export function OpnsSection({
                 {isSelected && "\u2713"}
               </div>
               <span className="text-sm text-foreground truncate">{displayName}</span>
+              {!validating && overlayValid.has(item.outpoint) && (
+                overlayValid.get(item.outpoint) ? (
+                  <span className="shrink-0 text-[10px] font-medium px-1.5 py-0.5 rounded bg-green-500/20 text-green-400">valid</span>
+                ) : (
+                  <span className="shrink-0 text-[10px] font-medium px-1.5 py-0.5 rounded bg-red-500/20 text-red-400">invalid</span>
+                )
+              )}
             </div>
           );
         })}
@@ -141,6 +187,13 @@ export function OpnsSection({
               title={walletConnected ? undefined : "Connect BRC-100 wallet to sweep"}
             >
               Sweep to Wallet
+            </Button>
+            <Button
+              variant="destructive"
+              size="sm"
+              onClick={onBurn}
+            >
+              Burn
             </Button>
           </div>
         </div>
