@@ -4,9 +4,10 @@ pub const context = @import("context.zig");
 
 const ParseContext = context.ParseContext;
 const ParseResult = context.ParseResult;
-const Outpoint = context.Outpoint;
-
-// --- Individual parsers ---
+const OutPoint = context.OutPoint;
+const Opcode = bsvz.script.opcode.Opcode;
+const Script = bsvz.script.Script;
+const standard = bsvz.script.standard;
 
 pub fn parse1Sat(ctx: *ParseContext) !?ParseResult {
     if (ctx.satoshis != 1) return null;
@@ -16,48 +17,32 @@ pub fn parse1Sat(ctx: *ParseContext) !?ParseResult {
 }
 
 pub fn parseP2PKH(ctx: *ParseContext) !?ParseResult {
-    if (ctx.locking_script.len != 25) return null;
-    if (ctx.locking_script[0] != 0x76) return null; // OP_DUP
-    if (ctx.locking_script[1] != 0xa9) return null; // OP_HASH160
-    if (ctx.locking_script[2] != 20) return null; // push 20 bytes
-    if (ctx.locking_script[23] != 0x88) return null; // OP_EQUALVERIFY
-    if (ctx.locking_script[24] != 0xac) return null; // OP_CHECKSIG
+    if (ctx.locking_script.len < 25) return null;
+    const prefix = Script.init(ctx.locking_script[0..25]);
+    if (!standard.isP2PKH(prefix)) return null;
+    const pkh = standard.publicKeyHash(prefix) catch return null;
 
     var result = ParseResult.init("p2pkh");
-    var pkhash: [20]u8 = undefined;
-    @memcpy(&pkhash, ctx.locking_script[3..23]);
-    try result.addOwner(ctx.allocator, pkhash);
+    try result.addOwner(ctx.allocator, pkh.bytes);
     return result;
 }
 
-// Parsers to be implemented in separate files:
-// pub const lock = @import("lock.zig");
-// pub const inscription = @import("inscription.zig");
+pub const lock = @import("lock.zig");
+pub const inscription = @import("inscription.zig");
+pub const cosign = @import("cosign.zig");
 // pub const bsv21 = @import("bsv21.zig");
 // pub const ordlock = @import("ordlock.zig");
-// pub const cosign = @import("cosign.zig");
 // pub const opns = @import("opns.zig");
 // pub const shrug = @import("shrug.zig");
 // pub const bitcom = @import("bitcom.zig");
-// pub const origin = @import("origin.zig");
 
 /// Default parser execution order matching Go's DefaultTags.
 const default_parsers = [_]context.ParserFn{
     parse1Sat,
     parseP2PKH,
-    // lock.parse,
-    // inscription.parse,
-    // bsv21.parse,
-    // ordlock.parse,
-    // cosign.parse,
-    // opns.parse,
-    // bitcom.parse,
-    // bitcom.parseB,
-    // bitcom.parseMAP,
-    // bitcom.parseAIP,
-    // bitcom.parseBAP,
-    // bitcom.parseSigma,
-    // origin.parse,
+    lock.parse,
+    inscription.parse,
+    cosign.parse,
 };
 
 /// Run all parsers on a single output in order.
@@ -65,7 +50,7 @@ pub fn parseOutput(
     allocator: std.mem.Allocator,
     locking_script: []const u8,
     satoshis: u64,
-    outpoint: ?Outpoint,
+    outpoint: ?OutPoint,
 ) !ParseContext {
     var ctx = ParseContext.init(allocator, locking_script, satoshis, outpoint);
     errdefer ctx.deinit();
@@ -108,14 +93,14 @@ test "parse1Sat skips non-1sat" {
 test "parseP2PKH" {
     const allocator = std.testing.allocator;
     var p2pkh: [25]u8 = undefined;
-    p2pkh[0] = 0x76;
-    p2pkh[1] = 0xa9;
+    p2pkh[0] = @intFromEnum(Opcode.OP_DUP);
+    p2pkh[1] = @intFromEnum(Opcode.OP_HASH160);
     p2pkh[2] = 20;
     for (3..23) |i| {
         p2pkh[i] = @intCast(i - 3);
     }
-    p2pkh[23] = 0x88;
-    p2pkh[24] = 0xac;
+    p2pkh[23] = @intFromEnum(Opcode.OP_EQUALVERIFY);
+    p2pkh[24] = @intFromEnum(Opcode.OP_CHECKSIG);
 
     var ctx = ParseContext.init(allocator, &p2pkh, 1000, null);
     defer ctx.deinit();
@@ -128,14 +113,14 @@ test "parseP2PKH" {
 test "parseOutput runs pipeline" {
     const allocator = std.testing.allocator;
     var p2pkh: [25]u8 = undefined;
-    p2pkh[0] = 0x76;
-    p2pkh[1] = 0xa9;
+    p2pkh[0] = @intFromEnum(Opcode.OP_DUP);
+    p2pkh[1] = @intFromEnum(Opcode.OP_HASH160);
     p2pkh[2] = 20;
     for (3..23) |i| {
         p2pkh[i] = @intCast(i - 3);
     }
-    p2pkh[23] = 0x88;
-    p2pkh[24] = 0xac;
+    p2pkh[23] = @intFromEnum(Opcode.OP_EQUALVERIFY);
+    p2pkh[24] = @intFromEnum(Opcode.OP_CHECKSIG);
 
     // 1 sat P2PKH output — should trigger both parsers
     var ctx = try parseOutput(allocator, &p2pkh, 1, null);

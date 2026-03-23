@@ -1,24 +1,12 @@
 const std = @import("std");
 const bsvz = @import("bsvz");
 
-pub const Outpoint = struct {
-    txid: [32]u8,
-    vout: u32,
-
-    pub fn ordinalString(self: *const Outpoint) ![72]u8 {
-        var buf: [72]u8 = undefined;
-        _ = std.fmt.bufPrint(&buf, "{s}_{d}", .{
-            std.fmt.fmtSliceHexLower(&self.txid),
-            self.vout,
-        }) catch return buf;
-        return buf;
-    }
-};
+pub const OutPoint = bsvz.transaction.OutPoint;
 
 /// Accumulated results from all parsers for a single output.
 pub const ParseContext = struct {
     allocator: std.mem.Allocator,
-    outpoint: ?Outpoint,
+    outpoint: ?OutPoint,
     locking_script: []const u8,
     satoshis: u64,
     results: std.StringHashMapUnmanaged(ParseResult),
@@ -27,7 +15,7 @@ pub const ParseContext = struct {
         allocator: std.mem.Allocator,
         locking_script: []const u8,
         satoshis: u64,
-        outpoint: ?Outpoint,
+        outpoint: ?OutPoint,
     ) ParseContext {
         return .{
             .allocator = allocator,
