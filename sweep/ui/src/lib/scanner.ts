@@ -55,7 +55,7 @@ function enrichOrdinal(out: IndexedOutput): EnrichedOrdinal {
   const types = getEvents(events, "type:");
   const contentType = types.find((t) => t.includes("/")) ?? types[0];
   const name = getEvent(events, "name:");
-  const contentUrl = getServices().ordfs.getContentUrl(origin ?? out.outpoint);
+  const contentUrl = getServices().ordfs.getContentUrl(origin ?? out.outpoint, { raw: true });
 
   return { ...out, origin, contentType, name, contentUrl };
 }
