@@ -1,7 +1,6 @@
 import { useState } from "react";
-import { Loader2, Wallet, CheckCircle2, X } from "lucide-react";
+import { Loader2, Wallet, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { connectWallet, disconnectWallet, getIdentityKey, getProvider } from "@/lib/wallet";
 
 interface Props {
@@ -34,43 +33,33 @@ export function ConnectWallet({ onConnected, onDisconnected, connected }: Props)
 
   if (connected) {
     return (
-      <Card>
-        <CardContent className="flex items-center justify-between py-4">
-          <div className="flex items-center gap-3">
-            <CheckCircle2 className="h-5 w-5 text-green-500" />
-            <div>
-              <div className="text-sm font-medium">Wallet Connected</div>
-              <div className="text-xs text-muted-foreground">
-                {getProvider() === "brc100" ? "BRC-100" : "OneSat"} · {getIdentityKey()?.slice(0, 12)}...
-              </div>
-            </div>
-          </div>
-          <Button variant="ghost" size="sm" onClick={handleDisconnect}>
-            <X className="h-4 w-4" />
-          </Button>
-        </CardContent>
-      </Card>
+      <div className="flex items-center justify-between px-3 py-2 rounded-lg border border-green-500/20 bg-green-500/5">
+        <div className="flex items-center gap-2 text-sm">
+          <span className="h-2 w-2 rounded-full bg-green-500" />
+          <span className="text-muted-foreground">
+            {getProvider() === "brc100" ? "BRC-100" : "OneSat"} · {getIdentityKey()?.slice(0, 12)}...
+          </span>
+        </div>
+        <Button variant="ghost" size="sm" className="h-6 w-6 p-0" onClick={handleDisconnect}>
+          <X className="h-3 w-3" />
+        </Button>
+      </div>
     );
   }
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2">
-          <Wallet className="h-5 w-5" />
-          Connect Destination Wallet
-        </CardTitle>
-      </CardHeader>
-      <CardContent className="space-y-3">
-        <p className="text-sm text-muted-foreground">
-          Connect your BRC-100 wallet to receive swept assets.
-        </p>
-        {error && <p className="text-sm text-destructive">{error}</p>}
-        <Button onClick={handleConnect} disabled={connecting} className="w-full">
-          {connecting ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
-          {connecting ? "Connecting..." : "Connect Wallet"}
-        </Button>
-      </CardContent>
-    </Card>
+    <div className="space-y-1">
+      <Button
+        variant="outline"
+        size="sm"
+        className="w-full text-xs gap-2"
+        onClick={handleConnect}
+        disabled={connecting}
+      >
+        {connecting ? <Loader2 className="h-3 w-3 animate-spin" /> : <Wallet className="h-3 w-3" />}
+        {connecting ? "Connecting..." : "Connect BRC-100 Wallet (optional)"}
+      </Button>
+      {error && <p className="text-xs text-destructive text-center">{error}</p>}
+    </div>
   );
 }

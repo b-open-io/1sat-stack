@@ -1,6 +1,6 @@
 import { useCallback, useState } from "react";
 import { Toaster, toast } from "sonner";
-import { ArrowDown, RefreshCw } from "lucide-react";
+import { RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ConnectWallet } from "@/components/connect-wallet";
 import { WifInput } from "@/components/wif-input";
@@ -16,10 +16,7 @@ import { deriveAddress, scanAddresses, type ScannedAssets } from "@/lib/scanner"
 import { executeSweep, type SweepResult } from "@/lib/sweeper";
 import { getWallet } from "@/lib/wallet";
 
-type AppState = "connect" | "input" | "scanning" | "preview" | "sweeping" | "complete";
-
 export default function App() {
-  const [state, setState] = useState<AppState>("connect");
   const [walletConnected, setWalletConnected] = useState(false);
   const [scanning, setScanning] = useState(false);
   const [scanProgress, setScanProgress] = useState("");
@@ -50,7 +47,6 @@ export default function App() {
 
   const handleScan = useCallback(async (payWif: string, ordWif: string) => {
     setScanning(true);
-    setState("scanning");
     setAssets(null);
     setSweepResult(null);
     setSelectedOrdinals(new Set());
@@ -67,7 +63,6 @@ export default function App() {
       );
 
       setAssets(result);
-      setSelectedOrdinals(new Set());
 
       const total = result.funding.length + result.ordinals.length +
         result.bsv21Tokens.reduce((n, t) => n + t.outputs.length, 0) +
@@ -75,72 +70,18 @@ export default function App() {
       if (total === 0) {
         toast.info("No assets found at legacy addresses");
       }
-      setState("preview");
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Scan failed");
-      setState("input");
     } finally {
       setScanning(false);
     }
   }, []);
-
-  const handleSweep = useCallback(async () => {
-    const wallet = getWallet();
-    if (!wallet || !wifs || !assets) return;
-
-    setSweeping(true);
-    setState("sweeping");
-
-    try {
-      const selectedOrdinalOutputs = assets.ordinals.filter((o) =>
-        selectedOrdinals.has(o.outpoint),
-      );
-      const bsv21Outputs = assets.bsv21Tokens.flatMap((t) => t.outputs);
-
-      // Select funding UTXOs: if amount specified, walk linearly until we have enough
-      let selectedFunding = assets.funding;
-      if (sweepAmount !== null) {
-        selectedFunding = [];
-        let accumulated = 0;
-        for (const utxo of assets.funding) {
-          selectedFunding.push(utxo);
-          accumulated += utxo.satoshis ?? 0;
-          if (accumulated >= sweepAmount) break;
-        }
-      }
-
-      const result = await executeSweep({
-        wallet,
-        wif: wifs.pay,
-        funding: selectedFunding,
-        ordinals: selectedOrdinalOutputs,
-        bsv21Tokens: bsv21Outputs,
-        amount: sweepAmount ?? undefined,
-        onProgress: setSweepProgress,
-      });
-
-      setSweepResult(result);
-      setState("complete");
-
-      if (result.errors.length === 0) {
-        toast.success("Sweep complete!");
-      } else {
-        toast.warning("Sweep completed with some errors");
-      }
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Sweep failed");
-      setState("preview");
-    } finally {
-      setSweeping(false);
-    }
-  }, [wifs, assets, selectedOrdinals, sweepAmount]);
 
   const handleSweepBsv = useCallback(async () => {
     const wallet = getWallet();
     if (!wallet || !wifs || !assets) return;
 
     setSweeping(true);
-    setState("sweeping");
 
     try {
       let selectedFunding = assets.funding;
@@ -165,7 +106,6 @@ export default function App() {
       });
 
       setSweepResult(result);
-      setState("complete");
 
       if (result.errors.length === 0) {
         toast.success("BSV sweep complete!");
@@ -174,7 +114,6 @@ export default function App() {
       }
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "BSV sweep failed");
-      setState("preview");
     } finally {
       setSweeping(false);
     }
@@ -188,7 +127,6 @@ export default function App() {
     if (selected.length === 0) return;
 
     setSweeping(true);
-    setState("sweeping");
 
     try {
       const result = await executeSweep({
@@ -201,7 +139,6 @@ export default function App() {
       });
 
       setSweepResult(result);
-      setState("complete");
 
       if (result.errors.length === 0) {
         toast.success(`Swept ${selected.length} ordinal${selected.length !== 1 ? "s" : ""}!`);
@@ -210,20 +147,58 @@ export default function App() {
       }
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Ordinal sweep failed");
-      setState("preview");
     } finally {
       setSweeping(false);
     }
   }, [wifs, assets, selectedOrdinals]);
 
-  const handleReset = useCallback(() => {
-    setAssets(null);
-    setSweepResult(null);
-    setWifs(null);
-    setSelectedOrdinals(new Set());
-    setSweepAmount(null);
-    setState(walletConnected ? "input" : "connect");
-  }, [walletConnected]);
+  // Monolithic sweep — kept but disabled for now
+  const handleSweep = useCallback(async () => {
+    const wallet = getWallet();
+    if (!wallet || !wifs || !assets) return;
+
+    setSweeping(true);
+
+    try {
+      const selectedOrdinalOutputs = assets.ordinals.filter((o) =>
+        selectedOrdinals.has(o.outpoint),
+      );
+      const bsv21Outputs = assets.bsv21Tokens.flatMap((t) => t.outputs);
+
+      let selectedFunding = assets.funding;
+      if (sweepAmount !== null) {
+        selectedFunding = [];
+        let accumulated = 0;
+        for (const utxo of assets.funding) {
+          selectedFunding.push(utxo);
+          accumulated += utxo.satoshis ?? 0;
+          if (accumulated >= sweepAmount) break;
+        }
+      }
+
+      const result = await executeSweep({
+        wallet,
+        wif: wifs.pay,
+        funding: selectedFunding,
+        ordinals: selectedOrdinalOutputs,
+        bsv21Tokens: bsv21Outputs,
+        amount: sweepAmount ?? undefined,
+        onProgress: setSweepProgress,
+      });
+
+      setSweepResult(result);
+
+      if (result.errors.length === 0) {
+        toast.success("Sweep complete!");
+      } else {
+        toast.warning("Sweep completed with some errors");
+      }
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Sweep failed");
+    } finally {
+      setSweeping(false);
+    }
+  }, [wifs, assets, selectedOrdinals, sweepAmount]);
 
   const sweepableCount = assets
     ? assets.funding.length + selectedOrdinals.size +
@@ -234,30 +209,25 @@ export default function App() {
     <div className="min-h-screen bg-background text-foreground">
       <Toaster position="top-right" />
       <div className="mx-auto max-w-lg p-4 space-y-4 py-12">
-        <div className="text-center space-y-2 mb-8">
+        <div className="text-center space-y-2 mb-4">
           <h1 className="text-3xl font-bold tracking-tight">1Sat Sweep</h1>
           <p className="text-sm text-muted-foreground">
-            Sweep legacy assets into your BRC-100 wallet
+            Transfer or sweep legacy assets
           </p>
         </div>
 
         <ConnectWallet
-          onConnected={() => { setWalletConnected(true); setState("input"); }}
-          onDisconnected={() => { setWalletConnected(false); setState("connect"); }}
+          onConnected={() => setWalletConnected(true)}
+          onDisconnected={() => setWalletConnected(false)}
           connected={walletConnected}
         />
 
-        {walletConnected && state !== "sweeping" && state !== "complete" && (
-          <>
-            <div className="flex justify-center">
-              <ArrowDown className="h-4 w-4 text-muted-foreground" />
-            </div>
-            <WifInput
-              onScan={handleScan}
-              scanning={scanning}
-              disabled={!walletConnected}
-            />
-          </>
+        {!sweeping && (
+          <WifInput
+            onScan={handleScan}
+            scanning={scanning}
+            disabled={false}
+          />
         )}
 
         {scanning && (
@@ -274,6 +244,7 @@ export default function App() {
               sweepAmount={sweepAmount}
               onSweepAmountChange={setSweepAmount}
               onSweep={handleSweepBsv}
+              walletConnected={walletConnected}
             />
             <OrdinalsSection
               ordinals={assets.ordinals}
@@ -282,13 +253,14 @@ export default function App() {
               onSelectAll={handleSelectAll}
               onDeselectAll={handleDeselectAll}
               onSweep={handleSweepOrdinals}
+              walletConnected={walletConnected}
             />
             <Bsv21Section tokens={assets.bsv21Tokens} />
             <Bsv20Section tokens={assets.bsv20Tokens} />
             <LockedSection locked={assets.locked} />
 
-            {sweepableCount > 0 && state === "preview" && (
-              <Button onClick={handleSweep} className="w-full h-12 text-base" size="lg" disabled title="Use per-section sweep buttons above">
+            {sweepableCount > 0 && (
+              <Button onClick={handleSweep} className="w-full h-12 text-base" size="lg" disabled title="Use per-section buttons above">
                 Sweep All ({sweepableCount})
               </Button>
             )}
@@ -301,10 +273,10 @@ export default function App() {
           result={sweepResult}
         />
 
-        {state === "complete" && (
-          <Button variant="outline" onClick={handleReset} className="w-full gap-2">
+        {sweepResult && !sweeping && (
+          <Button variant="outline" onClick={() => setSweepResult(null)} className="w-full gap-2">
             <RefreshCw className="h-4 w-4" />
-            Sweep Another Wallet
+            Dismiss
           </Button>
         )}
       </div>

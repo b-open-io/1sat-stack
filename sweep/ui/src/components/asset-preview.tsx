@@ -113,16 +113,21 @@ export function FundingSection({
   sweepAmount,
   onSweepAmountChange,
   onSweep,
+  walletConnected,
 }: {
   funding: IndexedOutput[];
   totalBsv: number;
   sweepAmount: number | null;
   onSweepAmountChange: (amount: number | null) => void;
   onSweep: () => void;
+  walletConnected: boolean;
 }) {
+  const [address, setAddress] = useState("");
+
   if (funding.length === 0) return null;
 
   const isMax = sweepAmount === null;
+  const displayAmount = isMax ? formatSats(totalBsv) : formatSats(sweepAmount!);
 
   return (
     <div className="border border-green-500/20 bg-green-500/5 p-4 rounded-lg">
@@ -165,13 +170,35 @@ export function FundingSection({
           Max
         </Button>
       </div>
-      <Button
-        onClick={onSweep}
-        className="w-full mt-3"
-        size="sm"
-      >
-        Sweep {isMax ? formatSats(totalBsv) : formatSats(sweepAmount!)} sats
-      </Button>
+
+      <div className="mt-3 space-y-2">
+        <Input
+          type="text"
+          placeholder="Destination address..."
+          value={address}
+          onChange={(e) => setAddress(e.target.value)}
+          className="font-mono text-xs"
+        />
+        <div className="flex gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            className="flex-1"
+            disabled={!address.trim()}
+          >
+            Send {displayAmount} sats
+          </Button>
+          <Button
+            size="sm"
+            className="flex-1"
+            onClick={onSweep}
+            disabled={!walletConnected}
+            title={walletConnected ? undefined : "Connect BRC-100 wallet to sweep"}
+          >
+            Sweep to Wallet
+          </Button>
+        </div>
+      </div>
     </div>
   );
 }
@@ -187,6 +214,7 @@ export function OrdinalsSection({
   onSelectAll,
   onDeselectAll,
   onSweep,
+  walletConnected,
 }: {
   ordinals: EnrichedOrdinal[];
   selectedOrdinals: Set<string>;
@@ -194,8 +222,10 @@ export function OrdinalsSection({
   onSelectAll: () => void;
   onDeselectAll: () => void;
   onSweep: () => void;
+  walletConnected: boolean;
 }) {
   const [page, setPage] = useState(0);
+  const [address, setAddress] = useState("");
 
   if (ordinals.length === 0) return null;
 
@@ -274,13 +304,34 @@ export function OrdinalsSection({
       )}
 
       {selectedOrdinals.size > 0 && (
-        <Button
-          onClick={onSweep}
-          className="w-full mt-3"
-          size="sm"
-        >
-          Sweep {selectedOrdinals.size} Ordinal{selectedOrdinals.size !== 1 ? "s" : ""}
-        </Button>
+        <div className="mt-3 space-y-2">
+          <Input
+            type="text"
+            placeholder="Destination address..."
+            value={address}
+            onChange={(e) => setAddress(e.target.value)}
+            className="font-mono text-xs"
+          />
+          <div className="flex gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              className="flex-1"
+              disabled={!address.trim()}
+            >
+              Send {selectedOrdinals.size} Ordinal{selectedOrdinals.size !== 1 ? "s" : ""}
+            </Button>
+            <Button
+              size="sm"
+              className="flex-1"
+              onClick={onSweep}
+              disabled={!walletConnected}
+              title={walletConnected ? undefined : "Connect BRC-100 wallet to sweep"}
+            >
+              Sweep to Wallet
+            </Button>
+          </div>
+        </div>
       )}
     </div>
   );
