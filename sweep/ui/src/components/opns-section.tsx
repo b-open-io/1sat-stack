@@ -189,9 +189,13 @@ export function OpnsSection({
               Sweep to Wallet
             </Button>
             <Button
-              variant="destructive"
               size="sm"
-              onClick={onBurn}
+              className="bg-red-600 hover:bg-red-700 text-white"
+              onClick={() => {
+                if (window.confirm(`Permanently burn ${selectedOpns.size} domain${selectedOpns.size !== 1 ? "s" : ""}? This cannot be undone.`)) {
+                  onBurn();
+                }
+              }}
             >
               Burn
             </Button>
