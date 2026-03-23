@@ -3,7 +3,7 @@ import { Toaster, toast } from "sonner";
 import { RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ConnectWallet } from "@/components/connect-wallet";
-import { WifInput } from "@/components/wif-input";
+import { WifInput, type LegacyKeys } from "@/components/wif-input";
 import {
   FundingSection,
   OrdinalsSection,
@@ -21,7 +21,7 @@ export default function App() {
   const [scanning, setScanning] = useState(false);
   const [scanProgress, setScanProgress] = useState("");
   const [assets, setAssets] = useState<ScannedAssets | null>(null);
-  const [wifs, setWifs] = useState<{ pay: string; ord: string } | null>(null);
+  const [legacyKeys, setLegacyKeys] = useState<LegacyKeys | null>(null);
   const [sweeping, setSweeping] = useState(false);
   const [sweepProgress, setSweepProgress] = useState("");
   const [sweepResult, setSweepResult] = useState<SweepResult | null>(null);
@@ -45,20 +45,24 @@ export default function App() {
     setSelectedOrdinals(new Set());
   }, []);
 
-  const handleScan = useCallback(async (payWif: string, ordWif: string) => {
+  const handleScan = useCallback(async (keys: LegacyKeys) => {
     setScanning(true);
     setAssets(null);
     setSweepResult(null);
     setSelectedOrdinals(new Set());
     setSweepAmount(null);
-    setWifs({ pay: payWif, ord: ordWif });
+    setLegacyKeys(keys);
 
     try {
-      const payAddr = deriveAddress(payWif);
-      const ordAddr = deriveAddress(ordWif);
+      // Derive addresses from all available keys, deduplicate
+      const addresses = [...new Set([
+        deriveAddress(keys.payPk),
+        deriveAddress(keys.ordPk),
+        ...(keys.identityPk ? [deriveAddress(keys.identityPk)] : []),
+      ])];
 
       const result = await scanAddresses(
-        [payAddr, ordAddr],
+        addresses,
         (p) => setScanProgress(p.detail ?? p.phase),
       );
 
@@ -79,7 +83,7 @@ export default function App() {
 
   const handleSweepBsv = useCallback(async () => {
     const wallet = getWallet();
-    if (!wallet || !wifs || !assets) return;
+    if (!wallet || !legacyKeys || !assets) return;
 
     setSweeping(true);
 
@@ -97,7 +101,7 @@ export default function App() {
 
       const result = await executeSweep({
         wallet,
-        wif: wifs.pay,
+        wif: legacyKeys.payPk,
         funding: selectedFunding,
         ordinals: [],
         bsv21Tokens: [],
@@ -117,11 +121,11 @@ export default function App() {
     } finally {
       setSweeping(false);
     }
-  }, [wifs, assets, sweepAmount]);
+  }, [legacyKeys, assets, sweepAmount]);
 
   const handleSweepOrdinals = useCallback(async () => {
     const wallet = getWallet();
-    if (!wallet || !wifs || !assets) return;
+    if (!wallet || !legacyKeys || !assets) return;
 
     const selected = assets.ordinals.filter((o) => selectedOrdinals.has(o.outpoint));
     if (selected.length === 0) return;
@@ -131,7 +135,7 @@ export default function App() {
     try {
       const result = await executeSweep({
         wallet,
-        wif: wifs.pay,
+        wif: legacyKeys.payPk,
         funding: [],
         ordinals: selected,
         bsv21Tokens: [],
@@ -150,12 +154,12 @@ export default function App() {
     } finally {
       setSweeping(false);
     }
-  }, [wifs, assets, selectedOrdinals]);
+  }, [legacyKeys, assets, selectedOrdinals]);
 
   // Monolithic sweep — kept but disabled for now
   const handleSweep = useCallback(async () => {
     const wallet = getWallet();
-    if (!wallet || !wifs || !assets) return;
+    if (!wallet || !legacyKeys || !assets) return;
 
     setSweeping(true);
 
@@ -178,7 +182,7 @@ export default function App() {
 
       const result = await executeSweep({
         wallet,
-        wif: wifs.pay,
+        wif: legacyKeys.payPk,
         funding: selectedFunding,
         ordinals: selectedOrdinalOutputs,
         bsv21Tokens: bsv21Outputs,
@@ -198,7 +202,7 @@ export default function App() {
     } finally {
       setSweeping(false);
     }
-  }, [wifs, assets, selectedOrdinals, sweepAmount]);
+  }, [legacyKeys, assets, selectedOrdinals, sweepAmount]);
 
   const sweepableCount = assets
     ? assets.funding.length + selectedOrdinals.size +
