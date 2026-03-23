@@ -1,6 +1,27 @@
-import { CheckCircle2, Loader2, AlertTriangle } from "lucide-react";
+import { CheckCircle2, Loader2, AlertTriangle, ExternalLink } from "lucide-react";
 import type { SweepResult } from "@/lib/sweeper";
-import { truncate } from "@/lib/utils";
+
+const EXPLORER_BASE = "https://bananablocks.com/tx/";
+
+function TxLink({ label, txid }: { label: string; txid: string }) {
+  return (
+    <div className="border-b border-border/30 pb-2 space-y-1">
+      <div className="flex items-center justify-between text-sm">
+        <span className="text-muted-foreground">{label}</span>
+        <a
+          href={`${EXPLORER_BASE}${txid}`}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="text-blue-400 hover:text-blue-300 flex items-center gap-1"
+        >
+          <ExternalLink className="h-3 w-3" />
+          <span className="text-xs">View</span>
+        </a>
+      </div>
+      <code className="text-xs font-mono text-muted-foreground break-all">{txid}</code>
+    </div>
+  );
+}
 
 interface Props {
   sweeping: boolean;
@@ -33,27 +54,16 @@ export function SweepProgress({ sweeping, progress, result }: Props) {
           <CheckCircle2 className="h-5 w-5 text-green-500" />
         )}
         <span className="font-semibold">
-          {hasErrors && !hasTxids ? "Sweep Failed" : hasErrors ? "Sweep Completed with Errors" : "Sweep Complete"}
+          {hasErrors && !hasTxids ? "Failed" : hasErrors ? "Completed with Errors" : "Complete"}
         </span>
       </div>
 
-      {result.bsvTxid && (
-        <div className="flex justify-between text-sm border-b border-border/30 pb-2">
-          <span className="text-muted-foreground">BSV Sweep</span>
-          <code className="text-xs font-mono">{truncate(result.bsvTxid, 12)}</code>
-        </div>
-      )}
+      {result.bsvTxid && <TxLink label="BSV" txid={result.bsvTxid} />}
       {result.ordinalTxids.map((txid) => (
-        <div key={txid} className="flex justify-between text-sm border-b border-border/30 pb-2">
-          <span className="text-muted-foreground">Ordinal Sweep</span>
-          <code className="text-xs font-mono">{truncate(txid, 12)}</code>
-        </div>
+        <TxLink key={txid} label="Ordinals" txid={txid} />
       ))}
       {result.bsv21Txids.map((txid) => (
-        <div key={txid} className="flex justify-between text-sm border-b border-border/30 pb-2">
-          <span className="text-muted-foreground">Token Sweep</span>
-          <code className="text-xs font-mono">{truncate(txid, 12)}</code>
-        </div>
+        <TxLink key={txid} label="Tokens" txid={txid} />
       ))}
 
       {result.errors.map((err) => (
