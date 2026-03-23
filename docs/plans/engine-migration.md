@@ -41,7 +41,7 @@ See `docs/research/channel-spec.md` for full details on channels, serialization,
 | Map Store to Redis commands | ✅ Done | OPL-1507 | All methods map cleanly to Redis commands |
 | Redcon RESP server | ✅ Done | OPL-1506 | `pkg/store/redcon.go` — full command handler coverage |
 
-### Phase 1: Channel Abstraction & Module Contract (Next)
+### Phase 1: Channel Abstraction & Module Contract
 
 Design spec: `docs/research/channel-spec.md`
 
@@ -50,14 +50,34 @@ RESP channels multiplexed over WASI stdin/stdout with lightweight framing (`[cha
 | Task | Status | Linear | Notes |
 |------|--------|--------|-------|
 | Channel spec | **Draft** | OPL-1526 | `docs/research/channel-spec.md` — framing, mux, adapters, WASI compat |
-| Define `.proto` types | **Not Started** | | ParsedBeef, AdmittanceInstructions, LookupQuestion/Answer, OutputData |
+| Build mux + Go adapter | ✅ Done | OPL-1526 | `pkg/channel/` — frame.go, mux.go, conn.go. Tests pass against redcon. |
+| Define `.proto` types | **Not Started** | OPL-1552 | ParsedBeef, AdmittanceInstructions, LookupQuestion/Answer, OutputData |
 | Define module contract (exported functions) | **Not Started** | OPL-1510 | `admit(ParsedBeef) → AdmittanceInstructions`, `lookup(LookupQuestion) → LookupAnswer` |
-| Build mux + Go adapter | **Not Started** | OPL-1526 | Framing protocol, `net.Conn` adapter for go-redis |
-| Build Go shim (WasmTopicManager, WasmLookupService) | **Not Started** | | Implements Go interfaces, calls WASM modules via protobuf |
-| Migrate modules to channels | **Not Started** | OPL-1527 | Modules receive channels, create own clients internally |
+| Build Wazero host scaffold | **Not Started** | OPL-1509 | Load .wasm, call exports, pass protobuf bytes |
+| Build Go shim (WasmTopicManager, WasmLookupService) | **Not Started** | OPL-1553 | Implements Go interfaces, calls WASM modules via protobuf |
+| Wire parse WASM module into Go ingestion flow | **Not Started** | | Replace `ParseTxn()` with WASM module call |
 | Remove `Store` interface | **Not Started** | OPL-1508 | After all modules migrated to channels |
 
-**IMPORTANT**: Previous work (commits `93ec622`..`271d5e3`) swapped `store.Store` → `*redis.Client` across 10 packages. This was the **wrong approach** — it just replaced one Go-specific dependency with another. Modules must receive channels (byte streams), not injected clients. That work needs to be redone once the channel abstraction exists.
+**Note**: Previous work (commits `93ec622`..`271d5e3`) swapped `store.Store` → `*redis.Client` across 10 packages. This was the wrong approach — modules must receive channels (byte streams), not injected clients. Channel mux is now built; modules need to be rewired to use it once WASM host is in place.
+
+### Phase 1b: Zig WASM Modules
+
+WASM modules written in Zig, compiled to .wasm, loaded by Wazero host in Go. Parsers are libraries statically compiled into each module that needs them.
+
+| Task | Status | Linear | Notes |
+|------|--------|--------|-------|
+| bsvz ScriptIterator | ✅ Done | | Extracted from parseAlloc, committed to bsvz |
+| Parse module scaffolding | ✅ Done | | `zig/src/parse/` — context, pipeline, 1sat/P2PKH built-in |
+| Cosign parser | ✅ Done | | 7-chunk sliding window, bsvz ScriptIterator |
+| Lock parser | ✅ Done | | Full LockPrefix + LockSuffix from go-templates |
+| Inscription parser | ✅ Done | | OP_FALSE OP_IF "ord" envelope, field-value pairs |
+| Bitcom family (base, B, MAP, AIP, BAP, SIGMA) | ✅ Done | | OP_RETURN pipe-splitting, per-protocol sub-parsers |
+| OPNS parser | ✅ Done | | Full contract prefix via @embedFile, genesis validation |
+| OrdLock parser | ✅ Done | | Full OrdLockPrefix + OrdLockSuffix |
+| Shrug parser | ✅ Done | | Tag + outpoint + OP_2DROP + amount + OP_DROP |
+| BSV21 parser | **Not Started** | | Needs JSON parsing (inscription content is JSON) |
+| `parse_beef` transaction-level function | **Not Started** | | Receives ParsedBeef, iterates outputs+spends, returns IndexedOutputs |
+| WASM build target | **Not Started** | OPL-1511 | Compile parse module to .wasm |
 
 ### Phase 2: Engine Storage Redesign
 
