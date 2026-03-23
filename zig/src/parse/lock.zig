@@ -11,7 +11,7 @@ pub const LockData = struct {
     until: u32,
 };
 
-fn hexDecode(comptime hex: []const u8) [hex.len / 2]u8 {
+pub fn hexDecode(comptime hex: []const u8) [hex.len / 2]u8 {
     @setEvalBranchQuota(hex.len * 10);
     var buf: [hex.len / 2]u8 = undefined;
     for (0..hex.len / 2) |i| {
@@ -20,7 +20,7 @@ fn hexDecode(comptime hex: []const u8) [hex.len / 2]u8 {
     return buf;
 }
 
-fn hexVal(c: u8) u8 {
+pub fn hexVal(c: u8) u8 {
     return switch (c) {
         '0'...'9' => c - '0',
         'a'...'f' => c - 'a' + 10,

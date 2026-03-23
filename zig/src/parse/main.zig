@@ -31,10 +31,10 @@ pub const lock = @import("lock.zig");
 pub const inscription = @import("inscription.zig");
 pub const cosign = @import("cosign.zig");
 pub const bitcom = @import("bitcom.zig");
-// pub const bsv21 = @import("bsv21.zig");
-// pub const ordlock = @import("ordlock.zig");
-// pub const opns = @import("opns.zig");
-// pub const shrug = @import("shrug.zig");
+pub const opns = @import("opns.zig");
+pub const ordlock = @import("ordlock.zig");
+pub const shrug = @import("shrug.zig");
+// pub const bsv21 = @import("bsv21.zig"); // depends on inscription + JSON parsing
 
 /// Default parser execution order matching Go's DefaultTags.
 const default_parsers = [_]context.ParserFn{
@@ -42,7 +42,11 @@ const default_parsers = [_]context.ParserFn{
     parseP2PKH,
     lock.parse,
     inscription.parse,
+    // bsv21 — requires JSON parsing, deferred
+    ordlock.parse,
     cosign.parse,
+    opns.parse,
+    shrug.parse,
     bitcom.parseBitcom,
     bitcom.parseB,
     bitcom.parseMAP,
