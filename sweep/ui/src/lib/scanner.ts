@@ -22,6 +22,7 @@ export interface TokenBalance {
 export interface ScannedAssets {
   funding: IndexedOutput[];
   ordinals: EnrichedOrdinal[];
+  opnsNames: EnrichedOrdinal[];
   bsv21Tokens: TokenBalance[];
   bsv20Tokens: IndexedOutput[];
   locked: IndexedOutput[];
@@ -125,6 +126,7 @@ async function groupBsv21Tokens(outputs: IndexedOutput[]): Promise<TokenBalance[
 async function categorizeOutputs(outputs: IndexedOutput[]): Promise<ScannedAssets> {
   const funding: IndexedOutput[] = [];
   const rawOrdinals: IndexedOutput[] = [];
+  const opnsRaw: IndexedOutput[] = [];
   const bsv21Raw: IndexedOutput[] = [];
   const bsv20Tokens: IndexedOutput[] = [];
   const locked: IndexedOutput[] = [];
@@ -149,7 +151,11 @@ async function categorizeOutputs(outputs: IndexedOutput[]): Promise<ScannedAsset
     }
 
     if (sats === 1) {
-      rawOrdinals.push(out);
+      if (events.some((e) => e === "type:application/op-ns")) {
+        opnsRaw.push(out);
+      } else {
+        rawOrdinals.push(out);
+      }
       continue;
     }
 
@@ -161,6 +167,7 @@ async function categorizeOutputs(outputs: IndexedOutput[]): Promise<ScannedAsset
   return {
     funding,
     ordinals: rawOrdinals.map(enrichOrdinal),
+    opnsNames: opnsRaw.map(enrichOrdinal),
     bsv21Tokens: await groupBsv21Tokens(bsv21Raw),
     bsv20Tokens,
     locked,
@@ -217,6 +224,7 @@ export async function scanAddresses(
   return {
     funding: allResults.flatMap((r) => r.funding),
     ordinals: allResults.flatMap((r) => r.ordinals),
+    opnsNames: allResults.flatMap((r) => r.opnsNames),
     bsv21Tokens: allResults.flatMap((r) => r.bsv21Tokens),
     bsv20Tokens: allResults.flatMap((r) => r.bsv20Tokens),
     locked: allResults.flatMap((r) => r.locked),

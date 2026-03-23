@@ -8,6 +8,7 @@ import (
 
 	"github.com/b-open-io/1sat-stack/pkg/ordfs"
 	"github.com/b-open-io/1sat-stack/pkg/types"
+	"github.com/bitcoin-sv/go-templates/template/bitcom"
 	"github.com/bitcoin-sv/go-templates/template/p2pkh"
 	"github.com/bsv-blockchain/go-sdk/script"
 )
@@ -38,8 +39,12 @@ func ParseOrigin(ctx *ParseContext) (*ParseResult, error) {
 	}
 
 	if ctx.IsOrigin {
-		// This satoshi was born here — the origin is this outpoint
 		events = append(events, "origin:"+ctx.Outpoint.String())
+		if m := GetData[bitcom.Map](ctx, TagMAP); m != nil {
+			if name, ok := m.Data["name"]; ok && name != "" && len(name) <= maxEventValueLen {
+				events = append(events, "name:"+name)
+			}
+		}
 	} else {
 		// This is a transfer — resolve origin via ORDFS unless it's a fungible token
 		isFungible := false

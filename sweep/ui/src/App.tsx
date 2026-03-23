@@ -1,7 +1,9 @@
-import { useCallback, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { Toaster, toast } from "sonner";
 import { RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { ConnectWallet } from "@/components/connect-wallet";
 import { WifInput, type LegacyKeys } from "@/components/wif-input";
 import {
@@ -11,11 +13,14 @@ import {
   Bsv20Section,
   LockedSection,
 } from "@/components/asset-preview";
+import { OpnsSection } from "@/components/opns-section";
 import { SweepProgress } from "@/components/sweep-progress";
 import { deriveAddress, scanAddresses, type ScannedAssets } from "@/lib/scanner";
 import { executeSweep, type SweepResult } from "@/lib/sweeper";
 import { legacySendBsv, legacySendOrdinals } from "@/lib/legacy-send";
 import { getWallet } from "@/lib/wallet";
+
+type TabId = "ordinals" | "opns" | "bsv21" | "bsv20" | "locks";
 
 export default function App() {
   const [walletConnected, setWalletConnected] = useState(false);
@@ -27,8 +32,23 @@ export default function App() {
   const [sweepProgress, setSweepProgress] = useState("");
   const [sweepResult, setSweepResult] = useState<SweepResult | null>(null);
   const [selectedOrdinals, setSelectedOrdinals] = useState<Set<string>>(new Set());
+  const [selectedOpns, setSelectedOpns] = useState<Set<string>>(new Set());
   const [sweepAmount, setSweepAmount] = useState<number | null>(null);
+  const [activeTab, setActiveTab] = useState<TabId>("ordinals");
 
+  // --- Tab visibility ---
+  const tabs = useMemo(() => {
+    if (!assets) return [];
+    const t: { id: TabId; label: string; count: number }[] = [];
+    if (assets.ordinals.length > 0) t.push({ id: "ordinals", label: "Ordinals", count: assets.ordinals.length });
+    if (assets.opnsNames.length > 0) t.push({ id: "opns", label: "OpNS", count: assets.opnsNames.length });
+    if (assets.bsv21Tokens.length > 0) t.push({ id: "bsv21", label: "BSV-21", count: assets.bsv21Tokens.length });
+    if (assets.bsv20Tokens.length > 0) t.push({ id: "bsv20", label: "BSV-20", count: assets.bsv20Tokens.length });
+    if (assets.locked.length > 0) t.push({ id: "locks", label: "Locks", count: assets.locked.length });
+    return t;
+  }, [assets]);
+
+  // --- Ordinals selection ---
   const handleToggleOrdinal = useCallback((outpoint: string) => {
     setSelectedOrdinals((prev) => {
       const next = new Set(prev);
@@ -38,24 +58,43 @@ export default function App() {
     });
   }, []);
 
-  const handleSelectAll = useCallback(() => {
+  const handleSelectAllOrdinals = useCallback(() => {
     if (assets) setSelectedOrdinals(new Set(assets.ordinals.map((o) => o.outpoint)));
   }, [assets]);
 
-  const handleDeselectAll = useCallback(() => {
+  const handleDeselectAllOrdinals = useCallback(() => {
     setSelectedOrdinals(new Set());
   }, []);
 
+  // --- OPNS selection ---
+  const handleToggleOpns = useCallback((outpoint: string) => {
+    setSelectedOpns((prev) => {
+      const next = new Set(prev);
+      if (next.has(outpoint)) next.delete(outpoint);
+      else next.add(outpoint);
+      return next;
+    });
+  }, []);
+
+  const handleSelectAllOpns = useCallback(() => {
+    if (assets) setSelectedOpns(new Set(assets.opnsNames.map((o) => o.outpoint)));
+  }, [assets]);
+
+  const handleDeselectAllOpns = useCallback(() => {
+    setSelectedOpns(new Set());
+  }, []);
+
+  // --- Scan ---
   const handleScan = useCallback(async (keys: LegacyKeys) => {
     setScanning(true);
     setAssets(null);
     setSweepResult(null);
     setSelectedOrdinals(new Set());
+    setSelectedOpns(new Set());
     setSweepAmount(null);
     setLegacyKeys(keys);
 
     try {
-      // Derive addresses from all available keys, deduplicate
       const addresses = [...new Set([
         deriveAddress(keys.payPk),
         deriveAddress(keys.ordPk),
@@ -70,11 +109,19 @@ export default function App() {
       setAssets(result);
 
       const total = result.funding.length + result.ordinals.length +
+        result.opnsNames.length +
         result.bsv21Tokens.reduce((n, t) => n + t.outputs.length, 0) +
         result.bsv20Tokens.length + result.locked.length;
       if (total === 0) {
         toast.info("No assets found at legacy addresses");
       }
+
+      // Auto-select first populated tab
+      if (result.ordinals.length > 0) setActiveTab("ordinals");
+      else if (result.opnsNames.length > 0) setActiveTab("opns");
+      else if (result.bsv21Tokens.length > 0) setActiveTab("bsv21");
+      else if (result.bsv20Tokens.length > 0) setActiveTab("bsv20");
+      else if (result.locked.length > 0) setActiveTab("locks");
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Scan failed");
     } finally {
@@ -82,6 +129,7 @@ export default function App() {
     }
   }, []);
 
+  // --- BSV sweep/send ---
   const handleSweepBsv = useCallback(async () => {
     const wallet = getWallet();
     if (!wallet || !legacyKeys || !assets) return;
@@ -124,39 +172,6 @@ export default function App() {
     }
   }, [legacyKeys, assets, sweepAmount]);
 
-  const handleSweepOrdinals = useCallback(async () => {
-    const wallet = getWallet();
-    if (!wallet || !legacyKeys || !assets) return;
-
-    const selected = assets.ordinals.filter((o) => selectedOrdinals.has(o.outpoint));
-    if (selected.length === 0) return;
-
-    setSweeping(true);
-
-    try {
-      const result = await executeSweep({
-        wallet,
-        wif: legacyKeys.payPk,
-        funding: [],
-        ordinals: selected,
-        bsv21Tokens: [],
-        onProgress: setSweepProgress,
-      });
-
-      setSweepResult(result);
-
-      if (result.errors.length === 0) {
-        toast.success(`Swept ${selected.length} ordinal${selected.length !== 1 ? "s" : ""}!`);
-      } else {
-        toast.warning("Ordinal sweep completed with errors");
-      }
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Ordinal sweep failed");
-    } finally {
-      setSweeping(false);
-    }
-  }, [legacyKeys, assets, selectedOrdinals]);
-
   const handleSendBsv = useCallback(async (destination: string) => {
     if (!legacyKeys || !assets) return;
 
@@ -196,6 +211,40 @@ export default function App() {
     }
   }, [legacyKeys, assets, sweepAmount]);
 
+  // --- Ordinals sweep/send ---
+  const handleSweepOrdinals = useCallback(async () => {
+    const wallet = getWallet();
+    if (!wallet || !legacyKeys || !assets) return;
+
+    const selected = assets.ordinals.filter((o) => selectedOrdinals.has(o.outpoint));
+    if (selected.length === 0) return;
+
+    setSweeping(true);
+
+    try {
+      const result = await executeSweep({
+        wallet,
+        wif: legacyKeys.payPk,
+        funding: [],
+        ordinals: selected,
+        bsv21Tokens: [],
+        onProgress: setSweepProgress,
+      });
+
+      setSweepResult(result);
+
+      if (result.errors.length === 0) {
+        toast.success(`Swept ${selected.length} ordinal${selected.length !== 1 ? "s" : ""}!`);
+      } else {
+        toast.warning("Ordinal sweep completed with errors");
+      }
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Ordinal sweep failed");
+    } finally {
+      setSweeping(false);
+    }
+  }, [legacyKeys, assets, selectedOrdinals]);
+
   const handleSendOrdinals = useCallback(async (destination: string) => {
     if (!legacyKeys || !assets) return;
 
@@ -226,58 +275,69 @@ export default function App() {
     }
   }, [legacyKeys, assets, selectedOrdinals]);
 
-  // Monolithic sweep — kept but disabled for now
-  const handleSweep = useCallback(async () => {
+  // --- OPNS sweep/send (same mechanism as ordinals — they're 1-sat outputs) ---
+  const handleSweepOpns = useCallback(async () => {
     const wallet = getWallet();
     if (!wallet || !legacyKeys || !assets) return;
+
+    const selected = assets.opnsNames.filter((o) => selectedOpns.has(o.outpoint));
+    if (selected.length === 0) return;
 
     setSweeping(true);
 
     try {
-      const selectedOrdinalOutputs = assets.ordinals.filter((o) =>
-        selectedOrdinals.has(o.outpoint),
-      );
-      const bsv21Outputs = assets.bsv21Tokens.flatMap((t) => t.outputs);
-
-      let selectedFunding = assets.funding;
-      if (sweepAmount !== null) {
-        selectedFunding = [];
-        let accumulated = 0;
-        for (const utxo of assets.funding) {
-          selectedFunding.push(utxo);
-          accumulated += utxo.satoshis ?? 0;
-          if (accumulated >= sweepAmount) break;
-        }
-      }
-
       const result = await executeSweep({
         wallet,
         wif: legacyKeys.payPk,
-        funding: selectedFunding,
-        ordinals: selectedOrdinalOutputs,
-        bsv21Tokens: bsv21Outputs,
-        amount: sweepAmount ?? undefined,
+        funding: [],
+        ordinals: selected,
+        bsv21Tokens: [],
         onProgress: setSweepProgress,
       });
 
       setSweepResult(result);
 
       if (result.errors.length === 0) {
-        toast.success("Sweep complete!");
+        toast.success(`Swept ${selected.length} domain${selected.length !== 1 ? "s" : ""}!`);
       } else {
-        toast.warning("Sweep completed with some errors");
+        toast.warning("OPNS sweep completed with errors");
       }
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Sweep failed");
+      toast.error(e instanceof Error ? e.message : "OPNS sweep failed");
     } finally {
       setSweeping(false);
     }
-  }, [legacyKeys, assets, selectedOrdinals, sweepAmount]);
+  }, [legacyKeys, assets, selectedOpns]);
 
-  const sweepableCount = assets
-    ? assets.funding.length + selectedOrdinals.size +
-      assets.bsv21Tokens.reduce((n, t) => n + t.outputs.length, 0)
-    : 0;
+  const handleSendOpns = useCallback(async (destination: string) => {
+    if (!legacyKeys || !assets) return;
+
+    const selected = assets.opnsNames.filter((o) => selectedOpns.has(o.outpoint));
+    if (selected.length === 0) return;
+
+    setSweeping(true);
+    setSweepProgress(`Sending ${selected.length} domain${selected.length !== 1 ? "s" : ""}...`);
+
+    try {
+      const result = await legacySendOrdinals({
+        ordinals: selected,
+        funding: assets.funding,
+        keys: legacyKeys,
+        destination,
+      });
+
+      setSweepResult({
+        ordinalTxids: [result.txid],
+        bsv21Txids: [],
+        errors: [],
+      });
+      toast.success(`Sent ${selected.length} domain${selected.length !== 1 ? "s" : ""}!`);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Send failed");
+    } finally {
+      setSweeping(false);
+    }
+  }, [legacyKeys, assets, selectedOpns]);
 
   return (
     <div className="min-h-screen bg-background text-foreground">
@@ -319,24 +379,58 @@ export default function App() {
               onSend={handleSendBsv}
               walletConnected={walletConnected}
             />
-            <OrdinalsSection
-              ordinals={assets.ordinals}
-              selectedOrdinals={selectedOrdinals}
-              onToggle={handleToggleOrdinal}
-              onSelectAll={handleSelectAll}
-              onDeselectAll={handleDeselectAll}
-              onSweep={handleSweepOrdinals}
-              onSend={handleSendOrdinals}
-              walletConnected={walletConnected}
-            />
-            <Bsv21Section tokens={assets.bsv21Tokens} />
-            <Bsv20Section tokens={assets.bsv20Tokens} />
-            <LockedSection locked={assets.locked} />
 
-            {sweepableCount > 0 && (
-              <Button onClick={handleSweep} className="w-full h-12 text-base" size="lg" disabled title="Use per-section buttons above">
-                Sweep All ({sweepableCount})
-              </Button>
+            {tabs.length > 0 && (
+              <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as TabId)}>
+                <TabsList className="w-full">
+                  {tabs.map((tab) => (
+                    <TabsTrigger key={tab.id} value={tab.id} className="flex-1 gap-1.5">
+                      {tab.label}
+                      <Badge variant="secondary" className="text-[10px] px-1.5 py-0">
+                        {tab.count}
+                      </Badge>
+                    </TabsTrigger>
+                  ))}
+                </TabsList>
+
+                <TabsContent value="ordinals">
+                  <OrdinalsSection
+                    ordinals={assets.ordinals}
+                    selectedOrdinals={selectedOrdinals}
+                    onToggle={handleToggleOrdinal}
+                    onSelectAll={handleSelectAllOrdinals}
+                    onDeselectAll={handleDeselectAllOrdinals}
+                    onSweep={handleSweepOrdinals}
+                    onSend={handleSendOrdinals}
+                    walletConnected={walletConnected}
+                  />
+                </TabsContent>
+
+                <TabsContent value="opns">
+                  <OpnsSection
+                    opnsNames={assets.opnsNames}
+                    selectedOpns={selectedOpns}
+                    onToggle={handleToggleOpns}
+                    onSelectAll={handleSelectAllOpns}
+                    onDeselectAll={handleDeselectAllOpns}
+                    onSweep={handleSweepOpns}
+                    onSend={handleSendOpns}
+                    walletConnected={walletConnected}
+                  />
+                </TabsContent>
+
+                <TabsContent value="bsv21">
+                  <Bsv21Section tokens={assets.bsv21Tokens} />
+                </TabsContent>
+
+                <TabsContent value="bsv20">
+                  <Bsv20Section tokens={assets.bsv20Tokens} />
+                </TabsContent>
+
+                <TabsContent value="locks">
+                  <LockedSection locked={assets.locked} />
+                </TabsContent>
+              </Tabs>
             )}
           </div>
         )}
