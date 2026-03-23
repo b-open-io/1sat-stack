@@ -710,6 +710,20 @@ func (c *Config) applyRuntimeConfig(rc *configpkg.RuntimeConfig) {
 		c.MessageBox.DBPath = rc.MessageBoxDBPath
 	}
 
+	// Faucet
+	if rc.FaucetEnabled {
+		c.Faucet.Enabled = true
+	}
+	if rc.FaucetDefaultDropSats > 0 {
+		c.Faucet.DefaultDropSats = int64(rc.FaucetDefaultDropSats)
+	}
+	if rc.FaucetDefaultMaxConsolidation > 0 {
+		c.Faucet.DefaultMaxConsolidationInputs = int64(rc.FaucetDefaultMaxConsolidation)
+	}
+	if rc.FaucetDBPath != "" {
+		c.Faucet.DBPath = rc.FaucetDBPath
+	}
+
 	// MongoDB
 	if rc.MongoDBURL != "" {
 		c.MongoDB.URL = rc.MongoDBURL

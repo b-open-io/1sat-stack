@@ -125,6 +125,12 @@ type RuntimeConfig struct {
 	MessageBoxMode   string // "enabled" or "disabled"
 	MessageBoxDBPath string
 
+	// Faucet
+	FaucetEnabled                bool
+	FaucetDefaultDropSats        int
+	FaucetDefaultMaxConsolidation int
+	FaucetDBPath                 string
+
 	// MongoDB
 	MongoDBURL string
 
@@ -265,6 +271,12 @@ func LoadRuntimeConfig(ctx context.Context, cs Store, logger *slog.Logger) (*Run
 	// MessageBox
 	rc.MessageBoxMode = getString(ctx, cs, "messagebox.mode")
 	rc.MessageBoxDBPath = getString(ctx, cs, "messagebox.db_path")
+
+	// Faucet
+	rc.FaucetEnabled = getBool(ctx, cs, "faucet.enabled")
+	rc.FaucetDefaultDropSats = getInt(ctx, cs, "faucet.default_drop_sats")
+	rc.FaucetDefaultMaxConsolidation = getInt(ctx, cs, "faucet.default_max_consolidation_inputs")
+	rc.FaucetDBPath = getString(ctx, cs, "faucet.db_path")
 
 	// MongoDB
 	rc.MongoDBURL = getString(ctx, cs, "overlay.bsocial.mongo_url")
