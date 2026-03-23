@@ -9,28 +9,28 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/b-open-io/1sat-stack/pkg/indexer"
 	ec "github.com/bsv-blockchain/go-sdk/primitives/ec"
 	"github.com/bsv-blockchain/go-sdk/transaction"
 	sdk "github.com/bsv-blockchain/go-sdk/wallet"
 )
 
 // Internalizer converts BEEF transactions into wallet.InternalizeAction calls.
-// It supports two modes: FromMessage for explicit payment messages with derivation
-// info, and FromSync for matching transaction outputs against known address derivations.
 type Internalizer struct {
-	wallet sdk.Interface
-	logger *slog.Logger
+	wallet  sdk.Interface
+	indexer *indexer.IngestCtx
+	logger  *slog.Logger
 }
 
-func NewInternalizer(wallet sdk.Interface, logger *slog.Logger) *Internalizer {
+func NewInternalizer(wallet sdk.Interface, idx *indexer.IngestCtx, logger *slog.Logger) *Internalizer {
 	return &Internalizer{
-		wallet: wallet,
-		logger: logger,
+		wallet:  wallet,
+		indexer: idx,
+		logger:  logger,
 	}
 }
 
-// FromMessage internalizes a payment received via message box. The message
-// contains explicit output index and derivation info from the sender.
+// FromMessage internalizes a payment received via message box.
 func (i *Internalizer) FromMessage(ctx context.Context, msg *PaymentMessage) error {
 	beefBytes, err := hex.DecodeString(msg.Beef)
 	if err != nil {
@@ -78,13 +78,96 @@ func (i *Internalizer) FromMessage(ctx context.Context, msg *PaymentMessage) err
 	return nil
 }
 
-// FromSync internalizes outputs discovered via address sync. It parses the BEEF
-// to extract the transaction, derives addresses from output scripts, and matches
-// them against the provided derivation map to build internalize outputs.
-//
-// The derivations map is keyed by address string. Each SyncOutput's outpoint is
-// parsed to extract the vout, then the corresponding output script is checked
-// for a P2PKH address match in the derivations map.
+// outputClassification maps indexed events to wallet internalization parameters.
+type outputClassification struct {
+	basket   string
+	protocol sdk.InternalizeProtocol
+	tags     []string
+}
+
+// classifyOutput determines the basket, protocol, and tags from indexed events.
+func classifyOutput(events []string, satoshis uint64) *outputClassification {
+	hasEvent := func(prefix string) bool {
+		for _, ev := range events {
+			if strings.HasPrefix(ev, prefix) {
+				return true
+			}
+		}
+		return false
+	}
+
+	// BSV21 token
+	if hasEvent("bsv21:") {
+		return &outputClassification{
+			basket:   "bsv21",
+			protocol: sdk.InternalizeProtocolBasketInsertion,
+			tags:     filterEvents(events, "bsv21:", "amt:", "sym:", "icon:", "dec:"),
+		}
+	}
+
+	// OPNS name
+	if hasEvent("opns:") {
+		return &outputClassification{
+			basket:   "opns",
+			protocol: sdk.InternalizeProtocolBasketInsertion,
+			tags:     filterEvents(events, "name:"),
+		}
+	}
+
+	// Lock contract
+	if hasEvent("lock:") {
+		return &outputClassification{
+			basket:   "lock",
+			protocol: sdk.InternalizeProtocolBasketInsertion,
+			tags:     filterEvents(events, "lock:"),
+		}
+	}
+
+	// OrdLock listing
+	if hasEvent("ordlock") {
+		return &outputClassification{
+			basket:   "ordlock",
+			protocol: sdk.InternalizeProtocolBasketInsertion,
+			tags:     filterEvents(events, "ordlock"),
+		}
+	}
+
+	// Ordinal (has origin event)
+	if hasEvent("origin:") {
+		return &outputClassification{
+			basket:   "1sat",
+			protocol: sdk.InternalizeProtocolBasketInsertion,
+			tags:     filterEvents(events, "origin:", "type:", "name:"),
+		}
+	}
+
+	// Standard P2PKH funding (>1 sat)
+	if hasEvent("p2pkh:") && satoshis > 1 {
+		return &outputClassification{
+			protocol: sdk.InternalizeProtocolWalletPayment,
+		}
+	}
+
+	return nil
+}
+
+// filterEvents returns events matching any of the given prefixes.
+func filterEvents(events []string, prefixes ...string) []string {
+	var filtered []string
+	for _, ev := range events {
+		for _, prefix := range prefixes {
+			if strings.HasPrefix(ev, prefix) {
+				filtered = append(filtered, ev)
+				break
+			}
+		}
+	}
+	return filtered
+}
+
+// FromSync internalizes outputs discovered via address sync. It runs the full
+// parse pipeline on the transaction (including origin detection and ORDFS
+// resolution) and matches owners against the provided derivation map.
 //
 // Returns true if any outputs were internalized, false if none matched.
 func (i *Internalizer) FromSync(ctx context.Context, beef []byte, txid string, outputs []SyncOutput, derivations map[string]AddressDerivation) (bool, error) {
@@ -93,32 +176,38 @@ func (i *Internalizer) FromSync(ctx context.Context, beef []byte, txid string, o
 		return false, fmt.Errorf("parse BEEF for %s: %w", txid, err)
 	}
 
-	var matched []sdk.InternalizeOutput
+	idxCtx, err := i.indexer.ParseTx(ctx, tx)
+	if err != nil {
+		return false, fmt.Errorf("parse transaction %s: %w", txid, err)
+	}
+
+	// Build a set of vouts we care about from the sync outputs
+	voutSet := make(map[uint32]bool, len(outputs))
 	for _, output := range outputs {
 		vout, err := voutFromOutpoint(output.Outpoint)
 		if err != nil {
 			i.logger.Warn("skip output with bad outpoint", "outpoint", output.Outpoint, "err", err)
 			continue
 		}
+		voutSet[vout] = true
+	}
 
-		if int(vout) >= len(tx.Outputs) {
-			i.logger.Warn("vout exceeds transaction outputs", "outpoint", output.Outpoint, "vout", vout, "numOutputs", len(tx.Outputs))
+	var matched []sdk.InternalizeOutput
+	for vout, idxOutput := range idxCtx.Outputs {
+		if idxOutput == nil || !voutSet[uint32(vout)] {
 			continue
 		}
 
-		lockingScript := tx.Outputs[vout].LockingScript
-		if lockingScript == nil || !lockingScript.IsP2PKH() {
-			continue
+		// Match owners against derivation map
+		var deriv *AddressDerivation
+		for _, owner := range idxOutput.Owners {
+			addr := owner.Address()
+			if d, ok := derivations[addr]; ok {
+				deriv = &d
+				break
+			}
 		}
-
-		addr, err := lockingScript.Address()
-		if err != nil {
-			i.logger.Warn("extract address from output script", "outpoint", output.Outpoint, "err", err)
-			continue
-		}
-
-		deriv, ok := derivations[addr.AddressString]
-		if !ok {
+		if deriv == nil {
 			continue
 		}
 
@@ -134,14 +223,34 @@ func (i *Internalizer) FromSync(ctx context.Context, beef []byte, txid string, o
 			continue
 		}
 
-		matched = append(matched, sdk.InternalizeOutput{
-			OutputIndex: vout,
-			Protocol:    sdk.InternalizeProtocolWalletPayment,
-			PaymentRemittance: &sdk.Payment{
+		sats := uint64(0)
+		if idxOutput.Satoshis != nil {
+			sats = *idxOutput.Satoshis
+		}
+
+		class := classifyOutput(idxOutput.Events, sats)
+		if class == nil {
+			continue
+		}
+
+		out := sdk.InternalizeOutput{
+			OutputIndex: uint32(vout),
+			Protocol:    class.protocol,
+		}
+
+		if class.protocol == sdk.InternalizeProtocolWalletPayment {
+			out.PaymentRemittance = &sdk.Payment{
 				DerivationPrefix: prefixBytes,
 				DerivationSuffix: suffixBytes,
-			},
-		})
+			}
+		} else {
+			out.InsertionRemittance = &sdk.BasketInsertion{
+				Basket: class.basket,
+				Tags:   class.tags,
+			}
+		}
+
+		matched = append(matched, out)
 	}
 
 	if len(matched) == 0 {
@@ -150,7 +259,7 @@ func (i *Internalizer) FromSync(ctx context.Context, beef []byte, txid string, o
 
 	args := sdk.InternalizeActionArgs{
 		Tx:          beef,
-		Description: "Synced payment",
+		Description: "Synced outputs",
 		Outputs:     matched,
 	}
 
