@@ -1,7 +1,5 @@
 import { useCallback, useMemo, useState } from "react";
 import { Toaster, toast } from "sonner";
-import { RefreshCw } from "lucide-react";
-import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { ConnectWallet } from "@/components/connect-wallet";
@@ -14,9 +12,9 @@ import {
   LockedSection,
 } from "@/components/asset-preview";
 import { OpnsSection } from "@/components/opns-section";
-import { SweepProgress } from "@/components/sweep-progress";
+import { TxHistory, type TxRecord } from "@/components/tx-history";
 import { deriveAddress, scanAddresses, type ScannedAssets } from "@/lib/scanner";
-import { executeSweep, type SweepResult } from "@/lib/sweeper";
+import { executeSweep } from "@/lib/sweeper";
 import { legacySendBsv, legacySendOrdinals, legacyBurnOrdinals } from "@/lib/legacy-send";
 import { getWallet } from "@/lib/wallet";
 
@@ -30,13 +28,16 @@ export default function App() {
   const [legacyKeys, setLegacyKeys] = useState<LegacyKeys | null>(null);
   const [sweeping, setSweeping] = useState(false);
   const [sweepProgress, setSweepProgress] = useState("");
-  const [sweepResult, setSweepResult] = useState<SweepResult | null>(null);
+  const [txHistory, setTxHistory] = useState<TxRecord[]>([]);
   const [selectedOrdinals, setSelectedOrdinals] = useState<Set<string>>(new Set());
   const [selectedOpns, setSelectedOpns] = useState<Set<string>>(new Set());
   const [sweepAmount, setSweepAmount] = useState<number | null>(null);
   const [activeTab, setActiveTab] = useState<TabId>("ordinals");
 
-  // --- Tab visibility ---
+  const addTx = useCallback((label: string, txid: string, error?: string) => {
+    setTxHistory((prev) => [...prev, { label, txid, timestamp: new Date(), error }]);
+  }, []);
+
   const tabs = useMemo(() => {
     if (!assets) return [];
     const t: { id: TabId; label: string; count: number }[] = [];
@@ -48,7 +49,7 @@ export default function App() {
     return t;
   }, [assets]);
 
-  // --- Ordinals selection ---
+  // --- Selection ---
   const handleToggleOrdinal = useCallback((outpoint: string) => {
     setSelectedOrdinals((prev) => {
       const next = new Set(prev);
@@ -57,16 +58,11 @@ export default function App() {
       return next;
     });
   }, []);
-
   const handleSelectAllOrdinals = useCallback(() => {
     if (assets) setSelectedOrdinals(new Set(assets.ordinals.map((o) => o.outpoint)));
   }, [assets]);
+  const handleDeselectAllOrdinals = useCallback(() => setSelectedOrdinals(new Set()), []);
 
-  const handleDeselectAllOrdinals = useCallback(() => {
-    setSelectedOrdinals(new Set());
-  }, []);
-
-  // --- OPNS selection ---
   const handleToggleOpns = useCallback((outpoint: string) => {
     setSelectedOpns((prev) => {
       const next = new Set(prev);
@@ -75,20 +71,30 @@ export default function App() {
       return next;
     });
   }, []);
-
   const handleSelectAllOpns = useCallback(() => {
     if (assets) setSelectedOpns(new Set(assets.opnsNames.map((o) => o.outpoint)));
   }, [assets]);
+  const handleDeselectAllOpns = useCallback(() => setSelectedOpns(new Set()), []);
 
-  const handleDeselectAllOpns = useCallback(() => {
+  // --- Refresh after operations ---
+  const refreshAssets = useCallback(async () => {
+    if (!legacyKeys) return;
+    const addresses = [...new Set([
+      deriveAddress(legacyKeys.payPk),
+      deriveAddress(legacyKeys.ordPk),
+      ...(legacyKeys.identityPk ? [deriveAddress(legacyKeys.identityPk)] : []),
+    ])];
+    const result = await scanAddresses(addresses);
+    setAssets(result);
+    setSelectedOrdinals(new Set());
     setSelectedOpns(new Set());
-  }, []);
+    setSweepAmount(null);
+  }, [legacyKeys]);
 
   // --- Scan ---
   const handleScan = useCallback(async (keys: LegacyKeys) => {
     setScanning(true);
     setAssets(null);
-    setSweepResult(null);
     setSelectedOrdinals(new Set());
     setSelectedOpns(new Set());
     setSweepAmount(null);
@@ -116,7 +122,6 @@ export default function App() {
         toast.info("No assets found at legacy addresses");
       }
 
-      // Auto-select first populated tab
       if (result.ordinals.length > 0) setActiveTab("ordinals");
       else if (result.opnsNames.length > 0) setActiveTab("opns");
       else if (result.bsv21Tokens.length > 0) setActiveTab("bsv21");
@@ -129,99 +134,76 @@ export default function App() {
     }
   }, []);
 
-  // --- BSV sweep/send ---
+  // --- Unified operation runner ---
+  const runOperation = useCallback(async (label: string, op: () => Promise<string>) => {
+    setSweeping(true);
+    setSweepProgress(label + "...");
+    try {
+      const txid = await op();
+      addTx(label, txid);
+      toast.success(label);
+      await refreshAssets();
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : "Operation failed";
+      addTx(label, "", msg);
+      toast.error(msg);
+    } finally {
+      setSweeping(false);
+    }
+  }, [addTx, refreshAssets]);
+
+  // --- BSV ---
+  const getSelectedFunding = useCallback(() => {
+    if (!assets) return [];
+    if (sweepAmount === null) return assets.funding;
+    const selected: typeof assets.funding = [];
+    let accumulated = 0;
+    for (const utxo of assets.funding) {
+      selected.push(utxo);
+      accumulated += utxo.satoshis ?? 0;
+      if (accumulated >= sweepAmount) break;
+    }
+    return selected;
+  }, [assets, sweepAmount]);
+
   const handleSweepBsv = useCallback(async () => {
     const wallet = getWallet();
     if (!wallet || !legacyKeys || !assets) return;
-
-    setSweeping(true);
-
-    try {
-      let selectedFunding = assets.funding;
-      if (sweepAmount !== null) {
-        selectedFunding = [];
-        let accumulated = 0;
-        for (const utxo of assets.funding) {
-          selectedFunding.push(utxo);
-          accumulated += utxo.satoshis ?? 0;
-          if (accumulated >= sweepAmount) break;
-        }
-      }
-
+    await runOperation("Sweep BSV", async () => {
       const result = await executeSweep({
         wallet,
         wif: legacyKeys.payPk,
-        funding: selectedFunding,
+        funding: getSelectedFunding(),
         ordinals: [],
         bsv21Tokens: [],
         amount: sweepAmount ?? undefined,
         onProgress: setSweepProgress,
       });
-
-      setSweepResult(result);
-
-      if (result.errors.length === 0) {
-        toast.success("BSV sweep complete!");
-      } else {
-        toast.warning("BSV sweep completed with errors");
-      }
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : "BSV sweep failed");
-    } finally {
-      setSweeping(false);
-    }
-  }, [legacyKeys, assets, sweepAmount]);
+      if (result.errors.length > 0) throw new Error(result.errors[0]);
+      return result.bsvTxid ?? "";
+    });
+  }, [legacyKeys, assets, sweepAmount, getSelectedFunding, runOperation]);
 
   const handleSendBsv = useCallback(async (destination: string) => {
     if (!legacyKeys || !assets) return;
-
-    setSweeping(true);
-    setSweepProgress("Sending BSV...");
-
-    try {
-      let selectedFunding = assets.funding;
-      if (sweepAmount !== null) {
-        selectedFunding = [];
-        let accumulated = 0;
-        for (const utxo of assets.funding) {
-          selectedFunding.push(utxo);
-          accumulated += utxo.satoshis ?? 0;
-          if (accumulated >= sweepAmount) break;
-        }
-      }
-
+    await runOperation("Send BSV", async () => {
       const result = await legacySendBsv({
-        funding: selectedFunding,
+        funding: getSelectedFunding(),
         keys: legacyKeys,
         destination,
         amount: sweepAmount ?? undefined,
       });
+      return result.txid;
+    });
+  }, [legacyKeys, assets, sweepAmount, getSelectedFunding, runOperation]);
 
-      setSweepResult({
-        bsvTxid: result.txid,
-        ordinalTxids: [],
-        bsv21Txids: [],
-        errors: [],
-      });
-      toast.success("BSV sent!");
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Send failed");
-    } finally {
-      setSweeping(false);
-    }
-  }, [legacyKeys, assets, sweepAmount]);
-
-  // --- Ordinals sweep/send ---
+  // --- Ordinals ---
   const handleSweepOrdinals = useCallback(async () => {
     const wallet = getWallet();
     if (!wallet || !legacyKeys || !assets) return;
-
     const selected = assets.ordinals.filter((o) => selectedOrdinals.has(o.outpoint));
     if (selected.length === 0) return;
-
-    setSweeping(true);
-
-    try {
+    await runOperation(`Sweep ${selected.length} ordinal${selected.length !== 1 ? "s" : ""}`, async () => {
       const result = await executeSweep({
         wallet,
         wif: legacyKeys.payPk,
@@ -230,62 +212,47 @@ export default function App() {
         bsv21Tokens: [],
         onProgress: setSweepProgress,
       });
-
-      setSweepResult(result);
-
-      if (result.errors.length === 0) {
-        toast.success(`Swept ${selected.length} ordinal${selected.length !== 1 ? "s" : ""}!`);
-      } else {
-        toast.warning("Ordinal sweep completed with errors");
-      }
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Ordinal sweep failed");
-    } finally {
-      setSweeping(false);
-    }
-  }, [legacyKeys, assets, selectedOrdinals]);
+      if (result.errors.length > 0) throw new Error(result.errors[0]);
+      return result.ordinalTxids[0] ?? "";
+    });
+  }, [legacyKeys, assets, selectedOrdinals, runOperation]);
 
   const handleSendOrdinals = useCallback(async (destination: string) => {
     if (!legacyKeys || !assets) return;
-
     const selected = assets.ordinals.filter((o) => selectedOrdinals.has(o.outpoint));
     if (selected.length === 0) return;
-
-    setSweeping(true);
-    setSweepProgress(`Sending ${selected.length} ordinal${selected.length !== 1 ? "s" : ""}...`);
-
-    try {
+    await runOperation(`Send ${selected.length} ordinal${selected.length !== 1 ? "s" : ""}`, async () => {
       const result = await legacySendOrdinals({
         ordinals: selected,
         funding: assets.funding,
         keys: legacyKeys,
         destination,
       });
+      return result.txid;
+    });
+  }, [legacyKeys, assets, selectedOrdinals, runOperation]);
 
-      setSweepResult({
-        ordinalTxids: [result.txid],
-        bsv21Txids: [],
-        errors: [],
+  const handleBurnOrdinals = useCallback(async () => {
+    if (!legacyKeys || !assets) return;
+    const selected = assets.ordinals.filter((o) => selectedOrdinals.has(o.outpoint));
+    if (selected.length === 0) return;
+    await runOperation(`Burn ${selected.length} ordinal${selected.length !== 1 ? "s" : ""}`, async () => {
+      const result = await legacyBurnOrdinals({
+        ordinals: selected,
+        funding: assets.funding,
+        keys: legacyKeys,
       });
-      toast.success(`Sent ${selected.length} ordinal${selected.length !== 1 ? "s" : ""}!`);
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Send failed");
-    } finally {
-      setSweeping(false);
-    }
-  }, [legacyKeys, assets, selectedOrdinals]);
+      return result.txid;
+    });
+  }, [legacyKeys, assets, selectedOrdinals, runOperation]);
 
-  // --- OPNS sweep/send (same mechanism as ordinals — they're 1-sat outputs) ---
+  // --- OPNS ---
   const handleSweepOpns = useCallback(async () => {
     const wallet = getWallet();
     if (!wallet || !legacyKeys || !assets) return;
-
     const selected = assets.opnsNames.filter((o) => selectedOpns.has(o.outpoint));
     if (selected.length === 0) return;
-
-    setSweeping(true);
-
-    try {
+    await runOperation(`Sweep ${selected.length} domain${selected.length !== 1 ? "s" : ""}`, async () => {
       const result = await executeSweep({
         wallet,
         wif: legacyKeys.payPk,
@@ -294,110 +261,39 @@ export default function App() {
         bsv21Tokens: [],
         onProgress: setSweepProgress,
       });
-
-      setSweepResult(result);
-
-      if (result.errors.length === 0) {
-        toast.success(`Swept ${selected.length} domain${selected.length !== 1 ? "s" : ""}!`);
-      } else {
-        toast.warning("OPNS sweep completed with errors");
-      }
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : "OPNS sweep failed");
-    } finally {
-      setSweeping(false);
-    }
-  }, [legacyKeys, assets, selectedOpns]);
+      if (result.errors.length > 0) throw new Error(result.errors[0]);
+      return result.ordinalTxids[0] ?? "";
+    });
+  }, [legacyKeys, assets, selectedOpns, runOperation]);
 
   const handleSendOpns = useCallback(async (destination: string) => {
     if (!legacyKeys || !assets) return;
-
     const selected = assets.opnsNames.filter((o) => selectedOpns.has(o.outpoint));
     if (selected.length === 0) return;
-
-    setSweeping(true);
-    setSweepProgress(`Sending ${selected.length} domain${selected.length !== 1 ? "s" : ""}...`);
-
-    try {
+    await runOperation(`Send ${selected.length} domain${selected.length !== 1 ? "s" : ""}`, async () => {
       const result = await legacySendOrdinals({
         ordinals: selected,
         funding: assets.funding,
         keys: legacyKeys,
         destination,
       });
+      return result.txid;
+    });
+  }, [legacyKeys, assets, selectedOpns, runOperation]);
 
-      setSweepResult({
-        ordinalTxids: [result.txid],
-        bsv21Txids: [],
-        errors: [],
-      });
-      toast.success(`Sent ${selected.length} domain${selected.length !== 1 ? "s" : ""}!`);
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Send failed");
-    } finally {
-      setSweeping(false);
-    }
-  }, [legacyKeys, assets, selectedOpns]);
-
-  // --- Ordinals burn ---
-  const handleBurnOrdinals = useCallback(async () => {
-    if (!legacyKeys || !assets) return;
-
-    const selected = assets.ordinals.filter((o) => selectedOrdinals.has(o.outpoint));
-    if (selected.length === 0) return;
-
-    setSweeping(true);
-    setSweepProgress(`Burning ${selected.length} ordinal${selected.length !== 1 ? "s" : ""}...`);
-
-    try {
-      const result = await legacyBurnOrdinals({
-        ordinals: selected,
-        funding: assets.funding,
-        keys: legacyKeys,
-      });
-
-      setSweepResult({
-        ordinalTxids: [result.txid],
-        bsv21Txids: [],
-        errors: [],
-      });
-      toast.success(`Burned ${selected.length} ordinal${selected.length !== 1 ? "s" : ""}!`);
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Burn failed");
-    } finally {
-      setSweeping(false);
-    }
-  }, [legacyKeys, assets, selectedOrdinals]);
-
-  // --- OPNS burn ---
   const handleBurnOpns = useCallback(async () => {
     if (!legacyKeys || !assets) return;
-
     const selected = assets.opnsNames.filter((o) => selectedOpns.has(o.outpoint));
     if (selected.length === 0) return;
-
-    setSweeping(true);
-    setSweepProgress(`Burning ${selected.length} domain${selected.length !== 1 ? "s" : ""}...`);
-
-    try {
+    await runOperation(`Burn ${selected.length} domain${selected.length !== 1 ? "s" : ""}`, async () => {
       const result = await legacyBurnOrdinals({
         ordinals: selected,
         funding: assets.funding,
         keys: legacyKeys,
       });
-
-      setSweepResult({
-        ordinalTxids: [result.txid],
-        bsv21Txids: [],
-        errors: [],
-      });
-      toast.success(`Burned ${selected.length} domain${selected.length !== 1 ? "s" : ""}!`);
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Burn failed");
-    } finally {
-      setSweeping(false);
-    }
-  }, [legacyKeys, assets, selectedOpns]);
+      return result.txid;
+    });
+  }, [legacyKeys, assets, selectedOpns, runOperation]);
 
   return (
     <div className="min-h-screen bg-background text-foreground">
@@ -497,18 +393,11 @@ export default function App() {
           </div>
         )}
 
-        <SweepProgress
+        <TxHistory
           sweeping={sweeping}
           progress={sweepProgress}
-          result={sweepResult}
+          history={txHistory}
         />
-
-        {sweepResult && !sweeping && (
-          <Button variant="outline" onClick={() => { setSweepResult(null); if (legacyKeys) handleScan(legacyKeys); }} className="w-full gap-2">
-            <RefreshCw className="h-4 w-4" />
-            Re-scan
-          </Button>
-        )}
       </div>
     </div>
   );
