@@ -9,18 +9,12 @@ const TagOPNS = "opns"
 
 func ParseOPNS(ctx *ParseContext) (*ParseResult, error) {
 	scr := script.NewFromBytes(ctx.LockingScript)
-	decoded := opns.Decode(scr)
-	if decoded == nil {
+	if opns.Decode(scr) == nil {
 		return nil, nil
-	}
-
-	events := []string{"opns:mine"}
-	if decoded.Domain != "" {
-		events = append(events, "name:"+decoded.Domain)
 	}
 
 	return &ParseResult{
 		Tag:    TagOPNS,
-		Events: events,
+		Events: []string{"opns:mine"},
 	}, nil
 }
