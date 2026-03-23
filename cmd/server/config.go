@@ -1511,6 +1511,13 @@ func (c *Config) Initialize(ctx context.Context, logger *slog.Logger) (*Services
 
 // RegisterRoutes registers all HTTP routes on the Fiber app
 func (c *Config) RegisterRoutes(app *fiber.App, svc *Services) {
+	// Redirect root to base path
+	if c.Server.BasePath != "" && c.Server.BasePath != "/" {
+		app.Get("/", func(ctx *fiber.Ctx) error {
+			return ctx.Redirect(c.Server.BasePath+"/", fiber.StatusMovedPermanently)
+		})
+	}
+
 	// Create API group with base path
 	api := app.Group(c.Server.BasePath)
 
