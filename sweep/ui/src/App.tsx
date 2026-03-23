@@ -504,9 +504,9 @@ export default function App() {
         />
 
         {sweepResult && !sweeping && (
-          <Button variant="outline" onClick={() => setSweepResult(null)} className="w-full gap-2">
+          <Button variant="outline" onClick={() => { setSweepResult(null); if (legacyKeys) handleScan(legacyKeys); }} className="w-full gap-2">
             <RefreshCw className="h-4 w-4" />
-            Dismiss
+            Re-scan
           </Button>
         )}
       </div>
