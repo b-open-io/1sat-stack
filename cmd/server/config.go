@@ -330,6 +330,12 @@ func (c *Config) SetDefaults(v *viper.Viper) {
 	v.SetDefault("arcade.mode", "embedded")
 	v.SetDefault("arcade.storage_path", "arcade")
 	v.SetDefault("arcade.database.sqlite_path", "arcade/arcade.db")
+	v.SetDefault("arcade.teranode.broadcast_urls", []string{
+		"http://mainnet.gorillanode.io:8833",
+	})
+	v.SetDefault("arcade.teranode.datahub_urls", []string{
+		"https://mainnet.gorillanode.io/api/v1",
+	})
 
 	// Merkle service defaults
 	v.SetDefault("merkle.mode", "disabled")

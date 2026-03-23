@@ -91,7 +91,7 @@ func (c *Config) SetDefaults(v *viper.Viper, prefix string) {
 	v.SetDefault(p+"sync.enable_mempool", false)
 
 	// Arcade listener defaults
-	v.SetDefault(p+"arcade.enabled", false)
+	v.SetDefault(p+"arcade.enabled", true)
 	v.SetDefault(p+"arcade.ingest", true)
 
 	// Routes defaults
