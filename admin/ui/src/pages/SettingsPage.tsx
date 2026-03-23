@@ -17,6 +17,7 @@ import {
   Plus,
   Trash2,
   GripVertical,
+  Droplets,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -243,11 +244,39 @@ type SectionId =
   | "overlay-bsv21"
   | "overlay-bsocial"
   | "overlay-ordlock"
+  | "faucet"
   | "sync"
   | "auth"
   | "tuning";
 
 // ─── Content panels ───────────────────────────────────────────────────────────
+
+interface FaucetPanelProps {
+  enabled: boolean;
+  onToggle: (v: boolean) => void;
+}
+
+function FaucetPanel({ enabled, onToggle }: FaucetPanelProps) {
+  return (
+    <div className="space-y-4">
+      <PageHeader title="Faucet" description="On-chain faucet service for funding transactions, minting inscriptions, and pushing data." />
+      <SectionCard>
+        <div className="flex items-center justify-between">
+          <div>
+            <p className="text-sm font-medium">Enable faucet module</p>
+            <p className="text-xs text-muted-foreground mt-0.5">Exposes /faucet API endpoints for creating and managing faucets.</p>
+          </div>
+          <Toggle enabled={enabled} onChange={onToggle} />
+        </div>
+      </SectionCard>
+      {enabled && (
+        <SectionCard>
+          <p className="text-sm text-muted-foreground">Faucet admin configuration coming soon. Use the Droplit frontend to manage faucets.</p>
+        </SectionCard>
+      )}
+    </div>
+  );
+}
 
 function NodePanel() {
   return (
@@ -1345,6 +1374,7 @@ export default function SettingsPage() {
   const [indexerBatchSize, setIndexerBatchSize] = useState("500");
   const [indexerMempool, setIndexerMempool] = useState(false);
   const [ownerSync, setOwnerSync] = useState(false);
+  const [faucetEnabled, setFaucetEnabled] = useState(false);
 
   // Auth
   const [authMode, setAuthMode] = useState<"local" | "authenticated">("local");
@@ -1447,6 +1477,7 @@ export default function SettingsPage() {
         setIndexerBatchSize(s("indexer.sync.batch_size", "500"));
         setIndexerMempool(b("indexer.sync.mempool"));
         setOwnerSync(b("owner.enabled"));
+        setFaucetEnabled(b("faucet.enabled"));
 
         // Auth
         if (cfg["auth.mode"] === "local" || cfg["auth.mode"] === "authenticated") setAuthMode(cfg["auth.mode"]);
@@ -1466,7 +1497,7 @@ export default function SettingsPage() {
   const RESTART_KEYS = new Set([
     "overlay.bap.enabled", "overlay.opns.enabled", "overlay.bsv21.enabled",
     "overlay.bsocial.enabled", "overlay.ordlock.enabled",
-    "owner.enabled",
+    "owner.enabled", "faucet.enabled",
     "store.provider", "store.badger.path", "pubsub.provider",
     "auth.mode", "wallet.db.engine", "wallet.db.sqlite.connection_string",
     "wallet.postgres_connection_string", "chaintracks.path", "arcade.path",
@@ -1492,6 +1523,7 @@ export default function SettingsPage() {
     "overlay.bsocial.enabled": String(bsocialEnabled),
     "overlay.ordlock.enabled": String(ordlockEnabled),
     "owner.enabled": String(ownerSync),
+    "faucet.enabled": String(faucetEnabled),
     "store.provider": storeProvider,
     "store.badger.path": storePath,
     "pubsub.provider": pubsubProvider,
@@ -1531,7 +1563,7 @@ export default function SettingsPage() {
     "indexer.sync.concurrency": indexerConcurrency,
     "indexer.sync.batch_size": indexerBatchSize,
   }), [
-    bapEnabled, opnsEnabled, bsv21Enabled, bsocialEnabled, ordlockEnabled, ownerSync,
+    bapEnabled, opnsEnabled, bsv21Enabled, bsocialEnabled, ordlockEnabled, ownerSync, faucetEnabled,
     storeProvider, storePath, pubsubProvider, authMode, walletEngine, walletDb,
     chaintracksPath, arcadeDb, engineStorage, engineStoragePath,
     p2pEnabled, p2pPort, p2pDhtMode, bootstrapPeers, activeTags,
@@ -1631,6 +1663,7 @@ export default function SettingsPage() {
         "indexer.sync.batch_size": indexerBatchSize,
         "indexer.sync.mempool": String(indexerMempool),
         "owner.enabled": String(ownerSync),
+        "faucet.enabled": String(faucetEnabled),
 
         // Auth
         "auth.mode": authMode,
@@ -1676,6 +1709,7 @@ export default function SettingsPage() {
     { type: "item", id: "overlay-bsv21", label: "BSV21", icon: Network, dot: bsv21Enabled },
     { type: "item", id: "overlay-bsocial", label: "BSocial", icon: Network, dot: bsocialEnabled },
     { type: "item", id: "overlay-ordlock", label: "OrdLock", icon: Network, dot: ordlockEnabled },
+    { type: "item", id: "faucet", label: "Faucet", icon: Droplets, dot: faucetEnabled },
     { type: "item", id: "sync", label: "Sync", icon: RefreshCw },
     { type: "item", id: "auth", label: "Auth", icon: Shield },
     { type: "item", id: "tuning", label: "Tuning", icon: Cpu },
@@ -1844,6 +1878,9 @@ export default function SettingsPage() {
               indexerMempool={indexerMempool} setIndexerMempool={setIndexerMempool}
               ownerSync={ownerSync} setOwnerSync={setOwnerSync}
             />
+          )}
+          {activeSection === "faucet" && (
+            <FaucetPanel enabled={faucetEnabled} onToggle={setFaucetEnabled} />
           )}
           {activeSection === "auth" && (
             <AuthPanel
