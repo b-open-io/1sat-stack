@@ -1,90 +1,112 @@
 const std = @import("std");
 const bsvz = @import("bsvz");
+pub const context = @import("context.zig");
 
-pub const ParseResult = struct {
-    allocator: std.mem.Allocator,
-    events: std.ArrayListUnmanaged([]const u8),
-    owners: std.ArrayListUnmanaged([20]u8),
+const ParseContext = context.ParseContext;
+const ParseResult = context.ParseResult;
+const Outpoint = context.Outpoint;
 
-    pub fn init(allocator: std.mem.Allocator) ParseResult {
-        return .{
-            .allocator = allocator,
-            .events = .empty,
-            .owners = .empty,
-        };
-    }
+// --- Individual parsers ---
 
-    pub fn addEvent(self: *ParseResult, event: []const u8) !void {
-        try self.events.append(self.allocator, event);
-    }
+pub fn parse1Sat(ctx: *ParseContext) !?ParseResult {
+    if (ctx.satoshis != 1) return null;
+    var result = ParseResult.init("1sat");
+    try result.addEvent(ctx.allocator, "1sat");
+    return result;
+}
 
-    pub fn addOwner(self: *ParseResult, pkhash: [20]u8) !void {
-        try self.owners.append(self.allocator, pkhash);
-    }
+pub fn parseP2PKH(ctx: *ParseContext) !?ParseResult {
+    if (ctx.locking_script.len != 25) return null;
+    if (ctx.locking_script[0] != 0x76) return null; // OP_DUP
+    if (ctx.locking_script[1] != 0xa9) return null; // OP_HASH160
+    if (ctx.locking_script[2] != 20) return null; // push 20 bytes
+    if (ctx.locking_script[23] != 0x88) return null; // OP_EQUALVERIFY
+    if (ctx.locking_script[24] != 0xac) return null; // OP_CHECKSIG
 
-    pub fn deinit(self: *ParseResult) void {
-        self.events.deinit(self.allocator);
-        self.owners.deinit(self.allocator);
-    }
+    var result = ParseResult.init("p2pkh");
+    var pkhash: [20]u8 = undefined;
+    @memcpy(&pkhash, ctx.locking_script[3..23]);
+    try result.addOwner(ctx.allocator, pkhash);
+    return result;
+}
+
+// Parsers to be implemented in separate files:
+// pub const lock = @import("lock.zig");
+// pub const inscription = @import("inscription.zig");
+// pub const bsv21 = @import("bsv21.zig");
+// pub const ordlock = @import("ordlock.zig");
+// pub const cosign = @import("cosign.zig");
+// pub const opns = @import("opns.zig");
+// pub const shrug = @import("shrug.zig");
+// pub const bitcom = @import("bitcom.zig");
+// pub const origin = @import("origin.zig");
+
+/// Default parser execution order matching Go's DefaultTags.
+const default_parsers = [_]context.ParserFn{
+    parse1Sat,
+    parseP2PKH,
+    // lock.parse,
+    // inscription.parse,
+    // bsv21.parse,
+    // ordlock.parse,
+    // cosign.parse,
+    // opns.parse,
+    // bitcom.parse,
+    // bitcom.parseB,
+    // bitcom.parseMAP,
+    // bitcom.parseAIP,
+    // bitcom.parseBAP,
+    // bitcom.parseSigma,
+    // origin.parse,
 };
 
-/// Check if output is exactly 1 satoshi.
-pub fn parse1Sat(satoshis: u64, result: *ParseResult) !void {
-    if (satoshis == 1) {
-        try result.addEvent("1sat");
+/// Run all parsers on a single output in order.
+pub fn parseOutput(
+    allocator: std.mem.Allocator,
+    locking_script: []const u8,
+    satoshis: u64,
+    outpoint: ?Outpoint,
+) !ParseContext {
+    var ctx = ParseContext.init(allocator, locking_script, satoshis, outpoint);
+    errdefer ctx.deinit();
+
+    for (default_parsers) |parser| {
+        if (try parser(&ctx)) |result| {
+            try ctx.addResult(result);
+        }
     }
-}
 
-/// Extract P2PKH address from locking script.
-pub fn parseP2PKH(locking_script: []const u8, result: *ParseResult) !void {
-    if (locking_script.len != 25) return;
-    if (locking_script[0] != 0x76) return; // OP_DUP
-    if (locking_script[1] != 0xa9) return; // OP_HASH160
-    if (locking_script[2] != 20) return; // push 20 bytes
-    if (locking_script[23] != 0x88) return; // OP_EQUALVERIFY
-    if (locking_script[24] != 0xac) return; // OP_CHECKSIG
-
-    var pkhash: [20]u8 = undefined;
-    @memcpy(&pkhash, locking_script[3..23]);
-    try result.addOwner(pkhash);
-}
-
-/// Run all parsers on a single output.
-pub fn parseOutput(allocator: std.mem.Allocator, locking_script: []const u8, satoshis: u64) !ParseResult {
-    var result = ParseResult.init(allocator);
-    errdefer result.deinit();
-
-    try parse1Sat(satoshis, &result);
-    try parseP2PKH(locking_script, &result);
-
-    return result;
+    return ctx;
 }
 
 pub fn main() !void {
     _ = bsvz;
 }
 
-test "parse1Sat" {
-    var result = ParseResult.init(std.testing.allocator);
-    defer result.deinit();
+// --- Tests ---
 
-    try parse1Sat(1, &result);
+test "parse1Sat" {
+    const allocator = std.testing.allocator;
+    var ctx = ParseContext.init(allocator, &.{}, 1, null);
+    defer ctx.deinit();
+
+    var result = (try parse1Sat(&ctx)).?;
+    defer result.deinit(allocator);
     try std.testing.expectEqual(@as(usize, 1), result.events.items.len);
     try std.testing.expectEqualStrings("1sat", result.events.items[0]);
 }
 
 test "parse1Sat skips non-1sat" {
-    var result = ParseResult.init(std.testing.allocator);
-    defer result.deinit();
+    const allocator = std.testing.allocator;
+    var ctx = ParseContext.init(allocator, &.{}, 100, null);
+    defer ctx.deinit();
 
-    try parse1Sat(100, &result);
-    try std.testing.expectEqual(@as(usize, 0), result.events.items.len);
+    const result = try parse1Sat(&ctx);
+    try std.testing.expect(result == null);
 }
 
 test "parseP2PKH" {
-    var result = ParseResult.init(std.testing.allocator);
-    defer result.deinit();
-
+    const allocator = std.testing.allocator;
     var p2pkh: [25]u8 = undefined;
     p2pkh[0] = 0x76;
     p2pkh[1] = 0xa9;
@@ -95,15 +117,34 @@ test "parseP2PKH" {
     p2pkh[23] = 0x88;
     p2pkh[24] = 0xac;
 
-    try parseP2PKH(&p2pkh, &result);
+    var ctx = ParseContext.init(allocator, &p2pkh, 1000, null);
+    defer ctx.deinit();
+
+    var result = (try parseP2PKH(&ctx)).?;
+    defer result.deinit(allocator);
     try std.testing.expectEqual(@as(usize, 1), result.owners.items.len);
 }
 
-test "parseP2PKH rejects non-p2pkh" {
-    var result = ParseResult.init(std.testing.allocator);
-    defer result.deinit();
+test "parseOutput runs pipeline" {
+    const allocator = std.testing.allocator;
+    var p2pkh: [25]u8 = undefined;
+    p2pkh[0] = 0x76;
+    p2pkh[1] = 0xa9;
+    p2pkh[2] = 20;
+    for (3..23) |i| {
+        p2pkh[i] = @intCast(i - 3);
+    }
+    p2pkh[23] = 0x88;
+    p2pkh[24] = 0xac;
 
-    const not_p2pkh = [_]u8{ 0x00, 0x01, 0x02 };
-    try parseP2PKH(&not_p2pkh, &result);
-    try std.testing.expectEqual(@as(usize, 0), result.owners.items.len);
+    // 1 sat P2PKH output — should trigger both parsers
+    var ctx = try parseOutput(allocator, &p2pkh, 1, null);
+    defer ctx.deinit();
+
+    const sat_result = ctx.getResult("1sat");
+    try std.testing.expect(sat_result != null);
+
+    const pkh_result = ctx.getResult("p2pkh");
+    try std.testing.expect(pkh_result != null);
+    try std.testing.expectEqual(@as(usize, 1), pkh_result.?.owners.items.len);
 }
