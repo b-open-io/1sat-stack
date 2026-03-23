@@ -11,6 +11,7 @@ import {
   getBackupType,
   type DecryptedBackup,
 } from "bitcoin-backup";
+import { deriveAddress } from "@/lib/scanner";
 
 export interface LegacyKeys {
   payPk: string;
@@ -227,10 +228,12 @@ export function WifInput({ onScan, scanning, disabled }: Props) {
             </span>
           )}
           <div className="space-y-1 text-xs text-muted-foreground font-mono">
-            <div>Pay: {keys.payPk.slice(0, 8)}...{keys.payPk.slice(-4)}</div>
-            <div>Ord: {keys.ordPk.slice(0, 8)}...{keys.ordPk.slice(-4)}</div>
-            {keys.identityPk && (
-              <div>ID: {keys.identityPk.slice(0, 8)}...{keys.identityPk.slice(-4)}</div>
+            <div>Pay: {deriveAddress(keys.payPk)}</div>
+            {keys.ordPk !== keys.payPk && (
+              <div>Ord: {deriveAddress(keys.ordPk)}</div>
+            )}
+            {keys.identityPk && keys.identityPk !== keys.payPk && (
+              <div>ID: {deriveAddress(keys.identityPk)}</div>
             )}
           </div>
           <Button

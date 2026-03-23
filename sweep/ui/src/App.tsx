@@ -14,6 +14,7 @@ import {
 import { SweepProgress } from "@/components/sweep-progress";
 import { deriveAddress, scanAddresses, type ScannedAssets } from "@/lib/scanner";
 import { executeSweep, type SweepResult } from "@/lib/sweeper";
+import { legacySendBsv, legacySendOrdinals } from "@/lib/legacy-send";
 import { getWallet } from "@/lib/wallet";
 
 export default function App() {
@@ -156,6 +157,75 @@ export default function App() {
     }
   }, [legacyKeys, assets, selectedOrdinals]);
 
+  const handleSendBsv = useCallback(async (destination: string) => {
+    if (!legacyKeys || !assets) return;
+
+    setSweeping(true);
+    setSweepProgress("Sending BSV...");
+
+    try {
+      let selectedFunding = assets.funding;
+      if (sweepAmount !== null) {
+        selectedFunding = [];
+        let accumulated = 0;
+        for (const utxo of assets.funding) {
+          selectedFunding.push(utxo);
+          accumulated += utxo.satoshis ?? 0;
+          if (accumulated >= sweepAmount) break;
+        }
+      }
+
+      const result = await legacySendBsv({
+        funding: selectedFunding,
+        wif: legacyKeys.payPk,
+        destination,
+        amount: sweepAmount ?? undefined,
+      });
+
+      setSweepResult({
+        bsvTxid: result.txid,
+        ordinalTxids: [],
+        bsv21Txids: [],
+        errors: [],
+      });
+      toast.success("BSV sent!");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Send failed");
+    } finally {
+      setSweeping(false);
+    }
+  }, [legacyKeys, assets, sweepAmount]);
+
+  const handleSendOrdinals = useCallback(async (destination: string) => {
+    if (!legacyKeys || !assets) return;
+
+    const selected = assets.ordinals.filter((o) => selectedOrdinals.has(o.outpoint));
+    if (selected.length === 0) return;
+
+    setSweeping(true);
+    setSweepProgress(`Sending ${selected.length} ordinal${selected.length !== 1 ? "s" : ""}...`);
+
+    try {
+      const result = await legacySendOrdinals({
+        ordinals: selected,
+        funding: assets.funding,
+        wif: legacyKeys.payPk,
+        destination,
+      });
+
+      setSweepResult({
+        ordinalTxids: [result.txid],
+        bsv21Txids: [],
+        errors: [],
+      });
+      toast.success(`Sent ${selected.length} ordinal${selected.length !== 1 ? "s" : ""}!`);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Send failed");
+    } finally {
+      setSweeping(false);
+    }
+  }, [legacyKeys, assets, selectedOrdinals]);
+
   // Monolithic sweep — kept but disabled for now
   const handleSweep = useCallback(async () => {
     const wallet = getWallet();
@@ -248,6 +318,7 @@ export default function App() {
               sweepAmount={sweepAmount}
               onSweepAmountChange={setSweepAmount}
               onSweep={handleSweepBsv}
+              onSend={handleSendBsv}
               walletConnected={walletConnected}
             />
             <OrdinalsSection
@@ -257,6 +328,7 @@ export default function App() {
               onSelectAll={handleSelectAll}
               onDeselectAll={handleDeselectAll}
               onSweep={handleSweepOrdinals}
+              onSend={handleSendOrdinals}
               walletConnected={walletConnected}
             />
             <Bsv21Section tokens={assets.bsv21Tokens} />

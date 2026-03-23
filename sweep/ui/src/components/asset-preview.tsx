@@ -113,6 +113,7 @@ export function FundingSection({
   sweepAmount,
   onSweepAmountChange,
   onSweep,
+  onSend,
   walletConnected,
 }: {
   funding: IndexedOutput[];
@@ -120,6 +121,7 @@ export function FundingSection({
   sweepAmount: number | null;
   onSweepAmountChange: (amount: number | null) => void;
   onSweep: () => void;
+  onSend: (destination: string) => void;
   walletConnected: boolean;
 }) {
   const [address, setAddress] = useState("");
@@ -185,6 +187,7 @@ export function FundingSection({
             size="sm"
             className="flex-1"
             disabled={!address.trim()}
+            onClick={() => onSend(address.trim())}
           >
             Send {displayAmount} sats
           </Button>
@@ -214,6 +217,7 @@ export function OrdinalsSection({
   onSelectAll,
   onDeselectAll,
   onSweep,
+  onSend,
   walletConnected,
 }: {
   ordinals: EnrichedOrdinal[];
@@ -222,6 +226,7 @@ export function OrdinalsSection({
   onSelectAll: () => void;
   onDeselectAll: () => void;
   onSweep: () => void;
+  onSend: (destination: string) => void;
   walletConnected: boolean;
 }) {
   const [page, setPage] = useState(0);
@@ -318,6 +323,7 @@ export function OrdinalsSection({
               size="sm"
               className="flex-1"
               disabled={!address.trim()}
+              onClick={() => onSend(address.trim())}
             >
               Send {selectedOrdinals.size} Ordinal{selectedOrdinals.size !== 1 ? "s" : ""}
             </Button>
