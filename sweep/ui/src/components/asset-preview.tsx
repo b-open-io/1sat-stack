@@ -371,7 +371,7 @@ function TokenRow({ tb }: { tb: TokenBalance }) {
               {tb.symbol || tb.tokenId.slice(0, 8) + "..."}
             </span>
             {tb.isActive ? (
-              <span className="px-1.5 py-0.5 text-[9px] rounded bg-green-500/20 text-green-400">active</span>
+              <span className="px-1.5 py-0.5 text-[9px] rounded bg-green-600/20 text-green-700 dark:text-green-400">active</span>
             ) : (
               <span className="px-1.5 py-0.5 text-[9px] rounded bg-muted text-muted-foreground">inactive</span>
             )}
