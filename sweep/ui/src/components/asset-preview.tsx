@@ -84,13 +84,13 @@ function OrdinalCard({
 
       {/* Name or outpoint */}
       {ordinal.name ? (
-        <div className="text-[10px] text-foreground truncate font-medium" title={ordinal.name}>
+        <a href={ordinal.contentUrl} target="_blank" rel="noopener noreferrer" className="text-[10px] text-foreground truncate font-medium hover:text-blue-400" title={ordinal.name}>
           {ordinal.name}
-        </div>
+        </a>
       ) : (
-        <div className="text-[9px] text-muted-foreground truncate font-mono">
+        <a href={ordinal.contentUrl} target="_blank" rel="noopener noreferrer" className="text-[9px] text-muted-foreground truncate font-mono hover:text-blue-400">
           {ordinal.outpoint.substring(0, 8)}...
-        </div>
+        </a>
       )}
     </div>
   );
