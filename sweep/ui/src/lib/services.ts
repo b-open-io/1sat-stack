@@ -4,7 +4,8 @@ let _services: OneSatServices | null = null;
 
 export function getServices(): OneSatServices {
   if (!_services) {
-    _services = new OneSatServices("main");
+    const baseUrl = import.meta.env.VITE_API_URL || window.location.origin;
+    _services = new OneSatServices("main", baseUrl);
   }
   return _services;
 }
