@@ -104,7 +104,7 @@ export default function App() {
         let accumulated = 0;
         for (const utxo of assets.funding) {
           selectedFunding.push(utxo);
-          accumulated += utxo.satoshis;
+          accumulated += utxo.satoshis!;
           if (accumulated >= sweepAmount) break;
         }
       }
