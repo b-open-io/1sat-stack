@@ -399,6 +399,11 @@ func (c *Config) resolveAllPaths() {
 	c.Paymail.DBPath = c.resolvePath(c.Paymail.DBPath)
 	c.MessageBox.DBPath = c.resolvePath(c.MessageBox.DBPath)
 	c.Faucet.DBPath = c.resolvePath(c.Faucet.DBPath)
+
+	for i := range c.Beef.Chain {
+		c.Beef.Chain[i].Filesystem.Path = c.resolvePath(c.Beef.Chain[i].Filesystem.Path)
+		c.Beef.Chain[i].Badger.Path = c.resolvePath(c.Beef.Chain[i].Badger.Path)
+	}
 }
 
 // applyRuntimeConfig populates Config fields from the config store.
