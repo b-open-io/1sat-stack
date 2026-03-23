@@ -16,10 +16,6 @@ function isImageType(ct: string): boolean {
   return ct.startsWith("image/") && ct !== "image/svg+xml";
 }
 
-function isIframeType(ct: string): boolean {
-  return ct === "image/svg+xml" || ct.startsWith("text/html");
-}
-
 function OrdinalCard({
   ordinal,
   isSelected,
@@ -31,7 +27,6 @@ function OrdinalCard({
 }) {
   const ct = ordinal.contentType ?? "";
   const isImage = isImageType(ct);
-  const isIframe = isIframeType(ct);
   const subtype = ct.includes("/") ? ct.split("/")[1] : ct;
 
   return (
@@ -58,14 +53,8 @@ function OrdinalCard({
 
       {/* Thumbnail */}
       <div className="w-full aspect-square mb-1.5 rounded overflow-hidden bg-black/30 flex items-center justify-center">
-        {isIframe ? (
-          <iframe
-            src={ordinal.contentUrl}
-            title={ordinal.name || "Ordinal"}
-            className="w-full h-full border-0 pointer-events-none"
-            sandbox="allow-scripts"
-            loading="lazy"
-          />
+        {!ordinal.contentUrl ? (
+          <span className="text-muted-foreground text-lg">{"\u25C6"}</span>
         ) : isImage ? (
           <img
             src={ordinal.contentUrl}
@@ -73,10 +62,14 @@ function OrdinalCard({
             className="w-full h-full object-cover"
             loading="lazy"
           />
-        ) : ct ? (
-          <span className="text-muted-foreground text-lg">{"\uD83D\uDCC4"}</span>
         ) : (
-          <span className="text-muted-foreground text-lg">{"\u25C6"}</span>
+          <iframe
+            src={ordinal.contentUrl}
+            title={ordinal.name || "Ordinal"}
+            className="w-full h-full border-0 pointer-events-none"
+            sandbox="allow-scripts"
+            loading="lazy"
+          />
         )}
       </div>
 
