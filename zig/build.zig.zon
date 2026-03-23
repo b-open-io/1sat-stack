@@ -1,0 +1,15 @@
+.{
+    .name = .onesat_modules,
+    .version = "0.0.1",
+    .fingerprint = 0x84613b48508baffb,
+    .dependencies = .{
+        .bsvz = .{
+            .path = "../../bsvz",
+        },
+    },
+    .paths = .{
+        "build.zig",
+        "build.zig.zon",
+        "src",
+    },
+}
