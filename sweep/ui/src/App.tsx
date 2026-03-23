@@ -296,13 +296,11 @@ export default function App() {
           connected={walletConnected}
         />
 
-        {!sweeping && (
-          <WifInput
-            onScan={handleScan}
-            scanning={scanning}
-            disabled={false}
-          />
-        )}
+        <WifInput
+          onScan={handleScan}
+          scanning={scanning}
+          disabled={sweeping}
+        />
 
         {scanning && (
           <p className="text-sm text-center text-muted-foreground animate-pulse">
