@@ -20,6 +20,7 @@ import (
 	"github.com/b-open-io/1sat-stack/pkg/beef"
 	"github.com/b-open-io/1sat-stack/pkg/bsocial"
 	"github.com/b-open-io/1sat-stack/pkg/bsv21"
+	"github.com/b-open-io/1sat-stack/pkg/faucet"
 	configpkg "github.com/b-open-io/1sat-stack/pkg/config"
 	"github.com/b-open-io/1sat-stack/pkg/httputil"
 
@@ -145,6 +146,9 @@ type Config struct {
 
 	// Message box service
 	MessageBox messagebox.Config `mapstructure:"messagebox"`
+
+	// Faucet service
+	Faucet faucet.Config `mapstructure:"faucet"`
 }
 
 // MongoDBConfig holds shared MongoDB connection configuration.
@@ -258,6 +262,7 @@ type Services struct {
 	Wallet     *wallet.Services
 	Paymail    *paymail.Services
 	MessageBox *messagebox.Services
+	Faucet     *faucet.Services
 
 	// ConfigStore for admin data (users, progress, settings)
 	ConfigStore configpkg.Store
@@ -352,6 +357,7 @@ func (c *Config) SetDefaults(v *viper.Viper) {
 	c.Auth.SetDefaults(v, "auth")
 	c.Paymail.SetDefaults(v, "paymail")
 	c.MessageBox.SetDefaults(v, "messagebox")
+	c.Faucet.SetDefaults(v, "faucet")
 }
 
 // resolvePath resolves a path relative to the data dir.
@@ -386,6 +392,7 @@ func (c *Config) resolveAllPaths() {
 	c.P2P.StoragePath = c.resolvePath(c.P2P.StoragePath)
 	c.Paymail.DBPath = c.resolvePath(c.Paymail.DBPath)
 	c.MessageBox.DBPath = c.resolvePath(c.MessageBox.DBPath)
+	c.Faucet.DBPath = c.resolvePath(c.Faucet.DBPath)
 }
 
 // applyRuntimeConfig populates Config fields from the config store.
@@ -1345,6 +1352,23 @@ func (c *Config) Initialize(ctx context.Context, logger *slog.Logger) (*Services
 
 	}
 
+	// Initialize Faucet service
+	if c.Faucet.Enabled {
+		if svc.Wallet == nil {
+			return nil, fmt.Errorf("faucet requires wallet service to be enabled")
+		}
+		faucetDeps := &faucet.InitializeDeps{
+			Wallet:           svc.Wallet,
+			ServerPrivateKey: c.Wallet.ServerPrivateKey,
+			Network:          c.Network,
+		}
+		faucetSvc, err := c.Faucet.Initialize(ctx, logger, c.DataDir, faucetDeps)
+		if err != nil {
+			return nil, fmt.Errorf("faucet init failed: %w", err)
+		}
+		svc.Faucet = faucetSvc
+	}
+
 	// Initialize MessageBox service (must be before Paymail, which depends on it)
 	if c.MessageBox.Mode != messagebox.ModeDisabled && c.MessageBox.Mode != "" {
 		mbSvc, err := c.MessageBox.Initialize(ctx, logger)
@@ -1726,6 +1750,18 @@ func (c *Config) RegisterRoutes(app *fiber.App, svc *Services) {
 		slog.Debug("registered messagebox routes", "prefix", c.Server.BasePath+prefix)
 	}
 
+	// Register Faucet routes
+	if svc.Faucet != nil && svc.Faucet.Routes != nil && svc.AuthMiddleware != nil {
+		prefix := c.Faucet.Routes.Prefix
+		if prefix == "" {
+			prefix = "/faucet"
+		}
+		faucetGroup := api.Group(prefix)
+		adminGuard := (&faucet.Handlers{Svc: svc.Faucet.Service}).AdminGuard()
+		svc.Faucet.Routes.Register(faucetGroup, svc.AuthMiddleware.Handler(), adminGuard)
+		slog.Debug("registered faucet routes", "prefix", c.Server.BasePath+prefix)
+	}
+
 	// Health check endpoint
 	api.Get("/health", handleHealth(svc.Chaintracks))
 
@@ -1863,6 +1899,12 @@ func (svc *Services) Close() error {
 	var errs []error
 
 	// Close in reverse order of initialization
+	if svc.Faucet != nil {
+		if err := svc.Faucet.Close(); err != nil {
+			errs = append(errs, fmt.Errorf("faucet close: %w", err))
+		}
+	}
+
 	if svc.Wallet != nil {
 		if err := svc.Wallet.Close(); err != nil {
 			errs = append(errs, fmt.Errorf("wallet close: %w", err))
