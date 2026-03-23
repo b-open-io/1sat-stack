@@ -177,7 +177,7 @@ export default function App() {
 
       const result = await legacySendBsv({
         funding: selectedFunding,
-        wif: legacyKeys.payPk,
+        keys: legacyKeys,
         destination,
         amount: sweepAmount ?? undefined,
       });
@@ -209,7 +209,7 @@ export default function App() {
       const result = await legacySendOrdinals({
         ordinals: selected,
         funding: assets.funding,
-        wif: legacyKeys.payPk,
+        keys: legacyKeys,
         destination,
       });
 
