@@ -1514,7 +1514,7 @@ func (c *Config) RegisterRoutes(app *fiber.App, svc *Services) {
 	// Redirect root to base path
 	if c.Server.BasePath != "" && c.Server.BasePath != "/" {
 		app.Get("/", func(ctx *fiber.Ctx) error {
-			return ctx.Redirect(c.Server.BasePath+"/", fiber.StatusMovedPermanently)
+			return ctx.Redirect(c.Server.BasePath+"/home/", fiber.StatusMovedPermanently)
 		})
 	}
 
