@@ -190,6 +190,58 @@ func (x *Beef) GetTransactions() []*BeefTx {
 	return nil
 }
 
+type AtomicBeef struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Txid          []byte                 `protobuf:"bytes,1,opt,name=txid,proto3" json:"txid,omitempty"` // 32 bytes, target transaction
+	Beef          *Beef                  `protobuf:"bytes,2,opt,name=beef,proto3" json:"beef,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *AtomicBeef) Reset() {
+	*x = AtomicBeef{}
+	mi := &file_proto_beef_proto_msgTypes[2]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *AtomicBeef) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*AtomicBeef) ProtoMessage() {}
+
+func (x *AtomicBeef) ProtoReflect() protoreflect.Message {
+	mi := &file_proto_beef_proto_msgTypes[2]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use AtomicBeef.ProtoReflect.Descriptor instead.
+func (*AtomicBeef) Descriptor() ([]byte, []int) {
+	return file_proto_beef_proto_rawDescGZIP(), []int{2}
+}
+
+func (x *AtomicBeef) GetTxid() []byte {
+	if x != nil {
+		return x.Txid
+	}
+	return nil
+}
+
+func (x *AtomicBeef) GetBeef() *Beef {
+	if x != nil {
+		return x.Beef
+	}
+	return nil
+}
+
 type MerklePath struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	BlockHeight   uint32                 `protobuf:"varint,1,opt,name=block_height,json=blockHeight,proto3" json:"block_height,omitempty"`
@@ -200,7 +252,7 @@ type MerklePath struct {
 
 func (x *MerklePath) Reset() {
 	*x = MerklePath{}
-	mi := &file_proto_beef_proto_msgTypes[2]
+	mi := &file_proto_beef_proto_msgTypes[3]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -212,7 +264,7 @@ func (x *MerklePath) String() string {
 func (*MerklePath) ProtoMessage() {}
 
 func (x *MerklePath) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_beef_proto_msgTypes[2]
+	mi := &file_proto_beef_proto_msgTypes[3]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -225,7 +277,7 @@ func (x *MerklePath) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use MerklePath.ProtoReflect.Descriptor instead.
 func (*MerklePath) Descriptor() ([]byte, []int) {
-	return file_proto_beef_proto_rawDescGZIP(), []int{2}
+	return file_proto_beef_proto_rawDescGZIP(), []int{3}
 }
 
 func (x *MerklePath) GetBlockHeight() uint32 {
@@ -251,7 +303,7 @@ type PathLevel struct {
 
 func (x *PathLevel) Reset() {
 	*x = PathLevel{}
-	mi := &file_proto_beef_proto_msgTypes[3]
+	mi := &file_proto_beef_proto_msgTypes[4]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -263,7 +315,7 @@ func (x *PathLevel) String() string {
 func (*PathLevel) ProtoMessage() {}
 
 func (x *PathLevel) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_beef_proto_msgTypes[3]
+	mi := &file_proto_beef_proto_msgTypes[4]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -276,7 +328,7 @@ func (x *PathLevel) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PathLevel.ProtoReflect.Descriptor instead.
 func (*PathLevel) Descriptor() ([]byte, []int) {
-	return file_proto_beef_proto_rawDescGZIP(), []int{3}
+	return file_proto_beef_proto_rawDescGZIP(), []int{4}
 }
 
 func (x *PathLevel) GetElements() []*PathElement {
@@ -298,7 +350,7 @@ type PathElement struct {
 
 func (x *PathElement) Reset() {
 	*x = PathElement{}
-	mi := &file_proto_beef_proto_msgTypes[4]
+	mi := &file_proto_beef_proto_msgTypes[5]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -310,7 +362,7 @@ func (x *PathElement) String() string {
 func (*PathElement) ProtoMessage() {}
 
 func (x *PathElement) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_beef_proto_msgTypes[4]
+	mi := &file_proto_beef_proto_msgTypes[5]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -323,7 +375,7 @@ func (x *PathElement) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PathElement.ProtoReflect.Descriptor instead.
 func (*PathElement) Descriptor() ([]byte, []int) {
-	return file_proto_beef_proto_rawDescGZIP(), []int{4}
+	return file_proto_beef_proto_rawDescGZIP(), []int{5}
 }
 
 func (x *PathElement) GetOffset() uint64 {
@@ -369,7 +421,11 @@ const file_proto_beef_proto_rawDesc = "" +
 	"\v_bump_index\"n\n" +
 	"\x04Beef\x12-\n" +
 	"\x05bumps\x18\x01 \x03(\v2\x17.onesat.beef.MerklePathR\x05bumps\x127\n" +
-	"\ftransactions\x18\x02 \x03(\v2\x13.onesat.beef.BeefTxR\ftransactions\"[\n" +
+	"\ftransactions\x18\x02 \x03(\v2\x13.onesat.beef.BeefTxR\ftransactions\"G\n" +
+	"\n" +
+	"AtomicBeef\x12\x12\n" +
+	"\x04txid\x18\x01 \x01(\fR\x04txid\x12%\n" +
+	"\x04beef\x18\x02 \x01(\v2\x11.onesat.beef.BeefR\x04beef\"[\n" +
 	"\n" +
 	"MerklePath\x12!\n" +
 	"\fblock_height\x18\x01 \x01(\rR\vblockHeight\x12*\n" +
@@ -401,26 +457,28 @@ func file_proto_beef_proto_rawDescGZIP() []byte {
 }
 
 var file_proto_beef_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
-var file_proto_beef_proto_msgTypes = make([]protoimpl.MessageInfo, 5)
+var file_proto_beef_proto_msgTypes = make([]protoimpl.MessageInfo, 6)
 var file_proto_beef_proto_goTypes = []any{
 	(DataFormat)(0),     // 0: onesat.beef.DataFormat
 	(*BeefTx)(nil),      // 1: onesat.beef.BeefTx
 	(*Beef)(nil),        // 2: onesat.beef.Beef
-	(*MerklePath)(nil),  // 3: onesat.beef.MerklePath
-	(*PathLevel)(nil),   // 4: onesat.beef.PathLevel
-	(*PathElement)(nil), // 5: onesat.beef.PathElement
+	(*AtomicBeef)(nil),  // 3: onesat.beef.AtomicBeef
+	(*MerklePath)(nil),  // 4: onesat.beef.MerklePath
+	(*PathLevel)(nil),   // 5: onesat.beef.PathLevel
+	(*PathElement)(nil), // 6: onesat.beef.PathElement
 }
 var file_proto_beef_proto_depIdxs = []int32{
 	0, // 0: onesat.beef.BeefTx.data_format:type_name -> onesat.beef.DataFormat
-	3, // 1: onesat.beef.Beef.bumps:type_name -> onesat.beef.MerklePath
+	4, // 1: onesat.beef.Beef.bumps:type_name -> onesat.beef.MerklePath
 	1, // 2: onesat.beef.Beef.transactions:type_name -> onesat.beef.BeefTx
-	4, // 3: onesat.beef.MerklePath.path:type_name -> onesat.beef.PathLevel
-	5, // 4: onesat.beef.PathLevel.elements:type_name -> onesat.beef.PathElement
-	5, // [5:5] is the sub-list for method output_type
-	5, // [5:5] is the sub-list for method input_type
-	5, // [5:5] is the sub-list for extension type_name
-	5, // [5:5] is the sub-list for extension extendee
-	0, // [0:5] is the sub-list for field type_name
+	2, // 3: onesat.beef.AtomicBeef.beef:type_name -> onesat.beef.Beef
+	5, // 4: onesat.beef.MerklePath.path:type_name -> onesat.beef.PathLevel
+	6, // 5: onesat.beef.PathLevel.elements:type_name -> onesat.beef.PathElement
+	6, // [6:6] is the sub-list for method output_type
+	6, // [6:6] is the sub-list for method input_type
+	6, // [6:6] is the sub-list for extension type_name
+	6, // [6:6] is the sub-list for extension extendee
+	0, // [0:6] is the sub-list for field type_name
 }
 
 func init() { file_proto_beef_proto_init() }
@@ -435,7 +493,7 @@ func file_proto_beef_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_proto_beef_proto_rawDesc), len(file_proto_beef_proto_rawDesc)),
 			NumEnums:      1,
-			NumMessages:   5,
+			NumMessages:   6,
 			NumExtensions: 0,
 			NumServices:   0,
 		},

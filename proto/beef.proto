@@ -22,6 +22,11 @@ message Beef {
   repeated BeefTx transactions = 2;
 }
 
+message AtomicBeef {
+  bytes txid = 1;  // 32 bytes, target transaction
+  Beef beef = 2;
+}
+
 message MerklePath {
   uint32 block_height = 1;
   repeated PathLevel path = 2;
