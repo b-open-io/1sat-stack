@@ -67,10 +67,19 @@ WASM modules written in Zig, compiled to .wasm, loaded by Wazero host in Go. Par
 | OrdLock parser | ✅ Done | | Full OrdLockPrefix + OrdLockSuffix |
 | Shrug parser | ✅ Done | | Tag + outpoint + OP_2DROP + amount + OP_DROP |
 | BSV21 parser | **Not Started** | | Needs JSON parsing (inscription content is JSON) |
-| `parse_beef` transaction-level function | **Not Started** | | Receives ParsedBeef, iterates outputs+spends, returns IndexedOutputs |
-| WASM build target | **Not Started** | OPL-1511 | Compile parse module to .wasm |
+| `parseBeefBytes` transaction-level function | ✅ Done | | Takes raw BEEF bytes, uses bsvz to deserialize, runs all parsers on outputs+spends, returns BeefParseResult |
+| WASM build target | ✅ Done | OPL-1511 | 65KB `parse_tx.wasm` — exports: alloc, dealloc, parse_beef. Separate wasm_exports.zig root for WASM build. |
 
-### Phase 2: Engine Storage Redesign
+### Phase 2: Wazero Host + First WASM Integration
+
+| Task | Status | Linear | Notes |
+|------|--------|--------|-------|
+| Add Wazero dependency to Go | **Not Started** | OPL-1509 | Load .wasm, instantiate, call exports |
+| Go-side parse_beef caller | **Not Started** | | Replaces `IndexContext.ParseTxn()` with WASM module call |
+| Topic manager WASM interface | **Not Started** | | `admit(beef_ptr, len) → instructions_ptr` export. OPNS or OrdLock first. |
+| Topic manager Zig implementation | **Not Started** | | Statically links parser library. OPNS mine detection as first candidate. |
+
+### Phase 3: Engine Storage Redesign
 
 Move `EngineAdapter`/`TopicStorage` from native SQLite back to Redis channel.
 
