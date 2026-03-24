@@ -466,7 +466,7 @@ const file_proto_parsers_bitcom_proto_rawDesc = "" +
 	"\aaddress\x18\x02 \x01(\tR\aaddress\x12\x1c\n" +
 	"\tsignature\x18\x03 \x01(\fR\tsignature\x12\x10\n" +
 	"\x03vin\x18\x04 \x01(\rR\x03vin\x12\x14\n" +
-	"\x05valid\x18\x05 \x01(\bR\x05validB0Z.github.com/b-open-io/1sat-engine/proto/parsersb\x06proto3"
+	"\x05valid\x18\x05 \x01(\bR\x05validB/Z-github.com/b-open-io/1sat-stack/proto/parsersb\x06proto3"
 
 var (
 	file_proto_parsers_bitcom_proto_rawDescOnce sync.Once

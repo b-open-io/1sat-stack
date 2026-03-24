@@ -80,7 +80,7 @@ const file_proto_parsers_lock_proto_rawDesc = "" +
 	"\x18proto/parsers/lock.proto\x12\x0eonesat.parsers\"8\n" +
 	"\bLockData\x12\x16\n" +
 	"\x06pkhash\x18\x01 \x01(\fR\x06pkhash\x12\x14\n" +
-	"\x05until\x18\x02 \x01(\rR\x05untilB0Z.github.com/b-open-io/1sat-engine/proto/parsersb\x06proto3"
+	"\x05until\x18\x02 \x01(\rR\x05untilB/Z-github.com/b-open-io/1sat-stack/proto/parsersb\x06proto3"
 
 var (
 	file_proto_parsers_lock_proto_rawDescOnce sync.Once

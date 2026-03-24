@@ -442,7 +442,7 @@ const file_proto_beef_proto_rawDesc = "" +
 	"\n" +
 	"\x06RAW_TX\x10\x00\x12\x19\n" +
 	"\x15RAW_TX_AND_BUMP_INDEX\x10\x01\x12\r\n" +
-	"\tTXID_ONLY\x10\x02B/Z-github.com/b-open-io/1sat-engine/proto/beefpbb\x06proto3"
+	"\tTXID_ONLY\x10\x02B.Z,github.com/b-open-io/1sat-stack/proto/beefpbb\x06proto3"
 
 var (
 	file_proto_beef_proto_rawDescOnce sync.Once

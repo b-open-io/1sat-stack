@@ -89,7 +89,7 @@ const file_proto_parsers_opns_proto_rawDesc = "" +
 	"\bOpnsData\x12\x18\n" +
 	"\aclaimed\x18\x01 \x01(\fR\aclaimed\x12\x16\n" +
 	"\x06domain\x18\x02 \x01(\fR\x06domain\x12\x10\n" +
-	"\x03pow\x18\x03 \x01(\fR\x03powB0Z.github.com/b-open-io/1sat-engine/proto/parsersb\x06proto3"
+	"\x03pow\x18\x03 \x01(\fR\x03powB/Z-github.com/b-open-io/1sat-stack/proto/parsersb\x06proto3"
 
 var (
 	file_proto_parsers_opns_proto_rawDescOnce sync.Once

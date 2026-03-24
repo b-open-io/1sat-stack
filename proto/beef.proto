@@ -2,7 +2,7 @@ syntax = "proto3";
 
 package onesat.beef;
 
-option go_package = "github.com/b-open-io/1sat-engine/proto/beefpb";
+option go_package = "github.com/b-open-io/1sat-stack/proto/beefpb";
 
 enum DataFormat {
   RAW_TX = 0;

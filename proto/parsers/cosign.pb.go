@@ -81,7 +81,7 @@ const file_proto_parsers_cosign_proto_rawDesc = "" +
 	"\n" +
 	"CosignData\x12\x16\n" +
 	"\x06pkhash\x18\x01 \x01(\fR\x06pkhash\x12\x1a\n" +
-	"\bcosigner\x18\x02 \x01(\fR\bcosignerB0Z.github.com/b-open-io/1sat-engine/proto/parsersb\x06proto3"
+	"\bcosigner\x18\x02 \x01(\fR\bcosignerB/Z-github.com/b-open-io/1sat-stack/proto/parsersb\x06proto3"
 
 var (
 	file_proto_parsers_cosign_proto_rawDescOnce sync.Once

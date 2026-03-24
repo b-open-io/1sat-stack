@@ -119,7 +119,7 @@ const file_proto_parsers_bsv21_proto_rawDesc = "" +
 	"\x06amount\x18\x06 \x01(\x04R\x06amountB\t\n" +
 	"\a_symbolB\v\n" +
 	"\t_decimalsB\a\n" +
-	"\x05_iconB0Z.github.com/b-open-io/1sat-engine/proto/parsersb\x06proto3"
+	"\x05_iconB/Z-github.com/b-open-io/1sat-stack/proto/parsersb\x06proto3"
 
 var (
 	file_proto_parsers_bsv21_proto_rawDescOnce sync.Once

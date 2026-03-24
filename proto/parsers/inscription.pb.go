@@ -108,7 +108,7 @@ const file_proto_parsers_inscription_proto_rawDesc = "" +
 	"\acontent\x18\x02 \x01(\fR\acontent\x12.\n" +
 	"\x06parent\x18\x03 \x01(\v2\x16.onesat.parse.OutPointR\x06parent\x12#\n" +
 	"\rscript_prefix\x18\x04 \x01(\fR\fscriptPrefix\x12#\n" +
-	"\rscript_suffix\x18\x05 \x01(\fR\fscriptSuffixB0Z.github.com/b-open-io/1sat-engine/proto/parsersb\x06proto3"
+	"\rscript_suffix\x18\x05 \x01(\fR\fscriptSuffixB/Z-github.com/b-open-io/1sat-stack/proto/parsersb\x06proto3"
 
 var (
 	file_proto_parsers_inscription_proto_rawDescOnce sync.Once

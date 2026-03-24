@@ -80,7 +80,7 @@ const file_proto_parsers_ordlock_proto_rawDesc = "" +
 	"\x1bproto/parsers/ordlock.proto\x12\x0eonesat.parsers\"J\n" +
 	"\vOrdLockData\x12#\n" +
 	"\rseller_pkhash\x18\x01 \x01(\fR\fsellerPkhash\x12\x16\n" +
-	"\x06payout\x18\x02 \x01(\fR\x06payoutB0Z.github.com/b-open-io/1sat-engine/proto/parsersb\x06proto3"
+	"\x06payout\x18\x02 \x01(\fR\x06payoutB/Z-github.com/b-open-io/1sat-stack/proto/parsersb\x06proto3"
 
 var (
 	file_proto_parsers_ordlock_proto_rawDescOnce sync.Once

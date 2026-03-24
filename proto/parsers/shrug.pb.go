@@ -81,7 +81,7 @@ const file_proto_parsers_shrug_proto_rawDesc = "" +
 	"\x19proto/parsers/shrug.proto\x12\x0eonesat.parsers\x1a\x11proto/parse.proto\"X\n" +
 	"\tShrugData\x12&\n" +
 	"\x02id\x18\x01 \x01(\v2\x16.onesat.parse.OutPointR\x02id\x12#\n" +
-	"\rscript_suffix\x18\x02 \x01(\fR\fscriptSuffixB0Z.github.com/b-open-io/1sat-engine/proto/parsersb\x06proto3"
+	"\rscript_suffix\x18\x02 \x01(\fR\fscriptSuffixB/Z-github.com/b-open-io/1sat-stack/proto/parsersb\x06proto3"
 
 var (
 	file_proto_parsers_shrug_proto_rawDescOnce sync.Once

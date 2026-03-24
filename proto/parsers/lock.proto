@@ -2,7 +2,7 @@ syntax = "proto3";
 
 package onesat.parsers;
 
-option go_package = "github.com/b-open-io/1sat-engine/proto/parsers";
+option go_package = "github.com/b-open-io/1sat-stack/proto/parsers";
 
 message LockData {
   bytes pkhash = 1;   // 20 bytes
