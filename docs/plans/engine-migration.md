@@ -77,13 +77,17 @@ Same `.wasm` binary loaded by Go (Wazero) and TypeScript (WebAssembly API). Same
 
 | Task | Status | Linear | Notes |
 |------|--------|--------|-------|
-| Add Wazero dependency to Go | **Not Started** | OPL-1509 | Load `parse_tx.wasm`, instantiate, call exports |
-| Go-side parse_beef caller | **Not Started** | | Call alloc → write BEEF → call parse_beef → read protobuf → decode with parsepb |
-| Wire into Go ingestion flow | **Not Started** | | Replace `IndexContext.ParseTxn()` with WASM module call |
-| TypeScript WASM loader | **Not Started** | | `WebAssembly.instantiate` for 1sat-sdk. Same .wasm, protobufjs for decoding |
-| Replace 1sat-sdk TypeScript parsers | **Not Started** | | Unify parsing: both Go and TS consume same WASM binary |
-| Topic manager WASM interface | **Not Started** | | `admit(beef_ptr, len) → instructions_ptr` export. OPNS or OrdLock first. |
-| Topic manager Zig implementation | **Not Started** | | Statically links parser library. OPNS mine detection as first candidate. |
+| Add Wazero dependency to Go | ✅ Done | OPL-1509 | `pkg/wasmparse/` — loads parse_tx.wasm, calls exports, decodes protobuf |
+| Go-side parse_beef caller | ✅ Done | OPL-1648 | `wasmparse.Module.ParseBeef()` — alloc → write → call → read → decode |
+| Beef protobuf | ✅ Done | OPL-1552 | `proto/beef.proto` — canonical deserialized Beef + AtomicBeef wrapper with target txid |
+| Per-parser protobuf types | ✅ Done | | `proto/parsers/` — inscription, lock, ordlock, cosign, opns, shrug, bitcom, bsv21 |
+| Update WASM to accept AtomicBeef proto | **Not Started** | | `wasm_exports.zig` decodes proto AtomicBeef instead of raw BEEF bytes |
+| Wire into Go ingestion flow | **Not Started** | OPL-1649 | `IngestTx` accepts `*AtomicBeef`, calls WASM, maps results into IndexContext |
+| TypeScript WASM loader | **Not Started** | OPL-1650 | `WebAssembly.instantiate` for 1sat-sdk. Same .wasm, protobufjs for decoding |
+| Replace 1sat-sdk TypeScript parsers | **Not Started** | OPL-1650 | Unify parsing: both Go and TS consume same WASM binary |
+| Refactor IngestTx to accept AtomicBeef | **Not Started** | | Change signature from `*Transaction` to `*beefpb.AtomicBeef`. Update callers. `BuildFullBeefTx` returns AtomicBeef. |
+| Topic manager WASM interface | **Not Started** | OPL-1651 | `admit(beef_ptr, len) → instructions_ptr` export. OPNS or OrdLock first. |
+| Topic manager Zig implementation | **Not Started** | OPL-1652 | Statically links parser library. OPNS mine detection as first candidate. |
 
 ### Phase 3: Engine Storage Redesign
 
