@@ -14,7 +14,7 @@ pub fn build(b: *std.Build) void {
     });
 
     const parse_tx_mod = b.createModule(.{
-        .root_source_file = b.path("src/parse/main.zig"),
+        .root_source_file = b.path("src/parse/wasm_exports.zig"),
         .target = wasm_target,
         .optimize = .ReleaseSmall,
     });
@@ -24,6 +24,8 @@ pub fn build(b: *std.Build) void {
         .name = "parse_tx",
         .root_module = parse_tx_mod,
     });
+    parse_tx.entry = .disabled;
+    parse_tx.rdynamic = true;
     b.installArtifact(parse_tx);
 
     // Native tests

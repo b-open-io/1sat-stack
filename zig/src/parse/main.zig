@@ -5,9 +5,14 @@ pub const context = @import("context.zig");
 const ParseContext = context.ParseContext;
 const ParseResult = context.ParseResult;
 const OutPoint = context.OutPoint;
+const Hash256 = bsvz.crypto.Hash256;
 const Opcode = bsvz.script.opcode.Opcode;
 const Script = bsvz.script.Script;
 const standard = bsvz.script.standard;
+
+fn toHash256(h: bsvz.primitives.chainhash.Hash) Hash256 {
+    return .{ .bytes = h.bytes };
+}
 
 pub fn parse1Sat(ctx: *ParseContext) !?ParseResult {
     if (ctx.satoshis != 1) return null;
@@ -72,6 +77,157 @@ pub fn parseOutput(
     }
 
     return ctx;
+}
+
+/// Result of parsing a full BEEF transaction.
+pub const BeefParseResult = struct {
+    outputs: std.ArrayListUnmanaged(IndexedOutput),
+    spends: std.ArrayListUnmanaged(IndexedOutput),
+    txid: ?Hash256,
+    block_height: u32,
+    block_idx: u64,
+
+    pub fn deinit(self: *BeefParseResult, allocator: std.mem.Allocator) void {
+        for (self.outputs.items) |*o| o.deinit(allocator);
+        self.outputs.deinit(allocator);
+        for (self.spends.items) |*o| o.deinit(allocator);
+        self.spends.deinit(allocator);
+    }
+};
+
+/// A parsed output with its events and owners collected from all parsers.
+pub const IndexedOutput = struct {
+    outpoint: OutPoint,
+    satoshis: u64,
+    block_height: u32,
+    block_idx: u64,
+    events: std.ArrayListUnmanaged([]const u8),
+    owners: std.ArrayListUnmanaged([20]u8),
+    spend_txid: ?Hash256,
+    ctx: ParseContext,
+
+    pub fn deinit(self: *IndexedOutput, _: std.mem.Allocator) void {
+        // events and owners point into ctx's arena — ctx.deinit() handles cleanup
+        self.events.deinit(self.ctx.allocator);
+        self.owners.deinit(self.ctx.allocator);
+        self.ctx.deinit();
+    }
+};
+
+/// Parse a full BEEF. Deserializes, runs all parsers on each output
+/// and each spent input, returns IndexedOutputs.
+/// Replaces Go's IndexContext.ParseTxn().
+pub fn parseBeefBytes(allocator: std.mem.Allocator, beef_bytes: []const u8) !BeefParseResult {
+    var parsed = try bsvz.transaction.beef.parseBeef(allocator, beef_bytes);
+    defer parsed.deinit();
+
+    const tx = parsed.tx orelse return error.NoTargetTransaction;
+    const txid = parsed.txid orelse return error.NoTargetTxid;
+
+    const txid256 = toHash256(txid);
+
+    var block_height: u32 = 0;
+    var block_idx: u64 = 0;
+    if (tx.merkle_path) |mp| {
+        block_height = mp.block_height;
+        if (mp.path.len > 0) {
+            for (mp.path[0]) |leaf| {
+                if (leaf.hash) |h| {
+                    if (std.mem.eql(u8, &h.bytes, &txid.bytes)) {
+                        block_idx = leaf.offset;
+                        break;
+                    }
+                }
+            }
+        }
+    }
+
+    var result = BeefParseResult{
+        .outputs = .{},
+        .spends = .{},
+        .txid = txid256,
+        .block_height = block_height,
+        .block_idx = block_idx,
+    };
+    errdefer result.deinit(allocator);
+
+    // Parse outputs
+    for (tx.outputs, 0..) |output, vout| {
+        const outpoint = OutPoint{
+            .txid = txid256,
+            .index = @intCast(vout),
+        };
+        const sats: u64 = @intCast(@max(0, output.satoshis));
+        var parse_ctx = try parseOutput(allocator, output.locking_script.bytes, sats, outpoint);
+
+        var events = std.ArrayListUnmanaged([]const u8){};
+        var owners = std.ArrayListUnmanaged([20]u8){};
+        var it = parse_ctx.results.iterator();
+        while (it.next()) |entry| {
+            for (entry.value_ptr.events.items) |event| {
+                try events.append(allocator, event);
+            }
+            for (entry.value_ptr.owners.items) |owner| {
+                try owners.append(allocator, owner);
+            }
+        }
+
+        try result.outputs.append(allocator, .{
+            .outpoint = outpoint,
+            .satoshis = sats,
+            .block_height = block_height,
+            .block_idx = block_idx,
+            .events = events,
+            .owners = owners,
+            .spend_txid = null,
+            .ctx = parse_ctx,
+        });
+    }
+
+    // Parse spends (inputs)
+    for (tx.inputs) |input| {
+        const source_output = input.source_output orelse {
+            try result.spends.append(allocator, .{
+                .outpoint = input.previous_outpoint,
+                .satoshis = 0,
+                .block_height = 0,
+                .block_idx = 0,
+                .events = .{},
+                .owners = .{},
+                .spend_txid = txid256,
+                .ctx = ParseContext.init(allocator, &.{}, 0, null),
+            });
+            continue;
+        };
+
+        const sats: u64 = @intCast(@max(0, source_output.satoshis));
+        var parse_ctx = try parseOutput(allocator, source_output.locking_script.bytes, sats, input.previous_outpoint);
+
+        var events = std.ArrayListUnmanaged([]const u8){};
+        var owners = std.ArrayListUnmanaged([20]u8){};
+        var it = parse_ctx.results.iterator();
+        while (it.next()) |entry| {
+            for (entry.value_ptr.events.items) |event| {
+                try events.append(allocator, event);
+            }
+            for (entry.value_ptr.owners.items) |owner| {
+                try owners.append(allocator, owner);
+            }
+        }
+
+        try result.spends.append(allocator, .{
+            .outpoint = input.previous_outpoint,
+            .satoshis = sats,
+            .block_height = 0,
+            .block_idx = 0,
+            .events = events,
+            .owners = owners,
+            .spend_txid = txid256,
+            .ctx = parse_ctx,
+        });
+    }
+
+    return result;
 }
 
 pub fn main() !void {
