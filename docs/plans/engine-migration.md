@@ -1,4 +1,4 @@
-# 1sat-engine: Redis Protocol Migration
+# 1sat-engine: Module Runtime Migration
 
 Status: **In Progress**
 
@@ -7,28 +7,19 @@ Branch: `engine` (worktree at `/Users/davidcase/Source/1sat/1sat-engine/`)
 
 ## Goal
 
-Replace the custom `Store` interface with the Redis protocol as the canonical data interface. Modules receive bidirectional byte streams (channels) carrying RESP protocol. Backend is redcon + Badger in-process.
+Transform 1sat-stack from a Go monolith into a **module runtime** — a thin orchestrator that loads WASM modules, resolves typed channel providers, and wires everything together. Modules are WASM binaries written in Zig. Channels carry protobuf-defined protocols. The same modules run on servers, desktops, and browsers.
 
-This is the foundation for the distributed compute vision (see `docs/research/distributed-compute-vision.md`).
+See `docs/research/module-runtime-architecture.md` for the full architectural vision.
 
-## Dual Storage Model
+## Architecture Summary
 
-Modules have two storage mechanisms:
+- **Channels** carry protobuf-defined protocols (not RESP). Each channel type has a `.proto` service definition.
+- **SQLite** is file I/O for lookup services, not a channel. Host handles replication.
+- **Protobuf** for all data crossing module boundaries. Static codegen, no runtime reflection.
+- **On-chain interface contracts** — proto files inscribed as outpoints for immutable, universally addressable protocol definitions.
+- **Identity** — all peer communication authenticated through wallet root identity key (= libp2p peer ID).
 
-- **Redis channel** — RESP protocol over multiplexed stdin/stdout stream. KV, hashes, sorted sets, pub/sub. Hot-path operational state. Module wraps the stream with whatever RESP client its language provides.
-- **SQLite file** — Native file I/O. Structured queries, aggregates, joins. Used by lookup services only. Module uses SQLite directly. Host handles replication/redundancy (Litestream, LiteFS, etc.) transparently.
-
-The Redis channel is the stream abstraction — bidirectional bytes, language-agnostic, maps naturally to Go, Zig, TypeScript/AssemblyScript. SQLite is orthogonal — it's just a file, not a stream.
-
-## Data Serialization
-
-Structured data crossing WASM module boundaries uses **Protocol Buffers**. Static codegen for Go, Zig, TypeScript/AssemblyScript. No runtime reflection.
-
-Key protobuf types: `ParsedBeef` (pre-deserialized, txids computed), `AdmittanceInstructions`, `LookupQuestion/Answer`, `OutputData`.
-
-The engine parses raw BEEF bytes once, serializes to `ParsedBeef` protobuf, passes that across module boundaries. Topic managers skip the expensive rehashing.
-
-See `docs/research/channel-spec.md` for full details on channels, serialization, and WASM architecture.
+See `docs/research/module-runtime-architecture.md` for the full vision including channel types, runtime model, provider resolution, and on-chain contracts.
 
 ## Migration Progress
 
@@ -104,18 +95,17 @@ Lookups stay on SQLite channel. Engine storage (Phase 2) and lookup storage are 
 
 ## Key Decisions
 
-1. **Redis channel is a bidirectional byte stream** — RESP bytes multiplexed over stdin/stdout. Module wraps it with whatever RESP client its language provides. Not Go interfaces, not TCP addresses, not injected clients.
-2. **SQLite is a file, not a channel** — Lookup services use SQLite natively. Host handles replication (Litestream, LiteFS, custom VFS). No SQL wire protocol over the mux.
-3. **Channel abstraction is language-agnostic** — maps naturally to Go, Zig, TypeScript, AssemblyScript. Just bytes in, bytes out.
-4. **Modules create their own clients from the stream** — host provides the channel, module wraps it. Module is self-contained.
-5. **Host manages isolation** — which channels/files a module can access is configuration, not module choice.
-6. **Protobuf for module boundary data** — structured data crossing WASM boundaries uses protobuf. Static codegen, no runtime reflection. `.proto` files define the module contract.
-7. **Engine targets WASM** — pure decision logic. Host owns concurrency and I/O. Engine module calls topic managers via host-mediated `call_module()`.
-8. **Go shim for host integration** — implements Go interfaces (`TopicManager`, `LookupService`, `Storage`), internally calls WASM modules via protobuf. Native Go modules keep working alongside WASM modules.
-9. **Function calls are WASM imports/exports** — module contract functions (`admit`, `lookup`, `parse`) are direct WASM calls with protobuf bytes. Data channels are for storage access.
-10. **Engine storage moves back to Redis channel** — `EngineAdapter`/`TopicStorage` engine ops are single-table CRUD that maps to Redis hashes and sorted sets.
-11. **Event methods belong in lookup layer, not engine storage** — `SaveEvent`/`DeleteEvent`/`FindByEvent` serve lookups, not the engine. Pull them out.
-12. **BSV21 demonstrates both storage types** — queue ops on Redis channel, token_outputs on SQLite file, joined in application code.
+1. **Each channel type is a protobuf service definition** — not RESP, not a Go interface. Strongly typed request/response. RESP is superseded.
+2. **SQLite is a file, not a channel** — lookup services use SQLite natively. Host handles replication.
+3. **Protobuf for everything** — channel payloads, function arguments, inter-module data. Static codegen. `.proto` files define the module contract.
+4. **On-chain interface contracts** — proto files can be inscribed as outpoints. Immutable, addressable, verifiable.
+5. **Module runtime replaces monolith** — 1sat-stack becomes a thin orchestrator. Business logic lives in WASM modules.
+6. **Zig for WASM modules, Go for the runtime** — no Go-to-WASM via TinyGo. Zig compiles to small, efficient WASM binaries.
+7. **Channels are provider-agnostic** — a module's beef channel could be backed by local Badger, a REST API, a libp2p peer, or a fallback chain. Module doesn't know.
+8. **Identity is the root** — wallet identity key = libp2p peer ID. All peer communication is authenticated through it.
+9. **HTTP and P2P are transport adapters** — same channel protocol, same auth, different wire transport.
+10. **Parser libraries are statically compiled** — same Zig parser source gets compiled into standalone parse module AND into topic manager modules. No shared libraries at runtime.
+11. **Event methods belong in lookup layer, not engine storage** — `SaveEvent`/`DeleteEvent`/`FindByEvent` serve lookups, not the engine.
 
 ## Store Interface Audit Summary
 
