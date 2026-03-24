@@ -1,0 +1,12 @@
+syntax = "proto3";
+
+package onesat.parsers;
+
+option go_package = "github.com/b-open-io/1sat-engine/proto/parsers";
+
+import "proto/parse.proto";
+
+message ShrugData {
+  onesat.parse.OutPoint id = 1;
+  bytes script_suffix = 2;
+}

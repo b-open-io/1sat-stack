@@ -1,0 +1,15 @@
+syntax = "proto3";
+
+package onesat.parsers;
+
+option go_package = "github.com/b-open-io/1sat-engine/proto/parsers";
+
+import "proto/parse.proto";
+
+message InscriptionData {
+  string content_type = 1;
+  bytes content = 2;
+  onesat.parse.OutPoint parent = 3;
+  bytes script_prefix = 4;
+  bytes script_suffix = 5;
+}

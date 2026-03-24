@@ -1,0 +1,10 @@
+syntax = "proto3";
+
+package onesat.parsers;
+
+option go_package = "github.com/b-open-io/1sat-engine/proto/parsers";
+
+message CosignData {
+  bytes pkhash = 1;    // 20 bytes
+  bytes cosigner = 2;  // 33-byte compressed pubkey
+}
