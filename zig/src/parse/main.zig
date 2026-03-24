@@ -1,6 +1,8 @@
 const std = @import("std");
 const bsvz = @import("bsvz");
 pub const context = @import("context.zig");
+pub const beef_pb = @import("beef_pb.zig");
+const protobuf = @import("protobuf");
 
 const ParseContext = context.ParseContext;
 const ParseResult = context.ParseResult;
@@ -9,9 +11,17 @@ const Hash256 = bsvz.crypto.Hash256;
 const Opcode = bsvz.script.opcode.Opcode;
 const Script = bsvz.script.Script;
 const standard = bsvz.script.standard;
+const Transaction = bsvz.transaction.Transaction;
 
 fn toHash256(h: bsvz.primitives.chainhash.Hash) Hash256 {
     return .{ .bytes = h.bytes };
+}
+
+fn bytesToHash256(b: []const u8) Hash256 {
+    if (b.len < 32) return .{ .bytes = .{0} ** 32 };
+    var h: Hash256 = undefined;
+    @memcpy(&h.bytes, b[0..32]);
+    return h;
 }
 
 pub fn parse1Sat(ctx: *ParseContext) !?ParseResult {
@@ -223,6 +233,185 @@ pub fn parseBeefBytes(allocator: std.mem.Allocator, beef_bytes: []const u8) !Bee
             .events = events,
             .owners = owners,
             .spend_txid = txid256,
+            .ctx = parse_ctx,
+        });
+    }
+
+    return result;
+}
+
+/// Parse from a proto-encoded AtomicBeef. Txids are pre-computed in the proto,
+/// so no hashing is needed. Deserializes raw_tx bytes for the target and its
+/// input sources, runs all parsers.
+pub fn parseAtomicBeefProto(allocator: std.mem.Allocator, proto_bytes: []const u8) !BeefParseResult {
+    var reader: std.Io.Reader = .fixed(proto_bytes);
+    var atomic = try beef_pb.AtomicBeef.decode(&reader, allocator);
+    defer atomic.deinit(allocator);
+
+    if (atomic.txid.len < 32) return error.NoTargetTxid;
+    const target_txid = bytesToHash256(atomic.txid);
+
+    const beef = atomic.beef orelse return error.NoBeef;
+
+    // Find target BeefTx
+    var target_raw_tx: ?[]const u8 = null;
+    var target_bump_index: ?u32 = null;
+    for (beef.transactions.items) |btx| {
+        if (btx.txid.len >= 32 and std.mem.eql(u8, btx.txid[0..32], &target_txid.bytes)) {
+            target_raw_tx = btx.raw_tx;
+            target_bump_index = btx.bump_index;
+            break;
+        }
+    }
+    const raw_tx = target_raw_tx orelse return error.NoTargetTransaction;
+
+    // Deserialize target transaction
+    var tx = try Transaction.parse(allocator, raw_tx);
+    defer tx.deinit(allocator);
+
+    // Get block height/index from bumps
+    var block_height: u32 = 0;
+    var block_idx: u64 = 0;
+    if (target_bump_index) |bi| {
+        if (bi < beef.bumps.items.len) {
+            const bump = beef.bumps.items[bi];
+            block_height = bump.block_height;
+            for (bump.path.items) |level| {
+                if (level.elements.items.len == 0) continue;
+                for (level.elements.items) |elem| {
+                    if (elem.hash.len >= 32 and std.mem.eql(u8, elem.hash[0..32], &target_txid.bytes)) {
+                        block_idx = elem.offset;
+                        break;
+                    }
+                }
+                break; // only check first level (leaves)
+            }
+        }
+    }
+
+    var result = BeefParseResult{
+        .outputs = .{},
+        .spends = .{},
+        .txid = target_txid,
+        .block_height = block_height,
+        .block_idx = block_idx,
+    };
+    errdefer result.deinit(allocator);
+
+    // Parse outputs
+    for (tx.outputs, 0..) |output, vout| {
+        const outpoint = OutPoint{
+            .txid = target_txid,
+            .index = @intCast(vout),
+        };
+        const sats: u64 = @intCast(@max(0, output.satoshis));
+        var parse_ctx = try parseOutput(allocator, output.locking_script.bytes, sats, outpoint);
+
+        var events = std.ArrayListUnmanaged([]const u8){};
+        var owners = std.ArrayListUnmanaged([20]u8){};
+        var it = parse_ctx.results.iterator();
+        while (it.next()) |entry| {
+            for (entry.value_ptr.events.items) |event| {
+                try events.append(allocator, event);
+            }
+            for (entry.value_ptr.owners.items) |owner| {
+                try owners.append(allocator, owner);
+            }
+        }
+
+        try result.outputs.append(allocator, .{
+            .outpoint = outpoint,
+            .satoshis = sats,
+            .block_height = block_height,
+            .block_idx = block_idx,
+            .events = events,
+            .owners = owners,
+            .spend_txid = null,
+            .ctx = parse_ctx,
+        });
+    }
+
+    // Parse spends — find source transactions in the beef
+    for (tx.inputs) |input| {
+        const prev_txid_bytes = &input.previous_outpoint.txid.bytes;
+
+        // Find source tx in beef
+        var source_raw: ?[]const u8 = null;
+        for (beef.transactions.items) |btx| {
+            if (btx.txid.len >= 32 and std.mem.eql(u8, btx.txid[0..32], prev_txid_bytes)) {
+                source_raw = btx.raw_tx;
+                break;
+            }
+        }
+
+        if (source_raw == null or source_raw.?.len == 0) {
+            try result.spends.append(allocator, .{
+                .outpoint = input.previous_outpoint,
+                .satoshis = 0,
+                .block_height = 0,
+                .block_idx = 0,
+                .events = .{},
+                .owners = .{},
+                .spend_txid = target_txid,
+                .ctx = ParseContext.init(allocator, &.{}, 0, null),
+            });
+            continue;
+        }
+
+        var source_tx = Transaction.parse(allocator, source_raw.?) catch {
+            try result.spends.append(allocator, .{
+                .outpoint = input.previous_outpoint,
+                .satoshis = 0,
+                .block_height = 0,
+                .block_idx = 0,
+                .events = .{},
+                .owners = .{},
+                .spend_txid = target_txid,
+                .ctx = ParseContext.init(allocator, &.{}, 0, null),
+            });
+            continue;
+        };
+        defer source_tx.deinit(allocator);
+
+        const vout = input.previous_outpoint.index;
+        if (vout >= source_tx.outputs.len) {
+            try result.spends.append(allocator, .{
+                .outpoint = input.previous_outpoint,
+                .satoshis = 0,
+                .block_height = 0,
+                .block_idx = 0,
+                .events = .{},
+                .owners = .{},
+                .spend_txid = target_txid,
+                .ctx = ParseContext.init(allocator, &.{}, 0, null),
+            });
+            continue;
+        }
+
+        const source_output = source_tx.outputs[vout];
+        const sats: u64 = @intCast(@max(0, source_output.satoshis));
+        var parse_ctx = try parseOutput(allocator, source_output.locking_script.bytes, sats, input.previous_outpoint);
+
+        var events = std.ArrayListUnmanaged([]const u8){};
+        var owners = std.ArrayListUnmanaged([20]u8){};
+        var it = parse_ctx.results.iterator();
+        while (it.next()) |entry| {
+            for (entry.value_ptr.events.items) |event| {
+                try events.append(allocator, event);
+            }
+            for (entry.value_ptr.owners.items) |owner| {
+                try owners.append(allocator, owner);
+            }
+        }
+
+        try result.spends.append(allocator, .{
+            .outpoint = input.previous_outpoint,
+            .satoshis = sats,
+            .block_height = 0,
+            .block_idx = 0,
+            .events = events,
+            .owners = owners,
+            .spend_txid = target_txid,
             .ctx = parse_ctx,
         });
     }
