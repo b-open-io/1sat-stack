@@ -17,6 +17,7 @@ message IndexedOutput {
   repeated string events = 5;
   repeated bytes owners = 6;   // each is 20-byte PKHash
   bytes spend_txid = 7;        // 32 bytes if spent, empty if not
+  map<string, bytes> data = 8; // tag -> proto-encoded parser data
 }
 
 message BeefParseResult {

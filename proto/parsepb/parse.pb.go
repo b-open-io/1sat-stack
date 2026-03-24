@@ -2,7 +2,7 @@
 // versions:
 // 	protoc-gen-go v1.36.11
 // 	protoc        v7.34.1
-// source: parse.proto
+// source: proto/parse.proto
 
 package parsepb
 
@@ -31,7 +31,7 @@ type OutPoint struct {
 
 func (x *OutPoint) Reset() {
 	*x = OutPoint{}
-	mi := &file_parse_proto_msgTypes[0]
+	mi := &file_proto_parse_proto_msgTypes[0]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -43,7 +43,7 @@ func (x *OutPoint) String() string {
 func (*OutPoint) ProtoMessage() {}
 
 func (x *OutPoint) ProtoReflect() protoreflect.Message {
-	mi := &file_parse_proto_msgTypes[0]
+	mi := &file_proto_parse_proto_msgTypes[0]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -56,7 +56,7 @@ func (x *OutPoint) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use OutPoint.ProtoReflect.Descriptor instead.
 func (*OutPoint) Descriptor() ([]byte, []int) {
-	return file_parse_proto_rawDescGZIP(), []int{0}
+	return file_proto_parse_proto_rawDescGZIP(), []int{0}
 }
 
 func (x *OutPoint) GetTxid() []byte {
@@ -80,15 +80,16 @@ type IndexedOutput struct {
 	BlockHeight   uint32                 `protobuf:"varint,3,opt,name=block_height,json=blockHeight,proto3" json:"block_height,omitempty"`
 	BlockIdx      uint64                 `protobuf:"varint,4,opt,name=block_idx,json=blockIdx,proto3" json:"block_idx,omitempty"`
 	Events        []string               `protobuf:"bytes,5,rep,name=events,proto3" json:"events,omitempty"`
-	Owners        [][]byte               `protobuf:"bytes,6,rep,name=owners,proto3" json:"owners,omitempty"`                        // each is 20-byte PKHash
-	SpendTxid     []byte                 `protobuf:"bytes,7,opt,name=spend_txid,json=spendTxid,proto3" json:"spend_txid,omitempty"` // 32 bytes if spent, empty if not
+	Owners        [][]byte               `protobuf:"bytes,6,rep,name=owners,proto3" json:"owners,omitempty"`                                                                       // each is 20-byte PKHash
+	SpendTxid     []byte                 `protobuf:"bytes,7,opt,name=spend_txid,json=spendTxid,proto3" json:"spend_txid,omitempty"`                                                // 32 bytes if spent, empty if not
+	Data          map[string][]byte      `protobuf:"bytes,8,rep,name=data,proto3" json:"data,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"` // tag -> proto-encoded parser data
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
 func (x *IndexedOutput) Reset() {
 	*x = IndexedOutput{}
-	mi := &file_parse_proto_msgTypes[1]
+	mi := &file_proto_parse_proto_msgTypes[1]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -100,7 +101,7 @@ func (x *IndexedOutput) String() string {
 func (*IndexedOutput) ProtoMessage() {}
 
 func (x *IndexedOutput) ProtoReflect() protoreflect.Message {
-	mi := &file_parse_proto_msgTypes[1]
+	mi := &file_proto_parse_proto_msgTypes[1]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -113,7 +114,7 @@ func (x *IndexedOutput) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use IndexedOutput.ProtoReflect.Descriptor instead.
 func (*IndexedOutput) Descriptor() ([]byte, []int) {
-	return file_parse_proto_rawDescGZIP(), []int{1}
+	return file_proto_parse_proto_rawDescGZIP(), []int{1}
 }
 
 func (x *IndexedOutput) GetOutpoint() *OutPoint {
@@ -165,6 +166,13 @@ func (x *IndexedOutput) GetSpendTxid() []byte {
 	return nil
 }
 
+func (x *IndexedOutput) GetData() map[string][]byte {
+	if x != nil {
+		return x.Data
+	}
+	return nil
+}
+
 type BeefParseResult struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Outputs       []*IndexedOutput       `protobuf:"bytes,1,rep,name=outputs,proto3" json:"outputs,omitempty"`
@@ -178,7 +186,7 @@ type BeefParseResult struct {
 
 func (x *BeefParseResult) Reset() {
 	*x = BeefParseResult{}
-	mi := &file_parse_proto_msgTypes[2]
+	mi := &file_proto_parse_proto_msgTypes[2]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -190,7 +198,7 @@ func (x *BeefParseResult) String() string {
 func (*BeefParseResult) ProtoMessage() {}
 
 func (x *BeefParseResult) ProtoReflect() protoreflect.Message {
-	mi := &file_parse_proto_msgTypes[2]
+	mi := &file_proto_parse_proto_msgTypes[2]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -203,7 +211,7 @@ func (x *BeefParseResult) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use BeefParseResult.ProtoReflect.Descriptor instead.
 func (*BeefParseResult) Descriptor() ([]byte, []int) {
-	return file_parse_proto_rawDescGZIP(), []int{2}
+	return file_proto_parse_proto_rawDescGZIP(), []int{2}
 }
 
 func (x *BeefParseResult) GetOutputs() []*IndexedOutput {
@@ -241,14 +249,14 @@ func (x *BeefParseResult) GetBlockIdx() uint64 {
 	return 0
 }
 
-var File_parse_proto protoreflect.FileDescriptor
+var File_proto_parse_proto protoreflect.FileDescriptor
 
-const file_parse_proto_rawDesc = "" +
+const file_proto_parse_proto_rawDesc = "" +
 	"\n" +
-	"\vparse.proto\x12\fonesat.parse\"4\n" +
+	"\x11proto/parse.proto\x12\fonesat.parse\"4\n" +
 	"\bOutPoint\x12\x12\n" +
 	"\x04txid\x18\x01 \x01(\fR\x04txid\x12\x14\n" +
-	"\x05index\x18\x02 \x01(\rR\x05index\"\xee\x01\n" +
+	"\x05index\x18\x02 \x01(\rR\x05index\"\xe2\x02\n" +
 	"\rIndexedOutput\x122\n" +
 	"\boutpoint\x18\x01 \x01(\v2\x16.onesat.parse.OutPointR\boutpoint\x12\x1a\n" +
 	"\bsatoshis\x18\x02 \x01(\x04R\bsatoshis\x12!\n" +
@@ -257,7 +265,11 @@ const file_parse_proto_rawDesc = "" +
 	"\x06events\x18\x05 \x03(\tR\x06events\x12\x16\n" +
 	"\x06owners\x18\x06 \x03(\fR\x06owners\x12\x1d\n" +
 	"\n" +
-	"spend_txid\x18\a \x01(\fR\tspendTxid\"\xd1\x01\n" +
+	"spend_txid\x18\a \x01(\fR\tspendTxid\x129\n" +
+	"\x04data\x18\b \x03(\v2%.onesat.parse.IndexedOutput.DataEntryR\x04data\x1a7\n" +
+	"\tDataEntry\x12\x10\n" +
+	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
+	"\x05value\x18\x02 \x01(\fR\x05value:\x028\x01\"\xd1\x01\n" +
 	"\x0fBeefParseResult\x125\n" +
 	"\aoutputs\x18\x01 \x03(\v2\x1b.onesat.parse.IndexedOutputR\aoutputs\x123\n" +
 	"\x06spends\x18\x02 \x03(\v2\x1b.onesat.parse.IndexedOutputR\x06spends\x12\x12\n" +
@@ -266,54 +278,56 @@ const file_parse_proto_rawDesc = "" +
 	"\tblock_idx\x18\x05 \x01(\x04R\bblockIdxB/Z-github.com/b-open-io/1sat-stack/proto/parsepbb\x06proto3"
 
 var (
-	file_parse_proto_rawDescOnce sync.Once
-	file_parse_proto_rawDescData []byte
+	file_proto_parse_proto_rawDescOnce sync.Once
+	file_proto_parse_proto_rawDescData []byte
 )
 
-func file_parse_proto_rawDescGZIP() []byte {
-	file_parse_proto_rawDescOnce.Do(func() {
-		file_parse_proto_rawDescData = protoimpl.X.CompressGZIP(unsafe.Slice(unsafe.StringData(file_parse_proto_rawDesc), len(file_parse_proto_rawDesc)))
+func file_proto_parse_proto_rawDescGZIP() []byte {
+	file_proto_parse_proto_rawDescOnce.Do(func() {
+		file_proto_parse_proto_rawDescData = protoimpl.X.CompressGZIP(unsafe.Slice(unsafe.StringData(file_proto_parse_proto_rawDesc), len(file_proto_parse_proto_rawDesc)))
 	})
-	return file_parse_proto_rawDescData
+	return file_proto_parse_proto_rawDescData
 }
 
-var file_parse_proto_msgTypes = make([]protoimpl.MessageInfo, 3)
-var file_parse_proto_goTypes = []any{
+var file_proto_parse_proto_msgTypes = make([]protoimpl.MessageInfo, 4)
+var file_proto_parse_proto_goTypes = []any{
 	(*OutPoint)(nil),        // 0: onesat.parse.OutPoint
 	(*IndexedOutput)(nil),   // 1: onesat.parse.IndexedOutput
 	(*BeefParseResult)(nil), // 2: onesat.parse.BeefParseResult
+	nil,                     // 3: onesat.parse.IndexedOutput.DataEntry
 }
-var file_parse_proto_depIdxs = []int32{
+var file_proto_parse_proto_depIdxs = []int32{
 	0, // 0: onesat.parse.IndexedOutput.outpoint:type_name -> onesat.parse.OutPoint
-	1, // 1: onesat.parse.BeefParseResult.outputs:type_name -> onesat.parse.IndexedOutput
-	1, // 2: onesat.parse.BeefParseResult.spends:type_name -> onesat.parse.IndexedOutput
-	3, // [3:3] is the sub-list for method output_type
-	3, // [3:3] is the sub-list for method input_type
-	3, // [3:3] is the sub-list for extension type_name
-	3, // [3:3] is the sub-list for extension extendee
-	0, // [0:3] is the sub-list for field type_name
+	3, // 1: onesat.parse.IndexedOutput.data:type_name -> onesat.parse.IndexedOutput.DataEntry
+	1, // 2: onesat.parse.BeefParseResult.outputs:type_name -> onesat.parse.IndexedOutput
+	1, // 3: onesat.parse.BeefParseResult.spends:type_name -> onesat.parse.IndexedOutput
+	4, // [4:4] is the sub-list for method output_type
+	4, // [4:4] is the sub-list for method input_type
+	4, // [4:4] is the sub-list for extension type_name
+	4, // [4:4] is the sub-list for extension extendee
+	0, // [0:4] is the sub-list for field type_name
 }
 
-func init() { file_parse_proto_init() }
-func file_parse_proto_init() {
-	if File_parse_proto != nil {
+func init() { file_proto_parse_proto_init() }
+func file_proto_parse_proto_init() {
+	if File_proto_parse_proto != nil {
 		return
 	}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
-			RawDescriptor: unsafe.Slice(unsafe.StringData(file_parse_proto_rawDesc), len(file_parse_proto_rawDesc)),
+			RawDescriptor: unsafe.Slice(unsafe.StringData(file_proto_parse_proto_rawDesc), len(file_proto_parse_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   3,
+			NumMessages:   4,
 			NumExtensions: 0,
 			NumServices:   0,
 		},
-		GoTypes:           file_parse_proto_goTypes,
-		DependencyIndexes: file_parse_proto_depIdxs,
-		MessageInfos:      file_parse_proto_msgTypes,
+		GoTypes:           file_proto_parse_proto_goTypes,
+		DependencyIndexes: file_proto_parse_proto_depIdxs,
+		MessageInfos:      file_proto_parse_proto_msgTypes,
 	}.Build()
-	File_parse_proto = out.File
-	file_parse_proto_goTypes = nil
-	file_parse_proto_depIdxs = nil
+	File_proto_parse_proto = out.File
+	file_proto_parse_proto_goTypes = nil
+	file_proto_parse_proto_depIdxs = nil
 }
