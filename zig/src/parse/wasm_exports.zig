@@ -1,5 +1,7 @@
 const std = @import("std");
+const protobuf = @import("protobuf");
 const main = @import("main.zig");
+const pb = @import("parse_pb.zig");
 
 var arena = std.heap.ArenaAllocator.init(std.heap.wasm_allocator);
 
@@ -16,7 +18,7 @@ export fn dealloc() void {
 
 /// Parse a BEEF transaction. Host writes BEEF bytes at ptr/len,
 /// calls this, then reads the result from the returned ptr.
-/// Returns a pointer to a length-prefixed result buffer.
+/// Returns a pointer to [4 bytes: len][len bytes: protobuf-encoded BeefParseResult].
 export fn parse_beef(ptr: u32, len: u32) u32 {
     const allocator = arena.allocator();
     const beef_bytes = @as([*]const u8, @ptrFromInt(ptr))[0..len];
@@ -24,77 +26,51 @@ export fn parse_beef(ptr: u32, len: u32) u32 {
     var result = main.parseBeefBytes(allocator, beef_bytes) catch return 0;
     defer result.deinit(allocator);
 
-    var buf = std.ArrayListUnmanaged(u8){};
+    // Convert internal types to protobuf types
+    var pb_result = pb.BeefParseResult{
+        .txid = if (result.txid) |t| &t.bytes else &.{},
+        .block_height = result.block_height,
+        .block_idx = result.block_idx,
+    };
 
-    // Output count + outputs
-    writeU32(&buf, allocator, @intCast(result.outputs.items.len));
     for (result.outputs.items) |*output| {
-        serializeIndexedOutput(&buf, allocator, output);
+        pb_result.outputs.append(allocator, toProtoOutput(output)) catch return 0;
     }
-
-    // Spend count + spends
-    writeU32(&buf, allocator, @intCast(result.spends.items.len));
     for (result.spends.items) |*spend| {
-        serializeIndexedOutput(&buf, allocator, spend);
+        pb_result.spends.append(allocator, toProtoOutput(spend)) catch return 0;
     }
 
-    // txid
-    if (result.txid) |txid| {
-        buf.appendSlice(allocator, &txid.bytes) catch return 0;
-    } else {
-        buf.appendNTimes(allocator, 0, 32) catch return 0;
-    }
+    // Encode to protobuf bytes
+    var w: std.Io.Writer.Allocating = .init(allocator);
+    pb_result.encode(&w.writer, allocator) catch return 0;
+    w.writer.flush() catch return 0;
+    const encoded = w.writer.buffer[0..w.writer.end];
 
-    // block height + idx
-    writeU32(&buf, allocator, result.block_height);
-    writeU64(&buf, allocator, result.block_idx);
-
-    // Length-prefix the whole thing
-    const total_len = buf.items.len;
-    const out = allocator.alloc(u8, 4 + total_len) catch return 0;
-    std.mem.writeInt(u32, out[0..4], @intCast(total_len), .little);
-    @memcpy(out[4..], buf.items);
+    // Length-prefix
+    const out = allocator.alloc(u8, 4 + encoded.len) catch return 0;
+    std.mem.writeInt(u32, out[0..4], @intCast(encoded.len), .little);
+    @memcpy(out[4..], encoded);
 
     return @intFromPtr(out.ptr);
 }
 
-fn serializeIndexedOutput(buf: *std.ArrayListUnmanaged(u8), allocator: std.mem.Allocator, output: *const main.IndexedOutput) void {
-    buf.appendSlice(allocator, &output.outpoint.txid.bytes) catch return;
-    var vout_bytes: [4]u8 = undefined;
-    std.mem.writeInt(u32, &vout_bytes, output.outpoint.index, .little);
-    buf.appendSlice(allocator, &vout_bytes) catch return;
+fn toProtoOutput(output: *const main.IndexedOutput) pb.IndexedOutput {
+    var pb_out = pb.IndexedOutput{
+        .outpoint = .{
+            .txid = &output.outpoint.txid.bytes,
+            .index = output.outpoint.index,
+        },
+        .satoshis = output.satoshis,
+        .block_height = output.block_height,
+        .block_idx = output.block_idx,
+        .spend_txid = if (output.spend_txid) |t| &t.bytes else &.{},
+    };
 
-    var sat_bytes: [8]u8 = undefined;
-    std.mem.writeInt(u64, &sat_bytes, output.satoshis, .little);
-    buf.appendSlice(allocator, &sat_bytes) catch return;
-
-    writeU32(buf, allocator, @intCast(output.events.items.len));
-    for (output.events.items) |event| {
-        writeU32(buf, allocator, @intCast(event.len));
-        buf.appendSlice(allocator, event) catch return;
-    }
-
-    writeU32(buf, allocator, @intCast(output.owners.items.len));
+    pb_out.events = output.events;
+    pb_out.owners = .{};
     for (output.owners.items) |owner| {
-        buf.appendSlice(allocator, &owner) catch return;
+        pb_out.owners.append(output.ctx.allocator, &owner) catch {};
     }
 
-    if (output.spend_txid) |txid| {
-        buf.append(allocator, 1) catch return;
-        buf.appendSlice(allocator, &txid.bytes) catch return;
-    } else {
-        buf.append(allocator, 0) catch return;
-    }
-}
-
-fn writeU32(buf: *std.ArrayListUnmanaged(u8), allocator: std.mem.Allocator, val: u32) void {
-    var bytes: [4]u8 = undefined;
-    std.mem.writeInt(u32, &bytes, val, .little);
-    buf.appendSlice(allocator, &bytes) catch {};
-}
-
-fn writeU64(buf: *std.ArrayListUnmanaged(u8), allocator: std.mem.Allocator, val: u64) void {
-    var bytes: [8]u8 = undefined;
-    std.mem.writeInt(u64, &bytes, val, .little);
-    buf.appendSlice(allocator, &bytes) catch {};
+    return pb_out;
 }

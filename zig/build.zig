@@ -7,6 +7,9 @@ pub fn build(b: *std.Build) void {
     const bsvz_dep = b.dependency("bsvz", .{});
     const bsvz_mod = bsvz_dep.module("bsvz");
 
+    const protobuf_dep = b.dependency("protobuf", .{});
+    const protobuf_mod = protobuf_dep.module("protobuf");
+
     // WASM module: parse_tx
     const wasm_target = b.resolveTargetQuery(.{
         .cpu_arch = .wasm32,
@@ -19,6 +22,7 @@ pub fn build(b: *std.Build) void {
         .optimize = .ReleaseSmall,
     });
     parse_tx_mod.addImport("bsvz", bsvz_mod);
+    parse_tx_mod.addImport("protobuf", protobuf_mod);
 
     const parse_tx = b.addExecutable(.{
         .name = "parse_tx",
@@ -37,6 +41,7 @@ pub fn build(b: *std.Build) void {
         .optimize = optimize,
     });
     test_mod.addImport("bsvz", bsvz_mod);
+    test_mod.addImport("protobuf", protobuf_mod);
 
     const parse_tests = b.addTest(.{
         .root_module = test_mod,
