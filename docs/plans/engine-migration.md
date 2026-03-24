@@ -68,14 +68,20 @@ WASM modules written in Zig, compiled to .wasm, loaded by Wazero host in Go. Par
 | Shrug parser | ✅ Done | | Tag + outpoint + OP_2DROP + amount + OP_DROP |
 | BSV21 parser | **Not Started** | | Needs JSON parsing (inscription content is JSON) |
 | `parseBeefBytes` transaction-level function | ✅ Done | | Takes raw BEEF bytes, uses bsvz to deserialize, runs all parsers on outputs+spends, returns BeefParseResult |
-| WASM build target | ✅ Done | OPL-1511 | 65KB `parse_tx.wasm` — exports: alloc, dealloc, parse_beef. Separate wasm_exports.zig root for WASM build. |
+| WASM build target | ✅ Done | OPL-1511 | 70KB `parse_tx.wasm` with protobuf — exports: alloc, dealloc, parse_beef. Separate wasm_exports.zig root for WASM build. |
+| Protobuf wire format | ✅ Done | OPL-1552 | `proto/parse.proto` defines OutPoint, IndexedOutput, BeefParseResult. Generated: Zig (`parse_pb.zig`), Go (`proto/parsepb/parse.pb.go`). WASM exports encode as protobuf. |
 
-### Phase 2: Wazero Host + First WASM Integration
+### Phase 2: Wazero Host + WASM Integration
+
+Same `.wasm` binary loaded by Go (Wazero) and TypeScript (WebAssembly API). Same protobuf wire format decoded by standard protobuf libraries in each language.
 
 | Task | Status | Linear | Notes |
 |------|--------|--------|-------|
-| Add Wazero dependency to Go | **Not Started** | OPL-1509 | Load .wasm, instantiate, call exports |
-| Go-side parse_beef caller | **Not Started** | | Replaces `IndexContext.ParseTxn()` with WASM module call |
+| Add Wazero dependency to Go | **Not Started** | OPL-1509 | Load `parse_tx.wasm`, instantiate, call exports |
+| Go-side parse_beef caller | **Not Started** | | Call alloc → write BEEF → call parse_beef → read protobuf → decode with parsepb |
+| Wire into Go ingestion flow | **Not Started** | | Replace `IndexContext.ParseTxn()` with WASM module call |
+| TypeScript WASM loader | **Not Started** | | `WebAssembly.instantiate` for 1sat-sdk. Same .wasm, protobufjs for decoding |
+| Replace 1sat-sdk TypeScript parsers | **Not Started** | | Unify parsing: both Go and TS consume same WASM binary |
 | Topic manager WASM interface | **Not Started** | | `admit(beef_ptr, len) → instructions_ptr` export. OPNS or OrdLock first. |
 | Topic manager Zig implementation | **Not Started** | | Statically links parser library. OPNS mine detection as first candidate. |
 
