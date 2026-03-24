@@ -1,6 +1,6 @@
 # WASM Architecture Audit
 
-Status: **In Progress**
+Status: **Complete — see runtime-strategy.md for decisions**
 
 Full audit of 1sat-stack (Go) and 1sat-sdk (TypeScript) to map what moves to WASM, what stays on the host, and where the two implementations diverge.
 
