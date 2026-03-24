@@ -8,7 +8,8 @@
 | [Sweep UI](./sweep-ui.md) | **In Progress** | OPL-700 — Standalone sweep UI at `/1sat/sweep/` for legacy wallet migration |
 | [Landing Page](../superpowers/plans/2026-03-17-landing-page.md) | **In Progress** | OPL-1404 — Terminal-aesthetic landing page at `/1sat/` |
 | BSV21 TopicWorker → OverlaySync | **In Progress** | OPL-1468 — Unify BSV21 token workers with OverlaySync, add OnProcessed, delete TopicWorker |
-| [1sat-engine: Module Runtime Migration](./engine-migration.md) | **In Progress** | Transform 1sat-stack into WASM module runtime with protobuf channel protocols. Branch: `engine` |
+| [1sat-engine: Module Runtime Migration](./engine-migration.md) | **On Hold** | Original plan — Zig WASM in Go runtime. Superseded by replatform. |
+| [1sat-engine: Replatform to TS+Zig](./engine-replatform.md) | **Not Started** | Port 1sat-stack to TypeScript package with Zig native modules (NAPI). Replaces Go server. |
 
 ## Completed Plans
 
