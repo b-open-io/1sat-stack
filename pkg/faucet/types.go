@@ -184,7 +184,8 @@ type DepositAddressResponse struct {
 }
 
 type TapRequestPayload struct {
-	RecipientAddress string `json:"recipient_address"`
+	RecipientAddress string  `json:"recipient_address"`
+	Satoshis         *uint64 `json:"satoshis,omitempty"`
 }
 
 type TapResponse struct {

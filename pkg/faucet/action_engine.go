@@ -11,6 +11,7 @@ import (
 	"github.com/bsv-blockchain/go-sdk/transaction"
 	p2pkh "github.com/bsv-blockchain/go-sdk/transaction/template/p2pkh"
 	sdk "github.com/bsv-blockchain/go-sdk/wallet"
+	walletcore "github.com/bsv-blockchain/go-wallet-toolbox/pkg/wallet"
 )
 
 func (s *Service) ExecuteWalletAction(ctx context.Context, faucetName string, req *FaucetActionRequest, originator string) (*FaucetActionResponse, error) {
@@ -23,7 +24,7 @@ func (s *Service) ExecuteWalletAction(ctx context.Context, faucetName string, re
 		return nil, err
 	}
 
-	actionArgs, postProcess, err := s.buildCreateActionArgs(config, req)
+	actionArgs, postProcess, err := s.buildCreateActionArgs(ctx, wallet, config, req)
 	if err != nil {
 		return nil, err
 	}
@@ -79,6 +80,8 @@ func (s *Service) ExecuteWalletAction(ctx context.Context, faucetName string, re
 }
 
 func (s *Service) buildCreateActionArgs(
+	ctx context.Context,
+	w *walletcore.Wallet,
 	config *FaucetConfig,
 	req *FaucetActionRequest,
 ) (sdk.CreateActionArgs, func(*FaucetActionResponse, *sdk.SignActionResult), error) {
@@ -90,6 +93,36 @@ func (s *Service) buildCreateActionArgs(
 		} else if config.FixedDropSats.Valid && config.FixedDropSats.Int64 > 0 {
 			amount = uint64(config.FixedDropSats.Int64)
 		}
+
+		// No explicit amount and no fixed drop — send all funds minus fees
+		if amount == 0 {
+			limit := uint32(10000)
+			result, err := w.ListOutputs(ctx, sdk.ListOutputsArgs{
+				Basket: "default",
+				Limit:  &limit,
+			}, "")
+			if err != nil {
+				return sdk.CreateActionArgs{}, nil, fmt.Errorf("failed to list outputs for send-all: %w", err)
+			}
+			var total uint64
+			var inputCount int
+			for _, out := range result.Outputs {
+				if out.Spendable {
+					total += out.Satoshis
+					inputCount++
+				}
+			}
+			if inputCount == 0 {
+				return sdk.CreateActionArgs{}, nil, fmt.Errorf("no spendable outputs")
+			}
+			// P2PKH input ~148 bytes, 1 output ~34 bytes, overhead ~10 bytes, 1 sat/byte
+			fee := uint64(inputCount*148 + 34 + 10)
+			if total <= fee {
+				return sdk.CreateActionArgs{}, nil, fmt.Errorf("balance (%d sats) is insufficient to cover fees (%d sats)", total, fee)
+			}
+			amount = total - fee
+		}
+
 		if amount == 0 {
 			return sdk.CreateActionArgs{}, nil, fmt.Errorf("tap amount is zero or not configured")
 		}
@@ -97,9 +130,13 @@ func (s *Service) buildCreateActionArgs(
 			return sdk.CreateActionArgs{}, nil, fmt.Errorf("recipientAddress is required")
 		}
 
+		// Try as base58 address first, fall back to pubkey hex
 		addr, err := script.NewAddressFromString(req.RecipientAddress)
 		if err != nil {
-			return sdk.CreateActionArgs{}, nil, fmt.Errorf("invalid recipientAddress: %w", err)
+			addr, err = script.NewAddressFromPublicKeyString(req.RecipientAddress, true)
+			if err != nil {
+				return sdk.CreateActionArgs{}, nil, fmt.Errorf("invalid recipientAddress (not a valid address or pubkey): %w", err)
+			}
 		}
 		lockingScript, err := p2pkh.Lock(addr)
 		if err != nil {

@@ -17,11 +17,11 @@ import (
 
 // Service holds faucet business logic state.
 type Service struct {
-	Store           *Store
-	Logger          *slog.Logger
-	Config          *Config
-	Wallet          *wallet.Services
-	ServerPrivateKey string
+	Store      *Store
+	Logger     *slog.Logger
+	Config     *Config
+	Wallet     *wallet.Services
+	serverKey  *ec.PrivateKey
 
 	masterPubKeyHex string
 	network         defs.BSVNetwork
@@ -86,13 +86,13 @@ func (c *Config) Initialize(
 	}
 
 	svc := &Service{
-		Store:            store,
-		Logger:           logger,
-		Config:           c,
-		Wallet:           deps.Wallet,
-		ServerPrivateKey: deps.ServerPrivateKey,
-		masterPubKeyHex:  hex.EncodeToString(privKey.PubKey().Compressed()),
-		network:          network,
+		Store:           store,
+		Logger:          logger,
+		Config:          c,
+		Wallet:          deps.Wallet,
+		serverKey:       privKey,
+		masterPubKeyHex: hex.EncodeToString(privKey.PubKey().Compressed()),
+		network:         network,
 	}
 
 	services := &Services{
@@ -126,17 +126,12 @@ func (s *Services) Close() error {
 
 // DeriveInstanceMasterKey derives the per-faucet private key using BRC-42 key derivation.
 func (s *Service) DeriveInstanceMasterKey(cfg *FaucetConfig) (*ec.PrivateKey, error) {
-	parentPrivKey, err := ec.PrivateKeyFromWif(s.ServerPrivateKey)
-	if err != nil {
-		return nil, fmt.Errorf("failed to parse server private key: %w", err)
-	}
-
 	counterpartyPubKey, err := ec.PublicKeyFromString(cfg.DerivationCpPubKeyHex)
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse counterparty pubkey for %q: %w", cfg.FaucetName, err)
 	}
 
-	childPrivKey, err := parentPrivKey.DeriveChild(counterpartyPubKey, cfg.DerivationInvoiceNum)
+	childPrivKey, err := s.serverKey.DeriveChild(counterpartyPubKey, cfg.DerivationInvoiceNum)
 	if err != nil {
 		return nil, fmt.Errorf("failed to derive instance key for %q: %w", cfg.FaucetName, err)
 	}
@@ -215,6 +210,11 @@ func (s *Service) GetFaucetBalance(ctx context.Context, faucetName string) (*Fau
 		}
 	}
 	return balance, nil
+}
+
+// ServerKey returns the server's master private key for derivation.
+func (s *Service) ServerKey() *ec.PrivateKey {
+	return s.serverKey
 }
 
 // MasterPubKeyHex returns the hex-encoded compressed public key of the server key.

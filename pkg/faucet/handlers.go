@@ -290,12 +290,7 @@ func (h *Handlers) CreateFaucet(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": fmt.Sprintf("invalid identity key: %v", err)})
 	}
 
-	parentPrivKey, err := ec.PrivateKeyFromWif(h.Svc.ServerPrivateKey)
-	if err != nil {
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to parse server private key"})
-	}
-
-	childPrivKey, err := parentPrivKey.DeriveChild(counterpartyPubKey, params.Name)
+	childPrivKey, err := h.Svc.ServerKey().DeriveChild(counterpartyPubKey, params.Name)
 	if err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": fmt.Sprintf("failed to derive instance master key: %v", err)})
 	}
@@ -381,9 +376,15 @@ func (h *Handlers) TapFaucet(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid JSON body"})
 	}
 
+	recipient := payload.RecipientAddress
+	if recipient == "" {
+		recipient = identityHex
+	}
+
 	actionReq := &FaucetActionRequest{
 		Kind:             FaucetActionTap,
-		RecipientAddress: payload.RecipientAddress,
+		RecipientAddress: recipient,
+		AmountSat:        payload.Satoshis,
 		Broadcast:        ptrBool(true),
 	}
 
@@ -1163,12 +1164,7 @@ func (h *Handlers) ProvisionFaucet(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": fmt.Sprintf("invalid counterparty pubkey: %v", err)})
 	}
 
-	parentPrivKey, err := ec.PrivateKeyFromWif(h.Svc.ServerPrivateKey)
-	if err != nil {
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to parse server private key"})
-	}
-
-	childPrivKey, err := parentPrivKey.DeriveChild(counterpartyPubKey, params.FaucetIdentifierName)
+	childPrivKey, err := h.Svc.ServerKey().DeriveChild(counterpartyPubKey, params.FaucetIdentifierName)
 	if err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": fmt.Sprintf("failed to derive instance master key: %v", err)})
 	}
