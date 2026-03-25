@@ -64,10 +64,11 @@ func (c *Config) Initialize(
 		return nil, fmt.Errorf("server private key is required for faucet")
 	}
 
-	privKey, err := ec.PrivateKeyFromWif(deps.ServerPrivateKey)
+	keyBytes, err := hex.DecodeString(deps.ServerPrivateKey)
 	if err != nil {
-		return nil, fmt.Errorf("failed to parse server private key: %w", err)
+		return nil, fmt.Errorf("failed to decode server private key hex: %w", err)
 	}
+	privKey, _ := ec.PrivateKeyFromBytes(keyBytes)
 
 	network := defs.NetworkMainnet
 	if deps.Network == "test" {
