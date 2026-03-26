@@ -21,15 +21,10 @@ import (
 
 	ec "github.com/bsv-blockchain/go-sdk/primitives/ec"
 	"github.com/bsv-blockchain/go-sdk/script"
-	"github.com/bsv-blockchain/go-sdk/wallet"
+	sdk "github.com/bsv-blockchain/go-sdk/wallet"
 	"github.com/gofiber/fiber/v2"
 	"github.com/google/uuid"
 )
-
-var brc29Protocol = wallet.Protocol{
-	SecurityLevel: 2,
-	Protocol:      "3241645161d8",
-}
 
 // Handlers wraps the faucet service with Fiber handler methods.
 type Handlers struct {
@@ -388,13 +383,19 @@ func (h *Handlers) TapFaucet(c *fiber.Ctx) error {
 
 	recipientAddress := payload.RecipientAddress
 	if recipientAddress == "" {
+		originator := OriginatorFromIdentity(identityHex)
+		faucetWallet, _, derr := h.Svc.GetFaucetWallet(ctx, faucetName)
+		if derr != nil {
+			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": fmt.Sprintf("failed to get faucet wallet: %v", derr)})
+		}
+
 		requesterPub, derr := ec.PublicKeyFromString(identityHex)
 		if derr != nil {
 			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": fmt.Sprintf("invalid requester pubkey: %v", derr)})
 		}
 
-		prefixBytes := make([]byte, 10)
-		suffixBytes := make([]byte, 10)
+		prefixBytes := make([]byte, 16)
+		suffixBytes := make([]byte, 16)
 		if _, err := rand.Read(prefixBytes); err != nil {
 			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to generate derivation prefix"})
 		}
@@ -405,22 +406,30 @@ func (h *Handlers) TapFaucet(c *fiber.Ctx) error {
 		derivationSuffix := base64.StdEncoding.EncodeToString(suffixBytes)
 		keyID := derivationPrefix + " " + derivationSuffix
 
-		anyonePriv, _ := wallet.AnyoneKey()
-		deriver := wallet.NewKeyDeriver(anyonePriv)
-		derivedPub, derr := deriver.DerivePublicKey(brc29Protocol, keyID, wallet.Counterparty{
-			Type:         wallet.CounterpartyTypeOther,
-			Counterparty: requesterPub,
-		}, false)
+		forSelf := false
+		pubKeyResult, derr := faucetWallet.GetPublicKey(ctx, sdk.GetPublicKeyArgs{
+			EncryptionArgs: sdk.EncryptionArgs{
+				ProtocolID:   sdk.Protocol{SecurityLevel: 2, Protocol: "3241645161d8"},
+				KeyID:        keyID,
+				Counterparty: sdk.Counterparty{Type: sdk.CounterpartyTypeOther, Counterparty: requesterPub},
+			},
+			ForSelf: &forSelf,
+		}, originator)
 		if derr != nil {
-			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": fmt.Sprintf("failed to derive BRC-29 payment key: %v", derr)})
+			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": fmt.Sprintf("failed to derive payment key: %v", derr)})
 		}
-		derivedAddr, derr := script.NewAddressFromPublicKey(derivedPub, true)
+		derivedAddr, derr := script.NewAddressFromPublicKey(pubKeyResult.PublicKey, true)
 		if derr != nil {
 			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": fmt.Sprintf("failed to derive address: %v", derr)})
 		}
 
+		identityResult, derr := faucetWallet.GetPublicKey(ctx, sdk.GetPublicKeyArgs{IdentityKey: true}, originator)
+		if derr != nil {
+			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": fmt.Sprintf("failed to get faucet identity key: %v", derr)})
+		}
+
 		recipientAddress = derivedAddr.AddressString
-		senderPubHex := hex.EncodeToString(deriver.IdentityKey().Compressed())
+		senderPubHex := identityResult.PublicKey.ToDERHex()
 
 		h.Svc.Logger.Info("tap derivation",
 			"faucet", faucetName,
