@@ -94,29 +94,38 @@ func (s *Service) buildCreateActionArgs(
 			amount = uint64(config.FixedDropSats.Int64)
 		}
 
-		// No explicit amount and no fixed drop — send all funds minus fees
+		// No explicit amount and no fixed drop — send all funds
+		// Explicitly list all UTXOs as inputs to bypass coin selection minimum thresholds
+		var sendAllInputs []sdk.CreateActionInput
+		var sendAllBEEF []byte
 		if amount == 0 {
 			limit := uint32(10000)
 			result, err := w.ListOutputs(ctx, sdk.ListOutputsArgs{
-				Basket: "default",
-				Limit:  &limit,
+				Basket:  "default",
+				Include: sdk.OutputIncludeEntireTransactions,
+				Limit:   &limit,
 			}, "")
 			if err != nil {
 				return sdk.CreateActionArgs{}, nil, fmt.Errorf("failed to list outputs for send-all: %w", err)
 			}
 			var total uint64
-			var inputCount int
 			for _, out := range result.Outputs {
 				if out.Spendable {
 					total += out.Satoshis
-					inputCount++
+					seqNum := uint32(0xffffffff)
+					sendAllInputs = append(sendAllInputs, sdk.CreateActionInput{
+						Outpoint:              out.Outpoint,
+						InputDescription:      "Send all",
+						UnlockingScriptLength: 108,
+						SequenceNumber:        &seqNum,
+					})
 				}
 			}
-			if inputCount == 0 {
+			if len(sendAllInputs) == 0 {
 				return sdk.CreateActionArgs{}, nil, fmt.Errorf("no spendable outputs")
 			}
-			// P2PKH input ~148 bytes, 1 output ~34 bytes, potential change output ~34 bytes, overhead ~10 bytes, 100 sat/KB
-			txSize := uint64(inputCount*148 + 34 + 34 + 10)
+			// P2PKH input ~148 bytes, 1 output ~34 bytes, overhead ~10 bytes, 100 sat/KB
+			txSize := uint64(len(sendAllInputs)*148 + 34 + 10)
 			fee := (txSize * 100) / 1000
 			if fee == 0 {
 				fee = 1
@@ -125,6 +134,7 @@ func (s *Service) buildCreateActionArgs(
 				return sdk.CreateActionArgs{}, nil, fmt.Errorf("balance (%d sats) is insufficient to cover fees (%d sats)", total, fee)
 			}
 			amount = total - fee
+			sendAllBEEF = result.BEEF
 		}
 
 		if amount == 0 {
@@ -147,7 +157,7 @@ func (s *Service) buildCreateActionArgs(
 			return sdk.CreateActionArgs{}, nil, fmt.Errorf("failed to create recipient locking script: %w", err)
 		}
 
-		return sdk.CreateActionArgs{
+		args := sdk.CreateActionArgs{
 			Description: "Droplit tap payout",
 			Outputs: []sdk.CreateActionOutput{
 				{
@@ -158,7 +168,12 @@ func (s *Service) buildCreateActionArgs(
 				},
 			},
 			Labels: []string{"droplit:tapped"},
-		}, nil, nil
+		}
+		if sendAllInputs != nil {
+			args.Inputs = sendAllInputs
+			args.InputBEEF = sendAllBEEF
+		}
+		return args, nil, nil
 
 	case FaucetActionPush:
 		if len(req.Data) == 0 {
