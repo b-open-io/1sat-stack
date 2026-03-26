@@ -118,6 +118,8 @@ func (r *Routes) Register(guardedGroup fiber.Router, publicGroup fiber.Router, a
 	guardedGroup.Get("/config", r.handleGetConfig)
 	guardedGroup.Put("/config", r.handleUpdateConfig)
 
+	guardedGroup.Get("/logs", r.handleQueryLogs)
+
 	dataRoutes := NewDataRoutes(r.store, r.logger)
 	dataRoutes.Register(guardedGroup.Group("/data"))
 
