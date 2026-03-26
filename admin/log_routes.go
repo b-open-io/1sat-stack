@@ -79,3 +79,15 @@ func (r *Routes) handleQueryLogs(c *fiber.Ctx) error {
 		"entries": entries,
 	})
 }
+
+// handleGetLogComponents returns distinct component names from stored logs.
+func (r *Routes) handleQueryLogComponents(c *fiber.Ctx) error {
+	if r.logStore == nil {
+		return c.Status(fiber.StatusServiceUnavailable).JSON(fiber.Map{"error": "log store not available"})
+	}
+	components, err := r.logStore.Components()
+	if err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "query failed"})
+	}
+	return c.JSON(components)
+}

@@ -287,6 +287,24 @@ func (h *SQLiteHandler) Query(q LogQuery) ([]LogEntry, int64, error) {
 	return entries, total, rows.Err()
 }
 
+// Components returns distinct non-empty component names from stored logs.
+func (h *SQLiteHandler) Components() ([]string, error) {
+	rows, err := h.db.Query(`SELECT DISTINCT component FROM logs WHERE component IS NOT NULL AND component != '' ORDER BY component`)
+	if err != nil {
+		return nil, fmt.Errorf("query components: %w", err)
+	}
+	defer rows.Close()
+	var components []string
+	for rows.Next() {
+		var c string
+		if err := rows.Scan(&c); err != nil {
+			return nil, err
+		}
+		components = append(components, c)
+	}
+	return components, rows.Err()
+}
+
 func buildWhere(q LogQuery) (string, []any) {
 	var clauses []string
 	var args []any

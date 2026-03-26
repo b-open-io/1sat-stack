@@ -143,3 +143,9 @@ export async function queryLogs(params: {
   if (!res.ok) throw new Error((await res.json()).error || res.statusText);
   return res.json();
 }
+
+export async function getLogComponents(): Promise<string[]> {
+  const res = await apiFetch("/logs/components");
+  if (!res.ok) throw new Error((await res.json()).error || res.statusText);
+  return res.json();
+}

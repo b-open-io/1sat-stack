@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from "react";
-import { queryLogs, type LogEntry } from "../api";
+import { queryLogs, getLogComponents, type LogEntry } from "../api";
 import { toastError } from "@/lib/utils";
 import {
   Card,
@@ -20,20 +20,41 @@ const LEVEL_STYLES: Record<string, string> = {
   DEBUG: "bg-muted text-muted-foreground border-0",
 };
 
+function useDebounce<T>(value: T, delay: number): T {
+  const [debounced, setDebounced] = useState(value);
+  useEffect(() => {
+    const timer = setTimeout(() => setDebounced(value), delay);
+    return () => clearTimeout(timer);
+  }, [value, delay]);
+  return debounced;
+}
+
 export default function Logs() {
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
   const [autoRefresh, setAutoRefresh] = useState(false);
   const [expanded, setExpanded] = useState<Set<number>>(new Set());
+  const [components, setComponents] = useState<string[]>([]);
 
-  const [search, setSearch] = useState("");
+  const [searchInput, setSearchInput] = useState("");
   const [level, setLevel] = useState("");
   const [component, setComponent] = useState("");
   const [offset, setOffset] = useState(0);
   const limit = 100;
 
-  const intervalRef = useRef<ReturnType<typeof setInterval> | undefined>(undefined);
+  const search = useDebounce(searchInput, 300);
+
+  const intervalRef = useRef<ReturnType<typeof setInterval> | undefined>(
+    undefined,
+  );
+
+  // Load available components on mount
+  useEffect(() => {
+    getLogComponents()
+      .then(setComponents)
+      .catch(() => {});
+  }, []);
 
   const load = useCallback(async () => {
     try {
@@ -137,8 +158,8 @@ export default function Logs() {
         <div className="mb-4 flex gap-2 flex-wrap">
           <Input
             placeholder="Search messages..."
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
+            value={searchInput}
+            onChange={(e) => setSearchInput(e.target.value)}
             className="h-8 text-xs flex-1 min-w-[150px]"
           />
           <select
@@ -152,12 +173,18 @@ export default function Logs() {
             <option value="WARN">Warn</option>
             <option value="ERROR">Error</option>
           </select>
-          <Input
-            placeholder="Component..."
+          <select
             value={component}
             onChange={(e) => setComponent(e.target.value)}
-            className="h-8 text-xs w-[140px]"
-          />
+            className="h-8 text-xs px-2 rounded border border-border bg-background"
+          >
+            <option value="">All components</option>
+            {components.map((c) => (
+              <option key={c} value={c}>
+                {c}
+              </option>
+            ))}
+          </select>
         </div>
 
         {/* Log list */}
@@ -200,9 +227,7 @@ export default function Logs() {
                         [{log.component}]
                       </span>
                     )}
-                    <span className="text-foreground break-all">
-                      {log.msg}
-                    </span>
+                    <span className="text-foreground break-all">{log.msg}</span>
                   </div>
                   {expanded.has(i) &&
                     log.attrs &&
