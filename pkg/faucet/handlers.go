@@ -5,6 +5,7 @@ import (
 	"context"
 	"crypto/rand"
 	"database/sql"
+	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -19,6 +20,7 @@ import (
 	"github.com/b-open-io/1sat-stack/pkg/auth"
 
 	ec "github.com/bsv-blockchain/go-sdk/primitives/ec"
+	"github.com/bsv-blockchain/go-sdk/script"
 	"github.com/gofiber/fiber/v2"
 	"github.com/google/uuid"
 )
@@ -376,14 +378,87 @@ func (h *Handlers) TapFaucet(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid JSON body"})
 	}
 
-	recipient := payload.RecipientAddress
-	if recipient == "" {
-		recipient = identityHex
+	resp := &TapResponse{}
+
+	recipientAddress := payload.RecipientAddress
+	if recipientAddress == "" {
+		faucetCfg, derr := h.Svc.Store.LoadFaucetConfig(ctx, faucetName)
+		if derr != nil {
+			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": fmt.Sprintf("failed to load faucet config: %v", derr)})
+		}
+		instancePriv, derr := h.Svc.DeriveInstanceMasterKey(faucetCfg)
+		if derr != nil {
+			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": fmt.Sprintf("failed to derive faucet key: %v", derr)})
+		}
+
+		requesterPub, derr := ec.PublicKeyFromString(identityHex)
+		if derr != nil {
+			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": fmt.Sprintf("invalid requester pubkey: %v", derr)})
+		}
+
+		prefixBytes := make([]byte, 10)
+		suffixBytes := make([]byte, 10)
+		if _, err := rand.Read(prefixBytes); err != nil {
+			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to generate derivation prefix"})
+		}
+		if _, err := rand.Read(suffixBytes); err != nil {
+			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to generate derivation suffix"})
+		}
+		derivationPrefix := base64.StdEncoding.EncodeToString(prefixBytes)
+		derivationSuffix := base64.StdEncoding.EncodeToString(suffixBytes)
+		keyID := derivationPrefix + " " + derivationSuffix
+
+		derivedPriv, derr := instancePriv.DeriveChild(requesterPub, keyID)
+		if derr != nil {
+			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": fmt.Sprintf("failed to derive payment key: %v", derr)})
+		}
+		derivedAddr, derr := script.NewAddressFromPublicKey(derivedPriv.PubKey(), true)
+		if derr != nil {
+			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": fmt.Sprintf("failed to derive address: %v", derr)})
+		}
+
+		recipientAddress = derivedAddr.AddressString
+		senderPubHex := hex.EncodeToString(instancePriv.PubKey().Compressed())
+
+		h.Svc.Logger.Info("tap derivation",
+			"faucet", faucetName,
+			"requester", identityHex,
+			"derivationPrefix", derivationPrefix,
+			"derivationSuffix", derivationSuffix,
+			"derivedAddress", recipientAddress,
+			"senderIdentityKey", senderPubHex,
+			"satoshis", payload.Satoshis,
+		)
+
+		resp.DerivationPrefix = derivationPrefix
+		resp.DerivationSuffix = derivationSuffix
+		resp.SenderIdentityKey = senderPubHex
 	}
+
+	// Log derivation details BEFORE createAction so we have recovery info if it crashes
+	var amountForLog int64
+	if payload.Satoshis != nil {
+		amountForLog = int64(*payload.Satoshis)
+	}
+	details, _ := json.Marshal(map[string]string{
+		"recipientAddress":  recipientAddress,
+		"requester":         identityHex,
+		"derivationPrefix":  resp.DerivationPrefix,
+		"derivationSuffix":  resp.DerivationSuffix,
+		"senderIdentityKey": resp.SenderIdentityKey,
+	})
+	h.Svc.DistributeActivityEvent(ctx, &FaucetActivityItem{
+		Timestamp:   time.Now(),
+		Type:        ActivityTypeTap,
+		FaucetName:  faucetName,
+		AmountSat:   amountForLog,
+		Description: fmt.Sprintf("Tap to %s", recipientAddress),
+		Details:     details,
+	})
 
 	actionReq := &FaucetActionRequest{
 		Kind:             FaucetActionTap,
-		RecipientAddress: recipient,
+		RecipientAddress: recipientAddress,
 		AmountSat:        payload.Satoshis,
 		Broadcast:        ptrBool(true),
 	}
@@ -393,7 +468,18 @@ func (h *Handlers) TapFaucet(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": err.Error()})
 	}
 
-	return c.Status(fiber.StatusOK).JSON(&TapResponse{TxID: res.TxID})
+	h.Svc.DistributeActivityEvent(ctx, &FaucetActivityItem{
+		Timestamp:   time.Now(),
+		Type:        ActivityTypeTap,
+		TxID:        res.TxID,
+		FaucetName:  faucetName,
+		AmountSat:   amountForLog,
+		Description: fmt.Sprintf("Tap broadcast %s", res.TxID),
+	})
+
+	resp.TxID = res.TxID
+	resp.RawTx = res.RawTx
+	return c.Status(fiber.StatusOK).JSON(resp)
 }
 
 func (h *Handlers) PushData(c *fiber.Ctx) error {

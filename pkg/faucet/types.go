@@ -189,7 +189,11 @@ type TapRequestPayload struct {
 }
 
 type TapResponse struct {
-	TxID string `json:"txid"`
+	TxID              string `json:"txid"`
+	RawTx             string `json:"rawTx,omitempty"`
+	DerivationPrefix  string `json:"derivationPrefix,omitempty"`
+	DerivationSuffix  string `json:"derivationSuffix,omitempty"`
+	SenderIdentityKey string `json:"senderIdentityKey,omitempty"`
 }
 
 type PushDataRequest struct {
