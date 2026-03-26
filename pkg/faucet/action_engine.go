@@ -115,8 +115,8 @@ func (s *Service) buildCreateActionArgs(
 			if inputCount == 0 {
 				return sdk.CreateActionArgs{}, nil, fmt.Errorf("no spendable outputs")
 			}
-			// P2PKH input ~148 bytes, 1 output ~34 bytes, overhead ~10 bytes, 100 sat/KB
-			txSize := uint64(inputCount*148 + 34 + 10)
+			// P2PKH input ~148 bytes, 1 output ~34 bytes, potential change output ~34 bytes, overhead ~10 bytes, 100 sat/KB
+			txSize := uint64(inputCount*148 + 34 + 34 + 10)
 			fee := (txSize * 100) / 1000
 			if fee == 0 {
 				fee = 1
