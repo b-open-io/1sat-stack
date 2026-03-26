@@ -9,3 +9,5 @@ bin/
 .worktrees/
 node_modules/
 admin/ui/dist/
+sweep/ui/dist/
+sweep/ui/.vite/

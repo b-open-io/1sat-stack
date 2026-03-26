@@ -9,23 +9,10 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "@1sat/actions": "0.0.51",
-    "@1sat/client": "0.0.12",
-    "@1sat/connect": "0.0.10",
-    "@1sat/types": "0.0.11",
-    "@1sat/wallet": "0.0.22",
+    "@1sat/sweep-ui": "0.0.8",
     "@bsv/sdk": "^2.0.4",
-    "bitcoin-backup": "^0.0.11",
-    "class-variance-authority": "^0.7.1",
-    "clsx": "^2.1.1",
-    "lucide-react": "^0.577.0",
     "react": "^19.0.0",
-    "react-dom": "^19.0.0",
-    "sonner": "^2.0.7",
-    "tailwind-merge": "^3.5.0"
-  },
-  "overrides": {
-    "@1sat/client": "0.0.12"
+    "react-dom": "^19.0.0"
   },
   "devDependencies": {
     "@tailwindcss/vite": "^4.2.1",
