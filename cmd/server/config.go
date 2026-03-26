@@ -67,6 +67,9 @@ type Config struct {
 	// Not a Viper field — set directly before Initialize.
 	DataDir string `mapstructure:"-"`
 
+	// LogStore is set by main before Initialize, passed to admin for log queries.
+	LogStore *logging.SQLiteHandler `mapstructure:"-"`
+
 	// Network: "main" or "test"
 	Network string `mapstructure:"network"`
 
@@ -1279,6 +1282,7 @@ func (c *Config) Initialize(ctx context.Context, logger *slog.Logger) (*Services
 			Store:          svc.Store.Store,
 			ConfigStore:    svc.ConfigStore,
 			RequestRestart: RequestRestart,
+			LogStore:       c.LogStore,
 		}
 		if svc.BSV21 != nil {
 			adminDeps.BSV21Sync = svc.BSV21.Sync

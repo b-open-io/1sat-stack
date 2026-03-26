@@ -6,6 +6,7 @@ import (
 
 	"github.com/b-open-io/1sat-stack/pkg/bsv21"
 	"github.com/b-open-io/1sat-stack/pkg/config"
+	"github.com/b-open-io/1sat-stack/pkg/logging"
 	"github.com/b-open-io/1sat-stack/pkg/overlay"
 	"github.com/b-open-io/1sat-stack/pkg/store"
 	"github.com/bsv-blockchain/go-overlay-services/pkg/core/engine"
@@ -49,6 +50,7 @@ type InitializeDeps struct {
 	BSV21Sync        *bsv21.SyncServices
 	TriggerOpnsCrawl OpnsCrawlFunc
 	RequestRestart   func()
+	LogStore         *logging.SQLiteHandler
 }
 
 // SetDefaults sets default configuration values
@@ -72,7 +74,7 @@ func (c *Config) Initialize(ctx context.Context, logger *slog.Logger, deps *Init
 
 	// Create routes if enabled
 	if c.Routes.Enabled && deps.ConfigStore != nil {
-		svc.Routes = NewRoutes(deps.Overlay, deps.Engines, deps.Store, deps.ConfigStore, deps.BSV21Sync, deps.TriggerOpnsCrawl, deps.RequestRestart, &c.Routes, logger)
+		svc.Routes = NewRoutes(deps.Overlay, deps.Engines, deps.Store, deps.ConfigStore, deps.BSV21Sync, deps.TriggerOpnsCrawl, deps.RequestRestart, &c.Routes, logger, deps.LogStore)
 	}
 
 	logger.Info("admin service initialized", "mode", c.Mode)

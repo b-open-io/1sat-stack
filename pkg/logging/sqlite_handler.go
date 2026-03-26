@@ -320,13 +320,14 @@ func buildWhere(q LogQuery) (string, []any) {
 
 // Close shuts down the handler: stops accepting new records, drains remaining
 // records, flushes to DB, and closes the database.
-func (h *SQLiteHandler) Close() {
+func (h *SQLiteHandler) Close() error {
 	h.closeOnce.Do(func() {
 		close(h.ch)
 		<-h.done
 		h.insertStmt.Close()
 		h.db.Close()
 	})
+	return nil
 }
 
 func (h *SQLiteHandler) writer() {

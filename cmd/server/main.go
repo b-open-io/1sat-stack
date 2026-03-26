@@ -13,6 +13,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/b-open-io/1sat-stack/pkg/logging"
 	"github.com/b-open-io/1sat-stack/pkg/wallet"
 
 	"github.com/gofiber/fiber/v2"
@@ -114,9 +115,38 @@ func main() {
 	}
 	cfg.DataDir = resolvedDataDir
 
-	// Create logger from config, with command-line override if provided
-	log := cfg.CreateLogger(*logLevel)
+	// Resolve effective log level (CLI override > config)
+	effectiveLevel := cfg.Logging.Level
+	if *logLevel != "" {
+		effectiveLevel = *logLevel
+	}
+	cfg.Logging.Level = effectiveLevel
+	cfg.Logging.SetDefaults()
+
+	// Create logger with persistent SQLite storage
+	logsDBPath := filepath.Join(resolvedDataDir, "logs.db")
+	logResult, err := logging.NewLoggerWithSQLite(
+		effectiveLevel,
+		logsDBPath,
+		&logging.SQLiteHandlerOptions{
+			BatchSize:     100,
+			FlushInterval: 1 * time.Second,
+			Retention:     7 * 24 * time.Hour,
+			PruneInterval: 1 * time.Hour,
+			BufferSize:    10000,
+		},
+	)
+	if err != nil {
+		slog.Error("failed to create logger", "error", err)
+		os.Exit(1)
+	}
+	defer logResult.Closer.Close()
+
+	log := logResult.Logger
 	slog.SetDefault(log)
+
+	// Store LogStore for admin API
+	cfg.LogStore = logResult.LogStore
 
 	// Resolve server private key if wallet is enabled but no key configured
 	if cfg.Wallet.Mode != wallet.ModeDisabled && cfg.Wallet.ServerPrivateKey == "" {

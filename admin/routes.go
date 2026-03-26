@@ -15,6 +15,7 @@ import (
 	"github.com/b-open-io/1sat-stack/pkg/auth"
 	"github.com/b-open-io/1sat-stack/pkg/bsv21"
 	"github.com/b-open-io/1sat-stack/pkg/config"
+	"github.com/b-open-io/1sat-stack/pkg/logging"
 	"github.com/b-open-io/1sat-stack/pkg/overlay"
 	"github.com/b-open-io/1sat-stack/pkg/store"
 	"github.com/bsv-blockchain/go-overlay-services/pkg/core/engine"
@@ -36,6 +37,7 @@ type Routes struct {
 	requestRestart   func()
 	config           *RoutesConfig
 	logger           *slog.Logger
+	logStore         *logging.SQLiteHandler
 }
 
 // TopicRequest is the request body for adding a token/topic to whitelist or blacklist
@@ -49,7 +51,7 @@ type UpdateProgressRequest struct {
 }
 
 // NewRoutes creates a new Routes instance
-func NewRoutes(overlaySvc *overlay.Services, engines map[string]*engine.Engine, s store.Store, cs config.Store, bsv21Sync *bsv21.SyncServices, triggerCrawl OpnsCrawlFunc, requestRestart func(), cfg *RoutesConfig, logger *slog.Logger) *Routes {
+func NewRoutes(overlaySvc *overlay.Services, engines map[string]*engine.Engine, s store.Store, cs config.Store, bsv21Sync *bsv21.SyncServices, triggerCrawl OpnsCrawlFunc, requestRestart func(), cfg *RoutesConfig, logger *slog.Logger, logStore *logging.SQLiteHandler) *Routes {
 	return &Routes{
 		overlay:          overlaySvc,
 		engines:          engines,
@@ -60,6 +62,7 @@ func NewRoutes(overlaySvc *overlay.Services, engines map[string]*engine.Engine, 
 		requestRestart:   requestRestart,
 		config:           cfg,
 		logger:           logger,
+		logStore:         logStore,
 	}
 }
 

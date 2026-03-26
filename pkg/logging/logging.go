@@ -52,17 +52,40 @@ func NewLogger(level string) *slog.Logger {
 // If levelOverride is empty, it uses the parent logger's level.
 func NewComponentLogger(parent *slog.Logger, component string, levelOverride string) *slog.Logger {
 	if levelOverride == "" {
-		// Just add the component tag, keep parent's level
 		return parent.With(ComponentKey, component)
 	}
+	return slog.New(NewLeveledHandler(parent.Handler(), ParseLevel(levelOverride))).With(ComponentKey, component)
+}
 
-	// Create a new logger with the specified level and component tag
-	level := ParseLevel(levelOverride)
-	handler := slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{
-		Level: level,
+// LogCloser flushes and closes persistent log handlers.
+type LogCloser interface {
+	Close() error
+}
+
+// LoggerResult holds a logger, its closer, and the query-able log store.
+type LoggerResult struct {
+	Logger   *slog.Logger
+	Closer   LogCloser
+	LogStore *SQLiteHandler
+}
+
+// NewLoggerWithSQLite creates a logger that writes to both stdout and SQLite.
+func NewLoggerWithSQLite(level string, dbPath string, opts *SQLiteHandlerOptions) (*LoggerResult, error) {
+	jsonHandler := slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{
+		Level: ParseLevel(level),
 	})
 
-	return slog.New(handler).With(ComponentKey, component)
+	sqliteHandler, err := NewSQLiteHandler(dbPath, opts)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create sqlite log handler: %w", err)
+	}
+
+	multi := NewMultiHandler(jsonHandler, sqliteHandler)
+	return &LoggerResult{
+		Logger:   slog.New(multi),
+		Closer:   sqliteHandler,
+		LogStore: sqliteHandler,
+	}, nil
 }
 
 // LeveledHandler wraps an slog.Handler with a specific level filter.
