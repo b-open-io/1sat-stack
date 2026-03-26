@@ -8,3 +8,4 @@ config.yaml
 bin/
 .worktrees/
 node_modules/
+admin/ui/dist/
