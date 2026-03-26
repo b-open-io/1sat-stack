@@ -1,100 +1,91 @@
 # Per-Module Logging Pattern
 
-This document describes how to add per-module log level configuration to any module in 1sat-stack.
+This document describes the logging system in 1sat-stack: per-module component tagging, persistent SQLite storage, and admin UI log viewer.
 
 ## Overview
 
-The logging system supports overriding log levels on a per-module basis. This allows you to enable debug logging for a specific module while keeping other modules at info level, which is useful for debugging without flooding logs.
+All logs are written to both stdout (JSON) and a persistent SQLite database (`{data_dir}/logs.db`) via a multi-handler. Every module is tagged with a `"component"` attribute for filtering. Logs are queryable via the admin UI or API with filters for component, level, time range, and text search.
 
-## Implementation Steps
+Retention is 7 days by default. Logs are batched (100 records or 1 second, whichever comes first) and flushed on shutdown after all services close.
 
-### 1. Add LogLevel to Config Struct
+## Component Tags
 
-In your module's `config.go`, add a `LogLevel` field:
+Every module receives a tagged logger via `logging.NewComponentLogger()`. Tags are applied at the call site in `cmd/server/config.go`, except for modules that tag internally.
+
+| Component | Tagged At | Config Key |
+|-----------|-----------|------------|
+| `store` | config.go call site | — |
+| `pubsub` | config.go call site | — |
+| `beef` | config.go call site | — |
+| `arcade` | config.go call site | — |
+| `txo` | config.go call site | — |
+| `overlay` | config.go call site | — |
+| `bsv21` | config.go call site | — |
+| `bsv21-sync` | pkg/bsv21/sync.go | `bsv21.sync.log_level` |
+| `bap` | config.go call site | — |
+| `bsocial` | config.go call site | — |
+| `opns` | config.go call site | — |
+| `ordlock` | config.go call site | — |
+| `spends` | config.go call site | — |
+| `ordfs` | config.go call site | — |
+| `indexer` | pkg/indexer/config.go | `indexer.log_level` |
+| `owner` | pkg/owner/config.go | `owner.log_level` |
+| `admin` | config.go call site | — |
+| `sweep` | config.go call site | — |
+| `landing` | config.go call site | — |
+| `wallet` | pkg/wallet/service.go | — |
+| `faucet` | config.go call site | — |
+| `messagebox` | config.go call site | — |
+| `paymail` | config.go call site | — |
+
+## Adding Per-Module Log Level Override
+
+To make a module's log level configurable:
+
+### 1. Add LogLevel to the module's Config struct
 
 ```go
 type Config struct {
     Mode     string `mapstructure:"mode"`
-    LogLevel string `mapstructure:"log_level"` // Log level (debug, info, warn, error)
-    // ... other fields
+    LogLevel string `mapstructure:"log_level"`
 }
 ```
 
-### 2. Import the logging package
+### 2. Wrap the logger in Initialize()
 
 ```go
-import (
-    "github.com/b-open-io/1sat-stack/pkg/logging"
-    // ... other imports
-)
+moduleLogger := logging.NewComponentLogger(logger, "module-name", c.LogLevel)
 ```
 
-### 3. Create Component Logger in Initialize()
+When `levelOverride` is non-empty, the logger filters at that level while preserving the parent's handler chain (stdout + SQLite).
 
-In your `Initialize()` function, create a component-specific logger:
-
-```go
-func (c *Config) Initialize(ctx context.Context, logger *slog.Logger, deps *Deps) (*Services, error) {
-    if logger == nil {
-        logger = slog.Default()
-    }
-
-    // Create logger with optional level override
-    moduleLogger := logging.NewComponentLogger(logger, "module-name", c.LogLevel)
-
-    // Use moduleLogger for all services in this module
-    svc := &Services{
-        Sync: NewSyncService(deps, moduleLogger),
-    }
-
-    if c.Routes.Enabled {
-        svc.Routes = NewRoutes(ctx, svc.Sync, moduleLogger)
-    }
-
-    return svc, nil
-}
-```
-
-### 4. Update config.yaml
-
-Add `log_level` to the module's configuration section:
+### 3. Add to config.yaml
 
 ```yaml
 module_name:
-  mode: embedded
-  log_level: debug  # Per-module log level (debug, info, warn, error)
-  routes:
-    enabled: true
+  log_level: debug
 ```
 
-## How It Works
+## Querying Logs
 
-- `logging.NewComponentLogger(parent, component, levelOverride)` creates a new logger
-- If `levelOverride` is empty, it inherits the parent's level but adds a `"component"` attribute
-- If `levelOverride` is set (e.g., "debug"), it creates a new logger at that level
-- Log output includes `"component": "module-name"` for easy filtering
+### Admin UI
 
-## Example Log Output
+The admin settings page has a **Logs** section with filters for component, level, and text search, plus pagination and auto-refresh.
 
-```json
-{"time":"2024-01-15T10:30:00Z","level":"DEBUG","msg":"OwnerSync starting","component":"owner","owner":"1ABC..."}
+### Admin API
+
+```
+GET /admin/api/logs?component=indexer&level=ERROR&limit=50
 ```
 
-## Modules Currently Supporting Per-Module Logging
+Query parameters: `component`, `level`, `since` (RFC3339), `until` (RFC3339), `search`, `limit` (1-1000), `offset`.
 
-| Module | Config Key | Component Name |
-|--------|------------|----------------|
-| BSV21 Sync | `bsv21.sync.log_level` | `bsv21-sync` |
-| Owner | `owner.log_level` | `owner` |
+### SQLite Direct
 
-## Filtering Logs
+The database is at `{data_dir}/logs.db`:
 
-When viewing JSON logs, you can filter by component:
-
-```bash
-# Using jq
-./server 2>&1 | jq 'select(.component == "owner")'
-
-# Using grep
-./server 2>&1 | grep '"component":"owner"'
+```sql
+SELECT time_ns, level, component, msg, attrs FROM logs
+WHERE component = 'indexer' AND level = 'ERROR'
+ORDER BY time_ns DESC LIMIT 50;
 ```

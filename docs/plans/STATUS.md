@@ -8,6 +8,7 @@
 | [Sweep UI](./sweep-ui.md) | **In Progress** | OPL-700 — Standalone sweep UI at `/1sat/sweep/` for legacy wallet migration |
 | [Landing Page](../superpowers/plans/2026-03-17-landing-page.md) | **In Progress** | OPL-1404 — Terminal-aesthetic landing page at `/1sat/` |
 | BSV21 TopicWorker → OverlaySync | **In Progress** | OPL-1468 — Unify BSV21 token workers with OverlaySync, add OnProcessed, delete TopicWorker |
+| [Persistent Logging](./2026-03-26-persistent-logging.md) | **Not Started** | SQLite log persistence, multi-handler, module tagging, admin log viewer |
 
 ## Completed Plans
 
