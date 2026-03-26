@@ -821,7 +821,7 @@ func (c *Config) Initialize(ctx context.Context, logger *slog.Logger) (*Services
 
 	// Initialize store (foundational - other services may depend on it)
 	start := time.Now()
-	storeSvc, err := c.Store.Initialize(ctx, logger)
+	storeSvc, err := c.Store.Initialize(ctx, logging.NewComponentLogger(logger, "store", ""))
 	if err != nil {
 		return nil, fmt.Errorf("failed to initialize store: %w", err)
 	}
@@ -848,7 +848,7 @@ func (c *Config) Initialize(ctx context.Context, logger *slog.Logger) (*Services
 
 	// Initialize pubsub
 	start = time.Now()
-	pubsubSvc, err := c.PubSub.Initialize(ctx, logger)
+	pubsubSvc, err := c.PubSub.Initialize(ctx, logging.NewComponentLogger(logger, "pubsub", ""))
 	if err != nil {
 		return nil, fmt.Errorf("failed to initialize pubsub: %w", err)
 	}
@@ -900,7 +900,7 @@ func (c *Config) Initialize(ctx context.Context, logger *slog.Logger) (*Services
 
 	// Initialize beef storage (pass JungleBus client for fallback lookups)
 	start = time.Now()
-	beefSvc, err := c.Beef.Initialize(ctx, logger, svc.Chaintracks, svc.JungleBus)
+	beefSvc, err := c.Beef.Initialize(ctx, logging.NewComponentLogger(logger, "beef", ""), svc.Chaintracks, svc.JungleBus)
 	if err != nil {
 		return nil, fmt.Errorf("failed to initialize beef: %w", err)
 	}
@@ -915,7 +915,8 @@ func (c *Config) Initialize(ctx context.Context, logger *slog.Logger) (*Services
 		start = time.Now()
 		// Set network from main config
 		c.Arcade.Network = c.Network
-		arcadeSvc, err := c.Arcade.Initialize(ctx, logger, svc.Chaintracks, svc.P2PClient)
+		arcadeLogger := logging.NewComponentLogger(logger, "arcade", "")
+		arcadeSvc, err := c.Arcade.Initialize(ctx, arcadeLogger, svc.Chaintracks, svc.P2PClient)
 		if err != nil {
 			return nil, fmt.Errorf("failed to initialize arcade: %w", err)
 		}
@@ -925,7 +926,7 @@ func (c *Config) Initialize(ctx context.Context, logger *slog.Logger) (*Services
 		wrappedService := NewBeefCapturingArcadeService(
 			arcadeSvc.ArcadeService,
 			svc.Beef.Storage,
-			logger,
+			arcadeLogger,
 		)
 
 		svc.ArcadeWrapped = wrappedService
@@ -936,7 +937,7 @@ func (c *Config) Initialize(ctx context.Context, logger *slog.Logger) (*Services
 			Store:          arcadeSvc.Store,
 			EventPublisher: arcadeSvc.EventPublisher,
 			Arcade:         arcadeSvc.Arcade,
-			Logger:         logger,
+			Logger:         arcadeLogger,
 		})
 		logger.Info("arcade initialized", "mode", c.Arcade.Mode, "duration", time.Since(start).Round(time.Millisecond))
 	}
@@ -944,7 +945,7 @@ func (c *Config) Initialize(ctx context.Context, logger *slog.Logger) (*Services
 	// Initialize TXO storage with shared dependencies
 	if c.TXO.Mode != txo.ModeDisabled {
 		start = time.Now()
-		txoSvc, err := c.TXO.Initialize(ctx, logger, storeSvc, pubsubSvc, beefSvc)
+		txoSvc, err := c.TXO.Initialize(ctx, logging.NewComponentLogger(logger, "txo", ""), storeSvc, pubsubSvc, beefSvc)
 		if err != nil {
 			return nil, fmt.Errorf("failed to initialize txo: %w", err)
 		}
@@ -966,15 +967,16 @@ func (c *Config) Initialize(ctx context.Context, logger *slog.Logger) (*Services
 		if svc.Beef != nil {
 			overlayDeps.BeefStorage = svc.Beef.Storage
 		}
+		overlayLogger := logging.NewComponentLogger(logger, "overlay", "")
 		// Create overlay P2P bus if enabled
 		if c.Overlay.P2P.Enabled && svc.Store != nil {
-			p2pBus, err := createOverlayP2PBus(c.Overlay.P2P, c.Wallet.ServerPrivateKey, svc.Store.Store, logger)
+			p2pBus, err := createOverlayP2PBus(c.Overlay.P2P, c.Wallet.ServerPrivateKey, svc.Store.Store, overlayLogger)
 			if err != nil {
 				return nil, fmt.Errorf("failed to create overlay P2P bus: %w", err)
 			}
 			overlayDeps.P2PBus = p2pBus
 		}
-		overlaySvc, err := c.Overlay.Initialize(ctx, logger, overlayDeps)
+		overlaySvc, err := c.Overlay.Initialize(ctx, overlayLogger, overlayDeps)
 		if err != nil {
 			return nil, fmt.Errorf("failed to initialize overlay: %w", err)
 		}
@@ -992,7 +994,7 @@ func (c *Config) Initialize(ctx context.Context, logger *slog.Logger) (*Services
 	// Initialize BSV21
 	if c.BSV21.Mode != bsv21.ModeDisabled && svc.TXO != nil && moduleDeps != nil {
 		start = time.Now()
-		bsv21Svc, err := c.BSV21.Initialize(ctx, logger, svc.TXO.OutputStore, moduleDeps, svc.ConfigStore, svc.Chaintracks, svc.Beef.Storage, svc.JungleBus)
+		bsv21Svc, err := c.BSV21.Initialize(ctx, logging.NewComponentLogger(logger, "bsv21", ""), svc.TXO.OutputStore, moduleDeps, svc.ConfigStore, svc.Chaintracks, svc.Beef.Storage, svc.JungleBus)
 		if err != nil {
 			return nil, fmt.Errorf("failed to initialize bsv21: %w", err)
 		}
@@ -1017,7 +1019,8 @@ func (c *Config) Initialize(ctx context.Context, logger *slog.Logger) (*Services
 	// Initialize BAP
 	if c.BAP.Mode != bap.ModeDisabled && moduleDeps != nil {
 		start = time.Now()
-		bapSvc, err := c.BAP.Initialize(ctx, logger, moduleDeps)
+		bapLogger := logging.NewComponentLogger(logger, "bap", "")
+		bapSvc, err := c.BAP.Initialize(ctx, bapLogger, moduleDeps)
 		if err != nil {
 			return nil, fmt.Errorf("failed to initialize bap: %w", err)
 		}
@@ -1031,7 +1034,7 @@ func (c *Config) Initialize(ctx context.Context, logger *slog.Logger) (*Services
 			if syncCfg.QueueName == "" {
 				syncCfg.QueueName = "bap"
 			}
-			svc.BAP.Sync = overlay.NewOverlaySync(syncCfg, "tm_bap", svc.Store.Store, svc.Beef.Storage, svc.BAP.Engine, logger)
+			svc.BAP.Sync = overlay.NewOverlaySync(syncCfg, "tm_bap", svc.Store.Store, svc.Beef.Storage, svc.BAP.Engine, bapLogger)
 		}
 		logger.Info("bap initialized", "duration", time.Since(start).Round(time.Millisecond))
 	}
@@ -1040,7 +1043,8 @@ func (c *Config) Initialize(ctx context.Context, logger *slog.Logger) (*Services
 	if c.BSocial.Mode != bsocial.ModeDisabled && svc.MongoDB != nil {
 		start = time.Now()
 		bsocialDB := svc.MongoDB.Database("bsocial")
-		bsocialSvc, err := c.BSocial.Initialize(ctx, logger, bsocialDB, moduleDeps)
+		bsocialLogger := logging.NewComponentLogger(logger, "bsocial", "")
+		bsocialSvc, err := c.BSocial.Initialize(ctx, bsocialLogger, bsocialDB, moduleDeps)
 		if err != nil {
 			return nil, fmt.Errorf("failed to initialize bsocial: %w", err)
 		}
@@ -1054,7 +1058,7 @@ func (c *Config) Initialize(ctx context.Context, logger *slog.Logger) (*Services
 			if syncCfg.QueueName == "" {
 				syncCfg.QueueName = "bsocial"
 			}
-			svc.BSocial.Sync = overlay.NewOverlaySync(syncCfg, "tm_bsocial", svc.Store.Store, svc.Beef.Storage, svc.BSocial.Engine, logger)
+			svc.BSocial.Sync = overlay.NewOverlaySync(syncCfg, "tm_bsocial", svc.Store.Store, svc.Beef.Storage, svc.BSocial.Engine, bsocialLogger)
 		}
 		logger.Info("bsocial initialized", "duration", time.Since(start).Round(time.Millisecond))
 	}
@@ -1062,7 +1066,8 @@ func (c *Config) Initialize(ctx context.Context, logger *slog.Logger) (*Services
 	// Initialize OPNS
 	if c.OPNS.Mode != opns.ModeDisabled && moduleDeps != nil {
 		start = time.Now()
-		opnsSvc, err := c.OPNS.Initialize(ctx, logger, moduleDeps)
+		opnsLogger := logging.NewComponentLogger(logger, "opns", "")
+		opnsSvc, err := c.OPNS.Initialize(ctx, opnsLogger, moduleDeps)
 		if err != nil {
 			return nil, fmt.Errorf("failed to initialize opns: %w", err)
 		}
@@ -1070,7 +1075,7 @@ func (c *Config) Initialize(ctx context.Context, logger *slog.Logger) (*Services
 
 		if c.OPNS.Crawl.Enabled && svc.Beef != nil {
 			c.OPNS.Crawl.JungleBusURL = c.JungleBus.URL
-			svc.OPNS.Crawl = opns.NewGenesisCrawl(c.OPNS.Crawl, svc.Beef.Storage, svc.OPNS.Engine, logger)
+			svc.OPNS.Crawl = opns.NewGenesisCrawl(c.OPNS.Crawl, svc.Beef.Storage, svc.OPNS.Engine, opnsLogger)
 		}
 
 		if svc.Beef != nil {
@@ -1080,7 +1085,7 @@ func (c *Config) Initialize(ctx context.Context, logger *slog.Logger) (*Services
 			}
 			opnsSyncCfg.QueueName = "opns"
 			opnsSyncCfg.ResolveDependencies = true
-			svc.OPNS.Sync = overlay.NewOverlaySync(opnsSyncCfg, "tm_opns", svc.Store.Store, svc.Beef.Storage, svc.OPNS.Engine, logger)
+			svc.OPNS.Sync = overlay.NewOverlaySync(opnsSyncCfg, "tm_opns", svc.Store.Store, svc.Beef.Storage, svc.OPNS.Engine, opnsLogger)
 		}
 		logger.Info("opns initialized", "duration", time.Since(start).Round(time.Millisecond))
 	}
@@ -1088,7 +1093,8 @@ func (c *Config) Initialize(ctx context.Context, logger *slog.Logger) (*Services
 	// Initialize OrdLock
 	if c.OrdLock.Mode != ordlockpkg.ModeDisabled && moduleDeps != nil {
 		start = time.Now()
-		ordlockSvc, err := c.OrdLock.Initialize(ctx, logger, moduleDeps)
+		ordlockLogger := logging.NewComponentLogger(logger, "ordlock", "")
+		ordlockSvc, err := c.OrdLock.Initialize(ctx, ordlockLogger, moduleDeps)
 		if err != nil {
 			return nil, fmt.Errorf("failed to initialize ordlock: %w", err)
 		}
@@ -1105,7 +1111,7 @@ func (c *Config) Initialize(ctx context.Context, logger *slog.Logger) (*Services
 			if !syncCfg.ResolveDependencies {
 				syncCfg.ResolveDependencies = true
 			}
-			svc.OrdLock.Sync = overlay.NewOverlaySync(syncCfg, ordlockpkg.TopicName, svc.Store.Store, svc.Beef.Storage, svc.OrdLock.Engine, logger)
+			svc.OrdLock.Sync = overlay.NewOverlaySync(syncCfg, ordlockpkg.TopicName, svc.Store.Store, svc.Beef.Storage, svc.OrdLock.Engine, ordlockLogger)
 		}
 		logger.Info("ordlock initialized", "duration", time.Since(start).Round(time.Millisecond))
 	}
@@ -1113,7 +1119,7 @@ func (c *Config) Initialize(ctx context.Context, logger *slog.Logger) (*Services
 	// Initialize Spends
 	if c.Spends.Mode != spends.ModeDisabled && c.Spends.Mode != "" && svc.Store != nil {
 		start = time.Now()
-		spendsSvc, err := c.Spends.Initialize(ctx, logger, svc.Store.Store, svc.JungleBus)
+		spendsSvc, err := c.Spends.Initialize(ctx, logging.NewComponentLogger(logger, "spends", ""), svc.Store.Store, svc.JungleBus)
 		if err != nil {
 			return nil, fmt.Errorf("failed to initialize spends: %w", err)
 		}
@@ -1135,7 +1141,7 @@ func (c *Config) Initialize(ctx context.Context, logger *slog.Logger) (*Services
 		if svc.Beef != nil {
 			beefStorage = svc.Beef.Storage
 		}
-		ordfsSvc, err := c.ORDFS.Initialize(ctx, logger, c.DataDir, spendsStorage, beefStorage)
+		ordfsSvc, err := c.ORDFS.Initialize(ctx, logging.NewComponentLogger(logger, "ordfs", ""), c.DataDir, spendsStorage, beefStorage)
 		if err != nil {
 			return nil, fmt.Errorf("failed to initialize ordfs: %w", err)
 		}
@@ -1296,17 +1302,18 @@ func (c *Config) Initialize(ctx context.Context, logger *slog.Logger) (*Services
 				crawlCfg := c.OPNS.Crawl
 				crawlCfg.Enabled = true
 				crawlCfg.JungleBusURL = c.JungleBus.URL
-				svc.OPNS.Crawl = opns.NewGenesisCrawl(crawlCfg, svc.Beef.Storage, svc.OPNS.Engine, logger)
+				opnsLogger := logging.NewComponentLogger(logger, "opns", "")
+				svc.OPNS.Crawl = opns.NewGenesisCrawl(crawlCfg, svc.Beef.Storage, svc.OPNS.Engine, opnsLogger)
 				go func() {
 					if err := svc.OPNS.Crawl.Start(ctx); err != nil {
-						logger.Error("OpNS crawl error", "error", err)
+						opnsLogger.Error("OpNS crawl error", "error", err)
 					}
 					svc.OPNS.Crawl = nil
 				}()
 				return nil
 			}
 		}
-		adminSvc, err := c.Admin.Initialize(ctx, logger, adminDeps)
+		adminSvc, err := c.Admin.Initialize(ctx, logging.NewComponentLogger(logger, "admin", ""), adminDeps)
 		if err != nil {
 			return nil, fmt.Errorf("failed to initialize admin: %w", err)
 		}
@@ -1316,7 +1323,7 @@ func (c *Config) Initialize(ctx context.Context, logger *slog.Logger) (*Services
 
 	// Initialize Sweep UI
 	if c.Sweep.Mode != sweep.ModeDisabled {
-		sweepSvc, err := c.Sweep.Initialize(ctx, logger)
+		sweepSvc, err := c.Sweep.Initialize(ctx, logging.NewComponentLogger(logger, "sweep", ""))
 		if err != nil {
 			return nil, fmt.Errorf("failed to initialize sweep: %w", err)
 		}
@@ -1324,7 +1331,7 @@ func (c *Config) Initialize(ctx context.Context, logger *slog.Logger) (*Services
 	}
 
 	// Initialize Landing page
-	landingSvc, err := c.Landing.Initialize(ctx, logger)
+	landingSvc, err := c.Landing.Initialize(ctx, logging.NewComponentLogger(logger, "landing", ""))
 	if err != nil {
 		return nil, fmt.Errorf("landing init: %w", err)
 	}
@@ -1391,7 +1398,7 @@ func (c *Config) Initialize(ctx context.Context, logger *slog.Logger) (*Services
 			ServerPrivateKey: c.Wallet.ServerPrivateKey,
 			Network:          c.Network,
 		}
-		faucetSvc, err := c.Faucet.Initialize(ctx, logger, c.DataDir, faucetDeps)
+		faucetSvc, err := c.Faucet.Initialize(ctx, logging.NewComponentLogger(logger, "faucet", ""), c.DataDir, faucetDeps)
 		if err != nil {
 			return nil, fmt.Errorf("faucet init failed: %w", err)
 		}
@@ -1400,7 +1407,7 @@ func (c *Config) Initialize(ctx context.Context, logger *slog.Logger) (*Services
 
 	// Initialize MessageBox service (must be before Paymail, which depends on it)
 	if c.MessageBox.Mode != messagebox.ModeDisabled && c.MessageBox.Mode != "" {
-		mbSvc, err := c.MessageBox.Initialize(ctx, logger)
+		mbSvc, err := c.MessageBox.Initialize(ctx, logging.NewComponentLogger(logger, "messagebox", ""))
 		if err != nil {
 			return nil, fmt.Errorf("failed to initialize messagebox: %w", err)
 		}
@@ -1427,7 +1434,7 @@ func (c *Config) Initialize(ctx context.Context, logger *slog.Logger) (*Services
 		if svc.Beef != nil && svc.Beef.Storage != nil {
 			paymailDeps.BeefStorage = svc.Beef.Storage
 		}
-		paymailSvc, err := c.Paymail.Initialize(ctx, logger, paymailDeps)
+		paymailSvc, err := c.Paymail.Initialize(ctx, logging.NewComponentLogger(logger, "paymail", ""), paymailDeps)
 		if err != nil {
 			return nil, fmt.Errorf("failed to initialize paymail: %w", err)
 		}
