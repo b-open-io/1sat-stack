@@ -18,10 +18,12 @@ import {
   Trash2,
   GripVertical,
   Droplets,
+  ScrollText,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
+import Logs from "@/sections/Logs";
 
 // ─── Primitives ──────────────────────────────────────────────────────────────
 
@@ -247,7 +249,8 @@ type SectionId =
   | "faucet"
   | "sync"
   | "auth"
-  | "tuning";
+  | "tuning"
+  | "logs";
 
 // ─── Content panels ───────────────────────────────────────────────────────────
 
@@ -1713,6 +1716,7 @@ export default function SettingsPage() {
     { type: "item", id: "sync", label: "Sync", icon: RefreshCw },
     { type: "item", id: "auth", label: "Auth", icon: Shield },
     { type: "item", id: "tuning", label: "Tuning", icon: Cpu },
+    { type: "item", id: "logs", label: "Logs", icon: ScrollText },
   ];
 
   if (loading) {
@@ -1896,6 +1900,7 @@ export default function SettingsPage() {
               pollDelay={pollDelay} setPollDelay={setPollDelay}
             />
           )}
+          {activeSection === "logs" && <Logs />}
         </div>
       </div>
     </div>

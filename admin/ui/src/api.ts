@@ -109,3 +109,37 @@ export async function requestAccess(name: string): Promise<{ message: string }> 
   }
   return res.json();
 }
+
+// ─── Log query API ──────────────────────────────────────────────────────────
+
+export interface LogEntry {
+  time_ns: number;
+  time: string;
+  level: string;
+  component: string;
+  msg: string;
+  attrs?: Record<string, unknown>;
+}
+
+export interface LogQueryResponse {
+  total: number;
+  entries: LogEntry[];
+}
+
+export async function queryLogs(params: {
+  component?: string;
+  level?: string;
+  since?: string;
+  until?: string;
+  search?: string;
+  limit?: number;
+  offset?: number;
+}): Promise<LogQueryResponse> {
+  const qs = new URLSearchParams();
+  for (const [k, v] of Object.entries(params)) {
+    if (v !== undefined && v !== "") qs.append(k, String(v));
+  }
+  const res = await apiFetch(`/logs?${qs}`);
+  if (!res.ok) throw new Error((await res.json()).error || res.statusText);
+  return res.json();
+}
