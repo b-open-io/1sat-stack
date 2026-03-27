@@ -460,6 +460,14 @@ interface StoragePanelProps {
   setChaintracksPath: (v: string) => void;
   arcadeDb: string;
   setArcadeDb: (v: string) => void;
+  arcadeBroadcastUrls: string[];
+  setArcadeBroadcastUrls: React.Dispatch<React.SetStateAction<string[]>>;
+  arcadeDatahubUrls: string[];
+  setArcadeDatahubUrls: React.Dispatch<React.SetStateAction<string[]>>;
+  arcadeAuthToken: string;
+  setArcadeAuthToken: (v: string) => void;
+  arcadeTimeout: string;
+  setArcadeTimeout: (v: string) => void;
 }
 
 function StoragePanel({
@@ -476,6 +484,10 @@ function StoragePanel({
   walletDb, setWalletDb,
   chaintracksPath, setChaintracksPath,
   arcadeDb, setArcadeDb,
+  arcadeBroadcastUrls, setArcadeBroadcastUrls,
+  arcadeDatahubUrls, setArcadeDatahubUrls,
+  arcadeAuthToken, setArcadeAuthToken,
+  arcadeTimeout, setArcadeTimeout,
 }: StoragePanelProps) {
   return (
     <div className="space-y-4">
@@ -568,6 +580,47 @@ function StoragePanel({
         </FieldRow>
         <FieldRow label="Arcade" badge={<RestartBadge />}>
           <Input value={arcadeDb} onChange={(e) => setArcadeDb(e.target.value)} className="font-mono text-xs h-8" />
+        </FieldRow>
+      </SectionCard>
+
+      <SectionCard>
+        <SectionHeading>Arcade / Teranode</SectionHeading>
+        <p className="text-[11px] text-muted-foreground">Broadcast and datahub endpoints for Teranode transaction submission.</p>
+        <FieldRow label="Broadcast URLs" hint="One URL per line. Used for submitting transactions." badge={<RestartBadge />}>
+          <textarea
+            value={arcadeBroadcastUrls.join("\n")}
+            onChange={(e) => setArcadeBroadcastUrls(e.target.value.split("\n").map(u => u.trim()).filter(Boolean))}
+            placeholder="http://mainnet.gorillanode.io:8833"
+            className="w-full font-mono text-xs rounded-md border border-input bg-transparent px-3 py-2 min-h-[60px] resize-y"
+            rows={Math.max(2, arcadeBroadcastUrls.length + 1)}
+          />
+        </FieldRow>
+        <FieldRow label="DataHub URLs" hint="One URL per line. Used for fetching block/subtree data." badge={<RestartBadge />}>
+          <textarea
+            value={arcadeDatahubUrls.join("\n")}
+            onChange={(e) => setArcadeDatahubUrls(e.target.value.split("\n").map(u => u.trim()).filter(Boolean))}
+            placeholder="https://mainnet.gorillanode.io/api/v1"
+            className="w-full font-mono text-xs rounded-md border border-input bg-transparent px-3 py-2 min-h-[60px] resize-y"
+            rows={Math.max(2, arcadeDatahubUrls.length + 1)}
+          />
+        </FieldRow>
+        <FieldRow label="Auth token" hint="Optional bearer token for authenticated Teranode access." badge={<RestartBadge />}>
+          <Input
+            type="password"
+            value={arcadeAuthToken}
+            onChange={(e) => setArcadeAuthToken(e.target.value)}
+            placeholder="(none)"
+            className="font-mono text-xs h-8"
+          />
+        </FieldRow>
+        <FieldRow label="Timeout (seconds)" hint="Broadcast request timeout." badge={<RestartBadge />}>
+          <Input
+            type="number"
+            value={arcadeTimeout}
+            onChange={(e) => setArcadeTimeout(e.target.value)}
+            placeholder="30"
+            className="font-mono text-xs h-8 max-w-[120px]"
+          />
         </FieldRow>
       </SectionCard>
     </div>
@@ -1326,6 +1379,10 @@ export default function SettingsPage() {
   const [walletDb, setWalletDb] = useState("wallet.sqlite");
   const [chaintracksPath, setChaintracksPath] = useState("chaintracks");
   const [arcadeDb, setArcadeDb] = useState("arcade/arcade.db");
+  const [arcadeBroadcastUrls, setArcadeBroadcastUrls] = useState<string[]>(["http://mainnet.gorillanode.io:8833"]);
+  const [arcadeDatahubUrls, setArcadeDatahubUrls] = useState<string[]>(["https://mainnet.gorillanode.io/api/v1"]);
+  const [arcadeAuthToken, setArcadeAuthToken] = useState("");
+  const [arcadeTimeout, setArcadeTimeout] = useState("30");
 
   // Indexer
   const [activeTags, setActiveTags] = useState<string[]>(PARSE_TAGS.map((t) => t.id));
@@ -1423,6 +1480,16 @@ export default function SettingsPage() {
           : s("wallet.db.sqlite.connection_string", "wallet.sqlite"));
         setChaintracksPath(s("chaintracks.path", "chaintracks"));
         setArcadeDb(s("arcade.path", "arcade/arcade.db"));
+        if (cfg["arcade.teranode.broadcast_urls"]) {
+          const urls = cfg["arcade.teranode.broadcast_urls"].split(",").filter(Boolean);
+          if (urls.length > 0) setArcadeBroadcastUrls(urls);
+        }
+        if (cfg["arcade.teranode.datahub_urls"]) {
+          const urls = cfg["arcade.teranode.datahub_urls"].split(",").filter(Boolean);
+          if (urls.length > 0) setArcadeDatahubUrls(urls);
+        }
+        setArcadeAuthToken(s("arcade.teranode.auth_token", ""));
+        setArcadeTimeout(s("arcade.teranode.timeout", "30"));
 
         // Indexer
         if (cfg["indexer.parsers"]) {
@@ -1504,6 +1571,8 @@ export default function SettingsPage() {
     "store.provider", "store.badger.path", "pubsub.provider",
     "auth.mode", "wallet.db.engine", "wallet.db.sqlite.connection_string",
     "wallet.postgres_connection_string", "chaintracks.path", "arcade.path",
+    "arcade.teranode.broadcast_urls", "arcade.teranode.datahub_urls",
+    "arcade.teranode.auth_token", "arcade.teranode.timeout",
     "beef.chain", "ordfs.cache.lru_size", "ordfs.cache.redis_url", "ordfs.cache.redis_ttl",
     "overlay.engine.storage", "overlay.engine.storage_path",
     "overlay.engine.p2p.enabled", "overlay.engine.p2p.port",
@@ -1536,6 +1605,10 @@ export default function SettingsPage() {
     "wallet.postgres_connection_string": walletEngine === "postgres" ? walletDb : "",
     "chaintracks.path": chaintracksPath,
     "arcade.path": arcadeDb,
+    "arcade.teranode.broadcast_urls": arcadeBroadcastUrls.join(","),
+    "arcade.teranode.datahub_urls": arcadeDatahubUrls.join(","),
+    "arcade.teranode.auth_token": arcadeAuthToken,
+    "arcade.teranode.timeout": arcadeTimeout,
     "overlay.engine.storage": engineStorage,
     "overlay.engine.storage_path": engineStoragePath,
     "overlay.engine.p2p.enabled": String(p2pEnabled),
@@ -1568,7 +1641,8 @@ export default function SettingsPage() {
   }), [
     bapEnabled, opnsEnabled, bsv21Enabled, bsocialEnabled, ordlockEnabled, ownerSync, faucetEnabled,
     storeProvider, storePath, pubsubProvider, authMode, walletEngine, walletDb,
-    chaintracksPath, arcadeDb, engineStorage, engineStoragePath,
+    chaintracksPath, arcadeDb, arcadeBroadcastUrls, arcadeDatahubUrls, arcadeAuthToken, arcadeTimeout,
+    engineStorage, engineStoragePath,
     p2pEnabled, p2pPort, p2pDhtMode, bootstrapPeers, activeTags,
     bapSubId, bapConcurrency, bapBatchSize,
     opnsSubId, opnsConcurrency, opnsBatchSize,
@@ -1615,6 +1689,10 @@ export default function SettingsPage() {
         "wallet.postgres_connection_string": walletEngine === "postgres" ? walletDb : "",
         "chaintracks.path": chaintracksPath,
         "arcade.path": arcadeDb,
+        "arcade.teranode.broadcast_urls": arcadeBroadcastUrls.join(","),
+        "arcade.teranode.datahub_urls": arcadeDatahubUrls.join(","),
+        "arcade.teranode.auth_token": arcadeAuthToken,
+        "arcade.teranode.timeout": arcadeTimeout,
 
         // Indexer
         "indexer.parsers": JSON.stringify(activeTags),
@@ -1809,6 +1887,10 @@ export default function SettingsPage() {
               walletDb={walletDb} setWalletDb={setWalletDb}
               chaintracksPath={chaintracksPath} setChaintracksPath={setChaintracksPath}
               arcadeDb={arcadeDb} setArcadeDb={setArcadeDb}
+              arcadeBroadcastUrls={arcadeBroadcastUrls} setArcadeBroadcastUrls={setArcadeBroadcastUrls}
+              arcadeDatahubUrls={arcadeDatahubUrls} setArcadeDatahubUrls={setArcadeDatahubUrls}
+              arcadeAuthToken={arcadeAuthToken} setArcadeAuthToken={setArcadeAuthToken}
+              arcadeTimeout={arcadeTimeout} setArcadeTimeout={setArcadeTimeout}
             />
           )}
           {activeSection === "indexer" && (

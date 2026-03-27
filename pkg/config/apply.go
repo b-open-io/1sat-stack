@@ -50,9 +50,13 @@ type RuntimeConfig struct {
 	ChaintracksURL  string
 
 	// Arcade
-	ArcadeMode string // "embedded" or "remote"
-	ArcadePath string
-	ArcadeURL  string
+	ArcadeMode          string // "embedded" or "remote"
+	ArcadePath          string
+	ArcadeURL           string
+	ArcadeBroadcastURLs string // comma-separated broadcast endpoint URLs
+	ArcadeDatahubURLs   string // comma-separated datahub endpoint URLs
+	ArcadeAuthToken     string // optional bearer token for Teranode
+	ArcadeTimeout       int    // broadcast timeout in seconds (default 30)
 
 	// JungleBus
 	JungleBusURL   string
@@ -195,6 +199,10 @@ func LoadRuntimeConfig(ctx context.Context, cs Store, logger *slog.Logger) (*Run
 	rc.ArcadeMode = getString(ctx, cs, "arcade.mode")
 	rc.ArcadePath = getString(ctx, cs, "arcade.path")
 	rc.ArcadeURL = getString(ctx, cs, "arcade.url")
+	rc.ArcadeBroadcastURLs = getString(ctx, cs, "arcade.teranode.broadcast_urls")
+	rc.ArcadeDatahubURLs = getString(ctx, cs, "arcade.teranode.datahub_urls")
+	rc.ArcadeAuthToken = getString(ctx, cs, "arcade.teranode.auth_token")
+	rc.ArcadeTimeout = getInt(ctx, cs, "arcade.teranode.timeout")
 
 	// JungleBus
 	rc.JungleBusURL = getString(ctx, cs, "junglebus.url")

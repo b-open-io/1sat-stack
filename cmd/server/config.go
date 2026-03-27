@@ -339,6 +339,7 @@ func (c *Config) SetDefaults(v *viper.Viper) {
 	v.SetDefault("arcade.teranode.datahub_urls", []string{
 		"https://mainnet.gorillanode.io/api/v1",
 	})
+	v.SetDefault("arcade.teranode.timeout", "30s")
 
 	// Merkle service defaults
 	v.SetDefault("merkle.mode", "disabled")
@@ -510,6 +511,18 @@ func (c *Config) applyRuntimeConfig(rc *configpkg.RuntimeConfig) {
 	}
 	if rc.ArcadeURL != "" {
 		c.Arcade.URL = rc.ArcadeURL
+	}
+	if rc.ArcadeBroadcastURLs != "" {
+		c.Arcade.Teranode.BroadcastURLs = strings.Split(rc.ArcadeBroadcastURLs, ",")
+	}
+	if rc.ArcadeDatahubURLs != "" {
+		c.Arcade.Teranode.DataHubURLs = strings.Split(rc.ArcadeDatahubURLs, ",")
+	}
+	if rc.ArcadeAuthToken != "" {
+		c.Arcade.Teranode.AuthToken = rc.ArcadeAuthToken
+	}
+	if rc.ArcadeTimeout > 0 {
+		c.Arcade.Teranode.Timeout = time.Duration(rc.ArcadeTimeout) * time.Second
 	}
 
 	// JungleBus
@@ -915,7 +928,7 @@ func (c *Config) Initialize(ctx context.Context, logger *slog.Logger) (*Services
 		start = time.Now()
 		// Set network from main config
 		c.Arcade.Network = c.Network
-		arcadeLogger := logging.NewComponentLogger(logger, "arcade", "")
+		arcadeLogger := logging.NewComponentLogger(logger, "arcade", c.Arcade.LogLevel)
 		arcadeSvc, err := c.Arcade.Initialize(ctx, arcadeLogger, svc.Chaintracks, svc.P2PClient)
 		if err != nil {
 			return nil, fmt.Errorf("failed to initialize arcade: %w", err)
