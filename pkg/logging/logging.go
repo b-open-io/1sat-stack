@@ -50,11 +50,29 @@ func NewLogger(level string) *slog.Logger {
 
 // NewComponentLogger creates a logger for a specific component with its own log level.
 // If levelOverride is empty, it uses the parent logger's level.
+// When overriding, each handler in the chain gets its own LeveledHandler wrapper
+// so per-component level filtering works correctly with MultiHandler.
 func NewComponentLogger(parent *slog.Logger, component string, levelOverride string) *slog.Logger {
 	if levelOverride == "" {
 		return parent.With(ComponentKey, component)
 	}
-	return slog.New(NewLeveledHandler(parent.Handler(), ParseLevel(levelOverride))).With(ComponentKey, component)
+
+	level := ParseLevel(levelOverride)
+	handler := parent.Handler()
+
+	// If the parent uses a MultiHandler, wrap each inner handler individually
+	// so that MultiHandler's per-handler Enabled check sees the overridden level.
+	if multi, ok := handler.(*MultiHandler); ok {
+		wrapped := make([]slog.Handler, len(multi.handlers))
+		for i, h := range multi.handlers {
+			wrapped[i] = NewLeveledHandler(h, level)
+		}
+		handler = &MultiHandler{handlers: wrapped}
+	} else {
+		handler = NewLeveledHandler(handler, level)
+	}
+
+	return slog.New(handler).With(ComponentKey, component)
 }
 
 // LogCloser flushes and closes persistent log handlers.
@@ -102,7 +120,7 @@ func NewLeveledHandler(handler slog.Handler, level slog.Level) *LeveledHandler {
 	}
 }
 
-func (h *LeveledHandler) Enabled(ctx context.Context, level slog.Level) bool {
+func (h *LeveledHandler) Enabled(_ context.Context, level slog.Level) bool {
 	return level >= h.level
 }
 
@@ -133,26 +151,21 @@ type BadgerLogger struct {
 	Level  slog.Level
 }
 
-func (b *BadgerLogger) Errorf(format string, args ...any) {
-	if b.Level <= slog.LevelError {
-		b.Logger.Error(fmt.Sprintf(format, args...))
-	}
+func (b *BadgerLogger) Errorf(f string, v ...interface{}) {
+	b.Logger.Error(fmt.Sprintf(f, v...))
 }
-
-func (b *BadgerLogger) Warningf(format string, args ...any) {
+func (b *BadgerLogger) Warningf(f string, v ...interface{}) {
 	if b.Level <= slog.LevelWarn {
-		b.Logger.Warn(fmt.Sprintf(format, args...))
+		b.Logger.Warn(fmt.Sprintf(f, v...))
 	}
 }
-
-func (b *BadgerLogger) Infof(format string, args ...any) {
+func (b *BadgerLogger) Infof(f string, v ...interface{}) {
 	if b.Level <= slog.LevelInfo {
-		b.Logger.Info(fmt.Sprintf(format, args...))
+		b.Logger.Info(fmt.Sprintf(f, v...))
 	}
 }
-
-func (b *BadgerLogger) Debugf(format string, args ...any) {
+func (b *BadgerLogger) Debugf(f string, v ...interface{}) {
 	if b.Level <= slog.LevelDebug {
-		b.Logger.Debug(fmt.Sprintf(format, args...))
+		b.Logger.Debug(fmt.Sprintf(f, v...))
 	}
 }
