@@ -524,6 +524,9 @@ func (c *Config) applyRuntimeConfig(rc *configpkg.RuntimeConfig) {
 	if rc.ArcadeTimeout > 0 {
 		c.Arcade.Teranode.Timeout = time.Duration(rc.ArcadeTimeout) * time.Second
 	}
+	if rc.ArcadeLogLevel != "" {
+		c.Arcade.LogLevel = rc.ArcadeLogLevel
+	}
 
 	// JungleBus
 	if rc.JungleBusURL != "" {

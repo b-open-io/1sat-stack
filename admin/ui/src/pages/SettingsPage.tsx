@@ -468,6 +468,8 @@ interface StoragePanelProps {
   setArcadeAuthToken: (v: string) => void;
   arcadeTimeout: string;
   setArcadeTimeout: (v: string) => void;
+  arcadeLogLevel: string;
+  setArcadeLogLevel: (v: string) => void;
 }
 
 function StoragePanel({
@@ -488,6 +490,7 @@ function StoragePanel({
   arcadeDatahubUrls, setArcadeDatahubUrls,
   arcadeAuthToken, setArcadeAuthToken,
   arcadeTimeout, setArcadeTimeout,
+  arcadeLogLevel, setArcadeLogLevel,
 }: StoragePanelProps) {
   return (
     <div className="space-y-4">
@@ -620,6 +623,18 @@ function StoragePanel({
             onChange={(e) => setArcadeTimeout(e.target.value)}
             placeholder="30"
             className="font-mono text-xs h-8 max-w-[120px]"
+          />
+        </FieldRow>
+        <FieldRow label="Log level" hint="Set to debug to see broadcast details." badge={<RestartBadge />}>
+          <SegmentedControl
+            value={arcadeLogLevel}
+            onChange={setArcadeLogLevel}
+            options={[
+              { label: "Error", value: "error" },
+              { label: "Warn", value: "warn" },
+              { label: "Info", value: "info" },
+              { label: "Debug", value: "debug" },
+            ]}
           />
         </FieldRow>
       </SectionCard>
@@ -1383,6 +1398,7 @@ export default function SettingsPage() {
   const [arcadeDatahubUrls, setArcadeDatahubUrls] = useState<string[]>(["https://mainnet.gorillanode.io/api/v1"]);
   const [arcadeAuthToken, setArcadeAuthToken] = useState("");
   const [arcadeTimeout, setArcadeTimeout] = useState("30");
+  const [arcadeLogLevel, setArcadeLogLevel] = useState("info");
 
   // Indexer
   const [activeTags, setActiveTags] = useState<string[]>(PARSE_TAGS.map((t) => t.id));
@@ -1490,6 +1506,7 @@ export default function SettingsPage() {
         }
         setArcadeAuthToken(s("arcade.teranode.auth_token", ""));
         setArcadeTimeout(s("arcade.teranode.timeout", "30"));
+        setArcadeLogLevel(s("arcade.log_level", "info"));
 
         // Indexer
         if (cfg["indexer.parsers"]) {
@@ -1609,6 +1626,7 @@ export default function SettingsPage() {
     "arcade.teranode.datahub_urls": arcadeDatahubUrls.join(","),
     "arcade.teranode.auth_token": arcadeAuthToken,
     "arcade.teranode.timeout": arcadeTimeout,
+    "arcade.log_level": arcadeLogLevel,
     "overlay.engine.storage": engineStorage,
     "overlay.engine.storage_path": engineStoragePath,
     "overlay.engine.p2p.enabled": String(p2pEnabled),
@@ -1641,7 +1659,7 @@ export default function SettingsPage() {
   }), [
     bapEnabled, opnsEnabled, bsv21Enabled, bsocialEnabled, ordlockEnabled, ownerSync, faucetEnabled,
     storeProvider, storePath, pubsubProvider, authMode, walletEngine, walletDb,
-    chaintracksPath, arcadeDb, arcadeBroadcastUrls, arcadeDatahubUrls, arcadeAuthToken, arcadeTimeout,
+    chaintracksPath, arcadeDb, arcadeBroadcastUrls, arcadeDatahubUrls, arcadeAuthToken, arcadeTimeout, arcadeLogLevel,
     engineStorage, engineStoragePath,
     p2pEnabled, p2pPort, p2pDhtMode, bootstrapPeers, activeTags,
     bapSubId, bapConcurrency, bapBatchSize,
@@ -1693,6 +1711,7 @@ export default function SettingsPage() {
         "arcade.teranode.datahub_urls": arcadeDatahubUrls.join(","),
         "arcade.teranode.auth_token": arcadeAuthToken,
         "arcade.teranode.timeout": arcadeTimeout,
+        "arcade.log_level": arcadeLogLevel,
 
         // Indexer
         "indexer.parsers": JSON.stringify(activeTags),
@@ -1891,6 +1910,7 @@ export default function SettingsPage() {
               arcadeDatahubUrls={arcadeDatahubUrls} setArcadeDatahubUrls={setArcadeDatahubUrls}
               arcadeAuthToken={arcadeAuthToken} setArcadeAuthToken={setArcadeAuthToken}
               arcadeTimeout={arcadeTimeout} setArcadeTimeout={setArcadeTimeout}
+              arcadeLogLevel={arcadeLogLevel} setArcadeLogLevel={setArcadeLogLevel}
             />
           )}
           {activeSection === "indexer" && (

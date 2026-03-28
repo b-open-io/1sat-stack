@@ -57,6 +57,7 @@ type RuntimeConfig struct {
 	ArcadeDatahubURLs   string // comma-separated datahub endpoint URLs
 	ArcadeAuthToken     string // optional bearer token for Teranode
 	ArcadeTimeout       int    // broadcast timeout in seconds (default 30)
+	ArcadeLogLevel      string // log level for arcade component (debug, info, warn, error)
 
 	// JungleBus
 	JungleBusURL   string
@@ -203,6 +204,7 @@ func LoadRuntimeConfig(ctx context.Context, cs Store, logger *slog.Logger) (*Run
 	rc.ArcadeDatahubURLs = getString(ctx, cs, "arcade.teranode.datahub_urls")
 	rc.ArcadeAuthToken = getString(ctx, cs, "arcade.teranode.auth_token")
 	rc.ArcadeTimeout = getInt(ctx, cs, "arcade.teranode.timeout")
+	rc.ArcadeLogLevel = getString(ctx, cs, "arcade.log_level")
 
 	// JungleBus
 	rc.JungleBusURL = getString(ctx, cs, "junglebus.url")
