@@ -141,8 +141,9 @@ func (s *LocalWalletServices) MerklePath(ctx context.Context, txid string) (*wdk
 		}
 		if hdr, err := s.chaintracks.GetHeaderByHeight(ctx, tx.MerklePath.BlockHeight); err == nil {
 			result.BlockHeader = &wdk.MerklePathBlockHeader{
-				Height: hdr.Height,
-				Hash:   hdr.Hash.String(),
+				Height:     hdr.Height,
+				MerkleRoot: hdr.MerkleRoot.String(),
+				Hash:       hdr.Hash.String(),
 			}
 		}
 		return result, nil
@@ -163,13 +164,18 @@ func (s *LocalWalletServices) MerklePath(ctx context.Context, txid string) (*wdk
 		return nil, fmt.Errorf("failed to parse merkle path for %s: %w", txid, err)
 	}
 
+	blockHeader := &wdk.MerklePathBlockHeader{
+		Height: uint32(status.BlockHeight),
+		Hash:   status.BlockHash,
+	}
+	if hdr, err := s.chaintracks.GetHeaderByHeight(ctx, mp.BlockHeight); err == nil {
+		blockHeader.MerkleRoot = hdr.MerkleRoot.String()
+	}
+
 	return &wdk.MerklePathResult{
-		Name:       "LocalArcade",
-		MerklePath: mp,
-		BlockHeader: &wdk.MerklePathBlockHeader{
-			Height: uint32(status.BlockHeight),
-			Hash:   status.BlockHash,
-		},
+		Name:        "LocalArcade",
+		MerklePath:  mp,
+		BlockHeader: blockHeader,
 	}, nil
 }
 
