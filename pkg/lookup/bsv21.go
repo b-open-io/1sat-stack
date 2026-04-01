@@ -30,7 +30,7 @@ CREATE TABLE IF NOT EXISTS token_outputs (
     op           TEXT NOT NULL,
     lock_type    TEXT NOT NULL,
     address      TEXT NOT NULL,
-    amount       INTEGER NOT NULL,
+    amount       TEXT NOT NULL,
     sym          TEXT,
     dec          INTEGER,
     icon         TEXT,
@@ -122,7 +122,7 @@ func (l *BSV21Lookup) OutputAdmittedByTopic(ctx context.Context, payload *engine
 
 	_, err = ts.DB().ExecContext(ctx,
 		`INSERT OR REPLACE INTO token_outputs (outpoint, token_id, op, lock_type, address, amount, sym, dec, icon, score) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		outpoint.Bytes(), b.Id, b.Op, lockType, address, b.Amt, b.Symbol, b.Decimals, b.Icon, score,
+		outpoint.Bytes(), b.Id, b.Op, lockType, address, strconv.FormatUint(b.Amt, 10), b.Symbol, b.Decimals, b.Icon, score,
 	)
 	return err
 }
@@ -257,16 +257,30 @@ func (l *BSV21Lookup) GetBalance(ctx context.Context, tokenId, lockType, address
 		return 0, 0, err
 	}
 
-	var total sql.NullInt64
-	var count int
-	err = ts.DB().QueryRowContext(ctx,
-		`SELECT COALESCE(SUM(amount), 0), COUNT(*) FROM token_outputs WHERE token_id = ? AND lock_type = ? AND address = ? AND spend_txid IS NULL`,
+	rows, err := ts.DB().QueryContext(ctx,
+		`SELECT amount FROM token_outputs WHERE token_id = ? AND lock_type = ? AND address = ? AND spend_txid IS NULL`,
 		tokenId, lockType, address,
-	).Scan(&total, &count)
+	)
 	if err != nil {
 		return 0, 0, err
 	}
-	return uint64(total.Int64), count, nil
+	defer rows.Close()
+
+	var total uint64
+	var count int
+	for rows.Next() {
+		var amtStr string
+		if err := rows.Scan(&amtStr); err != nil {
+			return 0, 0, err
+		}
+		amt, err := strconv.ParseUint(amtStr, 10, 64)
+		if err != nil {
+			return 0, 0, err
+		}
+		total += amt
+		count++
+	}
+	return total, count, rows.Err()
 }
 
 // GetMultiBalance calculates the total balance across multiple addresses.
@@ -280,7 +294,7 @@ func (l *BSV21Lookup) GetMultiBalance(ctx context.Context, tokenId, lockType str
 		return 0, 0, err
 	}
 
-	query := `SELECT COALESCE(SUM(amount), 0), COUNT(*) FROM token_outputs WHERE token_id = ? AND lock_type = ? AND spend_txid IS NULL AND address IN (`
+	query := `SELECT amount FROM token_outputs WHERE token_id = ? AND lock_type = ? AND spend_txid IS NULL AND address IN (`
 	args := []any{tokenId, lockType}
 	for i, addr := range addresses {
 		if i > 0 {
@@ -291,12 +305,27 @@ func (l *BSV21Lookup) GetMultiBalance(ctx context.Context, tokenId, lockType str
 	}
 	query += ")"
 
-	var total sql.NullInt64
-	var count int
-	if err := ts.DB().QueryRowContext(ctx, query, args...).Scan(&total, &count); err != nil {
+	rows, err := ts.DB().QueryContext(ctx, query, args...)
+	if err != nil {
 		return 0, 0, err
 	}
-	return uint64(total.Int64), count, nil
+	defer rows.Close()
+
+	var total uint64
+	var count int
+	for rows.Next() {
+		var amtStr string
+		if err := rows.Scan(&amtStr); err != nil {
+			return 0, 0, err
+		}
+		amt, err := strconv.ParseUint(amtStr, 10, 64)
+		if err != nil {
+			return 0, 0, err
+		}
+		total += amt
+		count++
+	}
+	return total, count, rows.Err()
 }
 
 // GetToken returns the parsed BSV21 deploy data for a specific token.
@@ -314,19 +343,24 @@ func (l *BSV21Lookup) GetToken(ctx context.Context, outpoint *transaction.Outpoi
 	}
 
 	var op string
-	var amount uint64
+	var amtStr string
 	var sym, icon sql.NullString
 	var dec sql.NullInt64
 
 	err = ts.DB().QueryRowContext(ctx,
 		`SELECT op, amount, sym, dec, icon FROM token_outputs WHERE token_id = ? LIMIT 1`,
 		tokenId,
-	).Scan(&op, &amount, &sym, &dec, &icon)
+	).Scan(&op, &amtStr, &sym, &dec, &icon)
 	if err == sql.ErrNoRows {
 		return nil, fmt.Errorf("token not found")
 	}
 	if err != nil {
 		return nil, err
+	}
+
+	amount, err := strconv.ParseUint(amtStr, 10, 64)
+	if err != nil {
+		return nil, fmt.Errorf("invalid amount %q: %w", amtStr, err)
 	}
 
 	token := &parse.BSV21{
@@ -554,13 +588,12 @@ func scanOutpoints(rows *sql.Rows) ([]*transaction.Outpoint, error) {
 // with Data["bsv21"] populated for API compatibility.
 func scanTokenOutput(rows *sql.Rows) (*txo.IndexedOutput, error) {
 	var opBytes, spendBytes []byte
-	var tokenId, op, lockType, address string
-	var amount uint64
+	var tokenId, op, lockType, address, amtStr string
 	var sym, icon sql.NullString
 	var dec sql.NullInt64
 	var score float64
 
-	if err := rows.Scan(&opBytes, &tokenId, &op, &lockType, &address, &amount, &sym, &dec, &icon, &spendBytes, &score); err != nil {
+	if err := rows.Scan(&opBytes, &tokenId, &op, &lockType, &address, &amtStr, &sym, &dec, &icon, &spendBytes, &score); err != nil {
 		return nil, err
 	}
 
@@ -582,7 +615,7 @@ func scanTokenOutput(rows *sql.Rows) (*txo.IndexedOutput, error) {
 	bsv21Data := map[string]any{
 		"id":  tokenId,
 		"op":  op,
-		"amt": strconv.FormatUint(amount, 10),
+		"amt": amtStr,
 	}
 	if sym.Valid {
 		bsv21Data["sym"] = sym.String

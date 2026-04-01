@@ -2,6 +2,7 @@ package lookup
 
 import (
 	"context"
+	"strconv"
 	"testing"
 
 	storage "github.com/b-open-io/1sat-stack/pkg/overlay/storage"
@@ -39,7 +40,7 @@ func insertTokenOutput(t *testing.T, lookup *BSV21Lookup, topic, tokenId, op, lo
 
 	_, err = ts.DB().Exec(
 		`INSERT OR REPLACE INTO token_outputs (outpoint, token_id, op, lock_type, address, amount, score) VALUES (?, ?, ?, ?, ?, ?, ?)`,
-		outpoint.Bytes(), tokenId, op, lockType, address, amount, score,
+		outpoint.Bytes(), tokenId, op, lockType, address, strconv.FormatUint(amount, 10), score,
 	)
 	if err != nil {
 		t.Fatal(err)
@@ -174,7 +175,7 @@ func TestGetToken(t *testing.T) {
 	}
 	_, err = ts.DB().Exec(
 		`INSERT INTO token_outputs (outpoint, token_id, op, lock_type, address, amount, sym, dec, icon, score) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		op.Bytes(), tokenId, "deploy+mint", "p2pkh", "1test", 1000000, "TEST", 8, "https://example.com/icon.png", 1.0,
+		op.Bytes(), tokenId, "deploy+mint", "p2pkh", "1test", "1000000", "TEST", 8, "https://example.com/icon.png", 1.0,
 	)
 	if err != nil {
 		t.Fatal(err)
@@ -273,5 +274,54 @@ func TestCountOutputs(t *testing.T) {
 	}
 	if count != 2 {
 		t.Errorf("expected 2 unspent outputs, got %d", count)
+	}
+}
+
+func TestLargeUint64Amount(t *testing.T) {
+	lookup := newTestLookup(t)
+	ctx := context.Background()
+	tokenId := "mnee_0"
+	topic := "tm_" + tokenId
+
+	// MNEE-scale amount: high bit set, exceeds int64 max
+	var largeAmt uint64 = 18446744073709500000
+	insertTokenOutput(t, lookup, topic, tokenId, "transfer", "p2pkh", "addr1", largeAmt, 1.0)
+	insertTokenOutput(t, lookup, topic, tokenId, "transfer", "p2pkh", "addr1", 500000, 2.0)
+
+	balance, count, err := lookup.GetBalance(ctx, tokenId, "p2pkh", "addr1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if count != 2 {
+		t.Errorf("expected 2 utxos, got %d", count)
+	}
+	if balance != largeAmt+500000 {
+		t.Errorf("expected balance %d, got %d", largeAmt+500000, balance)
+	}
+
+	// Verify LoadOutputs round-trips correctly
+	outputs, err := lookup.LoadOutputs(ctx, tokenId, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Verify via SearchUTXOs + LoadOutputs
+	outpoints, err := lookup.SearchUTXOs(ctx, tokenId, "p2pkh", "addr1", &store.SearchCfg{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	outputs, err = lookup.LoadOutputs(ctx, tokenId, outpoints)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(outputs) != 2 {
+		t.Fatalf("expected 2 outputs, got %d", len(outputs))
+	}
+	for _, out := range outputs {
+		bsv21Data := out.Data["bsv21"].(map[string]any)
+		amt := bsv21Data["amt"].(string)
+		if amt != "18446744073709500000" && amt != "500000" {
+			t.Errorf("unexpected amount: %s", amt)
+		}
 	}
 }
