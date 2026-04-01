@@ -190,14 +190,14 @@ func NewBadgerProgressStore(path string) (ProgressStore, error)
 wallet, _ := getFaucetWallet(ctx, faucetName)
 
 msgClient := sync.NewMessageBoxClient(
-    "https://1sat.shruggr.cloud/1sat/messagebox",
+    "https://api.1sat.app/1sat/messagebox",
     wallet,
     logger,
 )
 
 addrClient := sync.NewAddressSyncClient(
-    "https://1sat.shruggr.cloud/1sat/owner",
-    "https://1sat.shruggr.cloud/1sat/beef",
+    "https://api.1sat.app/1sat/owner",
+    "https://api.1sat.app/1sat/beef",
     wallet,
     logger,
 )
