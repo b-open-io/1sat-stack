@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"sync"
@@ -107,6 +108,7 @@ func (f *SQLiteFactory) Topic(topic string) (TopicStorage, error) {
 		return s.(*SQLiteStorage), nil
 	}
 	path := filepath.Join(f.basePath, topic+".db")
+	slog.Info("SQLiteFactory.Topic", "basePath", f.basePath, "topic", topic, "path", path)
 	s, err := NewSQLiteStorage(path)
 	if err != nil {
 		return nil, err
