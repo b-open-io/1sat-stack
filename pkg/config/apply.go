@@ -38,11 +38,15 @@ type RuntimeConfig struct {
 	StoreRedisURL   string
 
 	// Wallet
-	WalletMode        string // "embedded" or "disabled"
+	WalletMode        string // "embedded", "remote", or "disabled"
 	WalletName        string
 	WalletDBEngine    string // "sqlite" or "postgres"
 	WalletSQLitePath  string
 	WalletPostgresURL string
+	WalletRemoteURL   string // URL of standalone wallet-server (remote mode)
+
+	// MessageBox
+	MessageBoxURL string // URL of standalone messagebox server
 
 	// Chaintracks
 	ChaintracksMode string // "embedded" or "remote"
@@ -126,10 +130,6 @@ type RuntimeConfig struct {
 	PaymailMode   string // "enabled" or "disabled"
 	PaymailDBPath string
 
-	// MessageBox
-	MessageBoxMode   string // "enabled" or "disabled"
-	MessageBoxDBPath string
-
 	// Faucet
 	FaucetEnabled                bool
 	FaucetDefaultDropSats        int
@@ -190,6 +190,10 @@ func LoadRuntimeConfig(ctx context.Context, cs Store, logger *slog.Logger) (*Run
 	rc.WalletDBEngine = getString(ctx, cs, "wallet.db.engine")
 	rc.WalletSQLitePath = getString(ctx, cs, "wallet.db.sqlite.connection_string")
 	rc.WalletPostgresURL = getString(ctx, cs, "wallet.postgres_connection_string")
+	rc.WalletRemoteURL = getString(ctx, cs, "wallet.remote_url")
+
+	// MessageBox
+	rc.MessageBoxURL = getString(ctx, cs, "messagebox_url")
 
 	// Chaintracks
 	rc.ChaintracksMode = getString(ctx, cs, "chaintracks.mode")
@@ -277,10 +281,6 @@ func LoadRuntimeConfig(ctx context.Context, cs Store, logger *slog.Logger) (*Run
 	// Paymail
 	rc.PaymailMode = getString(ctx, cs, "paymail.mode")
 	rc.PaymailDBPath = getString(ctx, cs, "paymail.db_path")
-
-	// MessageBox
-	rc.MessageBoxMode = getString(ctx, cs, "messagebox.mode")
-	rc.MessageBoxDBPath = getString(ctx, cs, "messagebox.db_path")
 
 	// Faucet
 	rc.FaucetEnabled = getBool(ctx, cs, "faucet.enabled")

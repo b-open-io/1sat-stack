@@ -33,7 +33,6 @@ import (
 	ordlockpkg "github.com/b-open-io/1sat-stack/pkg/ordlock"
 	"github.com/b-open-io/1sat-stack/pkg/overlay"
 
-	"github.com/b-open-io/1sat-stack/pkg/messagebox"
 	"github.com/b-open-io/1sat-stack/pkg/owner"
 	"github.com/b-open-io/1sat-stack/pkg/paymail"
 	"github.com/b-open-io/1sat-stack/pkg/pubsub"
@@ -53,7 +52,6 @@ import (
 	"github.com/bsv-blockchain/go-sdk/transaction"
 	p2p "github.com/bsv-blockchain/go-teranode-p2p-client"
 	"github.com/gofiber/fiber/v2"
-	"github.com/gofiber/fiber/v2/middleware/adaptor"
 	"github.com/libp2p/go-libp2p/core/crypto"
 	"github.com/spf13/viper"
 	"go.mongodb.org/mongo-driver/v2/mongo"
@@ -147,8 +145,8 @@ type Config struct {
 	// Paymail service
 	Paymail paymail.Config `mapstructure:"paymail"`
 
-	// Message box service
-	MessageBox messagebox.Config `mapstructure:"messagebox"`
+	// MessageBox URL for remote messagebox server (used by paymail)
+	MessageBoxURL string `mapstructure:"messagebox_url"`
 
 	// Faucet service
 	Faucet faucet.Config `mapstructure:"faucet"`
@@ -262,10 +260,9 @@ type Services struct {
 	Admin      *admin.Services
 	Sweep      *sweep.Services
 	Landing    *landing.Services
-	Wallet     *wallet.Services
-	Paymail    *paymail.Services
-	MessageBox *messagebox.Services
-	Faucet     *faucet.Services
+	Wallet  *wallet.Services
+	Paymail *paymail.Services
+	Faucet  *faucet.Services
 
 	// ConfigStore for admin data (users, progress, settings)
 	ConfigStore configpkg.Store
@@ -366,7 +363,7 @@ func (c *Config) SetDefaults(v *viper.Viper) {
 	c.Wallet.SetDefaults(v, "wallet")
 	c.Auth.SetDefaults(v, "auth")
 	c.Paymail.SetDefaults(v, "paymail")
-	c.MessageBox.SetDefaults(v, "messagebox")
+	v.SetDefault("messagebox_url", "")
 	c.Faucet.SetDefaults(v, "faucet")
 }
 
@@ -401,7 +398,6 @@ func (c *Config) resolveAllPaths() {
 	c.Overlay.P2P.StoragePath = c.resolvePath(c.Overlay.P2P.StoragePath)
 	c.P2P.StoragePath = c.resolvePath(c.P2P.StoragePath)
 	c.Paymail.DBPath = c.resolvePath(c.Paymail.DBPath)
-	c.MessageBox.DBPath = c.resolvePath(c.MessageBox.DBPath)
 	c.Faucet.DBPath = c.resolvePath(c.Faucet.DBPath)
 
 	for i := range c.Beef.Chain {
@@ -488,6 +484,14 @@ func (c *Config) applyRuntimeConfig(rc *configpkg.RuntimeConfig) {
 	}
 	if rc.WalletPostgresURL != "" {
 		c.Wallet.PostgresConnectionString = rc.WalletPostgresURL
+	}
+	if rc.WalletRemoteURL != "" {
+		c.Wallet.RemoteURL = rc.WalletRemoteURL
+	}
+
+	// MessageBox
+	if rc.MessageBoxURL != "" {
+		c.MessageBoxURL = rc.MessageBoxURL
 	}
 
 	// Chaintracks
@@ -730,14 +734,6 @@ func (c *Config) applyRuntimeConfig(rc *configpkg.RuntimeConfig) {
 	}
 	if rc.PaymailDBPath != "" {
 		c.Paymail.DBPath = rc.PaymailDBPath
-	}
-
-	// MessageBox
-	if rc.MessageBoxMode != "" {
-		c.MessageBox.Mode = rc.MessageBoxMode
-	}
-	if rc.MessageBoxDBPath != "" {
-		c.MessageBox.DBPath = rc.MessageBoxDBPath
 	}
 
 	// Faucet
@@ -1421,16 +1417,7 @@ func (c *Config) Initialize(ctx context.Context, logger *slog.Logger) (*Services
 		svc.Faucet = faucetSvc
 	}
 
-	// Initialize MessageBox service (must be before Paymail, which depends on it)
-	if c.MessageBox.Mode != messagebox.ModeDisabled && c.MessageBox.Mode != "" {
-		mbSvc, err := c.MessageBox.Initialize(ctx, logging.NewComponentLogger(logger, "messagebox", ""))
-		if err != nil {
-			return nil, fmt.Errorf("failed to initialize messagebox: %w", err)
-		}
-		svc.MessageBox = mbSvc
-	}
-
-	// Initialize Paymail service (requires MessageBox + OpNS + ORDFS + Arcade)
+	// Initialize Paymail service (requires OpNS + ORDFS + Arcade, optionally remote MessageBox)
 	if c.Paymail.Mode != paymail.ModeDisabled && c.Paymail.Mode != "" {
 		paymailDeps := &paymail.InitializeDeps{}
 		if svc.OPNS != nil && svc.OPNS.Lookup != nil {
@@ -1444,11 +1431,13 @@ func (c *Config) Initialize(ctx context.Context, logger *slog.Logger) (*Services
 		} else if svc.Arcade != nil && svc.Arcade.ArcadeService != nil {
 			paymailDeps.Arcade = svc.Arcade.ArcadeService
 		}
-		if svc.MessageBox != nil && svc.MessageBox.DB != nil {
-			paymailDeps.MessageBoxDB = svc.MessageBox.DB
-		}
 		if svc.Beef != nil && svc.Beef.Storage != nil {
 			paymailDeps.BeefStorage = svc.Beef.Storage
+		}
+		if c.MessageBoxURL != "" && svc.Wallet != nil {
+			paymailDeps.MessageBoxClient = paymail.NewMessageBoxClient(
+				c.MessageBoxURL, svc.Wallet.Wallet, logger,
+			)
 		}
 		paymailSvc, err := c.Paymail.Initialize(ctx, logging.NewComponentLogger(logger, "paymail", ""), paymailDeps)
 		if err != nil {
@@ -1553,7 +1542,7 @@ func (c *Config) RegisterRoutes(app *fiber.App, svc *Services) {
 	// Always-on capabilities
 	capabilities := []string{
 		"beef", "pubsub", "txo", "ordfs", "indexer",
-		"chaintracks", "arcade", "wallet", "messagebox", "admin",
+		"chaintracks", "arcade", "wallet", "admin",
 	}
 
 	// Overlay capabilities from initialized services
@@ -1751,35 +1740,6 @@ func (c *Config) RegisterRoutes(app *fiber.App, svc *Services) {
 		slog.Debug("registered sweep routes", "prefix", prefix)
 	}
 
-	// Register Wallet routes (with auth required)
-	if svc.Wallet != nil && svc.Wallet.Routes != nil {
-		prefix := c.Wallet.Routes.Prefix
-		if prefix == "" {
-			prefix = "/wallet"
-		}
-		// Compose auth middleware with wallet handler at HTTP layer,
-		// then adapt to Fiber once. This ensures auth context flows correctly
-		// to the RPC handler without context conversion issues.
-		walletHandler := svc.Wallet.Routes.Handler()
-		authWrappedHandler := svc.AuthMiddleware.HTTPHandler(walletHandler)
-
-		// Register wallet routes with auth-wrapped handler
-		api.Group(prefix, httputil.PrivateNoStoreMiddleware()).All("/", adaptor.HTTPHandler(authWrappedHandler))
-
-		// Register /.well-known/auth at app root for BRC-103/104 handshake
-		// (auth middleware handles the handshake internally)
-		app.All("/.well-known/auth", adaptor.HTTPHandler(authWrappedHandler))
-
-		// Serve /manifest.json for WalletPermissionsManager grouped permission flow.
-		// Registered at both app root and base path so the wallet can find it
-		// regardless of reverse proxy configuration.
-		manifestHandler := handleManifest()
-		app.Get("/manifest.json", manifestHandler)
-		api.Get("/manifest.json", manifestHandler)
-
-		slog.Debug("registered wallet routes", "prefix", c.Server.BasePath+prefix)
-	}
-
 	// Register Paymail routes
 	if svc.Paymail != nil && svc.Paymail.Routes != nil {
 		prefix := c.Paymail.Routes.Prefix
@@ -1795,18 +1755,6 @@ func (c *Config) RegisterRoutes(app *fiber.App, svc *Services) {
 		// Register /.well-known/bsvalias at app root for capability discovery
 		svc.Paymail.Routes.RegisterWellKnown(app)
 		slog.Debug("registered paymail .well-known/bsvalias route")
-	}
-
-	// Register MessageBox routes
-	if svc.MessageBox != nil && svc.MessageBox.Routes != nil && svc.AuthMiddleware != nil {
-		prefix := c.MessageBox.Routes.Prefix
-		if prefix == "" {
-			prefix = "/messagebox"
-		}
-		mbHandler := svc.MessageBox.Routes.Handler()
-		authWrappedHandler := svc.AuthMiddleware.HTTPHandler(mbHandler)
-		api.Group(prefix).All("/*", adaptor.HTTPHandler(authWrappedHandler))
-		slog.Debug("registered messagebox routes", "prefix", c.Server.BasePath+prefix)
 	}
 
 	// Register Faucet routes
@@ -1882,24 +1830,6 @@ func handleHealth(ct chaintracks.Chaintracks) fiber.Handler {
 func handleCapabilities(capabilities []string) fiber.Handler {
 	return func(c *fiber.Ctx) error {
 		return c.JSON(capabilities)
-	}
-}
-
-func handleManifest() fiber.Handler {
-	manifest := fiber.Map{
-		"babbage": fiber.Map{
-			"groupPermissions": fiber.Map{
-				"description": "1Sat Stack Admin",
-				"protocolPermissions": []fiber.Map{
-					{"protocolID": []any{1, "identity key retrieval"}, "counterparty": "self", "description": "Identity key for admin authentication"},
-					{"protocolID": []any{2, "server hmac"}, "counterparty": "self", "description": "Server HMAC for session management"},
-					{"protocolID": []any{2, "auth message signature"}, "counterparty": "anyone", "description": "BRC-103/104 authentication signatures"},
-				},
-			},
-		},
-	}
-	return func(c *fiber.Ctx) error {
-		return c.JSON(manifest)
 	}
 }
 

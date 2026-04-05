@@ -14,7 +14,6 @@ import (
 	"github.com/b-open-io/1sat-stack/pkg/opns"
 	"github.com/b-open-io/1sat-stack/pkg/ordfs"
 	arcadeservice "github.com/bsv-blockchain/arcade/service"
-	messageboxdb "github.com/bsv-blockchain/go-messagebox-server/pkg/db"
 	ec "github.com/bsv-blockchain/go-sdk/primitives/ec"
 	"github.com/bsv-blockchain/go-sdk/script"
 	"github.com/bsv-blockchain/go-sdk/transaction/template/p2pkh"
@@ -29,14 +28,14 @@ var brc29Protocol = wallet.Protocol{
 
 // Service provides paymail resolution and payment derivation.
 type Service struct {
-	opns         *opns.LookupService
-	ordfs        *ordfs.Ordfs
-	arcade       arcadeservice.ArcadeService
-	messageBoxDB *messageboxdb.DB
-	beefStorage  *beef.Storage
-	store        PendingStore
-	anyoneDeriver *wallet.KeyDeriver
-	logger       *slog.Logger
+	opns              *opns.LookupService
+	ordfs             *ordfs.Ordfs
+	arcade            arcadeservice.ArcadeService
+	messageBoxClient  *MessageBoxClient
+	beefStorage       *beef.Storage
+	store             PendingStore
+	anyoneDeriver     *wallet.KeyDeriver
+	logger            *slog.Logger
 }
 
 // NewService creates a new paymail service.
@@ -44,7 +43,7 @@ func NewService(
 	opnsLookup *opns.LookupService,
 	ordfsService *ordfs.Ordfs,
 	arcadeService arcadeservice.ArcadeService,
-	messageBoxDB *messageboxdb.DB,
+	messageBoxClient *MessageBoxClient,
 	beefStorage *beef.Storage,
 	store PendingStore,
 	logger *slog.Logger,
@@ -54,14 +53,14 @@ func NewService(
 	}
 	anyonePriv, _ := wallet.AnyoneKey()
 	return &Service{
-		opns:          opnsLookup,
-		ordfs:         ordfsService,
-		arcade:        arcadeService,
-		messageBoxDB:  messageBoxDB,
-		beefStorage:   beefStorage,
-		store:         store,
-		anyoneDeriver: wallet.NewKeyDeriver(anyonePriv),
-		logger:        logger,
+		opns:             opnsLookup,
+		ordfs:            ordfsService,
+		arcade:           arcadeService,
+		messageBoxClient: messageBoxClient,
+		beefStorage:      beefStorage,
+		store:            store,
+		anyoneDeriver:    wallet.NewKeyDeriver(anyonePriv),
+		logger:           logger,
 	}
 }
 
@@ -178,11 +177,6 @@ func (s *Service) Store() PendingStore {
 	return s.store
 }
 
-// MessageBoxDB returns the message box database for delivering payments.
-func (s *Service) MessageBoxDB() *messageboxdb.DB {
-	return s.messageBoxDB
-}
-
 // BeefStorage returns the BEEF storage for ancestor lookups.
 func (s *Service) BeefStorage() *beef.Storage {
 	return s.beefStorage
@@ -209,13 +203,21 @@ type PaymailMessage struct {
 	Alias             string `json:"alias"`
 }
 
-// DeliverToMessageBox stores the payment data in the recipient's message box
-// for later internalization by the wallet client (which applies WPM encryption).
+// DeliverToMessageBox sends the payment data to the recipient's message box
+// via the remote messagebox server for later internalization by the wallet client.
 func (s *Service) DeliverToMessageBox(
 	beefBytes []byte,
 	outputIndex uint32,
 	pending *PendingPayment,
 ) error {
+	if s.messageBoxClient == nil {
+		s.logger.Warn("messagebox not configured, skipping payment delivery",
+			"alias", pending.Alias,
+			"satoshis", pending.Satoshis,
+		)
+		return nil
+	}
+
 	msg := PaymailMessage{
 		Beef:              hex.EncodeToString(beefBytes),
 		OutputIndex:       outputIndex,
@@ -231,25 +233,20 @@ func (s *Service) DeliverToMessageBox(
 		return fmt.Errorf("failed to marshal paymail message: %w", err)
 	}
 
-	mbID, err := s.messageBoxDB.EnsureMessageBox(pending.IdentityPubKey, "payment_inbox")
-	if err != nil {
-		return fmt.Errorf("failed to ensure message box for %s: %w", pending.Alias, err)
-	}
-
 	msgIDBytes := make([]byte, 16)
 	if _, err := rand.Read(msgIDBytes); err != nil {
 		return fmt.Errorf("failed to generate message ID: %w", err)
 	}
 	msgID := hex.EncodeToString(msgIDBytes)
 
-	if err := s.messageBoxDB.InsertMessage(
-		msgID,
-		mbID,
-		s.AnyoneDeriverIdentityKey().ToDERHex(),
+	if err := s.messageBoxClient.SendMessage(
+		context.Background(),
 		pending.IdentityPubKey,
-		string(body),
+		"payment_inbox",
+		msgID,
+		body,
 	); err != nil {
-		return fmt.Errorf("failed to insert message: %w", err)
+		return fmt.Errorf("failed to deliver to messagebox: %w", err)
 	}
 
 	s.logger.Info("payment delivered to message box",

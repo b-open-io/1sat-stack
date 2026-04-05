@@ -7,6 +7,7 @@ import { cn } from "@/lib/utils";
 import { useWallet } from "@1sat/react";
 
 type AuthMode = "local" | "authenticated" | null;
+type WalletMode = "embedded" | "remote";
 type WalletBackend = "sqlite" | "postgres";
 type ChaintracksBackend = "embedded" | "remote";
 type ArcadeBackend = "embedded" | "remote";
@@ -15,16 +16,18 @@ interface SetupState {
   authMode: AuthMode;
   wif: string;
   adminIdentityKey: string;
+  walletMode: WalletMode;
   walletBackend: WalletBackend;
   walletSqlitePath: string;
   walletPostgresUrl: string;
+  walletRemoteUrl: string;
   chaintracksBackend: ChaintracksBackend;
   chaintracksPath: string;
   chaintracksUrl: string;
   arcadeBackend: ArcadeBackend;
   arcadePath: string;
   arcadeUrl: string;
-  messageboxPath: string;
+  messageboxUrl: string;
 }
 
 function StepIndicator({ step, current }: { step: number; current: number }) {
@@ -156,16 +159,18 @@ export default function SetupWizardPage() {
     authMode: null,
     wif: "",
     adminIdentityKey: "",
+    walletMode: "embedded",
     walletBackend: "sqlite",
     walletSqlitePath: "wallet.sqlite",
     walletPostgresUrl: "",
+    walletRemoteUrl: "",
     chaintracksBackend: "embedded",
     chaintracksPath: "chaintracks",
     chaintracksUrl: "",
     arcadeBackend: "embedded",
     arcadePath: "arcade/arcade.db",
     arcadeUrl: "",
-    messageboxPath: "messagebox.db",
+    messageboxUrl: "",
   });
 
   function set<K extends keyof SetupState>(key: K, value: SetupState[K]) {
@@ -203,8 +208,13 @@ export default function SetupWizardPage() {
   }
 
   function walletSummary() {
+    if (state.walletMode === "remote") return state.walletRemoteUrl || "remote (no URL set)";
     if (state.walletBackend === "postgres") return state.walletPostgresUrl || "postgres (no URL set)";
     return state.walletSqlitePath;
+  }
+
+  function messageboxSummary() {
+    return state.messageboxUrl || "not configured";
   }
 
   function chaintracksSummary() {
@@ -233,16 +243,18 @@ export default function SetupWizardPage() {
           authMode: state.authMode,
           wif: state.wif || undefined,
           adminIdentityKey: state.adminIdentityKey || undefined,
+          walletMode: state.walletMode,
           walletBackend: state.walletBackend,
           walletSqlitePath: state.walletSqlitePath,
           walletPostgresUrl: state.walletPostgresUrl || undefined,
+          walletRemoteUrl: state.walletRemoteUrl || undefined,
           chaintracksBackend: state.chaintracksBackend,
           chaintracksPath: state.chaintracksPath,
           chaintracksUrl: state.chaintracksUrl || undefined,
           arcadeBackend: state.arcadeBackend,
           arcadePath: state.arcadePath,
           arcadeUrl: state.arcadeUrl || undefined,
-          messageboxPath: state.messageboxPath,
+          messageboxUrl: state.messageboxUrl || undefined,
         }),
       });
 
@@ -401,48 +413,85 @@ export default function SetupWizardPage() {
               </p>
             </div>
 
-            <CollapsibleSection label="Wallet" summary={walletSummary()}>
+            <CollapsibleSection label="Wallet Storage" summary={walletSummary()}>
               <div className="space-y-3">
                 <div className="flex gap-2">
                   <button
                     type="button"
-                    onClick={() => set("walletBackend", "sqlite")}
+                    onClick={() => set("walletMode", "embedded")}
                     className={cn(
                       "flex-1 py-1.5 px-3 text-xs rounded-md border transition-colors",
-                      state.walletBackend === "sqlite"
+                      state.walletMode === "embedded"
                         ? "border-primary bg-primary/10 text-primary"
                         : "border-border text-muted-foreground hover:border-muted-foreground/50"
                     )}
                   >
-                    <HardDrive className="w-3 h-3 inline mr-1.5" />SQLite
+                    <HardDrive className="w-3 h-3 inline mr-1.5" />Embedded
                   </button>
                   <button
                     type="button"
-                    onClick={() => set("walletBackend", "postgres")}
+                    onClick={() => set("walletMode", "remote")}
                     className={cn(
                       "flex-1 py-1.5 px-3 text-xs rounded-md border transition-colors",
-                      state.walletBackend === "postgres"
+                      state.walletMode === "remote"
                         ? "border-primary bg-primary/10 text-primary"
                         : "border-border text-muted-foreground hover:border-muted-foreground/50"
                     )}
                   >
-                    <Database className="w-3 h-3 inline mr-1.5" />Postgres
+                    <Link className="w-3 h-3 inline mr-1.5" />Remote
                   </button>
                 </div>
-                {state.walletBackend === "sqlite" ? (
+                {state.walletMode === "remote" ? (
                   <Input
-                    value={state.walletSqlitePath}
-                    onChange={(e) => set("walletSqlitePath", e.target.value)}
-                    placeholder="wallet.sqlite"
+                    value={state.walletRemoteUrl}
+                    onChange={(e) => set("walletRemoteUrl", e.target.value)}
+                    placeholder="http://wallet-server:8100"
                     className="font-mono text-xs"
                   />
                 ) : (
-                  <Input
-                    value={state.walletPostgresUrl}
-                    onChange={(e) => set("walletPostgresUrl", e.target.value)}
-                    placeholder="postgres://user:pass@host:5432/wallet"
-                    className="font-mono text-xs"
-                  />
+                  <>
+                    <div className="flex gap-2">
+                      <button
+                        type="button"
+                        onClick={() => set("walletBackend", "sqlite")}
+                        className={cn(
+                          "flex-1 py-1.5 px-3 text-xs rounded-md border transition-colors",
+                          state.walletBackend === "sqlite"
+                            ? "border-primary bg-primary/10 text-primary"
+                            : "border-border text-muted-foreground hover:border-muted-foreground/50"
+                        )}
+                      >
+                        <HardDrive className="w-3 h-3 inline mr-1.5" />SQLite
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => set("walletBackend", "postgres")}
+                        className={cn(
+                          "flex-1 py-1.5 px-3 text-xs rounded-md border transition-colors",
+                          state.walletBackend === "postgres"
+                            ? "border-primary bg-primary/10 text-primary"
+                            : "border-border text-muted-foreground hover:border-muted-foreground/50"
+                        )}
+                      >
+                        <Database className="w-3 h-3 inline mr-1.5" />Postgres
+                      </button>
+                    </div>
+                    {state.walletBackend === "sqlite" ? (
+                      <Input
+                        value={state.walletSqlitePath}
+                        onChange={(e) => set("walletSqlitePath", e.target.value)}
+                        placeholder="wallet.sqlite"
+                        className="font-mono text-xs"
+                      />
+                    ) : (
+                      <Input
+                        value={state.walletPostgresUrl}
+                        onChange={(e) => set("walletPostgresUrl", e.target.value)}
+                        placeholder="postgres://user:pass@host:5432/wallet"
+                        className="font-mono text-xs"
+                      />
+                    )}
+                  </>
                 )}
               </div>
             </CollapsibleSection>
@@ -539,12 +588,15 @@ export default function SetupWizardPage() {
               </div>
             </CollapsibleSection>
 
-            <CollapsibleSection label="MessageBox" summary={state.messageboxPath}>
+            <CollapsibleSection label="MessageBox" summary={messageboxSummary()}>
               <div className="space-y-3">
+                <p className="text-xs text-muted-foreground">
+                  URL of a standalone messagebox server. Leave blank to disable payment delivery notifications.
+                </p>
                 <Input
-                  value={state.messageboxPath}
-                  onChange={(e) => set("messageboxPath", e.target.value)}
-                  placeholder="messagebox.db"
+                  value={state.messageboxUrl}
+                  onChange={(e) => set("messageboxUrl", e.target.value)}
+                  placeholder="http://messagebox:3000"
                   className="font-mono text-xs"
                 />
               </div>
@@ -591,7 +643,7 @@ export default function SetupWizardPage() {
                     />
                   )}
                   <SummaryRow
-                    label="Wallet"
+                    label="Wallet Storage"
                     value={walletSummary()}
                   />
                   <SummaryRow
@@ -604,7 +656,7 @@ export default function SetupWizardPage() {
                   />
                   <SummaryRow
                     label="MessageBox"
-                    value={state.messageboxPath}
+                    value={messageboxSummary()}
                   />
                 </div>
               </CardContent>

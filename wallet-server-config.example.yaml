@@ -1,0 +1,46 @@
+name: 1sat-wallet
+server_private_key: ""  # required — hex-encoded private key
+bsv_network: main
+onesat_url: http://localhost:8080/1sat  # 1sat-stack base URL
+
+http:
+  port: 8100
+
+fee_model:
+  type: sat/kb
+  value: 100
+
+db:
+  engine: sqlite
+  max_idle_connections: 5
+  max_open_connections: 5
+  sqlite:
+    connection_string: ./wallet.sqlite
+  postgresql:
+    host: localhost
+    port: "5432"
+    user: postgres
+    password: postgres
+    db_name: wallet_storage
+    ssl_mode: disable
+    time_zone: UTC
+
+monitor:
+  enabled: true
+  tasks:
+    check_for_proofs:
+      enabled: true
+      interval_seconds: 60
+    fail_abandoned:
+      enabled: true
+      interval_seconds: 300
+    send_waiting:
+      enabled: true
+      interval_seconds: 300
+    un_fail:
+      enabled: true
+      interval_seconds: 600
+
+logging:
+  level: info
+  handler: json

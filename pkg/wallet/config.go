@@ -14,23 +14,18 @@ import (
 const (
 	ModeDisabled = "disabled"
 	ModeEmbedded = "embedded"
+	ModeRemote   = "remote"
 )
 
 // Config holds wallet service configuration.
 type Config struct {
-	Mode                   string         `mapstructure:"mode"`                      // disabled, embedded
-	ServerPrivateKey       string         `mapstructure:"server_private_key"`        // Server private key for BRC-100 auth
-	Name                   string         `mapstructure:"name"`                      // Storage name identifier
-	FeeModel               defs.FeeModel  `mapstructure:"fee_model"`                // Fee model configuration
-	DB                     defs.Database  `mapstructure:"db"`                        // Database configuration
-	PostgresConnectionString string       `mapstructure:"postgres_connection_string"` // Postgres URI, parsed into DB.PostgreSQL fields
-	Routes                 RoutesConfig   `mapstructure:"routes"`
-}
-
-// RoutesConfig holds route configuration
-type RoutesConfig struct {
-	Enabled bool   `mapstructure:"enabled"`
-	Prefix  string `mapstructure:"prefix"`
+	Mode                     string        `mapstructure:"mode"`                      // disabled, embedded, remote
+	ServerPrivateKey         string        `mapstructure:"server_private_key"`        // Server private key for BRC-100 auth
+	Name                     string        `mapstructure:"name"`                      // Storage name identifier
+	FeeModel                 defs.FeeModel `mapstructure:"fee_model"`                // Fee model configuration
+	DB                       defs.Database `mapstructure:"db"`                        // Database configuration (embedded mode only)
+	PostgresConnectionString string        `mapstructure:"postgres_connection_string"` // Postgres URI, parsed into DB.PostgreSQL fields
+	RemoteURL                string        `mapstructure:"remote_url"`                // URL of standalone wallet-server (remote mode only)
 }
 
 // SetDefaults sets viper defaults for wallet configuration.
@@ -45,10 +40,9 @@ func (c *Config) SetDefaults(v *viper.Viper, prefix string) {
 	v.SetDefault(p+"server_private_key", "")
 	v.SetDefault(p+"fee_model.type", string(defs.SatPerKB))
 	v.SetDefault(p+"fee_model.value", 100)
-	v.SetDefault(p+"routes.enabled", true)
-	v.SetDefault(p+"routes.prefix", "/wallet")
+	v.SetDefault(p+"remote_url", "")
 
-	// Database defaults - SQLite by default
+	// Database defaults - SQLite by default (embedded mode only)
 	v.SetDefault(p+"db.engine", "sqlite")
 	v.SetDefault(p+"db.sqlite.connection_string", "wallet.sqlite")
 	v.SetDefault(p+"postgres_connection_string", "")

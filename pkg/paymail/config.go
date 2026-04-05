@@ -12,7 +12,6 @@ import (
 	"github.com/b-open-io/1sat-stack/pkg/opns"
 	"github.com/b-open-io/1sat-stack/pkg/ordfs"
 	arcadeservice "github.com/bsv-blockchain/arcade/service"
-	messageboxdb "github.com/bsv-blockchain/go-messagebox-server/pkg/db"
 	"github.com/spf13/viper"
 )
 
@@ -59,11 +58,11 @@ func (c *Config) SetDefaults(v *viper.Viper, prefix string) {
 
 // InitializeDeps holds dependencies for paymail initialization.
 type InitializeDeps struct {
-	OpnsLookup   *opns.LookupService
-	Ordfs        *ordfs.Ordfs
-	Arcade       arcadeservice.ArcadeService
-	BeefStorage  *beef.Storage
-	MessageBoxDB *messageboxdb.DB
+	OpnsLookup       *opns.LookupService
+	Ordfs            *ordfs.Ordfs
+	Arcade           arcadeservice.ArcadeService
+	BeefStorage      *beef.Storage
+	MessageBoxClient *MessageBoxClient
 }
 
 // Services holds initialized paymail services.
@@ -104,17 +103,13 @@ func (c *Config) Initialize(
 	if deps.Arcade == nil {
 		return nil, fmt.Errorf("Arcade service is required for paymail")
 	}
-	if deps.MessageBoxDB == nil {
-		return nil, fmt.Errorf("message box DB is required for paymail")
-	}
-
 	dbPath := expandPath(c.DBPath)
 	store, err := NewSQLiteStore(dbPath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to open paymail store: %w", err)
 	}
 
-	service := NewService(deps.OpnsLookup, deps.Ordfs, deps.Arcade, deps.MessageBoxDB, deps.BeefStorage, store, logger)
+	service := NewService(deps.OpnsLookup, deps.Ordfs, deps.Arcade, deps.MessageBoxClient, deps.BeefStorage, store, logger)
 
 	svc := &Services{
 		Service: service,
