@@ -12,7 +12,7 @@ require (
 	github.com/b-open-io/go-junglebus v0.3.5
 	github.com/bitcoin-sv/go-templates v0.1.0
 	github.com/bitcoinschema/go-bmap v0.2.4
-	github.com/bsv-blockchain/arcade v0.4.4
+	github.com/bsv-blockchain/arcade v0.4.5-0.20260406201041-e45ffd4a811d
 	github.com/bsv-blockchain/go-bsv-middleware v0.13.0
 	github.com/bsv-blockchain/go-chaintracks v1.2.1
 	github.com/bsv-blockchain/go-messagebox-server v0.0.0-00010101000000-000000000000

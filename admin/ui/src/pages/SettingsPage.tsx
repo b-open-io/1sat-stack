@@ -592,7 +592,8 @@ function StoragePanel({
         <FieldRow label="Broadcast URLs" hint="One URL per line. Used for submitting transactions." badge={<RestartBadge />}>
           <textarea
             value={arcadeBroadcastUrls.join("\n")}
-            onChange={(e) => setArcadeBroadcastUrls(e.target.value.split("\n").map(u => u.trim()).filter(Boolean))}
+            onChange={(e) => setArcadeBroadcastUrls(e.target.value.split("\n").map(u => u.trim()))}
+            onBlur={(e) => setArcadeBroadcastUrls(e.target.value.split("\n").map(u => u.trim()).filter(Boolean))}
             placeholder="http://mainnet.gorillanode.io:8833"
             className="w-full font-mono text-xs rounded-md border border-input bg-transparent px-3 py-2 min-h-[60px] resize-y"
             rows={Math.max(2, arcadeBroadcastUrls.length + 1)}
@@ -601,7 +602,8 @@ function StoragePanel({
         <FieldRow label="DataHub URLs" hint="One URL per line. Used for fetching block/subtree data." badge={<RestartBadge />}>
           <textarea
             value={arcadeDatahubUrls.join("\n")}
-            onChange={(e) => setArcadeDatahubUrls(e.target.value.split("\n").map(u => u.trim()).filter(Boolean))}
+            onChange={(e) => setArcadeDatahubUrls(e.target.value.split("\n").map(u => u.trim()))}
+            onBlur={(e) => setArcadeDatahubUrls(e.target.value.split("\n").map(u => u.trim()).filter(Boolean))}
             placeholder="https://mainnet.gorillanode.io/api/v1"
             className="w-full font-mono text-xs rounded-md border border-input bg-transparent px-3 py-2 min-h-[60px] resize-y"
             rows={Math.max(2, arcadeDatahubUrls.length + 1)}
