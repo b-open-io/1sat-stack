@@ -703,6 +703,9 @@ func (c *Config) applyRuntimeConfig(rc *configpkg.RuntimeConfig) {
 		if rc.BSV21SyncBatchSize > 0 {
 			c.BSV21.Sync.BatchSize = rc.BSV21SyncBatchSize
 		}
+		if rc.BSV21TokenWorkers > 0 {
+			c.BSV21.Sync.TokenWorkers = rc.BSV21TokenWorkers
+		}
 	}
 
 	// ORDFS

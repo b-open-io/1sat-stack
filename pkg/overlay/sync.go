@@ -48,6 +48,7 @@ type OverlaySyncConfig struct {
 	ResolveDependencies bool            `mapstructure:"resolve_dependencies"` // Use GASP to resolve input dependencies before submit
 	ErrorClassifier     ErrorClassifier `mapstructure:"-"`                    // Classifies Submit errors (set programmatically)
 	OnProcessed         func(string) error `mapstructure:"-"`                 // Called after each successful item with topic name (set programmatically)
+	Limiter             chan struct{}  `mapstructure:"-"`                    // External shared limiter (optional, set programmatically)
 }
 
 // SubscriberConfig creates a jbsync.SubscriberConfig from this overlay sync config.
@@ -114,7 +115,10 @@ func NewOverlaySync(
 
 // Start begins processing the queue. Blocks until context is cancelled.
 func (s *OverlaySync) Start(ctx context.Context) error {
-	limiter := make(chan struct{}, s.config.Concurrency)
+	limiter := s.config.Limiter
+	if limiter == nil {
+		limiter = make(chan struct{}, s.config.Concurrency)
+	}
 	handler := s.process
 	if s.config.OnProcessed != nil {
 		inner := handler

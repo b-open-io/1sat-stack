@@ -141,7 +141,7 @@ func (m *TokenManager) createWorker(ctx context.Context, status *TokenStatus) er
 	syncWorker := overlay.NewOverlaySync(
 		&overlay.OverlaySyncConfig{
 			QueueName:           topicName,
-			Concurrency:         m.concurrency,
+			Limiter:             m.limiter,
 			ResolveDependencies: true,
 			OnProcessed: func(name string) error {
 				m.onTokenItemProcessed(tokenId)

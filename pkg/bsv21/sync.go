@@ -94,7 +94,7 @@ func NewSyncServices(
 		cfg.DispatchWorkers = 8
 	}
 	if cfg.TokenWorkers == 0 {
-		cfg.TokenWorkers = 16
+		cfg.TokenWorkers = 8
 	}
 	if cfg.FeePerOutput == 0 {
 		cfg.FeePerOutput = 1000 // 1000 sats per output

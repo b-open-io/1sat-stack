@@ -917,6 +917,8 @@ function OpnsPanel({
 }
 
 interface Bsv21PanelProps extends OverlayPanelProps {
+  tokenWorkers: string;
+  setTokenWorkers: (v: string) => void;
   whitelist: string[];
   setWhitelist: React.Dispatch<React.SetStateAction<string[]>>;
   blacklist: string[];
@@ -927,6 +929,7 @@ function Bsv21Panel({
   enabled, onToggle,
   subId, setSubId,
   concurrency, setConcurrency,
+  tokenWorkers, setTokenWorkers,
   batchSize, setBatchSize,
   whitelist, setWhitelist,
   blacklist, setBlacklist,
@@ -950,9 +953,12 @@ function Bsv21Panel({
         <FieldRow label="JungleBus subscription ID">
           <Input value={subId} onChange={(e) => setSubId(e.target.value)} placeholder="sub_..." className="font-mono text-xs h-8" />
         </FieldRow>
-        <div className="grid grid-cols-2 gap-3">
-          <FieldRow label="Concurrency">
+        <div className="grid grid-cols-3 gap-3">
+          <FieldRow label="Dispatch workers">
             <Input value={concurrency} onChange={(e) => setConcurrency(e.target.value)} className="font-mono text-xs h-8" />
+          </FieldRow>
+          <FieldRow label="Token workers">
+            <Input value={tokenWorkers} onChange={(e) => setTokenWorkers(e.target.value)} className="font-mono text-xs h-8" />
           </FieldRow>
           <FieldRow label="Batch size">
             <Input value={batchSize} onChange={(e) => setBatchSize(e.target.value)} className="font-mono text-xs h-8" />
@@ -1419,6 +1425,7 @@ export default function SettingsPage() {
   // BSV21 overlay
   const [bsv21SubId, setBsv21SubId] = useState("");
   const [bsv21Concurrency, setBsv21Concurrency] = useState("8");
+  const [bsv21TokenWorkers, setBsv21TokenWorkers] = useState("8");
   const [bsv21BatchSize, setBsv21BatchSize] = useState("1000");
   const [bsv21Whitelist, setBsv21Whitelist] = useState<string[]>([]);
   const [bsv21Blacklist, setBsv21Blacklist] = useState<string[]>([]);
@@ -1529,6 +1536,7 @@ export default function SettingsPage() {
         // BSV21
         setBsv21SubId(s("overlay.bsv21.sub_id", ""));
         setBsv21Concurrency(s("overlay.bsv21.concurrency", "8"));
+        setBsv21TokenWorkers(s("overlay.bsv21.token_workers", "8"));
         setBsv21BatchSize(s("overlay.bsv21.batch_size", "1000"));
         if (cfg["overlay.bsv21.whitelist"]) {
           try { setBsv21Whitelist(JSON.parse(cfg["overlay.bsv21.whitelist"])); } catch { /* keep default */ }
@@ -1597,7 +1605,7 @@ export default function SettingsPage() {
     "indexer.parsers",
     "overlay.bap.sub_id", "overlay.bap.concurrency", "overlay.bap.batch_size",
     "overlay.opns.sub_id", "overlay.opns.concurrency", "overlay.opns.batch_size",
-    "overlay.bsv21.sub_id", "overlay.bsv21.concurrency", "overlay.bsv21.batch_size",
+    "overlay.bsv21.sub_id", "overlay.bsv21.concurrency", "overlay.bsv21.token_workers", "overlay.bsv21.batch_size",
     "overlay.bsocial.sub_id", "overlay.bsocial.concurrency", "overlay.bsocial.batch_size",
     "overlay.bsocial.mongo_url",
     "overlay.ordlock.sub_id", "overlay.ordlock.concurrency", "overlay.ordlock.batch_size",
@@ -1642,6 +1650,7 @@ export default function SettingsPage() {
     "overlay.opns.batch_size": opnsBatchSize,
     "overlay.bsv21.sub_id": bsv21SubId,
     "overlay.bsv21.concurrency": bsv21Concurrency,
+    "overlay.bsv21.token_workers": bsv21TokenWorkers,
     "overlay.bsv21.batch_size": bsv21BatchSize,
     "overlay.bsocial.sub_id": bsocialSubId,
     "overlay.bsocial.concurrency": bsocialConcurrency,
@@ -1664,7 +1673,7 @@ export default function SettingsPage() {
     p2pEnabled, p2pPort, p2pDhtMode, bootstrapPeers, activeTags,
     bapSubId, bapConcurrency, bapBatchSize,
     opnsSubId, opnsConcurrency, opnsBatchSize,
-    bsv21SubId, bsv21Concurrency, bsv21BatchSize,
+    bsv21SubId, bsv21Concurrency, bsv21TokenWorkers, bsv21BatchSize,
     bsocialSubId, bsocialConcurrency, bsocialBatchSize, bsocialMongoUrl,
     ordlockSubId, ordlockConcurrency, ordlockBatchSize,
     ordfsLruSize, ordfsRedisUrl, ordfsRedisTtl,
@@ -1732,6 +1741,7 @@ export default function SettingsPage() {
         // BSV21
         "overlay.bsv21.sub_id": bsv21SubId,
         "overlay.bsv21.concurrency": bsv21Concurrency,
+        "overlay.bsv21.token_workers": bsv21TokenWorkers,
         "overlay.bsv21.batch_size": bsv21BatchSize,
         "overlay.bsv21.whitelist": JSON.stringify(bsv21Whitelist),
         "overlay.bsv21.blacklist": JSON.stringify(bsv21Blacklist),
@@ -1952,6 +1962,7 @@ export default function SettingsPage() {
               enabled={bsv21Enabled} onToggle={setBsv21Enabled}
               subId={bsv21SubId} setSubId={setBsv21SubId}
               concurrency={bsv21Concurrency} setConcurrency={setBsv21Concurrency}
+              tokenWorkers={bsv21TokenWorkers} setTokenWorkers={setBsv21TokenWorkers}
               batchSize={bsv21BatchSize} setBatchSize={setBsv21BatchSize}
               whitelist={bsv21Whitelist} setWhitelist={setBsv21Whitelist}
               blacklist={bsv21Blacklist} setBlacklist={setBsv21Blacklist}

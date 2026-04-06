@@ -112,6 +112,7 @@ type RuntimeConfig struct {
 	BSV21SyncSubID        string
 	BSV21SyncConcurrency  int
 	BSV21SyncBatchSize    int
+	BSV21TokenWorkers     int
 
 	// ORDFS
 	ORDFSEnabled      bool
@@ -259,6 +260,7 @@ func LoadRuntimeConfig(ctx context.Context, cs Store, logger *slog.Logger) (*Run
 	rc.BSV21SyncSubID = getString(ctx, cs, "overlay.bsv21.sub_id")
 	rc.BSV21SyncConcurrency = getInt(ctx, cs, "overlay.bsv21.concurrency")
 	rc.BSV21SyncBatchSize = getInt(ctx, cs, "overlay.bsv21.batch_size")
+	rc.BSV21TokenWorkers = getInt(ctx, cs, "overlay.bsv21.token_workers")
 
 	// ORDFS
 	rc.ORDFSEnabled = getBool(ctx, cs, "ordfs.enabled")
