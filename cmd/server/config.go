@@ -1127,9 +1127,6 @@ func (c *Config) Initialize(ctx context.Context, logger *slog.Logger) (*Services
 			if syncCfg.QueueName == "" {
 				syncCfg.QueueName = ordlockpkg.QueueName
 			}
-			if !syncCfg.ResolveDependencies {
-				syncCfg.ResolveDependencies = true
-			}
 			svc.OrdLock.Sync = overlay.NewOverlaySync(syncCfg, ordlockpkg.TopicName, svc.Store.Store, svc.Beef.Storage, svc.OrdLock.Engine, ordlockLogger)
 		}
 		logger.Info("ordlock initialized", "duration", time.Since(start).Round(time.Millisecond))
