@@ -38,6 +38,7 @@ func (c *Config) SetDefaults(v *viper.Viper, prefix string) {
 	}
 
 	v.SetDefault(p+"mode", ModeDisabled)
+	v.SetDefault(p+"sync.resolve_dependencies", true)
 	v.SetDefault(p+"crawl.enabled", false)
 	v.SetDefault(p+"crawl.concurrency", 8)
 	v.SetDefault(p+"routes.enabled", true)

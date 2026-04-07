@@ -1103,7 +1103,6 @@ func (c *Config) Initialize(ctx context.Context, logger *slog.Logger) (*Services
 				opnsSyncCfg = &overlay.OverlaySyncConfig{}
 			}
 			opnsSyncCfg.QueueName = "opns"
-			opnsSyncCfg.ResolveDependencies = true
 			svc.OPNS.Sync = overlay.NewOverlaySync(opnsSyncCfg, "tm_opns", svc.Store.Store, svc.Beef.Storage, svc.OPNS.Engine, opnsLogger)
 		}
 		logger.Info("opns initialized", "duration", time.Since(start).Round(time.Millisecond))

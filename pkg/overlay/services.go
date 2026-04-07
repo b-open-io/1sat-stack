@@ -146,10 +146,9 @@ func (s *Services) ActivateTopic(ctx context.Context, eng *engine.Engine, topic 
 		// Create and start OverlaySync worker
 		topic.worker = NewOverlaySync(
 			&OverlaySyncConfig{
-				QueueName:           topic.Name,
-				Concurrency:         8,
-				ResolveDependencies: true,
-				OnProcessed:         topic.OnProcessed,
+				QueueName:   topic.Name,
+				Concurrency: 8,
+				OnProcessed: topic.OnProcessed,
 			},
 			topic.Name,
 			s.Store,
