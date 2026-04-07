@@ -178,45 +178,40 @@ func (s *Storage) loadBeefInternal(ctx context.Context, txid *chainhash.Hash) (*
 		return nil, errors.New("transaction " + txid.String() + " not found in BEEF")
 	}
 
-	if tx.MerklePath == nil {
-		for _, input := range tx.Inputs {
-			inputBeef, err := s.loader.Load(*input.SourceTXID)
+	// Validate and self-heal merkle proof before loading ancestors
+	if s.chainTracker != nil && tx.MerklePath != nil {
+		valid, err := tx.MerklePath.Verify(ctx, txid, s.chainTracker)
+		if err != nil || !valid {
+			updatedBeefBytes, err := s.UpdateMerklePath(ctx, txid, s.chainTracker)
 			if err != nil {
-				return nil, errors.New(ErrMissingInputs.Error() + ": " + input.SourceTXID.String())
+				return nil, err
 			}
-			if err := beef.MergeBeef(inputBeef); err != nil {
+			beef, tx, _, err = transaction.ParseBeef(updatedBeefBytes)
+			if err != nil {
 				return nil, err
 			}
 		}
 	}
 
-	if s.chainTracker != nil {
-		hadInvalidPath := false
-		needsUpdate := false
-
-		if tx.MerklePath == nil {
-			needsUpdate = true
-		} else {
-			valid, err := tx.MerklePath.Verify(ctx, txid, s.chainTracker)
-			if err != nil || !valid {
-				needsUpdate = true
-				hadInvalidPath = true
-			}
-		}
-
-		if needsUpdate {
+	// If no proof yet, try to fetch one, then load ancestors if still unproven
+	if tx.MerklePath == nil {
+		if s.chainTracker != nil {
 			updatedBeefBytes, err := s.UpdateMerklePath(ctx, txid, s.chainTracker)
-			if err != nil {
-				if hadInvalidPath {
-					return nil, err
-				}
-				// No path yet (unconfirmed tx) — not an error
-			} else {
-				updatedBeef, _, _, err := transaction.ParseBeef(updatedBeefBytes)
+			if err == nil {
+				beef, tx, _, err = transaction.ParseBeef(updatedBeefBytes)
 				if err != nil {
 					return nil, err
 				}
-				if err := beef.MergeBeef(updatedBeef); err != nil {
+			}
+		}
+
+		if tx.MerklePath == nil {
+			for _, input := range tx.Inputs {
+				inputBeef, err := s.loader.Load(*input.SourceTXID)
+				if err != nil {
+					return nil, errors.New(ErrMissingInputs.Error() + ": " + input.SourceTXID.String())
+				}
+				if err := beef.MergeBeef(inputBeef); err != nil {
 					return nil, err
 				}
 			}
