@@ -178,6 +178,16 @@ func (s *HTTPWalletServices) MerklePath(ctx context.Context, txid string) (*wdk.
 		return nil, fmt.Errorf("failed to parse merkle path for %s: %w", txid, err)
 	}
 
+	txHash, err := chainhash.NewHashFromHex(txid)
+	if err != nil {
+		return nil, fmt.Errorf("invalid txid %s: %w", txid, err)
+	}
+	if valid, err := mp.Verify(ctx, txHash, s); err != nil {
+		return nil, fmt.Errorf("failed to verify merkle proof for %s: %w", txid, err)
+	} else if !valid {
+		return nil, fmt.Errorf("merkle proof invalid for %s", txid)
+	}
+
 	result := &wdk.MerklePathResult{
 		Name:       "HTTPBEEF",
 		MerklePath: mp,
