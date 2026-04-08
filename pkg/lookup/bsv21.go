@@ -189,29 +189,49 @@ func (l *BSV21Lookup) GetMetaData() *overlay.MetaData {
 
 // --- Token discovery (for TokenManager) ---
 
-// ListTokenIds returns all distinct token IDs from a topic's token_outputs table.
-// For tm_bsv21 (which only admits deploys), this is the list of all known tokens.
-func (l *BSV21Lookup) ListTokenIds(ctx context.Context, topic string) ([]string, error) {
-	ts, err := l.db(topic)
+// TokenInfo holds token identity and metadata from the discovery topic.
+type TokenInfo struct {
+	TokenID  string
+	Symbol   *string
+	Decimals *uint8
+	Icon     *string
+}
+
+// ListTokens returns all known tokens with their metadata from the discovery topic.
+func (l *BSV21Lookup) ListTokens(ctx context.Context) ([]*TokenInfo, error) {
+	ts, err := l.db("tm_bsv21")
 	if err != nil {
 		return nil, err
 	}
 
-	rows, err := ts.DB().QueryContext(ctx, `SELECT DISTINCT token_id FROM token_outputs`)
+	rows, err := ts.DB().QueryContext(ctx, `SELECT token_id, sym, dec, icon FROM token_outputs`)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
 
-	var ids []string
+	var tokens []*TokenInfo
 	for rows.Next() {
 		var id string
-		if err := rows.Scan(&id); err != nil {
+		var sym, icon sql.NullString
+		var dec sql.NullInt64
+		if err := rows.Scan(&id, &sym, &dec, &icon); err != nil {
 			return nil, err
 		}
-		ids = append(ids, id)
+		t := &TokenInfo{TokenID: id}
+		if sym.Valid {
+			t.Symbol = &sym.String
+		}
+		if dec.Valid {
+			d := uint8(dec.Int64)
+			t.Decimals = &d
+		}
+		if icon.Valid {
+			t.Icon = &icon.String
+		}
+		tokens = append(tokens, t)
 	}
-	return ids, rows.Err()
+	return tokens, rows.Err()
 }
 
 // CountOutputs returns the count of unspent outputs in a topic's token_outputs table.
