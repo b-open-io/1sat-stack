@@ -18,9 +18,10 @@ const (
 )
 
 type Config struct {
-	Mode   string                     `mapstructure:"mode"`
-	Sync   *overlay.OverlaySyncConfig `mapstructure:"sync"`
-	Routes RoutesConfig               `mapstructure:"routes"`
+	Mode     string                     `mapstructure:"mode"`
+	LogLevel string                     `mapstructure:"log_level"` // debug, info, warn, error
+	Sync     *overlay.OverlaySyncConfig `mapstructure:"sync"`
+	Routes   RoutesConfig               `mapstructure:"routes"`
 }
 
 type RoutesConfig struct {

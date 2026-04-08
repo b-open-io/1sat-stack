@@ -608,6 +608,9 @@ func (c *Config) applyRuntimeConfig(rc *configpkg.RuntimeConfig) {
 	}
 
 	// BAP overlay
+	if rc.BAPLogLevel != "" {
+		c.BAP.LogLevel = rc.BAPLogLevel
+	}
 	if rc.BAPEnabled {
 		c.BAP.Mode = "embedded"
 		c.Overlay.Mode = "embedded"
@@ -627,6 +630,9 @@ func (c *Config) applyRuntimeConfig(rc *configpkg.RuntimeConfig) {
 	}
 
 	// BSocial overlay
+	if rc.BSocialLogLevel != "" {
+		c.BSocial.LogLevel = rc.BSocialLogLevel
+	}
 	if rc.BSocialEnabled {
 		c.BSocial.Mode = "embedded"
 		c.Overlay.Mode = "embedded"
@@ -646,6 +652,9 @@ func (c *Config) applyRuntimeConfig(rc *configpkg.RuntimeConfig) {
 	}
 
 	// OPNS overlay
+	if rc.OPNSLogLevel != "" {
+		c.OPNS.LogLevel = rc.OPNSLogLevel
+	}
 	if rc.OPNSEnabled {
 		c.OPNS.Mode = "embedded"
 		c.Overlay.Mode = "embedded"
@@ -668,6 +677,9 @@ func (c *Config) applyRuntimeConfig(rc *configpkg.RuntimeConfig) {
 	}
 
 	// OrdLock overlay
+	if rc.OrdLockLogLevel != "" {
+		c.OrdLock.LogLevel = rc.OrdLockLogLevel
+	}
 	if rc.OrdLockEnabled {
 		c.OrdLock.Mode = "embedded"
 		c.Overlay.Mode = "embedded"
@@ -687,6 +699,9 @@ func (c *Config) applyRuntimeConfig(rc *configpkg.RuntimeConfig) {
 	}
 
 	// BSV21
+	if rc.BSV21LogLevel != "" {
+		c.BSV21.LogLevel = rc.BSV21LogLevel
+	}
 	if rc.BSV21Enabled {
 		c.BSV21.Mode = "embedded"
 		c.Overlay.Mode = "embedded"
@@ -1013,7 +1028,7 @@ func (c *Config) Initialize(ctx context.Context, logger *slog.Logger) (*Services
 	// Initialize BSV21
 	if c.BSV21.Mode != bsv21.ModeDisabled && svc.TXO != nil && moduleDeps != nil {
 		start = time.Now()
-		bsv21Svc, err := c.BSV21.Initialize(ctx, logging.NewComponentLogger(logger, "bsv21", ""), svc.TXO.OutputStore, moduleDeps, svc.ConfigStore, svc.Chaintracks, svc.Beef.Storage, svc.JungleBus)
+		bsv21Svc, err := c.BSV21.Initialize(ctx, logging.NewComponentLogger(logger, "bsv21", c.BSV21.LogLevel), svc.TXO.OutputStore, moduleDeps, svc.ConfigStore, svc.Chaintracks, svc.Beef.Storage, svc.JungleBus)
 		if err != nil {
 			return nil, fmt.Errorf("failed to initialize bsv21: %w", err)
 		}
@@ -1038,7 +1053,7 @@ func (c *Config) Initialize(ctx context.Context, logger *slog.Logger) (*Services
 	// Initialize BAP
 	if c.BAP.Mode != bap.ModeDisabled && moduleDeps != nil {
 		start = time.Now()
-		bapLogger := logging.NewComponentLogger(logger, "bap", "")
+		bapLogger := logging.NewComponentLogger(logger, "bap", c.BAP.LogLevel)
 		bapSvc, err := c.BAP.Initialize(ctx, bapLogger, moduleDeps)
 		if err != nil {
 			return nil, fmt.Errorf("failed to initialize bap: %w", err)
@@ -1062,7 +1077,7 @@ func (c *Config) Initialize(ctx context.Context, logger *slog.Logger) (*Services
 	if c.BSocial.Mode != bsocial.ModeDisabled && svc.MongoDB != nil {
 		start = time.Now()
 		bsocialDB := svc.MongoDB.Database("bsocial")
-		bsocialLogger := logging.NewComponentLogger(logger, "bsocial", "")
+		bsocialLogger := logging.NewComponentLogger(logger, "bsocial", c.BSocial.LogLevel)
 		bsocialSvc, err := c.BSocial.Initialize(ctx, bsocialLogger, bsocialDB, moduleDeps)
 		if err != nil {
 			return nil, fmt.Errorf("failed to initialize bsocial: %w", err)
@@ -1085,7 +1100,7 @@ func (c *Config) Initialize(ctx context.Context, logger *slog.Logger) (*Services
 	// Initialize OPNS
 	if c.OPNS.Mode != opns.ModeDisabled && moduleDeps != nil {
 		start = time.Now()
-		opnsLogger := logging.NewComponentLogger(logger, "opns", "")
+		opnsLogger := logging.NewComponentLogger(logger, "opns", c.OPNS.LogLevel)
 		opnsSvc, err := c.OPNS.Initialize(ctx, opnsLogger, moduleDeps)
 		if err != nil {
 			return nil, fmt.Errorf("failed to initialize opns: %w", err)
@@ -1111,7 +1126,7 @@ func (c *Config) Initialize(ctx context.Context, logger *slog.Logger) (*Services
 	// Initialize OrdLock
 	if c.OrdLock.Mode != ordlockpkg.ModeDisabled && moduleDeps != nil {
 		start = time.Now()
-		ordlockLogger := logging.NewComponentLogger(logger, "ordlock", "")
+		ordlockLogger := logging.NewComponentLogger(logger, "ordlock", c.OrdLock.LogLevel)
 		ordlockSvc, err := c.OrdLock.Initialize(ctx, ordlockLogger, moduleDeps)
 		if err != nil {
 			return nil, fmt.Errorf("failed to initialize ordlock: %w", err)
@@ -1317,7 +1332,7 @@ func (c *Config) Initialize(ctx context.Context, logger *slog.Logger) (*Services
 				crawlCfg := c.OPNS.Crawl
 				crawlCfg.Enabled = true
 				crawlCfg.JungleBusURL = c.JungleBus.URL
-				opnsLogger := logging.NewComponentLogger(logger, "opns", "")
+				opnsLogger := logging.NewComponentLogger(logger, "opns", c.OPNS.LogLevel)
 				svc.OPNS.Crawl = opns.NewGenesisCrawl(crawlCfg, svc.Beef.Storage, svc.OPNS.Engine, opnsLogger)
 				go func() {
 					if err := svc.OPNS.Crawl.Start(ctx); err != nil {

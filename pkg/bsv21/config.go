@@ -25,7 +25,8 @@ const (
 
 // Config holds BSV21 configuration
 type Config struct {
-	Mode string `mapstructure:"mode"` // disabled, embedded, remote
+	Mode     string `mapstructure:"mode"`      // disabled, embedded, remote
+	LogLevel string `mapstructure:"log_level"` // debug, info, warn, error
 
 	// Indexer settings
 	WhitelistTokens []string `mapstructure:"whitelist_tokens"` // Token IDs to index (empty = all)
