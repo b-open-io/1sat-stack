@@ -244,10 +244,12 @@ func (s *OverlaySync) processWithGASP(ctx context.Context, txid *chainhash.Hash,
 }
 
 func (s *OverlaySync) processOutpoint(ctx context.Context, g *gasp.GASP, outpoint *transaction.Outpoint, seenNodes *sync.Map) error {
+	s.logger.Info("GASP processing outpoint", "outpoint", outpoint.String())
 	if err := g.ProcessUTXOToCompletion(ctx, outpoint, nil, seenNodes); err != nil {
 		var missingErr *MissingInputError
 		if errors.As(err, &missingErr) {
-			s.logger.Info("dependency unresolvable after GASP",
+			s.logger.Info("GASP missing input",
+				"outpoint", outpoint.String(),
 				"txid", missingErr.TransactionID.String(),
 				"missing_txid", missingErr.MissingTxID.String(),
 				"input_index", missingErr.InputIndex,
@@ -255,9 +257,12 @@ func (s *OverlaySync) processOutpoint(ctx context.Context, g *gasp.GASP, outpoin
 			return nil
 		}
 		if errors.Is(err, gasp.ErrGraphNoTopicalAdmittance) {
+			s.logger.Info("GASP not admitted", "outpoint", outpoint.String())
 			return nil
 		}
-		s.logger.Info("GASP processing failed", "outpoint", outpoint.String(), "error", err)
+		s.logger.Info("GASP failed", "outpoint", outpoint.String(), "error", err)
+	} else {
+		s.logger.Info("GASP success", "outpoint", outpoint.String())
 	}
 	return nil
 }
