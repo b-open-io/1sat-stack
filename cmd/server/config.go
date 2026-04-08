@@ -14,17 +14,16 @@ import (
 
 	"github.com/b-open-io/1sat-stack/admin"
 	"github.com/b-open-io/1sat-stack/landing"
-	"github.com/b-open-io/1sat-stack/sweep"
 	"github.com/b-open-io/1sat-stack/pkg/auth"
 	"github.com/b-open-io/1sat-stack/pkg/bap"
 	"github.com/b-open-io/1sat-stack/pkg/beef"
 	"github.com/b-open-io/1sat-stack/pkg/bsocial"
 	"github.com/b-open-io/1sat-stack/pkg/bsv21"
-	"github.com/b-open-io/1sat-stack/pkg/faucet"
 	configpkg "github.com/b-open-io/1sat-stack/pkg/config"
+	"github.com/b-open-io/1sat-stack/pkg/faucet"
 	"github.com/b-open-io/1sat-stack/pkg/httputil"
+	"github.com/b-open-io/1sat-stack/sweep"
 
-	"github.com/bsv-blockchain/go-wallet-toolbox/pkg/defs"
 	"github.com/b-open-io/1sat-stack/pkg/indexer"
 	"github.com/b-open-io/1sat-stack/pkg/jbsync"
 	"github.com/b-open-io/1sat-stack/pkg/logging"
@@ -32,6 +31,7 @@ import (
 	"github.com/b-open-io/1sat-stack/pkg/ordfs"
 	ordlockpkg "github.com/b-open-io/1sat-stack/pkg/ordlock"
 	"github.com/b-open-io/1sat-stack/pkg/overlay"
+	"github.com/bsv-blockchain/go-wallet-toolbox/pkg/defs"
 
 	"github.com/b-open-io/1sat-stack/pkg/messagebox"
 	"github.com/b-open-io/1sat-stack/pkg/owner"

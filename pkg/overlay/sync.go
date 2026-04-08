@@ -34,20 +34,20 @@ type ErrorClassifier func(err error) ErrorAction
 
 // OverlaySyncConfig configures the overlay sync worker and optional JungleBus subscriber for a single topic.
 type OverlaySyncConfig struct {
-	Enabled             bool            `mapstructure:"enabled"`
-	SubscriptionID      string          `mapstructure:"subscription_id"`      // JungleBus subscription ID (set via env var)
-	QueueName           string          `mapstructure:"queue_name"`           // Queue to consume from (e.g., "bap" → q:bap)
-	FromBlock           uint64          `mapstructure:"from_block"`           // Starting block for JungleBus subscription
-	Concurrency         int             `mapstructure:"concurrency"`          // Worker concurrency (default: 8)
-	PageSize            uint32          `mapstructure:"page_size"`            // Batch fetch size (default: 100)
-	PollDelay           time.Duration   `mapstructure:"poll_delay"`           // Sleep when queue empty (default: 1s)
-	BatchSize           int             `mapstructure:"batch_size"`           // JungleBus batch size (default: 1000)
-	ReorgDepth          uint32          `mapstructure:"reorg_depth"`          // JungleBus reorg depth (default: 6)
-	EnableMempool       bool            `mapstructure:"enable_mempool"`       // JungleBus mempool subscription
-	ResolveDependencies bool            `mapstructure:"resolve_dependencies"` // Use GASP to resolve input dependencies before submit
-	ErrorClassifier     ErrorClassifier `mapstructure:"-"`                    // Classifies Submit errors (set programmatically)
-	OnProcessed         func(string) error `mapstructure:"-"`                 // Called after each successful item with topic name (set programmatically)
-	Limiter             chan struct{}  `mapstructure:"-"`                    // External shared limiter (optional, set programmatically)
+	Enabled             bool               `mapstructure:"enabled"`
+	SubscriptionID      string             `mapstructure:"subscription_id"`      // JungleBus subscription ID (set via env var)
+	QueueName           string             `mapstructure:"queue_name"`           // Queue to consume from (e.g., "bap" → q:bap)
+	FromBlock           uint64             `mapstructure:"from_block"`           // Starting block for JungleBus subscription
+	Concurrency         int                `mapstructure:"concurrency"`          // Worker concurrency (default: 8)
+	PageSize            uint32             `mapstructure:"page_size"`            // Batch fetch size (default: 100)
+	PollDelay           time.Duration      `mapstructure:"poll_delay"`           // Sleep when queue empty (default: 1s)
+	BatchSize           int                `mapstructure:"batch_size"`           // JungleBus batch size (default: 1000)
+	ReorgDepth          uint32             `mapstructure:"reorg_depth"`          // JungleBus reorg depth (default: 6)
+	EnableMempool       bool               `mapstructure:"enable_mempool"`       // JungleBus mempool subscription
+	ResolveDependencies bool               `mapstructure:"resolve_dependencies"` // Use GASP to resolve input dependencies before submit
+	ErrorClassifier     ErrorClassifier    `mapstructure:"-"`                    // Classifies Submit errors (set programmatically)
+	OnProcessed         func(string) error `mapstructure:"-"`                    // Called after each successful item with topic name (set programmatically)
+	Limiter             chan struct{}      `mapstructure:"-"`                    // External shared limiter (optional, set programmatically)
 }
 
 // SubscriberConfig creates a jbsync.SubscriberConfig from this overlay sync config.

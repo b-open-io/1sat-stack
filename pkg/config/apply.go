@@ -15,9 +15,9 @@ type RuntimeConfig struct {
 	AuthMode      string // "local" or "authenticated"
 
 	// Server
-	ServerPort     int
-	ServerHost     string
-	ServerBasePath string
+	ServerPort      int
+	ServerHost      string
+	ServerBasePath  string
 	ServerBodyLimit string
 
 	// Network
@@ -32,8 +32,8 @@ type RuntimeConfig struct {
 	AuthSessionTTL  string
 
 	// Store
-	StoreMode     string // "embedded" or "disabled"
-	StoreProvider string // "badger" or "redis"
+	StoreMode       string // "embedded" or "disabled"
+	StoreProvider   string // "badger" or "redis"
 	StoreBadgerPath string
 	StoreRedisURL   string
 
@@ -64,37 +64,37 @@ type RuntimeConfig struct {
 	JungleBusToken string
 
 	// Indexer
-	IndexerMode              string // "embedded" or "disabled"
-	IndexerLogLevel          string
-	IndexerVerbose           bool
-	IndexerParsers           string // JSON array of parse tag names
-	IndexerSyncEnabled       bool
+	IndexerMode                string // "embedded" or "disabled"
+	IndexerLogLevel            string
+	IndexerVerbose             bool
+	IndexerParsers             string // JSON array of parse tag names
+	IndexerSyncEnabled         bool
 	IndexerSyncSubscriptionIDs string // comma-separated
-	IndexerSyncConcurrency   int
-	IndexerSyncBatchSize     int
-	IndexerSyncMempool       bool
+	IndexerSyncConcurrency     int
+	IndexerSyncBatchSize       int
+	IndexerSyncMempool         bool
 
 	// Overlay engine (shared)
-	OverlayStoragePath    string
-	OverlayStorageBackend string // "sqlite" or "postgres"
-	OverlayP2PEnabled     bool
-	OverlayP2PPort        string
-	OverlayP2PDHTMode     string
+	OverlayStoragePath       string
+	OverlayStorageBackend    string // "sqlite" or "postgres"
+	OverlayP2PEnabled        bool
+	OverlayP2PPort           string
+	OverlayP2PDHTMode        string
 	OverlayP2PBootstrapPeers string
 
 	// BAP overlay
-	BAPEnabled          bool
-	BAPSyncSubID        string
-	BAPSyncConcurrency  int
-	BAPSyncBatchSize    int
-	BAPLogLevel         string
+	BAPEnabled         bool
+	BAPSyncSubID       string
+	BAPSyncConcurrency int
+	BAPSyncBatchSize   int
+	BAPLogLevel        string
 
 	// BSocial overlay
-	BSocialEnabled          bool
-	BSocialSyncSubID        string
-	BSocialSyncConcurrency  int
-	BSocialSyncBatchSize    int
-	BSocialLogLevel         string
+	BSocialEnabled         bool
+	BSocialSyncSubID       string
+	BSocialSyncConcurrency int
+	BSocialSyncBatchSize   int
+	BSocialLogLevel        string
 
 	// OPNS overlay
 	OPNSEnabled          bool
@@ -105,25 +105,25 @@ type RuntimeConfig struct {
 	OPNSLogLevel         string
 
 	// OrdLock overlay
-	OrdLockEnabled          bool
-	OrdLockSyncSubID        string
-	OrdLockSyncConcurrency  int
-	OrdLockSyncBatchSize    int
-	OrdLockLogLevel         string
+	OrdLockEnabled         bool
+	OrdLockSyncSubID       string
+	OrdLockSyncConcurrency int
+	OrdLockSyncBatchSize   int
+	OrdLockLogLevel        string
 
 	// BSV21
-	BSV21Enabled          bool
-	BSV21SyncSubID        string
-	BSV21SyncConcurrency  int
-	BSV21SyncBatchSize    int
-	BSV21TokenWorkers     int
-	BSV21LogLevel         string
+	BSV21Enabled         bool
+	BSV21SyncSubID       string
+	BSV21SyncConcurrency int
+	BSV21SyncBatchSize   int
+	BSV21TokenWorkers    int
+	BSV21LogLevel        string
 
 	// ORDFS
-	ORDFSEnabled      bool
-	ORDFSLRUSize      int
-	ORDFSRedisURL     string
-	ORDFSRedisTTL     string
+	ORDFSEnabled  bool
+	ORDFSLRUSize  int
+	ORDFSRedisURL string
+	ORDFSRedisTTL string
 
 	// Owner
 	OwnerMode string // "embedded" or "disabled"
@@ -137,10 +137,10 @@ type RuntimeConfig struct {
 	MessageBoxDBPath string
 
 	// Faucet
-	FaucetEnabled                bool
-	FaucetDefaultDropSats        int
+	FaucetEnabled                 bool
+	FaucetDefaultDropSats         int
 	FaucetDefaultMaxConsolidation int
-	FaucetDBPath                 string
+	FaucetDBPath                  string
 
 	// MongoDB
 	MongoDBURL string
