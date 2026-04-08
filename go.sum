@@ -195,8 +195,8 @@ github.com/bsv-blockchain/go-chaintracks v1.2.2 h1:owUNTRb8s2l8rwtFNSJbceX3E0V51
 github.com/bsv-blockchain/go-chaintracks v1.2.2/go.mod h1:YDRPU+fFKbYfO3UkJn0FHAEYTp9Tw5zSulfW7/M4aGs=
 github.com/bsv-blockchain/go-lockfree-queue v1.1.2 h1:KjW2TZ9Mewe9xjyf5SV0L5wFjjwJTD7v2yVoFvz4S+A=
 github.com/bsv-blockchain/go-lockfree-queue v1.1.2/go.mod h1:1ah9XaAKnXdZwoAAlBZCX+cd3mMRDTlxKIRY6tVsiOM=
-github.com/bsv-blockchain/go-overlay-services v1.3.1-0.20260408014407-fe75f621c8a2 h1:XZbsgmof7fCrXAcz23yZvRZ8cIslfv1FowVB2LTdsP0=
-github.com/bsv-blockchain/go-overlay-services v1.3.1-0.20260408014407-fe75f621c8a2/go.mod h1:ZFMpEkjPaJvKZ4gere4ft/pcb7buSCkDKM6MFt8N7R8=
+github.com/bsv-blockchain/go-overlay-services v1.3.1-0.20260408055750-7f091e0518c3 h1:v61RwJSP1+YjD6IRxsGR5M5v9GRZUhj12NWEDB2mD4s=
+github.com/bsv-blockchain/go-overlay-services v1.3.1-0.20260408055750-7f091e0518c3/go.mod h1:MI31R+F1VK6GPw6DjA6Bf9QZm2FeOWNuMXUMa+om2pA=
 github.com/bsv-blockchain/go-p2p-message-bus v0.1.14 h1:MFjIkEJqToJAOalZ3teyqsnDE44r9MXEi3IunA9D9JQ=
 github.com/bsv-blockchain/go-p2p-message-bus v0.1.14/go.mod h1:upj6H+t87fwLCkloCmkyJ7CHWR8vhGyjNpKGnj1orqM=
 github.com/bsv-blockchain/go-safe-conversion v1.1.2 h1:otAM71jUp+rBvEaNjfLTxlBKNnMbdbvDoew7brwPg0k=
@@ -758,8 +758,8 @@ github.com/ncruces/go-strftime v1.0.0 h1:HMFp8mLCTPp341M/ZnA4qaf7ZlsbTc+miZjCLOF
 github.com/ncruces/go-strftime v1.0.0/go.mod h1:Fwc5htZGVVkseilnfgOVb9mKy6w1naJmn9CehxcKcls=
 github.com/neelance/astrewrite v0.0.0-20160511093645-99348263ae86/go.mod h1:kHJEU3ofeGjhHklVoIGuVj85JJwZ6kWPaJwCIxgnFmo=
 github.com/neelance/sourcemap v0.0.0-20200213170602-2833bce08e4c/go.mod h1:Qr6/a/Q4r9LP1IltGz7tA7iOK1WonHEYhu1HRBA7ZiM=
-github.com/oapi-codegen/runtime v1.3.0 h1:vyK1zc0gDWWXgk2xoQa4+X4RNNc5SL2RbTpJS/4vMYA=
-github.com/oapi-codegen/runtime v1.3.0/go.mod h1:kOdeacKy7t40Rclb1je37ZLFboFxh+YLy0zaPCMibPY=
+github.com/oapi-codegen/runtime v1.3.1 h1:RgDY6J4OGQLbRXhG/Xpt3vSVqYpHQS7hN4m85+5xB9g=
+github.com/oapi-codegen/runtime v1.3.1/go.mod h1:kOdeacKy7t40Rclb1je37ZLFboFxh+YLy0zaPCMibPY=
 github.com/onsi/ginkgo v1.16.5 h1:8xi0RTUf59SOSfEtZMvwTvXYMzG4gV23XVHOZiXNtnE=
 github.com/onsi/ginkgo/v2 v2.27.5 h1:ZeVgZMx2PDMdJm/+w5fE/OyG6ILo1Y3e+QX4zSR0zTE=
 github.com/onsi/ginkgo/v2 v2.27.5/go.mod h1:ArE1D/XhNXBXCBkKOLkbsb2c81dQHCRcF5zwn/ykDRo=
