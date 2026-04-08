@@ -195,8 +195,8 @@ github.com/bsv-blockchain/go-chaintracks v1.2.2 h1:owUNTRb8s2l8rwtFNSJbceX3E0V51
 github.com/bsv-blockchain/go-chaintracks v1.2.2/go.mod h1:YDRPU+fFKbYfO3UkJn0FHAEYTp9Tw5zSulfW7/M4aGs=
 github.com/bsv-blockchain/go-lockfree-queue v1.1.2 h1:KjW2TZ9Mewe9xjyf5SV0L5wFjjwJTD7v2yVoFvz4S+A=
 github.com/bsv-blockchain/go-lockfree-queue v1.1.2/go.mod h1:1ah9XaAKnXdZwoAAlBZCX+cd3mMRDTlxKIRY6tVsiOM=
-github.com/bsv-blockchain/go-overlay-services v1.3.1-0.20260408013346-eee632d84996 h1:orgyRGGxNPLVe2sx1F0fU3hFXxE2jzA4zGwLBjf7kj0=
-github.com/bsv-blockchain/go-overlay-services v1.3.1-0.20260408013346-eee632d84996/go.mod h1:ZFMpEkjPaJvKZ4gere4ft/pcb7buSCkDKM6MFt8N7R8=
+github.com/bsv-blockchain/go-overlay-services v1.3.1-0.20260408014407-fe75f621c8a2 h1:XZbsgmof7fCrXAcz23yZvRZ8cIslfv1FowVB2LTdsP0=
+github.com/bsv-blockchain/go-overlay-services v1.3.1-0.20260408014407-fe75f621c8a2/go.mod h1:ZFMpEkjPaJvKZ4gere4ft/pcb7buSCkDKM6MFt8N7R8=
 github.com/bsv-blockchain/go-p2p-message-bus v0.1.14 h1:MFjIkEJqToJAOalZ3teyqsnDE44r9MXEi3IunA9D9JQ=
 github.com/bsv-blockchain/go-p2p-message-bus v0.1.14/go.mod h1:upj6H+t87fwLCkloCmkyJ7CHWR8vhGyjNpKGnj1orqM=
 github.com/bsv-blockchain/go-safe-conversion v1.1.2 h1:otAM71jUp+rBvEaNjfLTxlBKNnMbdbvDoew7brwPg0k=
