@@ -2,7 +2,6 @@ package overlay
 
 import (
 	"context"
-	"encoding/binary"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -162,37 +161,34 @@ func (s *OverlaySync) Stop() {
 	}
 }
 
-// parseQueueMember extracts txid and optional vout from a queue member.
-// 36 bytes = outpoint (txid + vout), 32 bytes = txid only (vout = -1).
-func parseQueueMember(member string) (txid *chainhash.Hash, vout int, err error) {
+// parseQueueMember parses a queue member into a txid and optional outpoint.
+// 36 bytes = outpoint (txid + vout), 32 bytes = txid only.
+func parseQueueMember(member string) (txid *chainhash.Hash, outpoint *transaction.Outpoint, err error) {
 	b := []byte(member)
 	switch len(b) {
 	case 36:
-		txid = &chainhash.Hash{}
-		copy(txid[:], b[:32])
-		vout = int(binary.LittleEndian.Uint32(b[32:]))
-		return
+		outpoint = transaction.NewOutpointFromBytes(b)
+		return &outpoint.Txid, outpoint, nil
 	case 32:
 		txid = &chainhash.Hash{}
 		copy(txid[:], b)
-		vout = -1
-		return
+		return txid, nil, nil
 	default:
-		return nil, -1, fmt.Errorf("invalid member length: expected 32 or 36, got %d", len(b))
+		return nil, nil, fmt.Errorf("invalid member length: expected 32 or 36, got %d", len(b))
 	}
 }
 
 // process handles a single item from the queue.
 func (s *OverlaySync) process(ctx context.Context, member string, score float64) error {
-	txid, vout, err := parseQueueMember(member)
+	txid, outpoint, err := parseQueueMember(member)
 	if err != nil {
 		return err
 	}
 
-	if !s.config.ResolveDependencies || vout < 0 {
+	if !s.config.ResolveDependencies || outpoint == nil {
 		return s.processDirect(ctx, txid)
 	}
-	return s.processWithGASP(ctx, txid, vout)
+	return s.processWithGASP(ctx, outpoint)
 }
 
 // processDirect submits a transaction directly without dependency resolution.
@@ -225,7 +221,7 @@ func (s *OverlaySync) processDirect(ctx context.Context, txid *chainhash.Hash) e
 
 // processWithGASP uses GASP to resolve input dependencies before submitting
 // a specific outpoint.
-func (s *OverlaySync) processWithGASP(ctx context.Context, txid *chainhash.Hash, vout int) error {
+func (s *OverlaySync) processWithGASP(ctx context.Context, outpoint *transaction.Outpoint) error {
 	beefRemote := gaspqueue.NewBeefRemote(s.beefStorage, s.store, "")
 	gaspStorage := engine.NewOverlayGASPStorage(s.topicName, s.engine, nil)
 	seenNodes := &sync.Map{}
@@ -240,7 +236,7 @@ func (s *OverlaySync) processWithGASP(ctx context.Context, txid *chainhash.Hash,
 		LogPrefix:      &logPrefix,
 	})
 
-	return s.processOutpoint(ctx, g, &transaction.Outpoint{Txid: *txid, Index: uint32(vout)}, seenNodes)
+	return s.processOutpoint(ctx, g, outpoint, seenNodes)
 }
 
 func (s *OverlaySync) processOutpoint(ctx context.Context, g *gasp.GASP, outpoint *transaction.Outpoint, seenNodes *sync.Map) error {
