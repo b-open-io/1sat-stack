@@ -170,7 +170,7 @@ func parseQueueMember(member string) (txid *chainhash.Hash, vout int, err error)
 	case 36:
 		txid = &chainhash.Hash{}
 		copy(txid[:], b[:32])
-		vout = int(binary.BigEndian.Uint32(b[32:]))
+		vout = int(binary.LittleEndian.Uint32(b[32:]))
 		return
 	case 32:
 		txid = &chainhash.Hash{}
