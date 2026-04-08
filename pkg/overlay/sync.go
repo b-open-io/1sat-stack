@@ -77,7 +77,8 @@ type OverlaySync struct {
 	engine      *engine.Engine
 	logger      *slog.Logger
 	worker      *worker.Worker
-	directSeen  sync.Map // txid dedup for processDirect within a batch
+	gasp        *gasp.GASP // shared GASP instance for dependency resolution
+	directSeen  sync.Map   // txid dedup for processDirect within a batch
 }
 
 // NewOverlaySync creates a new overlay sync worker.
@@ -145,6 +146,18 @@ func (s *OverlaySync) Start(ctx context.Context) error {
 		},
 	})
 
+	if s.config.ResolveDependencies {
+		logPrefix := fmt.Sprintf("[GASP %s] ", s.topicName)
+		s.gasp = gasp.NewGASP(gasp.Params{
+			Storage:        engine.NewOverlayGASPStorage(s.topicName, s.engine, nil),
+			Remote:         gaspqueue.NewBeefRemote(s.beefStorage, s.store, ""),
+			Unidirectional: true,
+			Topic:          s.topicName,
+			Concurrency:    s.config.Concurrency,
+			LogPrefix:      &logPrefix,
+		})
+	}
+
 	s.logger.Info("starting overlay sync",
 		"queue", s.config.QueueName,
 		"topic", s.topicName,
@@ -158,6 +171,10 @@ func (s *OverlaySync) Start(ctx context.Context) error {
 func (s *OverlaySync) Stop() {
 	if s.worker != nil {
 		s.worker.Stop()
+	}
+	if s.gasp != nil {
+		s.gasp.Close()
+		s.gasp = nil
 	}
 }
 
@@ -188,7 +205,7 @@ func (s *OverlaySync) process(ctx context.Context, member string, score float64)
 	if !s.config.ResolveDependencies || outpoint == nil {
 		return s.processDirect(ctx, txid)
 	}
-	return s.processWithGASP(ctx, outpoint)
+	return s.processOutpoint(ctx, s.gasp, outpoint, &sync.Map{})
 }
 
 // processDirect submits a transaction directly without dependency resolution.
@@ -221,24 +238,6 @@ func (s *OverlaySync) processDirect(ctx context.Context, txid *chainhash.Hash) e
 
 // processWithGASP uses GASP to resolve input dependencies before submitting
 // a specific outpoint.
-func (s *OverlaySync) processWithGASP(ctx context.Context, outpoint *transaction.Outpoint) error {
-	beefRemote := gaspqueue.NewBeefRemote(s.beefStorage, s.store, "")
-	gaspStorage := engine.NewOverlayGASPStorage(s.topicName, s.engine, nil)
-	seenNodes := &sync.Map{}
-
-	logPrefix := fmt.Sprintf("[GASP %s] ", s.topicName)
-	g := gasp.NewGASP(gasp.Params{
-		Storage:        gaspStorage,
-		Remote:         beefRemote,
-		Unidirectional: true,
-		Topic:          s.topicName,
-		Concurrency:    s.config.Concurrency,
-		LogPrefix:      &logPrefix,
-	})
-
-	return s.processOutpoint(ctx, g, outpoint, seenNodes)
-}
-
 func (s *OverlaySync) processOutpoint(ctx context.Context, g *gasp.GASP, outpoint *transaction.Outpoint, seenNodes *sync.Map) error {
 	s.logger.Info("GASP processing outpoint", "outpoint", outpoint.String())
 	if err := g.ProcessUTXOToCompletion(ctx, outpoint, nil, seenNodes); err != nil {
