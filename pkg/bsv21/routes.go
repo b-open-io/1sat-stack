@@ -1,6 +1,8 @@
 package bsv21
 
 import (
+	"errors"
+	"fmt"
 	"log/slog"
 	"strconv"
 
@@ -100,6 +102,9 @@ type ErrorResponse struct {
 	Message string `json:"message"`
 }
 
+var errTokenNotFound = fmt.Errorf("token not found")
+var errInvalidTokenID = fmt.Errorf("invalid token ID format")
+
 // ListTokens returns all known tokens with status and metadata
 // @Summary List tokens
 // @Description Returns active tokens by default. Pass ?all=true to include all known tokens.
@@ -125,7 +130,10 @@ func (r *Routes) GetToken(c *fiber.Ctx) error {
 
 	resp, err := r.getTokenDetail(c, tokenIdStr)
 	if err != nil {
-		return err
+		if errors.Is(err, errInvalidTokenID) {
+			return c.Status(fiber.StatusBadRequest).JSON(ErrorResponse{Message: err.Error()})
+		}
+		return c.Status(fiber.StatusNotFound).JSON(ErrorResponse{Message: err.Error()})
 	}
 
 	return c.JSON(resp)
@@ -173,20 +181,17 @@ func (r *Routes) LookupTokens(c *fiber.Ctx) error {
 	return c.JSON(results)
 }
 
-// getTokenDetail loads combined token data and funding status for a single token ID
+// getTokenDetail loads combined token data and funding status for a single token ID.
+// Returns an error without writing to the response — callers handle their own error responses.
 func (r *Routes) getTokenDetail(c *fiber.Ctx, tokenIdStr string) (*TokenDetailResponse, error) {
 	outpoint, err := transaction.OutpointFromString(tokenIdStr)
 	if err != nil {
-		return nil, c.Status(fiber.StatusBadRequest).JSON(ErrorResponse{
-			Message: "Invalid token ID format: " + tokenIdStr,
-		})
+		return nil, errInvalidTokenID
 	}
 
 	tokenData, err := r.lookup.GetToken(c.Context(), outpoint)
 	if err != nil {
-		return nil, c.Status(fiber.StatusNotFound).JSON(ErrorResponse{
-			Message: "Token not found: " + tokenIdStr,
-		})
+		return nil, errTokenNotFound
 	}
 
 	resp := &TokenDetailResponse{
@@ -194,7 +199,6 @@ func (r *Routes) getTokenDetail(c *fiber.Ctx, tokenIdStr string) (*TokenDetailRe
 		Token:   tokenData,
 	}
 
-	// Include funding status if the token manager is available
 	if r.manager != nil {
 		status, err := r.manager.GetTokenStatus(c.Context(), tokenIdStr)
 		if err == nil {
