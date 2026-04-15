@@ -2172,6 +2172,24 @@ func (svc *Services) StartSubscribers(ctx context.Context, logger *slog.Logger) 
 				logger.Error("failed to start OrdLock event bridge", "error", err)
 			}
 		}
+		if svc.BSV21 != nil && svc.BSV21.Sync != nil {
+			bridge := overlay.NewEventBridge(&overlay.EventBridgeConfig{
+				PubSub:   svc.PubSub.PubSub,
+				Store:    svc.Store.Store,
+				Patterns: []string{"bsv21:*"},
+				QueueFunc: func(ev pubsub.Event) string {
+					tokenId := strings.TrimPrefix(ev.Topic, "bsv21:")
+					if tokenId == "" {
+						return ""
+					}
+					return "q:tm_" + tokenId
+				},
+				Logger: logger,
+			})
+			if err := bridge.Start(ctx); err != nil {
+				logger.Error("failed to start BSV21 event bridge", "error", err)
+			}
+		}
 	}
 
 	// Start BSV21 sync services
