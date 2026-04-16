@@ -1190,6 +1190,8 @@ interface SyncPanelProps {
   setIndexerConcurrency: (v: string) => void;
   indexerBatchSize: string;
   setIndexerBatchSize: (v: string) => void;
+  indexerSyncEnabled: boolean;
+  setIndexerSyncEnabled: (v: boolean) => void;
   indexerMempool: boolean;
   setIndexerMempool: (v: boolean) => void;
   ownerSync: boolean;
@@ -1202,6 +1204,7 @@ function SyncPanel({
   indexerSubIds, setIndexerSubIds,
   indexerConcurrency, setIndexerConcurrency,
   indexerBatchSize, setIndexerBatchSize,
+  indexerSyncEnabled, setIndexerSyncEnabled,
   indexerMempool, setIndexerMempool,
   ownerSync, setOwnerSync,
 }: SyncPanelProps) {
@@ -1237,6 +1240,13 @@ function SyncPanel({
           <FieldRow label="Batch size">
             <Input value={indexerBatchSize} onChange={(e) => setIndexerBatchSize(e.target.value)} className="font-mono text-xs h-8" />
           </FieldRow>
+        </div>
+        <div className="flex items-center justify-between pt-1">
+          <div>
+            <div className="text-xs font-medium text-muted-foreground">Enabled</div>
+            <div className="text-[11px] text-muted-foreground/70">Process queued transactions from JungleBus.</div>
+          </div>
+          <Toggle enabled={indexerSyncEnabled} onChange={setIndexerSyncEnabled} />
         </div>
         <div className="flex items-center justify-between pt-1">
           <div>
@@ -1457,6 +1467,7 @@ export default function SettingsPage() {
   const [indexerSubIds, setIndexerSubIds] = useState("");
   const [indexerConcurrency, setIndexerConcurrency] = useState("8");
   const [indexerBatchSize, setIndexerBatchSize] = useState("500");
+  const [indexerSyncEnabled, setIndexerSyncEnabled] = useState(false);
   const [indexerMempool, setIndexerMempool] = useState(false);
   const [ownerSync, setOwnerSync] = useState(false);
   const [faucetEnabled, setFaucetEnabled] = useState(false);
@@ -1572,6 +1583,7 @@ export default function SettingsPage() {
         setIndexerSubIds(s("indexer.sync.subscription_ids", ""));
         setIndexerConcurrency(s("indexer.sync.concurrency", "8"));
         setIndexerBatchSize(s("indexer.sync.batch_size", "500"));
+        setIndexerSyncEnabled(b("indexer.sync.enabled"));
         setIndexerMempool(b("indexer.sync.mempool"));
         setOwnerSync(b("owner.enabled"));
         setFaucetEnabled(b("faucet.enabled"));
@@ -1773,6 +1785,7 @@ export default function SettingsPage() {
         "indexer.sync.subscription_ids": indexerSubIds,
         "indexer.sync.concurrency": indexerConcurrency,
         "indexer.sync.batch_size": indexerBatchSize,
+        "indexer.sync.enabled": String(indexerSyncEnabled),
         "indexer.sync.mempool": String(indexerMempool),
         "owner.enabled": String(ownerSync),
         "faucet.enabled": String(faucetEnabled),
@@ -1994,6 +2007,7 @@ export default function SettingsPage() {
               indexerSubIds={indexerSubIds} setIndexerSubIds={setIndexerSubIds}
               indexerConcurrency={indexerConcurrency} setIndexerConcurrency={setIndexerConcurrency}
               indexerBatchSize={indexerBatchSize} setIndexerBatchSize={setIndexerBatchSize}
+              indexerSyncEnabled={indexerSyncEnabled} setIndexerSyncEnabled={setIndexerSyncEnabled}
               indexerMempool={indexerMempool} setIndexerMempool={setIndexerMempool}
               ownerSync={ownerSync} setOwnerSync={setOwnerSync}
             />
