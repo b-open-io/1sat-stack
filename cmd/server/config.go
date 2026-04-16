@@ -2114,8 +2114,8 @@ func (svc *Services) StartSubscribers(ctx context.Context, logger *slog.Logger) 
 		logger.Info("started JungleBus subscribers", "count", len(svc.JBSubscribers))
 	}
 
-	// Start EventBridges (PubSub → overlay queues)
-	if svc.PubSub != nil {
+	// Start EventBridges (PubSub → overlay queues + direct submit)
+	if svc.PubSub != nil && svc.Beef != nil {
 		if svc.BAP != nil && svc.BAP.Sync != nil {
 			bridge := overlay.NewEventBridge(&overlay.EventBridgeConfig{
 				PubSub:   svc.PubSub.PubSub,
@@ -2124,7 +2124,10 @@ func (svc *Services) StartSubscribers(ctx context.Context, logger *slog.Logger) 
 				QueueFunc: func(ev pubsub.Event) string {
 					return string(txo.KeyQueue("bap"))
 				},
-				Logger: logger,
+				Logger:       logger,
+				Engine:       svc.BAP.Engine,
+				BeefStorage:  svc.Beef.Storage,
+				SubmitBuffer: 64,
 			})
 			if err := bridge.Start(ctx); err != nil {
 				logger.Error("failed to start BAP event bridge", "error", err)
@@ -2138,7 +2141,10 @@ func (svc *Services) StartSubscribers(ctx context.Context, logger *slog.Logger) 
 				QueueFunc: func(ev pubsub.Event) string {
 					return string(txo.KeyQueue("bsocial"))
 				},
-				Logger: logger,
+				Logger:       logger,
+				Engine:       svc.BSocial.Engine,
+				BeefStorage:  svc.Beef.Storage,
+				SubmitBuffer: 64,
 			})
 			if err := bridge.Start(ctx); err != nil {
 				logger.Error("failed to start BSocial event bridge", "error", err)
@@ -2152,7 +2158,10 @@ func (svc *Services) StartSubscribers(ctx context.Context, logger *slog.Logger) 
 				QueueFunc: func(ev pubsub.Event) string {
 					return string(txo.KeyQueue("opns"))
 				},
-				Logger: logger,
+				Logger:       logger,
+				Engine:       svc.OPNS.Engine,
+				BeefStorage:  svc.Beef.Storage,
+				SubmitBuffer: 64,
 			})
 			if err := bridge.Start(ctx); err != nil {
 				logger.Error("failed to start OPNS event bridge", "error", err)
@@ -2166,7 +2175,10 @@ func (svc *Services) StartSubscribers(ctx context.Context, logger *slog.Logger) 
 				QueueFunc: func(ev pubsub.Event) string {
 					return string(txo.KeyQueue(ordlockpkg.QueueName))
 				},
-				Logger: logger,
+				Logger:       logger,
+				Engine:       svc.OrdLock.Engine,
+				BeefStorage:  svc.Beef.Storage,
+				SubmitBuffer: 64,
 			})
 			if err := bridge.Start(ctx); err != nil {
 				logger.Error("failed to start OrdLock event bridge", "error", err)
@@ -2184,7 +2196,10 @@ func (svc *Services) StartSubscribers(ctx context.Context, logger *slog.Logger) 
 					}
 					return "q:tm_" + tokenId
 				},
-				Logger: logger,
+				Logger:       logger,
+				Engine:       svc.BSV21.Engine,
+				BeefStorage:  svc.Beef.Storage,
+				SubmitBuffer: 64,
 			})
 			if err := bridge.Start(ctx); err != nil {
 				logger.Error("failed to start BSV21 event bridge", "error", err)
