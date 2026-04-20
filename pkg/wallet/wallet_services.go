@@ -135,18 +135,24 @@ func (s *LocalWalletServices) MerklePath(ctx context.Context, txid string) (*wdk
 
 	tx, err := s.beefStorage.LoadTx(ctx, txHash)
 	if err == nil && tx.MerklePath != nil {
-		result := &wdk.MerklePathResult{
-			Name:       "LocalBEEF",
-			MerklePath: tx.MerklePath,
-		}
-		if hdr, err := s.chaintracks.GetHeaderByHeight(ctx, tx.MerklePath.BlockHeight); err == nil {
-			result.BlockHeader = &wdk.MerklePathBlockHeader{
-				Height:     hdr.Height,
-				MerkleRoot: hdr.MerkleRoot.String(),
-				Hash:       hdr.Hash.String(),
+		if valid, err := tx.MerklePath.Verify(ctx, txHash, s); err != nil {
+			s.logger.Warn("failed to verify BEEF merkle proof", slog.Any("err", err), slog.String("txid", txid))
+		} else if !valid {
+			s.logger.Warn("BEEF merkle proof invalid for txid", slog.String("txid", txid))
+		} else {
+			result := &wdk.MerklePathResult{
+				Name:       "LocalBEEF",
+				MerklePath: tx.MerklePath,
 			}
+			if hdr, err := s.chaintracks.GetHeaderByHeight(ctx, tx.MerklePath.BlockHeight); err == nil {
+				result.BlockHeader = &wdk.MerklePathBlockHeader{
+					Height:     hdr.Height,
+					MerkleRoot: hdr.MerkleRoot.String(),
+					Hash:       hdr.Hash.String(),
+				}
+			}
+			return result, nil
 		}
-		return result, nil
 	}
 
 	// Fall back to Arcade
@@ -162,6 +168,12 @@ func (s *LocalWalletServices) MerklePath(ctx context.Context, txid string) (*wdk
 	mp, err := transaction.NewMerklePathFromBinary(status.MerklePath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse merkle path for %s: %w", txid, err)
+	}
+
+	if valid, err := mp.Verify(ctx, txHash, s); err != nil {
+		return nil, fmt.Errorf("failed to verify arcade merkle proof for %s: %w", txid, err)
+	} else if !valid {
+		return nil, fmt.Errorf("arcade merkle proof invalid for %s", txid)
 	}
 
 	blockHeader := &wdk.MerklePathBlockHeader{

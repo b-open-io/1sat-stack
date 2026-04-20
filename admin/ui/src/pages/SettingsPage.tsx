@@ -592,7 +592,8 @@ function StoragePanel({
         <FieldRow label="Broadcast URLs" hint="One URL per line. Used for submitting transactions." badge={<RestartBadge />}>
           <textarea
             value={arcadeBroadcastUrls.join("\n")}
-            onChange={(e) => setArcadeBroadcastUrls(e.target.value.split("\n").map(u => u.trim()).filter(Boolean))}
+            onChange={(e) => setArcadeBroadcastUrls(e.target.value.split("\n").map(u => u.trim()))}
+            onBlur={(e) => setArcadeBroadcastUrls(e.target.value.split("\n").map(u => u.trim()).filter(Boolean))}
             placeholder="http://mainnet.gorillanode.io:8833"
             className="w-full font-mono text-xs rounded-md border border-input bg-transparent px-3 py-2 min-h-[60px] resize-y"
             rows={Math.max(2, arcadeBroadcastUrls.length + 1)}
@@ -601,7 +602,8 @@ function StoragePanel({
         <FieldRow label="DataHub URLs" hint="One URL per line. Used for fetching block/subtree data." badge={<RestartBadge />}>
           <textarea
             value={arcadeDatahubUrls.join("\n")}
-            onChange={(e) => setArcadeDatahubUrls(e.target.value.split("\n").map(u => u.trim()).filter(Boolean))}
+            onChange={(e) => setArcadeDatahubUrls(e.target.value.split("\n").map(u => u.trim()))}
+            onBlur={(e) => setArcadeDatahubUrls(e.target.value.split("\n").map(u => u.trim()).filter(Boolean))}
             placeholder="https://mainnet.gorillanode.io/api/v1"
             className="w-full font-mono text-xs rounded-md border border-input bg-transparent px-3 py-2 min-h-[60px] resize-y"
             rows={Math.max(2, arcadeDatahubUrls.length + 1)}
@@ -917,6 +919,8 @@ function OpnsPanel({
 }
 
 interface Bsv21PanelProps extends OverlayPanelProps {
+  tokenWorkers: string;
+  setTokenWorkers: (v: string) => void;
   whitelist: string[];
   setWhitelist: React.Dispatch<React.SetStateAction<string[]>>;
   blacklist: string[];
@@ -927,6 +931,7 @@ function Bsv21Panel({
   enabled, onToggle,
   subId, setSubId,
   concurrency, setConcurrency,
+  tokenWorkers, setTokenWorkers,
   batchSize, setBatchSize,
   whitelist, setWhitelist,
   blacklist, setBlacklist,
@@ -950,9 +955,12 @@ function Bsv21Panel({
         <FieldRow label="JungleBus subscription ID">
           <Input value={subId} onChange={(e) => setSubId(e.target.value)} placeholder="sub_..." className="font-mono text-xs h-8" />
         </FieldRow>
-        <div className="grid grid-cols-2 gap-3">
-          <FieldRow label="Concurrency">
+        <div className="grid grid-cols-3 gap-3">
+          <FieldRow label="Dispatch workers">
             <Input value={concurrency} onChange={(e) => setConcurrency(e.target.value)} className="font-mono text-xs h-8" />
+          </FieldRow>
+          <FieldRow label="Token workers">
+            <Input value={tokenWorkers} onChange={(e) => setTokenWorkers(e.target.value)} className="font-mono text-xs h-8" />
           </FieldRow>
           <FieldRow label="Batch size">
             <Input value={batchSize} onChange={(e) => setBatchSize(e.target.value)} className="font-mono text-xs h-8" />
@@ -1182,6 +1190,8 @@ interface SyncPanelProps {
   setIndexerConcurrency: (v: string) => void;
   indexerBatchSize: string;
   setIndexerBatchSize: (v: string) => void;
+  indexerSyncEnabled: boolean;
+  setIndexerSyncEnabled: (v: boolean) => void;
   indexerMempool: boolean;
   setIndexerMempool: (v: boolean) => void;
   ownerSync: boolean;
@@ -1194,6 +1204,7 @@ function SyncPanel({
   indexerSubIds, setIndexerSubIds,
   indexerConcurrency, setIndexerConcurrency,
   indexerBatchSize, setIndexerBatchSize,
+  indexerSyncEnabled, setIndexerSyncEnabled,
   indexerMempool, setIndexerMempool,
   ownerSync, setOwnerSync,
 }: SyncPanelProps) {
@@ -1229,6 +1240,13 @@ function SyncPanel({
           <FieldRow label="Batch size">
             <Input value={indexerBatchSize} onChange={(e) => setIndexerBatchSize(e.target.value)} className="font-mono text-xs h-8" />
           </FieldRow>
+        </div>
+        <div className="flex items-center justify-between pt-1">
+          <div>
+            <div className="text-xs font-medium text-muted-foreground">Enabled</div>
+            <div className="text-[11px] text-muted-foreground/70">Process queued transactions from JungleBus.</div>
+          </div>
+          <Toggle enabled={indexerSyncEnabled} onChange={setIndexerSyncEnabled} />
         </div>
         <div className="flex items-center justify-between pt-1">
           <div>
@@ -1419,6 +1437,7 @@ export default function SettingsPage() {
   // BSV21 overlay
   const [bsv21SubId, setBsv21SubId] = useState("");
   const [bsv21Concurrency, setBsv21Concurrency] = useState("8");
+  const [bsv21TokenWorkers, setBsv21TokenWorkers] = useState("8");
   const [bsv21BatchSize, setBsv21BatchSize] = useState("1000");
   const [bsv21Whitelist, setBsv21Whitelist] = useState<string[]>([]);
   const [bsv21Blacklist, setBsv21Blacklist] = useState<string[]>([]);
@@ -1448,6 +1467,7 @@ export default function SettingsPage() {
   const [indexerSubIds, setIndexerSubIds] = useState("");
   const [indexerConcurrency, setIndexerConcurrency] = useState("8");
   const [indexerBatchSize, setIndexerBatchSize] = useState("500");
+  const [indexerSyncEnabled, setIndexerSyncEnabled] = useState(false);
   const [indexerMempool, setIndexerMempool] = useState(false);
   const [ownerSync, setOwnerSync] = useState(false);
   const [faucetEnabled, setFaucetEnabled] = useState(false);
@@ -1529,6 +1549,7 @@ export default function SettingsPage() {
         // BSV21
         setBsv21SubId(s("overlay.bsv21.sub_id", ""));
         setBsv21Concurrency(s("overlay.bsv21.concurrency", "8"));
+        setBsv21TokenWorkers(s("overlay.bsv21.token_workers", "8"));
         setBsv21BatchSize(s("overlay.bsv21.batch_size", "1000"));
         if (cfg["overlay.bsv21.whitelist"]) {
           try { setBsv21Whitelist(JSON.parse(cfg["overlay.bsv21.whitelist"])); } catch { /* keep default */ }
@@ -1562,6 +1583,7 @@ export default function SettingsPage() {
         setIndexerSubIds(s("indexer.sync.subscription_ids", ""));
         setIndexerConcurrency(s("indexer.sync.concurrency", "8"));
         setIndexerBatchSize(s("indexer.sync.batch_size", "500"));
+        setIndexerSyncEnabled(b("indexer.sync.enabled"));
         setIndexerMempool(b("indexer.sync.mempool"));
         setOwnerSync(b("owner.enabled"));
         setFaucetEnabled(b("faucet.enabled"));
@@ -1597,7 +1619,7 @@ export default function SettingsPage() {
     "indexer.parsers",
     "overlay.bap.sub_id", "overlay.bap.concurrency", "overlay.bap.batch_size",
     "overlay.opns.sub_id", "overlay.opns.concurrency", "overlay.opns.batch_size",
-    "overlay.bsv21.sub_id", "overlay.bsv21.concurrency", "overlay.bsv21.batch_size",
+    "overlay.bsv21.sub_id", "overlay.bsv21.concurrency", "overlay.bsv21.token_workers", "overlay.bsv21.batch_size",
     "overlay.bsocial.sub_id", "overlay.bsocial.concurrency", "overlay.bsocial.batch_size",
     "overlay.bsocial.mongo_url",
     "overlay.ordlock.sub_id", "overlay.ordlock.concurrency", "overlay.ordlock.batch_size",
@@ -1642,6 +1664,7 @@ export default function SettingsPage() {
     "overlay.opns.batch_size": opnsBatchSize,
     "overlay.bsv21.sub_id": bsv21SubId,
     "overlay.bsv21.concurrency": bsv21Concurrency,
+    "overlay.bsv21.token_workers": bsv21TokenWorkers,
     "overlay.bsv21.batch_size": bsv21BatchSize,
     "overlay.bsocial.sub_id": bsocialSubId,
     "overlay.bsocial.concurrency": bsocialConcurrency,
@@ -1664,7 +1687,7 @@ export default function SettingsPage() {
     p2pEnabled, p2pPort, p2pDhtMode, bootstrapPeers, activeTags,
     bapSubId, bapConcurrency, bapBatchSize,
     opnsSubId, opnsConcurrency, opnsBatchSize,
-    bsv21SubId, bsv21Concurrency, bsv21BatchSize,
+    bsv21SubId, bsv21Concurrency, bsv21TokenWorkers, bsv21BatchSize,
     bsocialSubId, bsocialConcurrency, bsocialBatchSize, bsocialMongoUrl,
     ordlockSubId, ordlockConcurrency, ordlockBatchSize,
     ordfsLruSize, ordfsRedisUrl, ordfsRedisTtl,
@@ -1732,6 +1755,7 @@ export default function SettingsPage() {
         // BSV21
         "overlay.bsv21.sub_id": bsv21SubId,
         "overlay.bsv21.concurrency": bsv21Concurrency,
+        "overlay.bsv21.token_workers": bsv21TokenWorkers,
         "overlay.bsv21.batch_size": bsv21BatchSize,
         "overlay.bsv21.whitelist": JSON.stringify(bsv21Whitelist),
         "overlay.bsv21.blacklist": JSON.stringify(bsv21Blacklist),
@@ -1761,6 +1785,7 @@ export default function SettingsPage() {
         "indexer.sync.subscription_ids": indexerSubIds,
         "indexer.sync.concurrency": indexerConcurrency,
         "indexer.sync.batch_size": indexerBatchSize,
+        "indexer.sync.enabled": String(indexerSyncEnabled),
         "indexer.sync.mempool": String(indexerMempool),
         "owner.enabled": String(ownerSync),
         "faucet.enabled": String(faucetEnabled),
@@ -1952,6 +1977,7 @@ export default function SettingsPage() {
               enabled={bsv21Enabled} onToggle={setBsv21Enabled}
               subId={bsv21SubId} setSubId={setBsv21SubId}
               concurrency={bsv21Concurrency} setConcurrency={setBsv21Concurrency}
+              tokenWorkers={bsv21TokenWorkers} setTokenWorkers={setBsv21TokenWorkers}
               batchSize={bsv21BatchSize} setBatchSize={setBsv21BatchSize}
               whitelist={bsv21Whitelist} setWhitelist={setBsv21Whitelist}
               blacklist={bsv21Blacklist} setBlacklist={setBsv21Blacklist}
@@ -1981,6 +2007,7 @@ export default function SettingsPage() {
               indexerSubIds={indexerSubIds} setIndexerSubIds={setIndexerSubIds}
               indexerConcurrency={indexerConcurrency} setIndexerConcurrency={setIndexerConcurrency}
               indexerBatchSize={indexerBatchSize} setIndexerBatchSize={setIndexerBatchSize}
+              indexerSyncEnabled={indexerSyncEnabled} setIndexerSyncEnabled={setIndexerSyncEnabled}
               indexerMempool={indexerMempool} setIndexerMempool={setIndexerMempool}
               ownerSync={ownerSync} setOwnerSync={setOwnerSync}
             />

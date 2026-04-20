@@ -235,7 +235,7 @@ func TestLoadOutputs(t *testing.T) {
 	}
 }
 
-func TestListTokenIds(t *testing.T) {
+func TestListTokens(t *testing.T) {
 	lookup := newTestLookup(t)
 	ctx := context.Background()
 
@@ -243,12 +243,12 @@ func TestListTokenIds(t *testing.T) {
 	insertTokenOutput(t, lookup, "tm_bsv21", "token1_0", "deploy+mint", "p2pkh", "addr1", 1000, 1.0)
 	insertTokenOutput(t, lookup, "tm_bsv21", "token2_0", "deploy+mint", "p2pkh", "addr2", 2000, 2.0)
 
-	ids, err := lookup.ListTokenIds(ctx, "tm_bsv21")
+	tokens, err := lookup.ListTokens(ctx)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(ids) != 2 {
-		t.Errorf("expected 2 token ids, got %d", len(ids))
+	if len(tokens) != 2 {
+		t.Errorf("expected 2 tokens, got %d", len(tokens))
 	}
 }
 

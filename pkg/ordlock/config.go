@@ -18,9 +18,10 @@ const (
 )
 
 type Config struct {
-	Mode   string                     `mapstructure:"mode"`
-	Sync   *overlay.OverlaySyncConfig `mapstructure:"sync"`
-	Routes RoutesConfig               `mapstructure:"routes"`
+	Mode     string                     `mapstructure:"mode"`
+	LogLevel string                     `mapstructure:"log_level"` // debug, info, warn, error
+	Sync     *overlay.OverlaySyncConfig `mapstructure:"sync"`
+	Routes   RoutesConfig               `mapstructure:"routes"`
 }
 
 type RoutesConfig struct {
@@ -41,7 +42,7 @@ func (c *Config) SetDefaults(v *viper.Viper, prefix string) {
 	v.SetDefault(p+"sync.from_block", 783968)
 	v.SetDefault(p+"sync.concurrency", 8)
 	v.SetDefault(p+"sync.batch_size", 1000)
-	v.SetDefault(p+"sync.resolve_dependencies", true)
+	v.SetDefault(p+"sync.resolve_dependencies", false)
 	v.SetDefault(p+"routes.enabled", true)
 	v.SetDefault(p+"routes.prefix", "/market")
 }

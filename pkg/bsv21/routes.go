@@ -1,6 +1,8 @@
 package bsv21
 
 import (
+	"errors"
+	"fmt"
 	"log/slog"
 	"strconv"
 
@@ -8,8 +10,6 @@ import (
 	"github.com/b-open-io/1sat-stack/pkg/parse"
 	"github.com/b-open-io/1sat-stack/pkg/store"
 	"github.com/b-open-io/1sat-stack/pkg/txo"
-	"github.com/b-open-io/1sat-stack/pkg/types"
-	"github.com/bsv-blockchain/go-chaintracks/chaintracks"
 	"github.com/bsv-blockchain/go-sdk/chainhash"
 	"github.com/bsv-blockchain/go-sdk/transaction"
 	"github.com/gofiber/fiber/v2"
@@ -17,20 +17,18 @@ import (
 
 // Routes provides HTTP handlers for BSV21 API
 type Routes struct {
-	storage      *txo.OutputStore
-	lookup       *lookuppkg.BSV21Lookup
-	manager      *TokenManager
-	chaintracker chaintracks.Chaintracks
-	logger       *slog.Logger
+	storage *txo.OutputStore
+	lookup  *lookuppkg.BSV21Lookup
+	manager *TokenManager
+	logger  *slog.Logger
 }
 
 // RoutesDeps holds dependencies for BSV21 routes
 type RoutesDeps struct {
-	Storage      *txo.OutputStore
-	Lookup       *lookuppkg.BSV21Lookup
-	Manager      *TokenManager
-	ChainTracker chaintracks.Chaintracks
-	Logger       *slog.Logger
+	Storage *txo.OutputStore
+	Lookup  *lookuppkg.BSV21Lookup
+	Manager *TokenManager
+	Logger  *slog.Logger
 }
 
 // NewRoutes creates a new Routes instance
@@ -40,11 +38,10 @@ func NewRoutes(cfg *RoutesDeps) *Routes {
 		logger = slog.Default()
 	}
 	return &Routes{
-		storage:      cfg.Storage,
-		lookup:       cfg.Lookup,
-		manager:      cfg.Manager,
-		chaintracker: cfg.ChainTracker,
-		logger:       logger,
+		storage: cfg.Storage,
+		lookup:  cfg.Lookup,
+		manager: cfg.Manager,
+		logger:  logger,
 	}
 }
 
@@ -52,14 +49,13 @@ func NewRoutes(cfg *RoutesDeps) *Routes {
 func (r *Routes) Register(router fiber.Router) {
 	// Static routes must be registered before parameterized routes
 	router.Get("/tokens", r.ListTokens)
-	router.Post("/lookup", r.LookupTokens)
+	router.Post("/tokens", r.LookupTokens)
 
 	// Output validation routes
 	router.Post("/:tokenId/outputs", r.ValidateOutputs)
 	router.Get("/:tokenId/outputs/:outpoint", r.GetTokenOutput)
 
 	router.Get("/:tokenId", r.GetToken)
-	router.Get("/:tokenId/blk/:height", r.GetBlockData)
 	router.Get("/:tokenId/tx/:txid", r.GetTransaction)
 	router.Get("/:tokenId/:lockType/:address/balance", r.GetAddressBalance)
 	router.Get("/:tokenId/:lockType/:address/history", r.GetAddressHistory)
@@ -89,25 +85,10 @@ type OutputData struct {
 // TransactionData represents a transaction with its inputs and outputs
 // @Description Transaction details with inputs, outputs, and optional BEEF
 type TransactionData struct {
-	TxID        string        `json:"txid"`
-	Inputs      []*OutputData `json:"inputs"`
-	Outputs     []*OutputData `json:"outputs"`
-	Beef        []byte        `json:"beef,omitempty"`
-	BlockHeight uint32        `json:"block_height,omitempty"`
-}
-
-// BlockResponse represents block data for a token
-type BlockResponse struct {
-	Block        BlockInfo          `json:"block"`
-	Transactions []*TransactionData `json:"transactions"`
-}
-
-// BlockInfo represents block header information
-type BlockInfo struct {
-	Height            uint32 `json:"height"`
-	Hash              string `json:"hash"`
-	PreviousBlockHash string `json:"previousblockhash"`
-	Timestamp         uint32 `json:"timestamp,omitempty"`
+	TxID    string        `json:"txid"`
+	Inputs  []*OutputData `json:"inputs"`
+	Outputs []*OutputData `json:"outputs"`
+	Beef    []byte        `json:"beef,omitempty"`
 }
 
 // BalanceResponse represents token balance information
@@ -121,12 +102,15 @@ type ErrorResponse struct {
 	Message string `json:"message"`
 }
 
-// ListTokens returns all known token statuses
-// @Summary List BSV21 token statuses
-// @Description Returns active/whitelisted tokens by default. Pass ?all=true to include inactive/unfunded tokens.
+var errTokenNotFound = fmt.Errorf("token not found")
+var errInvalidTokenID = fmt.Errorf("invalid token ID format")
+
+// ListTokens returns all known tokens with status and metadata
+// @Summary List tokens
+// @Description Returns active tokens by default. Pass ?all=true to include all known tokens.
 // @Tags bsv21
 // @Produce json
-// @Param all query bool false "Include inactive/unfunded tokens"
+// @Param all query bool false "Include inactive tokens"
 // @Success 200 {array} TokenStatus
 // @Router /bsv21/tokens [get]
 func (r *Routes) ListTokens(c *fiber.Ctx) error {
@@ -134,8 +118,8 @@ func (r *Routes) ListTokens(c *fiber.Ctx) error {
 	return c.JSON(r.manager.ListTokenStatuses(c.Context(), includeAll))
 }
 
-// GetToken retrieves BSV21 token details and funding status
-// @Summary Get BSV21 token details with funding status
+// GetToken retrieves token details and funding status
+// @Summary Get token details
 // @Tags bsv21
 // @Produce json
 // @Param tokenId path string true "Token ID (outpoint format: txid_vout)"
@@ -146,20 +130,23 @@ func (r *Routes) GetToken(c *fiber.Ctx) error {
 
 	resp, err := r.getTokenDetail(c, tokenIdStr)
 	if err != nil {
-		return err
+		if errors.Is(err, errInvalidTokenID) {
+			return c.Status(fiber.StatusBadRequest).JSON(ErrorResponse{Message: err.Error()})
+		}
+		return c.Status(fiber.StatusNotFound).JSON(ErrorResponse{Message: err.Error()})
 	}
 
 	return c.JSON(resp)
 }
 
 // LookupTokens retrieves details for multiple tokens
-// @Summary Bulk lookup BSV21 token details with funding status
+// @Summary Lookup tokens (bulk)
 // @Tags bsv21
 // @Accept json
 // @Produce json
 // @Param tokenIds body []string true "Array of token IDs (max 100)"
 // @Success 200 {array} TokenDetailResponse
-// @Router /bsv21/lookup [post]
+// @Router /bsv21/tokens [post]
 func (r *Routes) LookupTokens(c *fiber.Ctx) error {
 	var tokenIds []string
 	if err := c.BodyParser(&tokenIds); err != nil {
@@ -194,20 +181,17 @@ func (r *Routes) LookupTokens(c *fiber.Ctx) error {
 	return c.JSON(results)
 }
 
-// getTokenDetail loads combined token data and funding status for a single token ID
+// getTokenDetail loads combined token data and funding status for a single token ID.
+// Returns an error without writing to the response — callers handle their own error responses.
 func (r *Routes) getTokenDetail(c *fiber.Ctx, tokenIdStr string) (*TokenDetailResponse, error) {
 	outpoint, err := transaction.OutpointFromString(tokenIdStr)
 	if err != nil {
-		return nil, c.Status(fiber.StatusBadRequest).JSON(ErrorResponse{
-			Message: "Invalid token ID format: " + tokenIdStr,
-		})
+		return nil, errInvalidTokenID
 	}
 
 	tokenData, err := r.lookup.GetToken(c.Context(), outpoint)
 	if err != nil {
-		return nil, c.Status(fiber.StatusNotFound).JSON(ErrorResponse{
-			Message: "Token not found: " + tokenIdStr,
-		})
+		return nil, errTokenNotFound
 	}
 
 	resp := &TokenDetailResponse{
@@ -215,7 +199,6 @@ func (r *Routes) getTokenDetail(c *fiber.Ctx, tokenIdStr string) (*TokenDetailRe
 		Token:   tokenData,
 	}
 
-	// Include funding status if the token manager is available
 	if r.manager != nil {
 		status, err := r.manager.GetTokenStatus(c.Context(), tokenIdStr)
 		if err == nil {
@@ -226,117 +209,8 @@ func (r *Routes) getTokenDetail(c *fiber.Ctx, tokenIdStr string) (*TokenDetailRe
 	return resp, nil
 }
 
-// GetBlockData retrieves block data for a token at a specific height.
-// Uses the general indexer's bsv21:{tokenId} event (scored by HeightScore) to find
-// outpoints at the requested height, then queries the overlay's token_outputs for data.
-// @Summary Get block data for a token
-// @Tags bsv21
-// @Produce json
-// @Param tokenId path string true "Token ID"
-// @Param height path int true "Block height"
-// @Success 200 {object} BlockResponse
-// @Router /bsv21/{tokenId}/blk/{height} [get]
-func (r *Routes) GetBlockData(c *fiber.Ctx) error {
-	tokenId := c.Params("tokenId")
-	heightStr := c.Params("height")
-
-	height64, err := strconv.ParseUint(heightStr, 10, 32)
-	if err != nil {
-		return c.Status(fiber.StatusBadRequest).JSON(ErrorResponse{
-			Message: "Invalid height parameter",
-		})
-	}
-	height := uint32(height64)
-
-	// Query the general indexer's bsv21:{tokenId} event by HeightScore range
-	score := types.HeightScore(height, 0)
-	scoreEnd := types.HeightScore(height+1, 0)
-
-	cfg := &txo.OutputSearchCfg{
-		SearchCfg: store.SearchCfg{
-			Keys: [][]byte{txo.KeyEvent("bsv21:" + tokenId)},
-			From: &score,
-			To:   &scoreEnd,
-		},
-	}
-
-	results, err := r.storage.Search(c.Context(), cfg)
-	if err != nil {
-		r.logger.Error("GetBlockData search error", "error", err)
-		return c.Status(fiber.StatusInternalServerError).JSON(ErrorResponse{
-			Message: "Failed to get block data",
-		})
-	}
-
-	// Convert search results to outpoints
-	outpoints := make([]*transaction.Outpoint, 0, len(results))
-	for _, r := range results {
-		if op := transaction.NewOutpointFromBytes(r.Member); op != nil {
-			outpoints = append(outpoints, op)
-		}
-	}
-
-	// Load BSV21 data from overlay's token_outputs
-	outputs, err := r.lookup.LoadOutputs(c.Context(), tokenId, outpoints)
-	if err != nil {
-		r.logger.Error("GetBlockData load error", "error", err)
-		return c.Status(fiber.StatusInternalServerError).JSON(ErrorResponse{
-			Message: "Failed to load output data",
-		})
-	}
-
-	// Group outputs by transaction
-	txMap := make(map[string]*TransactionData)
-	for _, output := range outputs {
-		if output == nil {
-			continue
-		}
-		txidStr := output.Outpoint.Txid.String()
-		if _, exists := txMap[txidStr]; !exists {
-			txMap[txidStr] = &TransactionData{
-				TxID:        txidStr,
-				BlockHeight: height,
-			}
-		}
-		od := &OutputData{
-			Vout: output.Outpoint.Index,
-			Data: output.Data,
-		}
-		if output.SpendTxid != nil {
-			s := output.SpendTxid.String()
-			od.Spend = &s
-		}
-		txMap[txidStr].Outputs = append(txMap[txidStr].Outputs, od)
-	}
-
-	transactions := make([]*TransactionData, 0, len(txMap))
-	for _, tx := range txMap {
-		transactions = append(transactions, tx)
-	}
-
-	blockHeader, err := r.chaintracker.GetHeaderByHeight(c.UserContext(), height)
-	if err != nil {
-		return c.JSON(BlockResponse{
-			Block: BlockInfo{
-				Height: height,
-			},
-			Transactions: transactions,
-		})
-	}
-
-	return c.JSON(BlockResponse{
-		Block: BlockInfo{
-			Height:            blockHeader.Height,
-			Hash:              blockHeader.Hash.String(),
-			PreviousBlockHash: blockHeader.Header.PrevHash.String(),
-			Timestamp:         blockHeader.Header.Timestamp,
-		},
-		Transactions: transactions,
-	})
-}
-
-// GetTransaction retrieves transaction details for a token
-// @Summary Get transaction details
+// GetTransaction retrieves token inputs and outputs for a transaction
+// @Summary Get transaction
 // @Tags bsv21
 // @Produce json
 // @Param tokenId path string true "Token ID"
@@ -357,7 +231,6 @@ func (r *Routes) GetTransaction(c *fiber.Ctx) error {
 
 	includeBeef := c.Query("beef") == "true"
 
-	// Find BSV21 outputs for this transaction from overlay DB
 	rawOutputs, err := r.lookup.FindByTxid(c.Context(), tokenId, txid)
 	if err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(ErrorResponse{
@@ -384,8 +257,6 @@ func (r *Routes) GetTransaction(c *fiber.Ctx) error {
 		outputs = append(outputs, od)
 	}
 
-	// Find inputs: outputs consumed by this transaction.
-	// All outputs of the same tx share the same consumed inputs, so query the first one.
 	var inputs []*OutputData
 	consumedOps, err := r.lookup.GetInputsConsumed(c.Context(), tokenId, &rawOutputs[0].Outpoint)
 	if err == nil && len(consumedOps) > 0 {
@@ -422,7 +293,7 @@ func (r *Routes) GetTransaction(c *fiber.Ctx) error {
 }
 
 // GetAddressBalance retrieves token balance for a single address
-// @Summary Get address token balance
+// @Summary Get address balance
 // @Tags bsv21
 // @Produce json
 // @Param tokenId path string true "Token ID"
@@ -450,7 +321,7 @@ func (r *Routes) GetAddressBalance(c *fiber.Ctx) error {
 }
 
 // GetAddressHistory retrieves transaction history for a single address
-// @Summary Get address transaction history
+// @Summary Get address history
 // @Tags bsv21
 // @Produce json
 // @Param tokenId path string true "Token ID"
@@ -484,7 +355,7 @@ func (r *Routes) GetAddressHistory(c *fiber.Ctx) error {
 }
 
 // GetAddressUnspent retrieves unspent outputs for a single address
-// @Summary Get address unspent outputs
+// @Summary Get address unspent
 // @Tags bsv21
 // @Produce json
 // @Param tokenId path string true "Token ID"
@@ -518,7 +389,7 @@ func (r *Routes) GetAddressUnspent(c *fiber.Ctx) error {
 }
 
 // GetMultiAddressBalance retrieves token balance for multiple addresses
-// @Summary Get multi-address token balance
+// @Summary Get balance (multi-address)
 // @Tags bsv21
 // @Accept json
 // @Produce json
@@ -565,7 +436,7 @@ func (r *Routes) GetMultiAddressBalance(c *fiber.Ctx) error {
 }
 
 // GetMultiAddressHistory retrieves transaction history for multiple addresses
-// @Summary Get multi-address transaction history
+// @Summary Get history (multi-address)
 // @Tags bsv21
 // @Accept json
 // @Produce json
@@ -618,7 +489,7 @@ func (r *Routes) GetMultiAddressHistory(c *fiber.Ctx) error {
 }
 
 // GetMultiAddressUnspent retrieves unspent outputs for multiple addresses
-// @Summary Get multi-address unspent outputs
+// @Summary Get unspent (multi-address)
 // @Tags bsv21
 // @Accept json
 // @Produce json
@@ -670,13 +541,12 @@ func (r *Routes) GetMultiAddressUnspent(c *fiber.Ctx) error {
 	return c.JSON(outputs)
 }
 
-// ValidateOutputs validates specific outpoints exist in the token's overlay topic
-// @Summary Validate specific outpoints
-// @Description Checks if specific outpoints exist in the token's overlay. Returns only those found with BSV21 data.
+// ValidateOutputs checks if specific outpoints exist in the token's overlay
+// @Summary Validate outpoints (bulk)
 // @Tags bsv21
 // @Accept json
 // @Produce json
-// @Param tokenId path string true "Token ID (outpoint format: txid_vout)"
+// @Param tokenId path string true "Token ID"
 // @Param outpoints body []string true "Array of outpoints to validate (max 1000)"
 // @Success 200 {array} txo.IndexedOutputResponse
 // @Failure 400 {object} ErrorResponse
@@ -728,12 +598,11 @@ func (r *Routes) ValidateOutputs(c *fiber.Ctx) error {
 	return c.JSON(outputs)
 }
 
-// GetTokenOutput validates a single outpoint exists in the token's overlay
-// @Summary Validate single outpoint
-// @Description Checks if a specific outpoint exists in the token's overlay. Returns 404 if not found.
+// GetTokenOutput checks if a single outpoint exists in the token's overlay
+// @Summary Validate outpoint
 // @Tags bsv21
 // @Produce json
-// @Param tokenId path string true "Token ID (outpoint format: txid_vout)"
+// @Param tokenId path string true "Token ID"
 // @Param outpoint path string true "Outpoint (format: txid_vout or txid.vout)"
 // @Success 200 {object} txo.IndexedOutputResponse
 // @Failure 400 {object} ErrorResponse

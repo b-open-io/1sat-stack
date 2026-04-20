@@ -2,7 +2,6 @@ package overlay
 
 import (
 	"context"
-	"encoding/binary"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -35,19 +34,20 @@ type ErrorClassifier func(err error) ErrorAction
 
 // OverlaySyncConfig configures the overlay sync worker and optional JungleBus subscriber for a single topic.
 type OverlaySyncConfig struct {
-	Enabled             bool            `mapstructure:"enabled"`
-	SubscriptionID      string          `mapstructure:"subscription_id"`      // JungleBus subscription ID (set via env var)
-	QueueName           string          `mapstructure:"queue_name"`           // Queue to consume from (e.g., "bap" → q:bap)
-	FromBlock           uint64          `mapstructure:"from_block"`           // Starting block for JungleBus subscription
-	Concurrency         int             `mapstructure:"concurrency"`          // Worker concurrency (default: 8)
-	PageSize            uint32          `mapstructure:"page_size"`            // Batch fetch size (default: 100)
-	PollDelay           time.Duration   `mapstructure:"poll_delay"`           // Sleep when queue empty (default: 1s)
-	BatchSize           int             `mapstructure:"batch_size"`           // JungleBus batch size (default: 1000)
-	ReorgDepth          uint32          `mapstructure:"reorg_depth"`          // JungleBus reorg depth (default: 6)
-	EnableMempool       bool            `mapstructure:"enable_mempool"`       // JungleBus mempool subscription
-	ResolveDependencies bool            `mapstructure:"resolve_dependencies"` // Use GASP to resolve input dependencies before submit
-	ErrorClassifier     ErrorClassifier `mapstructure:"-"`                    // Classifies Submit errors (set programmatically)
-	OnProcessed         func(string) error `mapstructure:"-"`                 // Called after each successful item with topic name (set programmatically)
+	Enabled             bool               `mapstructure:"enabled"`
+	SubscriptionID      string             `mapstructure:"subscription_id"`      // JungleBus subscription ID (set via env var)
+	QueueName           string             `mapstructure:"queue_name"`           // Queue to consume from (e.g., "bap" → q:bap)
+	FromBlock           uint64             `mapstructure:"from_block"`           // Starting block for JungleBus subscription
+	Concurrency         int                `mapstructure:"concurrency"`          // Worker concurrency (default: 8)
+	PageSize            uint32             `mapstructure:"page_size"`            // Batch fetch size (default: 100)
+	PollDelay           time.Duration      `mapstructure:"poll_delay"`           // Sleep when queue empty (default: 1s)
+	BatchSize           int                `mapstructure:"batch_size"`           // JungleBus batch size (default: 1000)
+	ReorgDepth          uint32             `mapstructure:"reorg_depth"`          // JungleBus reorg depth (default: 6)
+	EnableMempool       bool               `mapstructure:"enable_mempool"`       // JungleBus mempool subscription
+	ResolveDependencies bool               `mapstructure:"resolve_dependencies"` // Use GASP to resolve input dependencies before submit
+	ErrorClassifier     ErrorClassifier    `mapstructure:"-"`                    // Classifies Submit errors (set programmatically)
+	OnProcessed         func(string) error `mapstructure:"-"`                    // Called after each successful item with topic name (set programmatically)
+	Limiter             chan struct{}      `mapstructure:"-"`                    // External shared limiter (optional, set programmatically)
 }
 
 // SubscriberConfig creates a jbsync.SubscriberConfig from this overlay sync config.
@@ -77,7 +77,8 @@ type OverlaySync struct {
 	engine      *engine.Engine
 	logger      *slog.Logger
 	worker      *worker.Worker
-	directSeen  sync.Map // txid dedup for processDirect within a batch
+	gasp        *gasp.GASP // shared GASP instance for dependency resolution
+	directSeen  sync.Map   // txid dedup for processDirect within a batch
 }
 
 // NewOverlaySync creates a new overlay sync worker.
@@ -114,7 +115,10 @@ func NewOverlaySync(
 
 // Start begins processing the queue. Blocks until context is cancelled.
 func (s *OverlaySync) Start(ctx context.Context) error {
-	limiter := make(chan struct{}, s.config.Concurrency)
+	limiter := s.config.Limiter
+	if limiter == nil {
+		limiter = make(chan struct{}, s.config.Concurrency)
+	}
 	handler := s.process
 	if s.config.OnProcessed != nil {
 		inner := handler
@@ -142,6 +146,18 @@ func (s *OverlaySync) Start(ctx context.Context) error {
 		},
 	})
 
+	if s.config.ResolveDependencies {
+		logPrefix := fmt.Sprintf("[GASP %s] ", s.topicName)
+		s.gasp = gasp.NewGASP(gasp.Params{
+			Storage:        engine.NewOverlayGASPStorage(s.topicName, s.engine, nil),
+			Remote:         gaspqueue.NewBeefRemote(s.beefStorage, s.store, ""),
+			Unidirectional: true,
+			Topic:          s.topicName,
+			Concurrency:    s.config.Concurrency,
+			LogPrefix:      &logPrefix,
+		})
+	}
+
 	s.logger.Info("starting overlay sync",
 		"queue", s.config.QueueName,
 		"topic", s.topicName,
@@ -156,39 +172,40 @@ func (s *OverlaySync) Stop() {
 	if s.worker != nil {
 		s.worker.Stop()
 	}
+	if s.gasp != nil {
+		s.gasp.Close()
+		s.gasp = nil
+	}
 }
 
-// parseQueueMember extracts txid and optional vout from a queue member.
-// 36 bytes = outpoint (txid + vout), 32 bytes = txid only (vout = -1).
-func parseQueueMember(member string) (txid *chainhash.Hash, vout int, err error) {
+// parseQueueMember parses a queue member into a txid and optional outpoint.
+// 36 bytes = outpoint (txid + vout), 32 bytes = txid only.
+func parseQueueMember(member string) (txid *chainhash.Hash, outpoint *transaction.Outpoint, err error) {
 	b := []byte(member)
 	switch len(b) {
 	case 36:
-		txid = &chainhash.Hash{}
-		copy(txid[:], b[:32])
-		vout = int(binary.BigEndian.Uint32(b[32:]))
-		return
+		outpoint = transaction.NewOutpointFromBytes(b)
+		return &outpoint.Txid, outpoint, nil
 	case 32:
 		txid = &chainhash.Hash{}
 		copy(txid[:], b)
-		vout = -1
-		return
+		return txid, nil, nil
 	default:
-		return nil, -1, fmt.Errorf("invalid member length: expected 32 or 36, got %d", len(b))
+		return nil, nil, fmt.Errorf("invalid member length: expected 32 or 36, got %d", len(b))
 	}
 }
 
 // process handles a single item from the queue.
 func (s *OverlaySync) process(ctx context.Context, member string, score float64) error {
-	txid, vout, err := parseQueueMember(member)
+	txid, outpoint, err := parseQueueMember(member)
 	if err != nil {
 		return err
 	}
 
-	if !s.config.ResolveDependencies || vout < 0 {
+	if !s.config.ResolveDependencies || outpoint == nil {
 		return s.processDirect(ctx, txid)
 	}
-	return s.processWithGASP(ctx, txid, vout)
+	return s.processOutpoint(ctx, s.gasp, outpoint, &sync.Map{})
 }
 
 // processDirect submits a transaction directly without dependency resolution.
@@ -221,29 +238,13 @@ func (s *OverlaySync) processDirect(ctx context.Context, txid *chainhash.Hash) e
 
 // processWithGASP uses GASP to resolve input dependencies before submitting
 // a specific outpoint.
-func (s *OverlaySync) processWithGASP(ctx context.Context, txid *chainhash.Hash, vout int) error {
-	beefRemote := gaspqueue.NewBeefRemote(s.beefStorage, s.store, "")
-	gaspStorage := engine.NewOverlayGASPStorage(s.topicName, s.engine, nil)
-	seenNodes := &sync.Map{}
-
-	logPrefix := fmt.Sprintf("[GASP %s] ", s.topicName)
-	g := gasp.NewGASP(gasp.Params{
-		Storage:        gaspStorage,
-		Remote:         beefRemote,
-		Unidirectional: true,
-		Topic:          s.topicName,
-		Concurrency:    s.config.Concurrency,
-		LogPrefix:      &logPrefix,
-	})
-
-	return s.processOutpoint(ctx, g, &transaction.Outpoint{Txid: *txid, Index: uint32(vout)}, seenNodes)
-}
-
 func (s *OverlaySync) processOutpoint(ctx context.Context, g *gasp.GASP, outpoint *transaction.Outpoint, seenNodes *sync.Map) error {
+	s.logger.Info("GASP processing outpoint", "outpoint", outpoint.String())
 	if err := g.ProcessUTXOToCompletion(ctx, outpoint, nil, seenNodes); err != nil {
 		var missingErr *MissingInputError
 		if errors.As(err, &missingErr) {
-			s.logger.Info("dependency unresolvable after GASP",
+			s.logger.Info("GASP missing input",
+				"outpoint", outpoint.String(),
 				"txid", missingErr.TransactionID.String(),
 				"missing_txid", missingErr.MissingTxID.String(),
 				"input_index", missingErr.InputIndex,
@@ -251,9 +252,12 @@ func (s *OverlaySync) processOutpoint(ctx context.Context, g *gasp.GASP, outpoin
 			return nil
 		}
 		if errors.Is(err, gasp.ErrGraphNoTopicalAdmittance) {
+			s.logger.Info("GASP not admitted", "outpoint", outpoint.String())
 			return nil
 		}
-		s.logger.Info("GASP processing failed", "outpoint", outpoint.String(), "error", err)
+		s.logger.Info("GASP failed", "outpoint", outpoint.String(), "error", err)
+	} else {
+		s.logger.Info("GASP success", "outpoint", outpoint.String())
 	}
 	return nil
 }

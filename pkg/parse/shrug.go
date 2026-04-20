@@ -29,10 +29,10 @@ func ParseShrug(ctx *ParseContext) (*ParseResult, error) {
 		// Deploy - ID is the outpoint of this output
 		if ctx.Outpoint != nil {
 			result.Events = append(result.Events, "deploy")
-			result.Events = append(result.Events, "id:"+ctx.Outpoint.String())
+			result.Events = append(result.Events, "shrug:"+ctx.Outpoint.String())
 		}
 	} else {
-		result.Events = append(result.Events, "id:"+s.Id.String())
+		result.Events = append(result.Events, "shrug:"+s.Id.String())
 	}
 
 	// Extract owner from suffix script

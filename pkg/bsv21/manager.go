@@ -141,7 +141,7 @@ func (m *TokenManager) createWorker(ctx context.Context, status *TokenStatus) er
 	syncWorker := overlay.NewOverlaySync(
 		&overlay.OverlaySyncConfig{
 			QueueName:           topicName,
-			Concurrency:         m.concurrency,
+			Limiter:             m.limiter,
 			ResolveDependencies: true,
 			OnProcessed: func(name string) error {
 				m.onTokenItemProcessed(tokenId)
@@ -274,13 +274,14 @@ func (m *TokenManager) manageWorkerLifecycle(ctx context.Context) {
 	}
 
 	// Phase 2: Discover tokens needing workers
-	tokenIds, err := m.lookup.ListTokenIds(ctx, "tm_bsv21")
+	tokens, err := m.lookup.ListTokens(ctx)
 	if err != nil {
 		m.logger.Error("failed to query tm_bsv21 topic", "error", err)
 		return
 	}
 
-	for _, tokenId := range tokenIds {
+	for _, token := range tokens {
+		tokenId := token.TokenID
 
 		// Skip if worker already exists - it's self-monitoring
 		if _, exists := m.workers.Load(tokenId); exists {
@@ -294,6 +295,9 @@ func (m *TokenManager) manageWorkerLifecycle(ctx context.Context) {
 			m.logger.Debug("failed to get token status", "error", err, "tokenId", tokenId)
 			continue
 		}
+		status.Symbol = token.Symbol
+		status.Decimals = token.Decimals
+		status.Icon = token.Icon
 
 		if !status.IsActive() {
 			continue
@@ -335,20 +339,20 @@ func (m *TokenManager) manageWorkerLifecycle(ctx context.Context) {
 // refreshInactiveTokens syncs fee addresses for tokens without active workers.
 // This allows inactive tokens to receive new funding deposits.
 func (m *TokenManager) refreshInactiveTokens(ctx context.Context) {
-	tokenIds, err := m.lookup.ListTokenIds(ctx, "tm_bsv21")
+	tokens, err := m.lookup.ListTokens(ctx)
 	if err != nil {
 		m.logger.Error("failed to query tm_bsv21 topic for refresh", "error", err)
 		return
 	}
 
 	refreshed := 0
-	for _, tokenId := range tokenIds {
+	for _, token := range tokens {
 		// Only refresh tokens WITHOUT active workers
-		if _, exists := m.workers.Load(tokenId); exists {
+		if _, exists := m.workers.Load(token.TokenID); exists {
 			continue
 		}
 
-		outpoint, err := transaction.OutpointFromString(tokenId)
+		outpoint, err := transaction.OutpointFromString(token.TokenID)
 		if err != nil {
 			continue
 		}
@@ -359,7 +363,7 @@ func (m *TokenManager) refreshInactiveTokens(ctx context.Context) {
 
 		if m.ownerSync != nil {
 			if err := m.ownerSync.Sync(ctx, feeAddress); err != nil {
-				m.logger.Debug("failed to sync inactive token fee address", "tokenId", tokenId, "error", err)
+				m.logger.Debug("failed to sync inactive token fee address", "tokenId", token.TokenID, "error", err)
 				continue
 			}
 			refreshed++
@@ -373,7 +377,7 @@ func (m *TokenManager) refreshInactiveTokens(ctx context.Context) {
 
 // ListTokenStatuses returns token statuses. By default only active/whitelisted tokens
 // (from the live statuses map) are returned. When includeAll is true, all known tokens
-// are fetched via ListTokenIds and their status is calculated from the DB.
+// are returned with their status calculated from the DB.
 func (m *TokenManager) ListTokenStatuses(ctx context.Context, includeAll bool) []*TokenStatus {
 	if !includeAll {
 		var statuses []*TokenStatus
@@ -384,24 +388,27 @@ func (m *TokenManager) ListTokenStatuses(ctx context.Context, includeAll bool) [
 		return statuses
 	}
 
-	tokenIds, err := m.lookup.ListTokenIds(ctx, "tm_bsv21")
+	tokens, err := m.lookup.ListTokens(ctx)
 	if err != nil {
-		m.logger.Error("failed to list token IDs", "error", err)
+		m.logger.Error("failed to list tokens", "error", err)
 		return nil
 	}
 
-	statuses := make([]*TokenStatus, 0, len(tokenIds))
-	for _, tokenId := range tokenIds {
+	statuses := make([]*TokenStatus, 0, len(tokens))
+	for _, token := range tokens {
 		// Use live status if available
-		if val, ok := m.statuses.Load(tokenId); ok {
+		if val, ok := m.statuses.Load(token.TokenID); ok {
 			statuses = append(statuses, val.(*TokenStatus))
 			continue
 		}
-		status, err := m.GetTokenStatus(ctx, tokenId)
+		status, err := m.GetTokenStatus(ctx, token.TokenID)
 		if err != nil {
-			m.logger.Debug("failed to get token status", "tokenId", tokenId, "error", err)
+			m.logger.Debug("failed to get token status", "tokenId", token.TokenID, "error", err)
 			continue
 		}
+		status.Symbol = token.Symbol
+		status.Decimals = token.Decimals
+		status.Icon = token.Icon
 		statuses = append(statuses, status)
 	}
 	return statuses

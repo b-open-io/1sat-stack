@@ -14,17 +14,16 @@ import (
 
 	"github.com/b-open-io/1sat-stack/admin"
 	"github.com/b-open-io/1sat-stack/landing"
-	"github.com/b-open-io/1sat-stack/sweep"
 	"github.com/b-open-io/1sat-stack/pkg/auth"
 	"github.com/b-open-io/1sat-stack/pkg/bap"
 	"github.com/b-open-io/1sat-stack/pkg/beef"
 	"github.com/b-open-io/1sat-stack/pkg/bsocial"
 	"github.com/b-open-io/1sat-stack/pkg/bsv21"
-	"github.com/b-open-io/1sat-stack/pkg/faucet"
 	configpkg "github.com/b-open-io/1sat-stack/pkg/config"
+	"github.com/b-open-io/1sat-stack/pkg/faucet"
 	"github.com/b-open-io/1sat-stack/pkg/httputil"
+	"github.com/b-open-io/1sat-stack/sweep"
 
-	"github.com/bsv-blockchain/go-wallet-toolbox/pkg/defs"
 	"github.com/b-open-io/1sat-stack/pkg/indexer"
 	"github.com/b-open-io/1sat-stack/pkg/jbsync"
 	"github.com/b-open-io/1sat-stack/pkg/logging"
@@ -32,6 +31,7 @@ import (
 	"github.com/b-open-io/1sat-stack/pkg/ordfs"
 	ordlockpkg "github.com/b-open-io/1sat-stack/pkg/ordlock"
 	"github.com/b-open-io/1sat-stack/pkg/overlay"
+	"github.com/bsv-blockchain/go-wallet-toolbox/pkg/defs"
 
 	"github.com/b-open-io/1sat-stack/pkg/owner"
 	"github.com/b-open-io/1sat-stack/pkg/paymail"
@@ -612,6 +612,9 @@ func (c *Config) applyRuntimeConfig(rc *configpkg.RuntimeConfig) {
 	}
 
 	// BAP overlay
+	if rc.BAPLogLevel != "" {
+		c.BAP.LogLevel = rc.BAPLogLevel
+	}
 	if rc.BAPEnabled {
 		c.BAP.Mode = "embedded"
 		c.Overlay.Mode = "embedded"
@@ -631,6 +634,9 @@ func (c *Config) applyRuntimeConfig(rc *configpkg.RuntimeConfig) {
 	}
 
 	// BSocial overlay
+	if rc.BSocialLogLevel != "" {
+		c.BSocial.LogLevel = rc.BSocialLogLevel
+	}
 	if rc.BSocialEnabled {
 		c.BSocial.Mode = "embedded"
 		c.Overlay.Mode = "embedded"
@@ -650,6 +656,9 @@ func (c *Config) applyRuntimeConfig(rc *configpkg.RuntimeConfig) {
 	}
 
 	// OPNS overlay
+	if rc.OPNSLogLevel != "" {
+		c.OPNS.LogLevel = rc.OPNSLogLevel
+	}
 	if rc.OPNSEnabled {
 		c.OPNS.Mode = "embedded"
 		c.Overlay.Mode = "embedded"
@@ -672,6 +681,9 @@ func (c *Config) applyRuntimeConfig(rc *configpkg.RuntimeConfig) {
 	}
 
 	// OrdLock overlay
+	if rc.OrdLockLogLevel != "" {
+		c.OrdLock.LogLevel = rc.OrdLockLogLevel
+	}
 	if rc.OrdLockEnabled {
 		c.OrdLock.Mode = "embedded"
 		c.Overlay.Mode = "embedded"
@@ -691,6 +703,9 @@ func (c *Config) applyRuntimeConfig(rc *configpkg.RuntimeConfig) {
 	}
 
 	// BSV21
+	if rc.BSV21LogLevel != "" {
+		c.BSV21.LogLevel = rc.BSV21LogLevel
+	}
 	if rc.BSV21Enabled {
 		c.BSV21.Mode = "embedded"
 		c.Overlay.Mode = "embedded"
@@ -706,6 +721,9 @@ func (c *Config) applyRuntimeConfig(rc *configpkg.RuntimeConfig) {
 		}
 		if rc.BSV21SyncBatchSize > 0 {
 			c.BSV21.Sync.BatchSize = rc.BSV21SyncBatchSize
+		}
+		if rc.BSV21TokenWorkers > 0 {
+			c.BSV21.Sync.TokenWorkers = rc.BSV21TokenWorkers
 		}
 	}
 
@@ -1006,7 +1024,7 @@ func (c *Config) Initialize(ctx context.Context, logger *slog.Logger) (*Services
 	// Initialize BSV21
 	if c.BSV21.Mode != bsv21.ModeDisabled && svc.TXO != nil && moduleDeps != nil {
 		start = time.Now()
-		bsv21Svc, err := c.BSV21.Initialize(ctx, logging.NewComponentLogger(logger, "bsv21", ""), svc.TXO.OutputStore, moduleDeps, svc.ConfigStore, svc.Chaintracks, svc.Beef.Storage, svc.JungleBus)
+		bsv21Svc, err := c.BSV21.Initialize(ctx, logging.NewComponentLogger(logger, "bsv21", c.BSV21.LogLevel), svc.TXO.OutputStore, moduleDeps, svc.ConfigStore, svc.Chaintracks, svc.Beef.Storage, svc.JungleBus)
 		if err != nil {
 			return nil, fmt.Errorf("failed to initialize bsv21: %w", err)
 		}
@@ -1031,7 +1049,7 @@ func (c *Config) Initialize(ctx context.Context, logger *slog.Logger) (*Services
 	// Initialize BAP
 	if c.BAP.Mode != bap.ModeDisabled && moduleDeps != nil {
 		start = time.Now()
-		bapLogger := logging.NewComponentLogger(logger, "bap", "")
+		bapLogger := logging.NewComponentLogger(logger, "bap", c.BAP.LogLevel)
 		bapSvc, err := c.BAP.Initialize(ctx, bapLogger, moduleDeps)
 		if err != nil {
 			return nil, fmt.Errorf("failed to initialize bap: %w", err)
@@ -1055,7 +1073,7 @@ func (c *Config) Initialize(ctx context.Context, logger *slog.Logger) (*Services
 	if c.BSocial.Mode != bsocial.ModeDisabled && svc.MongoDB != nil {
 		start = time.Now()
 		bsocialDB := svc.MongoDB.Database("bsocial")
-		bsocialLogger := logging.NewComponentLogger(logger, "bsocial", "")
+		bsocialLogger := logging.NewComponentLogger(logger, "bsocial", c.BSocial.LogLevel)
 		bsocialSvc, err := c.BSocial.Initialize(ctx, bsocialLogger, bsocialDB, moduleDeps)
 		if err != nil {
 			return nil, fmt.Errorf("failed to initialize bsocial: %w", err)
@@ -1078,7 +1096,7 @@ func (c *Config) Initialize(ctx context.Context, logger *slog.Logger) (*Services
 	// Initialize OPNS
 	if c.OPNS.Mode != opns.ModeDisabled && moduleDeps != nil {
 		start = time.Now()
-		opnsLogger := logging.NewComponentLogger(logger, "opns", "")
+		opnsLogger := logging.NewComponentLogger(logger, "opns", c.OPNS.LogLevel)
 		opnsSvc, err := c.OPNS.Initialize(ctx, opnsLogger, moduleDeps)
 		if err != nil {
 			return nil, fmt.Errorf("failed to initialize opns: %w", err)
@@ -1096,7 +1114,6 @@ func (c *Config) Initialize(ctx context.Context, logger *slog.Logger) (*Services
 				opnsSyncCfg = &overlay.OverlaySyncConfig{}
 			}
 			opnsSyncCfg.QueueName = "opns"
-			opnsSyncCfg.ResolveDependencies = true
 			svc.OPNS.Sync = overlay.NewOverlaySync(opnsSyncCfg, "tm_opns", svc.Store.Store, svc.Beef.Storage, svc.OPNS.Engine, opnsLogger)
 		}
 		logger.Info("opns initialized", "duration", time.Since(start).Round(time.Millisecond))
@@ -1105,7 +1122,7 @@ func (c *Config) Initialize(ctx context.Context, logger *slog.Logger) (*Services
 	// Initialize OrdLock
 	if c.OrdLock.Mode != ordlockpkg.ModeDisabled && moduleDeps != nil {
 		start = time.Now()
-		ordlockLogger := logging.NewComponentLogger(logger, "ordlock", "")
+		ordlockLogger := logging.NewComponentLogger(logger, "ordlock", c.OrdLock.LogLevel)
 		ordlockSvc, err := c.OrdLock.Initialize(ctx, ordlockLogger, moduleDeps)
 		if err != nil {
 			return nil, fmt.Errorf("failed to initialize ordlock: %w", err)
@@ -1119,9 +1136,6 @@ func (c *Config) Initialize(ctx context.Context, logger *slog.Logger) (*Services
 			}
 			if syncCfg.QueueName == "" {
 				syncCfg.QueueName = ordlockpkg.QueueName
-			}
-			if !syncCfg.ResolveDependencies {
-				syncCfg.ResolveDependencies = true
 			}
 			svc.OrdLock.Sync = overlay.NewOverlaySync(syncCfg, ordlockpkg.TopicName, svc.Store.Store, svc.Beef.Storage, svc.OrdLock.Engine, ordlockLogger)
 		}
@@ -1314,7 +1328,7 @@ func (c *Config) Initialize(ctx context.Context, logger *slog.Logger) (*Services
 				crawlCfg := c.OPNS.Crawl
 				crawlCfg.Enabled = true
 				crawlCfg.JungleBusURL = c.JungleBus.URL
-				opnsLogger := logging.NewComponentLogger(logger, "opns", "")
+				opnsLogger := logging.NewComponentLogger(logger, "opns", c.OPNS.LogLevel)
 				svc.OPNS.Crawl = opns.NewGenesisCrawl(crawlCfg, svc.Beef.Storage, svc.OPNS.Engine, opnsLogger)
 				go func() {
 					if err := svc.OPNS.Crawl.Start(ctx); err != nil {
@@ -2030,8 +2044,8 @@ func (svc *Services) StartSubscribers(ctx context.Context, logger *slog.Logger) 
 		logger.Info("started JungleBus subscribers", "count", len(svc.JBSubscribers))
 	}
 
-	// Start EventBridges (PubSub → overlay queues)
-	if svc.PubSub != nil {
+	// Start EventBridges (PubSub → overlay queues + direct submit)
+	if svc.PubSub != nil && svc.Beef != nil {
 		if svc.BAP != nil && svc.BAP.Sync != nil {
 			bridge := overlay.NewEventBridge(&overlay.EventBridgeConfig{
 				PubSub:   svc.PubSub.PubSub,
@@ -2040,7 +2054,10 @@ func (svc *Services) StartSubscribers(ctx context.Context, logger *slog.Logger) 
 				QueueFunc: func(ev pubsub.Event) string {
 					return string(txo.KeyQueue("bap"))
 				},
-				Logger: logger,
+				Logger:       logger,
+				Engine:       svc.BAP.Engine,
+				BeefStorage:  svc.Beef.Storage,
+				SubmitBuffer: 64,
 			})
 			if err := bridge.Start(ctx); err != nil {
 				logger.Error("failed to start BAP event bridge", "error", err)
@@ -2054,7 +2071,10 @@ func (svc *Services) StartSubscribers(ctx context.Context, logger *slog.Logger) 
 				QueueFunc: func(ev pubsub.Event) string {
 					return string(txo.KeyQueue("bsocial"))
 				},
-				Logger: logger,
+				Logger:       logger,
+				Engine:       svc.BSocial.Engine,
+				BeefStorage:  svc.Beef.Storage,
+				SubmitBuffer: 64,
 			})
 			if err := bridge.Start(ctx); err != nil {
 				logger.Error("failed to start BSocial event bridge", "error", err)
@@ -2068,7 +2088,10 @@ func (svc *Services) StartSubscribers(ctx context.Context, logger *slog.Logger) 
 				QueueFunc: func(ev pubsub.Event) string {
 					return string(txo.KeyQueue("opns"))
 				},
-				Logger: logger,
+				Logger:       logger,
+				Engine:       svc.OPNS.Engine,
+				BeefStorage:  svc.Beef.Storage,
+				SubmitBuffer: 64,
 			})
 			if err := bridge.Start(ctx); err != nil {
 				logger.Error("failed to start OPNS event bridge", "error", err)
@@ -2082,10 +2105,34 @@ func (svc *Services) StartSubscribers(ctx context.Context, logger *slog.Logger) 
 				QueueFunc: func(ev pubsub.Event) string {
 					return string(txo.KeyQueue(ordlockpkg.QueueName))
 				},
-				Logger: logger,
+				Logger:       logger,
+				Engine:       svc.OrdLock.Engine,
+				BeefStorage:  svc.Beef.Storage,
+				SubmitBuffer: 64,
 			})
 			if err := bridge.Start(ctx); err != nil {
 				logger.Error("failed to start OrdLock event bridge", "error", err)
+			}
+		}
+		if svc.BSV21 != nil && svc.BSV21.Sync != nil {
+			bridge := overlay.NewEventBridge(&overlay.EventBridgeConfig{
+				PubSub:   svc.PubSub.PubSub,
+				Store:    svc.Store.Store,
+				Patterns: []string{"bsv21:*"},
+				QueueFunc: func(ev pubsub.Event) string {
+					tokenId := strings.TrimPrefix(ev.Topic, "bsv21:")
+					if tokenId == "" {
+						return ""
+					}
+					return "q:tm_" + tokenId
+				},
+				Logger:       logger,
+				Engine:       svc.BSV21.Engine,
+				BeefStorage:  svc.Beef.Storage,
+				SubmitBuffer: 64,
+			})
+			if err := bridge.Start(ctx); err != nil {
+				logger.Error("failed to start BSV21 event bridge", "error", err)
 			}
 		}
 	}

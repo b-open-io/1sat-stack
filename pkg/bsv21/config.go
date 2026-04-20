@@ -25,7 +25,8 @@ const (
 
 // Config holds BSV21 configuration
 type Config struct {
-	Mode string `mapstructure:"mode"` // disabled, embedded, remote
+	Mode     string `mapstructure:"mode"`      // disabled, embedded, remote
+	LogLevel string `mapstructure:"log_level"` // debug, info, warn, error
 
 	// Indexer settings
 	WhitelistTokens []string `mapstructure:"whitelist_tokens"` // Token IDs to index (empty = all)
@@ -141,10 +142,9 @@ func (c *Config) Initialize(
 		// Create routes if enabled
 		if c.Routes.Enabled && txoStorage != nil {
 			routesDeps := &RoutesDeps{
-				Storage:      txoStorage,
-				Lookup:       bsv21Lookup,
-				ChainTracker: chaintracker,
-				Logger:       logger,
+				Storage: txoStorage,
+				Lookup:  bsv21Lookup,
+				Logger:  logger,
 			}
 			if svc.Sync != nil && svc.Sync.manager != nil {
 				routesDeps.Manager = svc.Sync.manager

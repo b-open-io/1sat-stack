@@ -19,9 +19,10 @@ const (
 
 // Config holds BSocial configuration.
 type Config struct {
-	Mode   string                     `mapstructure:"mode"` // disabled, embedded
-	Sync   *overlay.OverlaySyncConfig `mapstructure:"sync"`
-	Routes RoutesConfig               `mapstructure:"routes"`
+	Mode     string                     `mapstructure:"mode"`      // disabled, embedded
+	LogLevel string                     `mapstructure:"log_level"` // debug, info, warn, error
+	Sync     *overlay.OverlaySyncConfig `mapstructure:"sync"`
+	Routes   RoutesConfig               `mapstructure:"routes"`
 }
 
 // RoutesConfig holds route configuration.

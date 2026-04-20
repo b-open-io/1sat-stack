@@ -167,6 +167,7 @@ pkg/store/KEYS.md               # Package-level storage key reference
 | `docs/architecture/OVERLAY_ARCHITECTURE.md` | Overlay engine, topics, lookups, data flow |
 | `docs/architecture/BSV21_PIPELINE.md` | BSV21 token processing pipeline |
 | `docs/architecture/INDEXING_ARCHITECTURE.md` | Indexing flow design and parser event plan |
+| `docs/architecture/OVERLAY_SYNC_ROUTING.md` | Broadcast vs JungleBus paths, event bridges, per-module strategies |
 | `pkg/store/KEYS.md` | All storage keys, prefixes, score format |
 
 ## Development Workflow

@@ -15,9 +15,9 @@ type RuntimeConfig struct {
 	AuthMode      string // "local" or "authenticated"
 
 	// Server
-	ServerPort     int
-	ServerHost     string
-	ServerBasePath string
+	ServerPort      int
+	ServerHost      string
+	ServerBasePath  string
 	ServerBodyLimit string
 
 	// Network
@@ -32,8 +32,8 @@ type RuntimeConfig struct {
 	AuthSessionTTL  string
 
 	// Store
-	StoreMode     string // "embedded" or "disabled"
-	StoreProvider string // "badger" or "redis"
+	StoreMode       string // "embedded" or "disabled"
+	StoreProvider   string // "badger" or "redis"
 	StoreBadgerPath string
 	StoreRedisURL   string
 
@@ -68,35 +68,37 @@ type RuntimeConfig struct {
 	JungleBusToken string
 
 	// Indexer
-	IndexerMode              string // "embedded" or "disabled"
-	IndexerLogLevel          string
-	IndexerVerbose           bool
-	IndexerParsers           string // JSON array of parse tag names
-	IndexerSyncEnabled       bool
+	IndexerMode                string // "embedded" or "disabled"
+	IndexerLogLevel            string
+	IndexerVerbose             bool
+	IndexerParsers             string // JSON array of parse tag names
+	IndexerSyncEnabled         bool
 	IndexerSyncSubscriptionIDs string // comma-separated
-	IndexerSyncConcurrency   int
-	IndexerSyncBatchSize     int
-	IndexerSyncMempool       bool
+	IndexerSyncConcurrency     int
+	IndexerSyncBatchSize       int
+	IndexerSyncMempool         bool
 
 	// Overlay engine (shared)
-	OverlayStoragePath    string
-	OverlayStorageBackend string // "sqlite" or "postgres"
-	OverlayP2PEnabled     bool
-	OverlayP2PPort        string
-	OverlayP2PDHTMode     string
+	OverlayStoragePath       string
+	OverlayStorageBackend    string // "sqlite" or "postgres"
+	OverlayP2PEnabled        bool
+	OverlayP2PPort           string
+	OverlayP2PDHTMode        string
 	OverlayP2PBootstrapPeers string
 
 	// BAP overlay
-	BAPEnabled          bool
-	BAPSyncSubID        string
-	BAPSyncConcurrency  int
-	BAPSyncBatchSize    int
+	BAPEnabled         bool
+	BAPSyncSubID       string
+	BAPSyncConcurrency int
+	BAPSyncBatchSize   int
+	BAPLogLevel        string
 
 	// BSocial overlay
-	BSocialEnabled          bool
-	BSocialSyncSubID        string
-	BSocialSyncConcurrency  int
-	BSocialSyncBatchSize    int
+	BSocialEnabled         bool
+	BSocialSyncSubID       string
+	BSocialSyncConcurrency int
+	BSocialSyncBatchSize   int
+	BSocialLogLevel        string
 
 	// OPNS overlay
 	OPNSEnabled          bool
@@ -104,24 +106,28 @@ type RuntimeConfig struct {
 	OPNSCrawlConcurrency int
 	OPNSSyncBatchSize    int
 	OPNSPaymail          bool
+	OPNSLogLevel         string
 
 	// OrdLock overlay
-	OrdLockEnabled          bool
-	OrdLockSyncSubID        string
-	OrdLockSyncConcurrency  int
-	OrdLockSyncBatchSize    int
+	OrdLockEnabled         bool
+	OrdLockSyncSubID       string
+	OrdLockSyncConcurrency int
+	OrdLockSyncBatchSize   int
+	OrdLockLogLevel        string
 
 	// BSV21
-	BSV21Enabled          bool
-	BSV21SyncSubID        string
-	BSV21SyncConcurrency  int
-	BSV21SyncBatchSize    int
+	BSV21Enabled         bool
+	BSV21SyncSubID       string
+	BSV21SyncConcurrency int
+	BSV21SyncBatchSize   int
+	BSV21TokenWorkers    int
+	BSV21LogLevel        string
 
 	// ORDFS
-	ORDFSEnabled      bool
-	ORDFSLRUSize      int
-	ORDFSRedisURL     string
-	ORDFSRedisTTL     string
+	ORDFSEnabled  bool
+	ORDFSLRUSize  int
+	ORDFSRedisURL string
+	ORDFSRedisTTL string
 
 	// Owner
 	OwnerMode string // "embedded" or "disabled"
@@ -131,10 +137,10 @@ type RuntimeConfig struct {
 	PaymailDBPath string
 
 	// Faucet
-	FaucetEnabled                bool
-	FaucetDefaultDropSats        int
+	FaucetEnabled                 bool
+	FaucetDefaultDropSats         int
 	FaucetDefaultMaxConsolidation int
-	FaucetDBPath                 string
+	FaucetDBPath                  string
 
 	// MongoDB
 	MongoDBURL string
@@ -238,12 +244,14 @@ func LoadRuntimeConfig(ctx context.Context, cs Store, logger *slog.Logger) (*Run
 	rc.BAPSyncSubID = getString(ctx, cs, "overlay.bap.sub_id")
 	rc.BAPSyncConcurrency = getInt(ctx, cs, "overlay.bap.concurrency")
 	rc.BAPSyncBatchSize = getInt(ctx, cs, "overlay.bap.batch_size")
+	rc.BAPLogLevel = getString(ctx, cs, "overlay.bap.log_level")
 
 	// BSocial
 	rc.BSocialEnabled = getBool(ctx, cs, "overlay.bsocial.enabled")
 	rc.BSocialSyncSubID = getString(ctx, cs, "overlay.bsocial.sub_id")
 	rc.BSocialSyncConcurrency = getInt(ctx, cs, "overlay.bsocial.concurrency")
 	rc.BSocialSyncBatchSize = getInt(ctx, cs, "overlay.bsocial.batch_size")
+	rc.BSocialLogLevel = getString(ctx, cs, "overlay.bsocial.log_level")
 
 	// OPNS
 	rc.OPNSEnabled = getBool(ctx, cs, "overlay.opns.enabled")
@@ -251,18 +259,22 @@ func LoadRuntimeConfig(ctx context.Context, cs Store, logger *slog.Logger) (*Run
 	rc.OPNSCrawlConcurrency = getInt(ctx, cs, "overlay.opns.concurrency")
 	rc.OPNSSyncBatchSize = getInt(ctx, cs, "overlay.opns.batch_size")
 	rc.OPNSPaymail = getBool(ctx, cs, "overlay.opns.paymail")
+	rc.OPNSLogLevel = getString(ctx, cs, "overlay.opns.log_level")
 
 	// OrdLock
 	rc.OrdLockEnabled = getBool(ctx, cs, "overlay.ordlock.enabled")
 	rc.OrdLockSyncSubID = getString(ctx, cs, "overlay.ordlock.sub_id")
 	rc.OrdLockSyncConcurrency = getInt(ctx, cs, "overlay.ordlock.concurrency")
 	rc.OrdLockSyncBatchSize = getInt(ctx, cs, "overlay.ordlock.batch_size")
+	rc.OrdLockLogLevel = getString(ctx, cs, "overlay.ordlock.log_level")
 
 	// BSV21
 	rc.BSV21Enabled = getBool(ctx, cs, "overlay.bsv21.enabled")
 	rc.BSV21SyncSubID = getString(ctx, cs, "overlay.bsv21.sub_id")
 	rc.BSV21SyncConcurrency = getInt(ctx, cs, "overlay.bsv21.concurrency")
 	rc.BSV21SyncBatchSize = getInt(ctx, cs, "overlay.bsv21.batch_size")
+	rc.BSV21TokenWorkers = getInt(ctx, cs, "overlay.bsv21.token_workers")
+	rc.BSV21LogLevel = getString(ctx, cs, "overlay.bsv21.log_level")
 
 	// ORDFS
 	rc.ORDFSEnabled = getBool(ctx, cs, "ordfs.enabled")

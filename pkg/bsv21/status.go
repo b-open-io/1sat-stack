@@ -12,6 +12,11 @@ type TokenStatus struct {
 	TokenID    string `json:"token_id"`
 	FeeAddress string `json:"fee_address"`
 
+	// Token metadata
+	Symbol   *string `json:"symbol,omitempty"`
+	Decimals *uint8  `json:"decimals,omitempty"`
+	Icon     *string `json:"icon,omitempty"`
+
 	// List status
 	IsWhitelisted bool `json:"is_whitelisted"`
 	IsBlacklisted bool `json:"is_blacklisted"`
