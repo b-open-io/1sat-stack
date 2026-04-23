@@ -136,12 +136,6 @@ type RuntimeConfig struct {
 	PaymailMode   string // "enabled" or "disabled"
 	PaymailDBPath string
 
-	// Faucet
-	FaucetEnabled                 bool
-	FaucetDefaultDropSats         int
-	FaucetDefaultMaxConsolidation int
-	FaucetDBPath                  string
-
 	// MongoDB
 	MongoDBURL string
 
@@ -293,12 +287,6 @@ func LoadRuntimeConfig(ctx context.Context, cs Store, logger *slog.Logger) (*Run
 	// Paymail
 	rc.PaymailMode = getString(ctx, cs, "paymail.mode")
 	rc.PaymailDBPath = getString(ctx, cs, "paymail.db_path")
-
-	// Faucet
-	rc.FaucetEnabled = getBool(ctx, cs, "faucet.enabled")
-	rc.FaucetDefaultDropSats = getInt(ctx, cs, "faucet.default_drop_sats")
-	rc.FaucetDefaultMaxConsolidation = getInt(ctx, cs, "faucet.default_max_consolidation_inputs")
-	rc.FaucetDBPath = getString(ctx, cs, "faucet.db_path")
 
 	// MongoDB
 	rc.MongoDBURL = getString(ctx, cs, "overlay.bsocial.mongo_url")

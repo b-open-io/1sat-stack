@@ -20,7 +20,6 @@ import (
 	"github.com/b-open-io/1sat-stack/pkg/bsocial"
 	"github.com/b-open-io/1sat-stack/pkg/bsv21"
 	configpkg "github.com/b-open-io/1sat-stack/pkg/config"
-	"github.com/b-open-io/1sat-stack/pkg/faucet"
 	"github.com/b-open-io/1sat-stack/pkg/httputil"
 	"github.com/b-open-io/1sat-stack/sweep"
 
@@ -147,9 +146,6 @@ type Config struct {
 
 	// MessageBox URL for remote messagebox server (used by paymail)
 	MessageBoxURL string `mapstructure:"messagebox_url"`
-
-	// Faucet service
-	Faucet faucet.Config `mapstructure:"faucet"`
 }
 
 // MongoDBConfig holds shared MongoDB connection configuration.
@@ -243,26 +239,25 @@ func (c *Config) CreateLogger(logLevelOverride string) *slog.Logger {
 
 // Services holds all initialized services
 type Services struct {
-	Store      *store.Services
-	PubSub     *pubsub.Services
-	Beef       *beef.Services
-	TXO        *txo.Services
-	Indexer    *indexer.Services
-	BSV21      *bsv21.Services
-	BAP        *bap.Services
-	BSocial    *bsocial.Services
-	OPNS       *opns.Services
-	OrdLock    *ordlockpkg.Services
-	Overlay    *overlay.Services
-	Spends     *spends.Services
-	ORDFS      *ordfs.Services
-	Own        *owner.Services
-	Admin      *admin.Services
-	Sweep      *sweep.Services
-	Landing    *landing.Services
+	Store   *store.Services
+	PubSub  *pubsub.Services
+	Beef    *beef.Services
+	TXO     *txo.Services
+	Indexer *indexer.Services
+	BSV21   *bsv21.Services
+	BAP     *bap.Services
+	BSocial *bsocial.Services
+	OPNS    *opns.Services
+	OrdLock *ordlockpkg.Services
+	Overlay *overlay.Services
+	Spends  *spends.Services
+	ORDFS   *ordfs.Services
+	Own     *owner.Services
+	Admin   *admin.Services
+	Sweep   *sweep.Services
+	Landing *landing.Services
 	Wallet  *wallet.Services
 	Paymail *paymail.Services
-	Faucet  *faucet.Services
 
 	// ConfigStore for admin data (users, progress, settings)
 	ConfigStore configpkg.Store
@@ -364,7 +359,6 @@ func (c *Config) SetDefaults(v *viper.Viper) {
 	c.Auth.SetDefaults(v, "auth")
 	c.Paymail.SetDefaults(v, "paymail")
 	v.SetDefault("messagebox_url", "")
-	c.Faucet.SetDefaults(v, "faucet")
 }
 
 // resolvePath resolves a path relative to the data dir.
@@ -398,7 +392,6 @@ func (c *Config) resolveAllPaths() {
 	c.Overlay.P2P.StoragePath = c.resolvePath(c.Overlay.P2P.StoragePath)
 	c.P2P.StoragePath = c.resolvePath(c.P2P.StoragePath)
 	c.Paymail.DBPath = c.resolvePath(c.Paymail.DBPath)
-	c.Faucet.DBPath = c.resolvePath(c.Faucet.DBPath)
 
 	for i := range c.Beef.Chain {
 		c.Beef.Chain[i].Filesystem.Path = c.resolvePath(c.Beef.Chain[i].Filesystem.Path)
@@ -752,20 +745,6 @@ func (c *Config) applyRuntimeConfig(rc *configpkg.RuntimeConfig) {
 	}
 	if rc.PaymailDBPath != "" {
 		c.Paymail.DBPath = rc.PaymailDBPath
-	}
-
-	// Faucet
-	if rc.FaucetEnabled {
-		c.Faucet.Enabled = true
-	}
-	if rc.FaucetDefaultDropSats > 0 {
-		c.Faucet.DefaultDropSats = int64(rc.FaucetDefaultDropSats)
-	}
-	if rc.FaucetDefaultMaxConsolidation > 0 {
-		c.Faucet.DefaultMaxConsolidationInputs = int64(rc.FaucetDefaultMaxConsolidation)
-	}
-	if rc.FaucetDBPath != "" {
-		c.Faucet.DBPath = rc.FaucetDBPath
 	}
 
 	// MongoDB
@@ -1414,23 +1393,6 @@ func (c *Config) Initialize(ctx context.Context, logger *slog.Logger) (*Services
 
 	}
 
-	// Initialize Faucet service
-	if c.Faucet.Enabled {
-		if svc.Wallet == nil {
-			return nil, fmt.Errorf("faucet requires wallet service to be enabled")
-		}
-		faucetDeps := &faucet.InitializeDeps{
-			Wallet:           svc.Wallet,
-			ServerPrivateKey: c.Wallet.ServerPrivateKey,
-			Network:          c.Network,
-		}
-		faucetSvc, err := c.Faucet.Initialize(ctx, logging.NewComponentLogger(logger, "faucet", ""), c.DataDir, faucetDeps)
-		if err != nil {
-			return nil, fmt.Errorf("faucet init failed: %w", err)
-		}
-		svc.Faucet = faucetSvc
-	}
-
 	// Initialize Paymail service (requires OpNS + ORDFS + Arcade, optionally remote MessageBox)
 	if c.Paymail.Mode != paymail.ModeDisabled && c.Paymail.Mode != "" {
 		paymailDeps := &paymail.InitializeDeps{}
@@ -1771,18 +1733,6 @@ func (c *Config) RegisterRoutes(app *fiber.App, svc *Services) {
 		slog.Debug("registered paymail .well-known/bsvalias route")
 	}
 
-	// Register Faucet routes
-	if svc.Faucet != nil && svc.Faucet.Routes != nil && svc.AuthMiddleware != nil {
-		prefix := c.Faucet.Routes.Prefix
-		if prefix == "" {
-			prefix = "/faucet"
-		}
-		faucetGroup := api.Group(prefix)
-		adminGuard := (&faucet.Handlers{Svc: svc.Faucet.Service}).AdminGuard()
-		svc.Faucet.Routes.Register(faucetGroup, svc.AuthMiddleware.Handler(), adminGuard)
-		slog.Debug("registered faucet routes", "prefix", c.Server.BasePath+prefix)
-	}
-
 	// Health check endpoint
 	api.Get("/health", handleHealth(svc.Chaintracks))
 
@@ -1902,12 +1852,6 @@ func (svc *Services) Close() error {
 	var errs []error
 
 	// Close in reverse order of initialization
-	if svc.Faucet != nil {
-		if err := svc.Faucet.Close(); err != nil {
-			errs = append(errs, fmt.Errorf("faucet close: %w", err))
-		}
-	}
-
 	if svc.Wallet != nil {
 		if err := svc.Wallet.Close(); err != nil {
 			errs = append(errs, fmt.Errorf("wallet close: %w", err))
