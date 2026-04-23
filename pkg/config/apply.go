@@ -37,14 +37,6 @@ type RuntimeConfig struct {
 	StoreBadgerPath string
 	StoreRedisURL   string
 
-	// Wallet
-	WalletMode        string // "embedded", "remote", or "disabled"
-	WalletName        string
-	WalletDBEngine    string // "sqlite" or "postgres"
-	WalletSQLitePath  string
-	WalletPostgresURL string
-	WalletRemoteURL   string // URL of standalone wallet-server (remote mode)
-
 	// MessageBox
 	MessageBoxURL string // URL of standalone messagebox server
 
@@ -183,14 +175,6 @@ func LoadRuntimeConfig(ctx context.Context, cs Store, logger *slog.Logger) (*Run
 	rc.StoreProvider = getString(ctx, cs, "store.provider")
 	rc.StoreBadgerPath = getString(ctx, cs, "store.badger.path")
 	rc.StoreRedisURL = getString(ctx, cs, "store.redis.url")
-
-	// Wallet
-	rc.WalletMode = getString(ctx, cs, "wallet.mode")
-	rc.WalletName = getString(ctx, cs, "wallet.name")
-	rc.WalletDBEngine = getString(ctx, cs, "wallet.db.engine")
-	rc.WalletSQLitePath = getString(ctx, cs, "wallet.db.sqlite.connection_string")
-	rc.WalletPostgresURL = getString(ctx, cs, "wallet.postgres_connection_string")
-	rc.WalletRemoteURL = getString(ctx, cs, "wallet.remote_url")
 
 	// MessageBox
 	rc.MessageBoxURL = getString(ctx, cs, "messagebox_url")

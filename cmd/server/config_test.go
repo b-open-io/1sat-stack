@@ -74,7 +74,7 @@ func TestConfigInitializeDisabled(t *testing.T) {
 		Overlay: overlay.Config{Mode: overlay.ModeDisabled},
 		ORDFS:   ordfs.Config{Enabled: false},
 		Spends:  spends.Config{Mode: spends.ModeDisabled},
-		Wallet:  wallet.Config{Mode: wallet.ModeDisabled},
+		Wallet:  wallet.Config{},
 	}
 
 	ctx := context.Background()

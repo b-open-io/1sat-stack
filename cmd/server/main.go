@@ -148,8 +148,8 @@ func main() {
 	// Store LogStore for admin API
 	cfg.LogStore = logResult.LogStore
 
-	// Resolve server private key if wallet is enabled but no key configured
-	if cfg.Wallet.Mode != wallet.ModeDisabled && cfg.Wallet.ServerPrivateKey == "" {
+	// Resolve server private key if not yet configured
+	if cfg.Wallet.ServerPrivateKey == "" {
 		wif, err := wallet.ResolveServerKey(filepath.Join(resolvedDataDir, "server.key"), log)
 		if err != nil {
 			log.Error("failed to resolve server private key", "error", err)

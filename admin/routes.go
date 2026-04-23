@@ -1009,21 +1009,16 @@ func (r *Routes) handleDenyRequest(c *fiber.Ctx) error {
 
 // SetupCompleteRequest is the request body for completing the setup wizard.
 type SetupCompleteRequest struct {
-	AuthMode            string `json:"authMode"`
-	WIF                 string `json:"wif"`
-	AdminIdentityKey    string `json:"adminIdentityKey"`
-	WalletMode          string `json:"walletMode"`
-	WalletBackend       string `json:"walletBackend"`
-	WalletSqlitePath    string `json:"walletSqlitePath"`
-	WalletPostgresUrl   string `json:"walletPostgresUrl"`
-	WalletRemoteUrl     string `json:"walletRemoteUrl"`
-	ChaintracksBackend  string `json:"chaintracksBackend"`
-	ChaintracksPath     string `json:"chaintracksPath"`
-	ChaintracksUrl      string `json:"chaintracksUrl"`
-	ArcadeBackend       string `json:"arcadeBackend"`
-	ArcadePath          string `json:"arcadePath"`
-	ArcadeUrl           string `json:"arcadeUrl"`
-	MessageboxUrl       string `json:"messageboxUrl"`
+	AuthMode           string `json:"authMode"`
+	WIF                string `json:"wif"`
+	AdminIdentityKey   string `json:"adminIdentityKey"`
+	ChaintracksBackend string `json:"chaintracksBackend"`
+	ChaintracksPath    string `json:"chaintracksPath"`
+	ChaintracksUrl     string `json:"chaintracksUrl"`
+	ArcadeBackend      string `json:"arcadeBackend"`
+	ArcadePath         string `json:"arcadePath"`
+	ArcadeUrl          string `json:"arcadeUrl"`
+	MessageboxUrl      string `json:"messageboxUrl"`
 }
 
 // handleSetupComplete writes the full setup wizard configuration to the config store.
@@ -1057,18 +1052,13 @@ func (r *Routes) handleSetupComplete(c *fiber.Ctx) error {
 
 	// Only write config keys if the user changed them from defaults
 	overrides := map[string]struct{ value, defaultVal string }{
-		"wallet.mode":                        {req.WalletMode, "embedded"},
-		"wallet.db.engine":                   {req.WalletBackend, "sqlite"},
-		"wallet.db.sqlite.connection_string": {req.WalletSqlitePath, "wallet.sqlite"},
-		"wallet.postgres_connection_string":  {req.WalletPostgresUrl, ""},
-		"wallet.remote_url":                  {req.WalletRemoteUrl, ""},
-		"chaintracks.mode":      {req.ChaintracksBackend, "embedded"},
-		"chaintracks.path":      {req.ChaintracksPath, "chaintracks"},
-		"chaintracks.url":       {req.ChaintracksUrl, ""},
-		"arcade.mode":           {req.ArcadeBackend, "embedded"},
-		"arcade.path":           {req.ArcadePath, "arcade/arcade.db"},
-		"arcade.url":            {req.ArcadeUrl, ""},
-		"messagebox_url":        {req.MessageboxUrl, ""},
+		"chaintracks.mode": {req.ChaintracksBackend, "embedded"},
+		"chaintracks.path": {req.ChaintracksPath, "chaintracks"},
+		"chaintracks.url":  {req.ChaintracksUrl, ""},
+		"arcade.mode":      {req.ArcadeBackend, "embedded"},
+		"arcade.path":      {req.ArcadePath, "arcade/arcade.db"},
+		"arcade.url":       {req.ArcadeUrl, ""},
+		"messagebox_url":   {req.MessageboxUrl, ""},
 	}
 
 	for key, o := range overrides {
@@ -1121,11 +1111,6 @@ func (r *Routes) handleSetupComplete(c *fiber.Ctx) error {
 // SetupConfigResponse is the response for GET /setup/config.
 type SetupConfigResponse struct {
 	AuthMode           string `json:"authMode"`
-	WalletMode         string `json:"walletMode"`
-	WalletBackend      string `json:"walletBackend"`
-	WalletSqlitePath   string `json:"walletSqlitePath"`
-	WalletPostgresUrl  string `json:"walletPostgresUrl"`
-	WalletRemoteUrl    string `json:"walletRemoteUrl"`
 	ChaintracksBackend string `json:"chaintracksBackend"`
 	ChaintracksPath    string `json:"chaintracksPath"`
 	ChaintracksUrl     string `json:"chaintracksUrl"`
@@ -1147,19 +1132,14 @@ func (r *Routes) handleGetSetupConfig(c *fiber.Ctx) error {
 	ctx := c.Context()
 
 	keys := map[string]*string{
-		"auth.mode":             new(string),
-		"wallet.mode":           new(string),
-		"wallet.db.engine":      new(string),
-		"wallet.db.sqlite.connection_string": new(string),
-		"wallet.postgres_connection_string": new(string),
-		"wallet.remote_url":     new(string),
-		"chaintracks.mode":      new(string),
-		"chaintracks.path":      new(string),
-		"chaintracks.url":       new(string),
-		"arcade.mode":           new(string),
-		"arcade.path":           new(string),
-		"arcade.url":            new(string),
-		"messagebox_url":        new(string),
+		"auth.mode":        new(string),
+		"chaintracks.mode": new(string),
+		"chaintracks.path": new(string),
+		"chaintracks.url":  new(string),
+		"arcade.mode":      new(string),
+		"arcade.path":      new(string),
+		"arcade.url":       new(string),
+		"messagebox_url":   new(string),
 	}
 
 	for key, dest := range keys {
@@ -1175,11 +1155,6 @@ func (r *Routes) handleGetSetupConfig(c *fiber.Ctx) error {
 
 	return c.JSON(SetupConfigResponse{
 		AuthMode:           *keys["auth.mode"],
-		WalletMode:         *keys["wallet.mode"],
-		WalletBackend:      *keys["wallet.db.engine"],
-		WalletSqlitePath:   *keys["wallet.db.sqlite.connection_string"],
-		WalletPostgresUrl:  *keys["wallet.postgres_connection_string"],
-		WalletRemoteUrl:    *keys["wallet.remote_url"],
 		ChaintracksBackend: *keys["chaintracks.mode"],
 		ChaintracksPath:    *keys["chaintracks.path"],
 		ChaintracksUrl:     *keys["chaintracks.url"],

@@ -30,7 +30,6 @@ import (
 	"github.com/b-open-io/1sat-stack/pkg/ordfs"
 	ordlockpkg "github.com/b-open-io/1sat-stack/pkg/ordlock"
 	"github.com/b-open-io/1sat-stack/pkg/overlay"
-	"github.com/bsv-blockchain/go-wallet-toolbox/pkg/defs"
 
 	"github.com/b-open-io/1sat-stack/pkg/owner"
 	"github.com/b-open-io/1sat-stack/pkg/paymail"
@@ -384,7 +383,6 @@ func (c *Config) resolvePath(p string) string {
 func (c *Config) resolveAllPaths() {
 	c.Store.Badger.Path = c.resolvePath(c.Store.Badger.Path)
 	c.Auth.SessionPath = c.resolvePath(c.Auth.SessionPath)
-	c.Wallet.DB.SQLite.ConnectionString = c.resolvePath(c.Wallet.DB.SQLite.ConnectionString)
 	c.Chaintracks.StoragePath = c.resolvePath(c.Chaintracks.StoragePath)
 	c.Arcade.StoragePath = c.resolvePath(c.Arcade.StoragePath)
 	c.Arcade.Database.SQLitePath = c.resolvePath(c.Arcade.Database.SQLitePath)
@@ -460,26 +458,6 @@ func (c *Config) applyRuntimeConfig(rc *configpkg.RuntimeConfig) {
 	}
 	if rc.StoreRedisURL != "" {
 		c.Store.Redis.URL = rc.StoreRedisURL
-	}
-
-	// Wallet
-	if rc.WalletMode != "" {
-		c.Wallet.Mode = rc.WalletMode
-	}
-	if rc.WalletName != "" {
-		c.Wallet.Name = rc.WalletName
-	}
-	if rc.WalletDBEngine != "" {
-		c.Wallet.DB.Engine = defs.DBType(rc.WalletDBEngine)
-	}
-	if rc.WalletSQLitePath != "" {
-		c.Wallet.DB.SQLite.ConnectionString = rc.WalletSQLitePath
-	}
-	if rc.WalletPostgresURL != "" {
-		c.Wallet.PostgresConnectionString = rc.WalletPostgresURL
-	}
-	if rc.WalletRemoteURL != "" {
-		c.Wallet.RemoteURL = rc.WalletRemoteURL
 	}
 
 	// MessageBox
@@ -1343,22 +1321,8 @@ func (c *Config) Initialize(ctx context.Context, logger *slog.Logger) (*Services
 	svc.Landing = landingSvc
 
 	// Initialize Wallet service
-	if c.Wallet.Mode != wallet.ModeDisabled && c.Wallet.Mode != "" {
-		walletDeps := &wallet.InitializeDeps{
-			Network: c.Network,
-		}
-		if svc.Chaintracks != nil {
-			walletDeps.Chaintracks = svc.Chaintracks
-		}
-		if svc.ArcadeWrapped != nil {
-			walletDeps.Arcade = svc.ArcadeWrapped
-		} else if svc.Arcade != nil && svc.Arcade.ArcadeService != nil {
-			walletDeps.Arcade = svc.Arcade.ArcadeService
-		}
-		if svc.Beef != nil && svc.Beef.Storage != nil {
-			walletDeps.BeefStorage = svc.Beef.Storage
-		}
-		walletSvc, err := c.Wallet.Initialize(ctx, logger, walletDeps)
+	if c.Wallet.ServerPrivateKey != "" {
+		walletSvc, err := c.Wallet.Initialize(ctx, logger)
 		if err != nil {
 			return nil, fmt.Errorf("failed to initialize wallet: %w", err)
 		}

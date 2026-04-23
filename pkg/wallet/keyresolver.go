@@ -11,6 +11,20 @@ import (
 	ec "github.com/bsv-blockchain/go-sdk/primitives/ec"
 )
 
+// expandPath expands ~ to the user's home directory.
+func expandPath(path string) string {
+	if strings.HasPrefix(path, "~/") {
+		if home, err := os.UserHomeDir(); err == nil {
+			return filepath.Join(home, path[2:])
+		}
+	} else if path == "~" {
+		if home, err := os.UserHomeDir(); err == nil {
+			return home
+		}
+	}
+	return path
+}
+
 // ResolveServerKey resolves the server private key from environment, filesystem, or generates a new one.
 // Priority: env var > file > generate.
 // If generated, the key is persisted to keyPath for future use.
