@@ -311,7 +311,6 @@ function NodePanel() {
           {[
             "API server",
             "ORDFS content serving",
-            "Wallet",
             "Chaintracks",
             "BEEF store",
             "PubSub bus",
@@ -452,10 +451,6 @@ interface StoragePanelProps {
   setOrdfsRedisUrl: React.Dispatch<React.SetStateAction<string>>;
   ordfsRedisTtl: string;
   setOrdfsRedisTtl: React.Dispatch<React.SetStateAction<string>>;
-  walletEngine: "sqlite" | "postgres";
-  setWalletEngine: (v: "sqlite" | "postgres") => void;
-  walletDb: string;
-  setWalletDb: (v: string) => void;
   chaintracksPath: string;
   setChaintracksPath: (v: string) => void;
   arcadeDb: string;
@@ -482,8 +477,6 @@ function StoragePanel({
   ordfsLruSize, setOrdfsLruSize,
   ordfsRedisUrl, setOrdfsRedisUrl,
   ordfsRedisTtl, setOrdfsRedisTtl,
-  walletEngine, setWalletEngine,
-  walletDb, setWalletDb,
   chaintracksPath, setChaintracksPath,
   arcadeDb, setArcadeDb,
   arcadeBroadcastUrls, setArcadeBroadcastUrls,
@@ -560,24 +553,6 @@ function StoragePanel({
       <SectionCard>
         <SectionHeading>Databases</SectionHeading>
         <p className="text-[11px] text-muted-foreground">Set during initial setup. Restart required after any change.</p>
-        <FieldRow label="Wallet engine" badge={<RestartBadge />}>
-          <SegmentedControl
-            options={[{ value: "sqlite", label: "SQLite" }, { value: "postgres", label: "PostgreSQL" }]}
-            value={walletEngine}
-            onChange={(v) => {
-              setWalletEngine(v as "sqlite" | "postgres");
-              setWalletDb(v === "sqlite" ? "wallet.sqlite" : "");
-            }}
-          />
-        </FieldRow>
-        <FieldRow label={walletEngine === "sqlite" ? "Path" : "Connection string"} badge={<RestartBadge />}>
-          <Input
-            value={walletDb}
-            onChange={(e) => setWalletDb(e.target.value)}
-            className="font-mono text-xs h-8"
-            placeholder={walletEngine === "sqlite" ? "wallet.sqlite" : "postgres://user:pass@host:5432/dbname"}
-          />
-        </FieldRow>
         <FieldRow label="Chaintracks" badge={<RestartBadge />}>
           <Input value={chaintracksPath} onChange={(e) => setChaintracksPath(e.target.value)} className="font-mono text-xs h-8" />
         </FieldRow>
@@ -1408,8 +1383,6 @@ export default function SettingsPage() {
   const [ordfsLruSize, setOrdfsLruSize] = useState("10000");
   const [ordfsRedisUrl, setOrdfsRedisUrl] = useState("");
   const [ordfsRedisTtl, setOrdfsRedisTtl] = useState("");
-  const [walletEngine, setWalletEngine] = useState<"sqlite" | "postgres">("sqlite");
-  const [walletDb, setWalletDb] = useState("wallet.sqlite");
   const [chaintracksPath, setChaintracksPath] = useState("chaintracks");
   const [arcadeDb, setArcadeDb] = useState("arcade/arcade.db");
   const [arcadeBroadcastUrls, setArcadeBroadcastUrls] = useState<string[]>(["http://mainnet.gorillanode.io:8833"]);
@@ -1509,11 +1482,6 @@ export default function SettingsPage() {
         setOrdfsLruSize(s("ordfs.cache.lru_size", "10000"));
         setOrdfsRedisUrl(s("ordfs.cache.redis_url", ""));
         setOrdfsRedisTtl(s("ordfs.cache.redis_ttl", ""));
-        const engine = s("wallet.db.engine", "sqlite");
-        setWalletEngine(engine === "postgres" ? "postgres" : "sqlite");
-        setWalletDb(engine === "postgres"
-          ? s("wallet.postgres_connection_string", "")
-          : s("wallet.db.sqlite.connection_string", "wallet.sqlite"));
         setChaintracksPath(s("chaintracks.path", "chaintracks"));
         setArcadeDb(s("arcade.path", "arcade/arcade.db"));
         if (cfg["arcade.teranode.broadcast_urls"]) {
@@ -1608,8 +1576,7 @@ export default function SettingsPage() {
     "overlay.bsocial.enabled", "overlay.ordlock.enabled",
     "owner.enabled", "faucet.enabled",
     "store.provider", "store.badger.path", "pubsub.provider",
-    "auth.mode", "wallet.db.engine", "wallet.db.sqlite.connection_string",
-    "wallet.postgres_connection_string", "chaintracks.path", "arcade.path",
+    "auth.mode", "chaintracks.path", "arcade.path",
     "arcade.teranode.broadcast_urls", "arcade.teranode.datahub_urls",
     "arcade.teranode.auth_token", "arcade.teranode.timeout",
     "beef.chain", "ordfs.cache.lru_size", "ordfs.cache.redis_url", "ordfs.cache.redis_ttl",
@@ -1639,9 +1606,6 @@ export default function SettingsPage() {
     "store.badger.path": storePath,
     "pubsub.provider": pubsubProvider,
     "auth.mode": authMode,
-    "wallet.db.engine": walletEngine,
-    "wallet.db.sqlite.connection_string": walletEngine === "sqlite" ? walletDb : "",
-    "wallet.postgres_connection_string": walletEngine === "postgres" ? walletDb : "",
     "chaintracks.path": chaintracksPath,
     "arcade.path": arcadeDb,
     "arcade.teranode.broadcast_urls": arcadeBroadcastUrls.join(","),
@@ -1681,7 +1645,7 @@ export default function SettingsPage() {
     "indexer.sync.batch_size": indexerBatchSize,
   }), [
     bapEnabled, opnsEnabled, bsv21Enabled, bsocialEnabled, ordlockEnabled, ownerSync, faucetEnabled,
-    storeProvider, storePath, pubsubProvider, authMode, walletEngine, walletDb,
+    storeProvider, storePath, pubsubProvider, authMode,
     chaintracksPath, arcadeDb, arcadeBroadcastUrls, arcadeDatahubUrls, arcadeAuthToken, arcadeTimeout, arcadeLogLevel,
     engineStorage, engineStoragePath,
     p2pEnabled, p2pPort, p2pDhtMode, bootstrapPeers, activeTags,
@@ -1725,9 +1689,6 @@ export default function SettingsPage() {
         "ordfs.cache.lru_size": ordfsLruSize,
         "ordfs.cache.redis_url": ordfsRedisUrl,
         "ordfs.cache.redis_ttl": ordfsRedisTtl,
-        "wallet.db.engine": walletEngine,
-        "wallet.db.sqlite.connection_string": walletEngine === "sqlite" ? walletDb : "",
-        "wallet.postgres_connection_string": walletEngine === "postgres" ? walletDb : "",
         "chaintracks.path": chaintracksPath,
         "arcade.path": arcadeDb,
         "arcade.teranode.broadcast_urls": arcadeBroadcastUrls.join(","),
@@ -1927,8 +1888,6 @@ export default function SettingsPage() {
               ordfsLruSize={ordfsLruSize} setOrdfsLruSize={setOrdfsLruSize}
               ordfsRedisUrl={ordfsRedisUrl} setOrdfsRedisUrl={setOrdfsRedisUrl}
               ordfsRedisTtl={ordfsRedisTtl} setOrdfsRedisTtl={setOrdfsRedisTtl}
-              walletEngine={walletEngine} setWalletEngine={setWalletEngine}
-              walletDb={walletDb} setWalletDb={setWalletDb}
               chaintracksPath={chaintracksPath} setChaintracksPath={setChaintracksPath}
               arcadeDb={arcadeDb} setArcadeDb={setArcadeDb}
               arcadeBroadcastUrls={arcadeBroadcastUrls} setArcadeBroadcastUrls={setArcadeBroadcastUrls}
