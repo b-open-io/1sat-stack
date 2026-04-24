@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"net/http"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -50,6 +51,7 @@ import (
 	"github.com/bsv-blockchain/go-sdk/transaction"
 	p2p "github.com/bsv-blockchain/go-teranode-p2p-client"
 	"github.com/gofiber/fiber/v2"
+	"github.com/gofiber/fiber/v2/middleware/adaptor"
 	"github.com/libp2p/go-libp2p/core/crypto"
 	"github.com/spf13/viper"
 	"go.mongodb.org/mongo-driver/v2/mongo"
@@ -1647,6 +1649,17 @@ func (c *Config) RegisterRoutes(app *fiber.App, svc *Services) {
 		arcGroup := api.Group("/arc")
 		svc.Indexer.Routes.RegisterCallback(arcGroup)
 		slog.Debug("registered arc callback routes", "prefix", "/arc")
+	}
+
+	// Register /.well-known/auth at app root for BRC-103/104 handshake.
+	// The auth middleware intercepts handshake requests before they reach the
+	// no-op; a 404 is only returned for non-handshake requests hitting this path.
+	if svc.AuthMiddleware != nil {
+		noOp := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			w.WriteHeader(http.StatusNotFound)
+		})
+		app.All("/.well-known/auth", adaptor.HTTPHandler(svc.AuthMiddleware.HTTPHandler(noOp)))
+		slog.Debug("registered /.well-known/auth handshake route")
 	}
 
 	// Register Admin routes: static UI files are public, API endpoints are guarded.
