@@ -1482,7 +1482,7 @@ func (c *Config) RegisterRoutes(app *fiber.App, svc *Services) {
 	// Always-on capabilities
 	capabilities := []string{
 		"beef", "pubsub", "txo", "ordfs", "indexer",
-		"chaintracks", "arcade", "wallet", "admin",
+		"chaintracks", "arcade", "admin",
 	}
 
 	// Overlay capabilities from initialized services
