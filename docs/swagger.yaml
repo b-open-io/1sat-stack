@@ -25,13 +25,7 @@ definitions:
         type: string
       chaintracksUrl:
         type: string
-      messageboxPath:
-        type: string
-      walletBackend:
-        type: string
-      walletPostgresUrl:
-        type: string
-      walletSqlitePath:
+      messageboxUrl:
         type: string
       wif:
         type: string
@@ -52,13 +46,7 @@ definitions:
         type: string
       chaintracksUrl:
         type: string
-      messageboxPath:
-        type: string
-      walletBackend:
-        type: string
-      walletPostgresUrl:
-        type: string
-      walletSqlitePath:
+      messageboxUrl:
         type: string
     type: object
   admin.TopicRequest:
@@ -122,10 +110,14 @@ definitions:
         type: integer
       debits:
         type: integer
+      decimals:
+        type: integer
       fee_address:
         type: string
       fee_per_output:
         type: integer
+      icon:
+        type: string
       is_blacklisted:
         type: boolean
       is_whitelisted:
@@ -133,6 +125,9 @@ definitions:
         type: boolean
       output_count:
         type: integer
+      symbol:
+        description: Token metadata
+        type: string
       token_id:
         description: Identity
         type: string
@@ -233,6 +228,7 @@ definitions:
     - SEEN_ON_NETWORK
     - DOUBLE_SPEND_ATTEMPTED
     - REJECTED
+    - SERVICE_ERROR
     - MINED
     - IMMUTABLE
     type: string
@@ -244,6 +240,7 @@ definitions:
     - StatusSeenOnNetwork
     - StatusDoubleSpendAttempted
     - StatusRejected
+    - StatusServiceError
     - StatusMined
     - StatusImmutable
   models.TransactionStatus:
@@ -265,6 +262,8 @@ definitions:
       status:
         type: integer
       timestamp:
+        type: string
+      title:
         type: string
       txStatus:
         $ref: '#/definitions/models.Status'
@@ -340,26 +339,6 @@ definitions:
       utxoCount:
         type: integer
     type: object
-  pkg_bsv21.BlockInfo:
-    properties:
-      hash:
-        type: string
-      height:
-        type: integer
-      previousblockhash:
-        type: string
-      timestamp:
-        type: integer
-    type: object
-  pkg_bsv21.BlockResponse:
-    properties:
-      block:
-        $ref: '#/definitions/pkg_bsv21.BlockInfo'
-      transactions:
-        items:
-          $ref: '#/definitions/pkg_bsv21.TransactionData'
-        type: array
-    type: object
   pkg_bsv21.ErrorResponse:
     properties:
       message:
@@ -397,10 +376,14 @@ definitions:
         type: integer
       debits:
         type: integer
+      decimals:
+        type: integer
       fee_address:
         type: string
       fee_per_output:
         type: integer
+      icon:
+        type: string
       is_blacklisted:
         type: boolean
       is_whitelisted:
@@ -408,6 +391,9 @@ definitions:
         type: boolean
       output_count:
         type: integer
+      symbol:
+        description: Token metadata
+        type: string
       token_id:
         description: Identity
         type: string
@@ -419,8 +405,6 @@ definitions:
         items:
           type: integer
         type: array
-      block_height:
-        type: integer
       inputs:
         items:
           $ref: '#/definitions/pkg_bsv21.OutputData'
@@ -789,6 +773,64 @@ paths:
       security:
       - BearerAuth: []
       summary: Update config
+      tags:
+      - admin
+  /admin/logs:
+    get:
+      description: Query system logs with optional filtering by level, component,
+        time range
+      parameters:
+      - description: Component filter
+        in: query
+        name: component
+        type: string
+      - description: Log level filter (DEBUG, INFO, WARN, ERROR)
+        in: query
+        name: level
+        type: string
+      - description: Start time (RFC3339)
+        in: query
+        name: since
+        type: string
+      - description: End time (RFC3339)
+        in: query
+        name: until
+        type: string
+      - description: Text search in message
+        in: query
+        name: search
+        type: string
+      - description: Results per page (default 100, max 1000)
+        in: query
+        name: limit
+        type: integer
+      - description: Pagination offset
+        in: query
+        name: offset
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Query logs
       tags:
       - admin
   /admin/lookups/active:
@@ -1830,20 +1872,38 @@ paths:
       - bap
   /beef/{txid}:
     get:
-      description: Retrieves the BEEF (BSV Envelope Format) for a specific transaction
+      description: Retrieves the BEEF (BSV Envelope Format) for a specific transaction.
+        Use the format query parameter to choose binary (default), hex, or base64
+        encoding.
       parameters:
       - description: Transaction ID
         in: path
         name: txid
         required: true
         type: string
+      - default: binary
+        description: Response encoding
+        enum:
+        - binary
+        - hex
+        - base64
+        in: query
+        name: format
+        type: string
       produces:
       - application/octet-stream
+      - text/plain
       responses:
         "200":
-          description: BEEF bytes
+          description: BEEF bytes (binary) or hex/base64 string
           schema:
             type: file
+        "400":
+          description: Invalid txid or format
+          schema:
+            additionalProperties:
+              type: string
+            type: object
         "404":
           description: Transaction not found
           schema:
@@ -1855,20 +1915,37 @@ paths:
       - beef
   /beef/{txid}/proof:
     get:
-      description: Retrieves just the merkle proof bytes for a transaction
+      description: Retrieves just the merkle proof bytes for a transaction. Use the
+        format query parameter to choose binary (default), hex, or base64 encoding.
       parameters:
       - description: Transaction ID
         in: path
         name: txid
         required: true
         type: string
+      - default: binary
+        description: Response encoding
+        enum:
+        - binary
+        - hex
+        - base64
+        in: query
+        name: format
+        type: string
       produces:
       - application/octet-stream
+      - text/plain
       responses:
         "200":
-          description: Merkle proof bytes
+          description: Merkle proof bytes (binary) or hex/base64 string
           schema:
             type: file
+        "400":
+          description: Invalid txid or format
+          schema:
+            additionalProperties:
+              type: string
+            type: object
         "404":
           description: Proof not found
           schema:
@@ -1880,20 +1957,37 @@ paths:
       - beef
   /beef/{txid}/tx:
     get:
-      description: Retrieves just the raw transaction bytes (without proof)
+      description: Retrieves just the raw transaction bytes (without proof). Use the
+        format query parameter to choose binary (default), hex, or base64 encoding.
       parameters:
       - description: Transaction ID
         in: path
         name: txid
         required: true
         type: string
+      - default: binary
+        description: Response encoding
+        enum:
+        - binary
+        - hex
+        - base64
+        in: query
+        name: format
+        type: string
       produces:
       - application/octet-stream
+      - text/plain
       responses:
         "200":
-          description: Transaction bytes
+          description: Transaction bytes (binary) or hex/base64 string
           schema:
             type: file
+        "400":
+          description: Invalid txid or format
+          schema:
+            additionalProperties:
+              type: string
+            type: object
         "404":
           description: Transaction not found
           schema:
@@ -2143,7 +2237,7 @@ paths:
           description: OK
           schema:
             $ref: '#/definitions/pkg_bsv21.TokenDetailResponse'
-      summary: Get BSV21 token details with funding status
+      summary: Get token details
       tags:
       - bsv21
   /bsv21/{tokenId}/{lockType}/{address}/balance:
@@ -2171,7 +2265,7 @@ paths:
           description: OK
           schema:
             $ref: '#/definitions/pkg_bsv21.BalanceResponse'
-      summary: Get address token balance
+      summary: Get address balance
       tags:
       - bsv21
   /bsv21/{tokenId}/{lockType}/{address}/history:
@@ -2201,7 +2295,7 @@ paths:
             items:
               $ref: '#/definitions/github_com_b-open-io_1sat-stack_pkg_txo.IndexedOutput'
             type: array
-      summary: Get address transaction history
+      summary: Get address history
       tags:
       - bsv21
   /bsv21/{tokenId}/{lockType}/{address}/unspent:
@@ -2231,7 +2325,7 @@ paths:
             items:
               $ref: '#/definitions/github_com_b-open-io_1sat-stack_pkg_txo.IndexedOutput'
             type: array
-      summary: Get address unspent outputs
+      summary: Get address unspent
       tags:
       - bsv21
   /bsv21/{tokenId}/{lockType}/balance:
@@ -2264,7 +2358,7 @@ paths:
           description: OK
           schema:
             $ref: '#/definitions/pkg_bsv21.BalanceResponse'
-      summary: Get multi-address token balance
+      summary: Get balance (multi-address)
       tags:
       - bsv21
   /bsv21/{tokenId}/{lockType}/history:
@@ -2299,7 +2393,7 @@ paths:
             items:
               $ref: '#/definitions/github_com_b-open-io_1sat-stack_pkg_txo.IndexedOutput'
             type: array
-      summary: Get multi-address transaction history
+      summary: Get history (multi-address)
       tags:
       - bsv21
   /bsv21/{tokenId}/{lockType}/unspent:
@@ -2334,40 +2428,15 @@ paths:
             items:
               $ref: '#/definitions/github_com_b-open-io_1sat-stack_pkg_txo.IndexedOutput'
             type: array
-      summary: Get multi-address unspent outputs
-      tags:
-      - bsv21
-  /bsv21/{tokenId}/blk/{height}:
-    get:
-      parameters:
-      - description: Token ID
-        in: path
-        name: tokenId
-        required: true
-        type: string
-      - description: Block height
-        in: path
-        name: height
-        required: true
-        type: integer
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            $ref: '#/definitions/pkg_bsv21.BlockResponse'
-      summary: Get block data for a token
+      summary: Get unspent (multi-address)
       tags:
       - bsv21
   /bsv21/{tokenId}/outputs:
     post:
       consumes:
       - application/json
-      description: Checks if specific outpoints exist in the token's overlay. Returns
-        only those found with BSV21 data.
       parameters:
-      - description: 'Token ID (outpoint format: txid_vout)'
+      - description: Token ID
         in: path
         name: tokenId
         required: true
@@ -2397,15 +2466,13 @@ paths:
           description: Internal Server Error
           schema:
             $ref: '#/definitions/pkg_bsv21.ErrorResponse'
-      summary: Validate specific outpoints
+      summary: Validate outpoints (bulk)
       tags:
       - bsv21
   /bsv21/{tokenId}/outputs/{outpoint}:
     get:
-      description: Checks if a specific outpoint exists in the token's overlay. Returns
-        404 if not found.
       parameters:
-      - description: 'Token ID (outpoint format: txid_vout)'
+      - description: Token ID
         in: path
         name: tokenId
         required: true
@@ -2434,7 +2501,7 @@ paths:
           description: Internal Server Error
           schema:
             $ref: '#/definitions/pkg_bsv21.ErrorResponse'
-      summary: Validate single outpoint
+      summary: Validate outpoint
       tags:
       - bsv21
   /bsv21/{tokenId}/tx/{txid}:
@@ -2461,32 +2528,7 @@ paths:
           description: OK
           schema:
             $ref: '#/definitions/pkg_bsv21.TransactionData'
-      summary: Get transaction details
-      tags:
-      - bsv21
-  /bsv21/lookup:
-    post:
-      consumes:
-      - application/json
-      parameters:
-      - description: Array of token IDs (max 100)
-        in: body
-        name: tokenIds
-        required: true
-        schema:
-          items:
-            type: string
-          type: array
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            items:
-              $ref: '#/definitions/pkg_bsv21.TokenDetailResponse'
-            type: array
-      summary: Bulk lookup BSV21 token details with funding status
+      summary: Get transaction
       tags:
       - bsv21
   /bsv21/overlay/listLookupServiceProviders:
@@ -2679,10 +2721,10 @@ paths:
       - bsv21-overlay
   /bsv21/tokens:
     get:
-      description: Returns active/whitelisted tokens by default. Pass ?all=true to
-        include inactive/unfunded tokens.
+      description: Returns active tokens by default. Pass ?all=true to include all
+        known tokens.
       parameters:
-      - description: Include inactive/unfunded tokens
+      - description: Include inactive tokens
         in: query
         name: all
         type: boolean
@@ -2695,7 +2737,31 @@ paths:
             items:
               $ref: '#/definitions/pkg_bsv21.TokenStatus'
             type: array
-      summary: List BSV21 token statuses
+      summary: List tokens
+      tags:
+      - bsv21
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: Array of token IDs (max 100)
+        in: body
+        name: tokenIds
+        required: true
+        schema:
+          items:
+            type: string
+          type: array
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/pkg_bsv21.TokenDetailResponse'
+            type: array
+      summary: Lookup tokens (bulk)
       tags:
       - bsv21
   /capabilities:

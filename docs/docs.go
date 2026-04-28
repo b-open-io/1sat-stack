@@ -316,6 +316,94 @@ const docTemplate = `{
                 }
             }
         },
+        "/admin/logs": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Query system logs with optional filtering by level, component, time range",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "admin"
+                ],
+                "summary": "Query logs",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Component filter",
+                        "name": "component",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Log level filter (DEBUG, INFO, WARN, ERROR)",
+                        "name": "level",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Start time (RFC3339)",
+                        "name": "since",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "End time (RFC3339)",
+                        "name": "until",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Text search in message",
+                        "name": "search",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Results per page (default 100, max 1000)",
+                        "name": "limit",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Pagination offset",
+                        "name": "offset",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
         "/admin/lookups/active": {
             "get": {
                 "security": [
@@ -1910,9 +1998,10 @@ const docTemplate = `{
         },
         "/beef/{txid}": {
             "get": {
-                "description": "Retrieves the BEEF (BSV Envelope Format) for a specific transaction",
+                "description": "Retrieves the BEEF (BSV Envelope Format) for a specific transaction. Use the format query parameter to choose binary (default), hex, or base64 encoding.",
                 "produces": [
-                    "application/octet-stream"
+                    "application/octet-stream",
+                    "text/plain"
                 ],
                 "tags": [
                     "beef"
@@ -1925,13 +2014,34 @@ const docTemplate = `{
                         "name": "txid",
                         "in": "path",
                         "required": true
+                    },
+                    {
+                        "enum": [
+                            "binary",
+                            "hex",
+                            "base64"
+                        ],
+                        "type": "string",
+                        "default": "binary",
+                        "description": "Response encoding",
+                        "name": "format",
+                        "in": "query"
                     }
                 ],
                 "responses": {
                     "200": {
-                        "description": "BEEF bytes",
+                        "description": "BEEF bytes (binary) or hex/base64 string",
                         "schema": {
                             "type": "file"
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid txid or format",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
                         }
                     },
                     "404": {
@@ -1948,9 +2058,10 @@ const docTemplate = `{
         },
         "/beef/{txid}/proof": {
             "get": {
-                "description": "Retrieves just the merkle proof bytes for a transaction",
+                "description": "Retrieves just the merkle proof bytes for a transaction. Use the format query parameter to choose binary (default), hex, or base64 encoding.",
                 "produces": [
-                    "application/octet-stream"
+                    "application/octet-stream",
+                    "text/plain"
                 ],
                 "tags": [
                     "beef"
@@ -1963,13 +2074,34 @@ const docTemplate = `{
                         "name": "txid",
                         "in": "path",
                         "required": true
+                    },
+                    {
+                        "enum": [
+                            "binary",
+                            "hex",
+                            "base64"
+                        ],
+                        "type": "string",
+                        "default": "binary",
+                        "description": "Response encoding",
+                        "name": "format",
+                        "in": "query"
                     }
                 ],
                 "responses": {
                     "200": {
-                        "description": "Merkle proof bytes",
+                        "description": "Merkle proof bytes (binary) or hex/base64 string",
                         "schema": {
                             "type": "file"
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid txid or format",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
                         }
                     },
                     "404": {
@@ -1986,9 +2118,10 @@ const docTemplate = `{
         },
         "/beef/{txid}/tx": {
             "get": {
-                "description": "Retrieves just the raw transaction bytes (without proof)",
+                "description": "Retrieves just the raw transaction bytes (without proof). Use the format query parameter to choose binary (default), hex, or base64 encoding.",
                 "produces": [
-                    "application/octet-stream"
+                    "application/octet-stream",
+                    "text/plain"
                 ],
                 "tags": [
                     "beef"
@@ -2001,13 +2134,34 @@ const docTemplate = `{
                         "name": "txid",
                         "in": "path",
                         "required": true
+                    },
+                    {
+                        "enum": [
+                            "binary",
+                            "hex",
+                            "base64"
+                        ],
+                        "type": "string",
+                        "default": "binary",
+                        "description": "Response encoding",
+                        "name": "format",
+                        "in": "query"
                     }
                 ],
                 "responses": {
                     "200": {
-                        "description": "Transaction bytes",
+                        "description": "Transaction bytes (binary) or hex/base64 string",
                         "schema": {
                             "type": "file"
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid txid or format",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
                         }
                     },
                     "404": {
@@ -2360,45 +2514,6 @@ const docTemplate = `{
                 }
             }
         },
-        "/bsv21/lookup": {
-            "post": {
-                "consumes": [
-                    "application/json"
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "bsv21"
-                ],
-                "summary": "Bulk lookup BSV21 token details with funding status",
-                "parameters": [
-                    {
-                        "description": "Array of token IDs (max 100)",
-                        "name": "tokenIds",
-                        "in": "body",
-                        "required": true,
-                        "schema": {
-                            "type": "array",
-                            "items": {
-                                "type": "string"
-                            }
-                        }
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "type": "array",
-                            "items": {
-                                "$ref": "#/definitions/pkg_bsv21.TokenDetailResponse"
-                            }
-                        }
-                    }
-                }
-            }
-        },
         "/bsv21/overlay/listLookupServiceProviders": {
             "get": {
                 "description": "Returns BSV21 overlay lookup service providers",
@@ -2683,18 +2798,18 @@ const docTemplate = `{
         },
         "/bsv21/tokens": {
             "get": {
-                "description": "Returns active/whitelisted tokens by default. Pass ?all=true to include inactive/unfunded tokens.",
+                "description": "Returns active tokens by default. Pass ?all=true to include all known tokens.",
                 "produces": [
                     "application/json"
                 ],
                 "tags": [
                     "bsv21"
                 ],
-                "summary": "List BSV21 token statuses",
+                "summary": "List tokens",
                 "parameters": [
                     {
                         "type": "boolean",
-                        "description": "Include inactive/unfunded tokens",
+                        "description": "Include inactive tokens",
                         "name": "all",
                         "in": "query"
                     }
@@ -2710,6 +2825,43 @@ const docTemplate = `{
                         }
                     }
                 }
+            },
+            "post": {
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "bsv21"
+                ],
+                "summary": "Lookup tokens (bulk)",
+                "parameters": [
+                    {
+                        "description": "Array of token IDs (max 100)",
+                        "name": "tokenIds",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/pkg_bsv21.TokenDetailResponse"
+                            }
+                        }
+                    }
+                }
             }
         },
         "/bsv21/{tokenId}": {
@@ -2720,7 +2872,7 @@ const docTemplate = `{
                 "tags": [
                     "bsv21"
                 ],
-                "summary": "Get BSV21 token details with funding status",
+                "summary": "Get token details",
                 "parameters": [
                     {
                         "type": "string",
@@ -2740,44 +2892,8 @@ const docTemplate = `{
                 }
             }
         },
-        "/bsv21/{tokenId}/blk/{height}": {
-            "get": {
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "bsv21"
-                ],
-                "summary": "Get block data for a token",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "description": "Token ID",
-                        "name": "tokenId",
-                        "in": "path",
-                        "required": true
-                    },
-                    {
-                        "type": "integer",
-                        "description": "Block height",
-                        "name": "height",
-                        "in": "path",
-                        "required": true
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "$ref": "#/definitions/pkg_bsv21.BlockResponse"
-                        }
-                    }
-                }
-            }
-        },
         "/bsv21/{tokenId}/outputs": {
             "post": {
-                "description": "Checks if specific outpoints exist in the token's overlay. Returns only those found with BSV21 data.",
                 "consumes": [
                     "application/json"
                 ],
@@ -2787,11 +2903,11 @@ const docTemplate = `{
                 "tags": [
                     "bsv21"
                 ],
-                "summary": "Validate specific outpoints",
+                "summary": "Validate outpoints (bulk)",
                 "parameters": [
                     {
                         "type": "string",
-                        "description": "Token ID (outpoint format: txid_vout)",
+                        "description": "Token ID",
                         "name": "tokenId",
                         "in": "path",
                         "required": true
@@ -2836,18 +2952,17 @@ const docTemplate = `{
         },
         "/bsv21/{tokenId}/outputs/{outpoint}": {
             "get": {
-                "description": "Checks if a specific outpoint exists in the token's overlay. Returns 404 if not found.",
                 "produces": [
                     "application/json"
                 ],
                 "tags": [
                     "bsv21"
                 ],
-                "summary": "Validate single outpoint",
+                "summary": "Validate outpoint",
                 "parameters": [
                     {
                         "type": "string",
-                        "description": "Token ID (outpoint format: txid_vout)",
+                        "description": "Token ID",
                         "name": "tokenId",
                         "in": "path",
                         "required": true
@@ -2896,7 +3011,7 @@ const docTemplate = `{
                 "tags": [
                     "bsv21"
                 ],
-                "summary": "Get transaction details",
+                "summary": "Get transaction",
                 "parameters": [
                     {
                         "type": "string",
@@ -2940,7 +3055,7 @@ const docTemplate = `{
                 "tags": [
                     "bsv21"
                 ],
-                "summary": "Get multi-address token balance",
+                "summary": "Get balance (multi-address)",
                 "parameters": [
                     {
                         "type": "string",
@@ -2990,7 +3105,7 @@ const docTemplate = `{
                 "tags": [
                     "bsv21"
                 ],
-                "summary": "Get multi-address transaction history",
+                "summary": "Get history (multi-address)",
                 "parameters": [
                     {
                         "type": "string",
@@ -3043,7 +3158,7 @@ const docTemplate = `{
                 "tags": [
                     "bsv21"
                 ],
-                "summary": "Get multi-address unspent outputs",
+                "summary": "Get unspent (multi-address)",
                 "parameters": [
                     {
                         "type": "string",
@@ -3093,7 +3208,7 @@ const docTemplate = `{
                 "tags": [
                     "bsv21"
                 ],
-                "summary": "Get address token balance",
+                "summary": "Get address balance",
                 "parameters": [
                     {
                         "type": "string",
@@ -3135,7 +3250,7 @@ const docTemplate = `{
                 "tags": [
                     "bsv21"
                 ],
-                "summary": "Get address transaction history",
+                "summary": "Get address history",
                 "parameters": [
                     {
                         "type": "string",
@@ -3180,7 +3295,7 @@ const docTemplate = `{
                 "tags": [
                     "bsv21"
                 ],
-                "summary": "Get address unspent outputs",
+                "summary": "Get address unspent",
                 "parameters": [
                     {
                         "type": "string",
@@ -5418,16 +5533,7 @@ const docTemplate = `{
                 "chaintracksUrl": {
                     "type": "string"
                 },
-                "messageboxPath": {
-                    "type": "string"
-                },
-                "walletBackend": {
-                    "type": "string"
-                },
-                "walletPostgresUrl": {
-                    "type": "string"
-                },
-                "walletSqlitePath": {
+                "messageboxUrl": {
                     "type": "string"
                 },
                 "wif": {
@@ -5459,16 +5565,7 @@ const docTemplate = `{
                 "chaintracksUrl": {
                     "type": "string"
                 },
-                "messageboxPath": {
-                    "type": "string"
-                },
-                "walletBackend": {
-                    "type": "string"
-                },
-                "walletPostgresUrl": {
-                    "type": "string"
-                },
-                "walletSqlitePath": {
+                "messageboxUrl": {
                     "type": "string"
                 }
             }
@@ -5565,11 +5662,17 @@ const docTemplate = `{
                 "debits": {
                     "type": "integer"
                 },
+                "decimals": {
+                    "type": "integer"
+                },
                 "fee_address": {
                     "type": "string"
                 },
                 "fee_per_output": {
                     "type": "integer"
+                },
+                "icon": {
+                    "type": "string"
                 },
                 "is_blacklisted": {
                     "type": "boolean"
@@ -5580,6 +5683,10 @@ const docTemplate = `{
                 },
                 "output_count": {
                     "type": "integer"
+                },
+                "symbol": {
+                    "description": "Token metadata",
+                    "type": "string"
                 },
                 "token_id": {
                     "description": "Identity",
@@ -5720,6 +5827,7 @@ const docTemplate = `{
                 "SEEN_ON_NETWORK",
                 "DOUBLE_SPEND_ATTEMPTED",
                 "REJECTED",
+                "SERVICE_ERROR",
                 "MINED",
                 "IMMUTABLE"
             ],
@@ -5731,6 +5839,7 @@ const docTemplate = `{
                 "StatusSeenOnNetwork",
                 "StatusDoubleSpendAttempted",
                 "StatusRejected",
+                "StatusServiceError",
                 "StatusMined",
                 "StatusImmutable"
             ]
@@ -5763,6 +5872,9 @@ const docTemplate = `{
                     "type": "integer"
                 },
                 "timestamp": {
+                    "type": "string"
+                },
+                "title": {
                     "type": "string"
                 },
                 "txStatus": {
@@ -5879,37 +5991,6 @@ const docTemplate = `{
                 }
             }
         },
-        "pkg_bsv21.BlockInfo": {
-            "type": "object",
-            "properties": {
-                "hash": {
-                    "type": "string"
-                },
-                "height": {
-                    "type": "integer"
-                },
-                "previousblockhash": {
-                    "type": "string"
-                },
-                "timestamp": {
-                    "type": "integer"
-                }
-            }
-        },
-        "pkg_bsv21.BlockResponse": {
-            "type": "object",
-            "properties": {
-                "block": {
-                    "$ref": "#/definitions/pkg_bsv21.BlockInfo"
-                },
-                "transactions": {
-                    "type": "array",
-                    "items": {
-                        "$ref": "#/definitions/pkg_bsv21.TransactionData"
-                    }
-                }
-            }
-        },
         "pkg_bsv21.ErrorResponse": {
             "type": "object",
             "properties": {
@@ -5964,11 +6045,17 @@ const docTemplate = `{
                 "debits": {
                     "type": "integer"
                 },
+                "decimals": {
+                    "type": "integer"
+                },
                 "fee_address": {
                     "type": "string"
                 },
                 "fee_per_output": {
                     "type": "integer"
+                },
+                "icon": {
+                    "type": "string"
                 },
                 "is_blacklisted": {
                     "type": "boolean"
@@ -5979,6 +6066,10 @@ const docTemplate = `{
                 },
                 "output_count": {
                     "type": "integer"
+                },
+                "symbol": {
+                    "description": "Token metadata",
+                    "type": "string"
                 },
                 "token_id": {
                     "description": "Identity",
@@ -5995,9 +6086,6 @@ const docTemplate = `{
                     "items": {
                         "type": "integer"
                     }
-                },
-                "block_height": {
-                    "type": "integer"
                 },
                 "inputs": {
                     "type": "array",

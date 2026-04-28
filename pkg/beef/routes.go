@@ -2,12 +2,33 @@ package beef
 
 import (
 	"context"
+	"encoding/base64"
+	"encoding/hex"
 
 	"github.com/b-open-io/1sat-stack/pkg/httputil"
 	"github.com/bsv-blockchain/go-sdk/chainhash"
 	"github.com/bsv-blockchain/go-sdk/transaction"
 	"github.com/gofiber/fiber/v2"
 )
+
+// sendEncoded writes data to the response in the requested encoding.
+// format may be "", "binary", "hex", or "base64". Empty/binary preserves
+// the original octet-stream behavior.
+func sendEncoded(c *fiber.Ctx, data []byte) error {
+	switch c.Query("format") {
+	case "hex":
+		c.Set("Content-Type", "text/plain; charset=utf-8")
+		return c.SendString(hex.EncodeToString(data))
+	case "base64":
+		c.Set("Content-Type", "text/plain; charset=utf-8")
+		return c.SendString(base64.StdEncoding.EncodeToString(data))
+	case "", "binary":
+		c.Set("Content-Type", "application/octet-stream")
+		return c.Send(data)
+	default:
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid format, expected binary|hex|base64"})
+	}
+}
 
 // Routes provides HTTP routes for BEEF operations
 type Routes struct {
@@ -58,11 +79,14 @@ func (r *Routes) setBeefCache(c *fiber.Ctx, beefBytes []byte) {
 
 // getBeef handles GET /:txid - returns BEEF for a transaction
 // @Summary Get BEEF for a transaction
-// @Description Retrieves the BEEF (BSV Envelope Format) for a specific transaction
+// @Description Retrieves the BEEF (BSV Envelope Format) for a specific transaction. Use the format query parameter to choose binary (default), hex, or base64 encoding.
 // @Tags beef
 // @Produce application/octet-stream
+// @Produce text/plain
 // @Param txid path string true "Transaction ID"
-// @Success 200 {file} binary "BEEF bytes"
+// @Param format query string false "Response encoding" Enums(binary, hex, base64) default(binary)
+// @Success 200 {file} binary "BEEF bytes (binary) or hex/base64 string"
+// @Failure 400 {object} map[string]string "Invalid txid or format"
 // @Failure 404 {object} map[string]string "Transaction not found"
 // @Router /beef/{txid} [get]
 func (r *Routes) getBeef(c *fiber.Ctx) error {
@@ -85,18 +109,20 @@ func (r *Routes) getBeef(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": err.Error()})
 	}
 
-	c.Set("Content-Type", "application/octet-stream")
 	r.setBeefCache(c, beefBytes)
-	return c.Send(beefBytes)
+	return sendEncoded(c, beefBytes)
 }
 
 // getRawTx handles GET /:txid/tx - returns raw transaction bytes
 // @Summary Get transaction
-// @Description Retrieves just the raw transaction bytes (without proof)
+// @Description Retrieves just the raw transaction bytes (without proof). Use the format query parameter to choose binary (default), hex, or base64 encoding.
 // @Tags beef
 // @Produce application/octet-stream
+// @Produce text/plain
 // @Param txid path string true "Transaction ID"
-// @Success 200 {file} binary "Transaction bytes"
+// @Param format query string false "Response encoding" Enums(binary, hex, base64) default(binary)
+// @Success 200 {file} binary "Transaction bytes (binary) or hex/base64 string"
+// @Failure 400 {object} map[string]string "Invalid txid or format"
 // @Failure 404 {object} map[string]string "Transaction not found"
 // @Router /beef/{txid}/tx [get]
 func (r *Routes) getRawTx(c *fiber.Ctx) error {
@@ -114,18 +140,20 @@ func (r *Routes) getRawTx(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": err.Error()})
 	}
 
-	c.Set("Content-Type", "application/octet-stream")
 	httputil.SetImmutable(c)
-	return c.Send(rawTx)
+	return sendEncoded(c, rawTx)
 }
 
 // getProof handles GET /:txid/proof - returns merkle proof bytes
 // @Summary Get merkle proof
-// @Description Retrieves just the merkle proof bytes for a transaction
+// @Description Retrieves just the merkle proof bytes for a transaction. Use the format query parameter to choose binary (default), hex, or base64 encoding.
 // @Tags beef
 // @Produce application/octet-stream
+// @Produce text/plain
 // @Param txid path string true "Transaction ID"
-// @Success 200 {file} binary "Merkle proof bytes"
+// @Param format query string false "Response encoding" Enums(binary, hex, base64) default(binary)
+// @Success 200 {file} binary "Merkle proof bytes (binary) or hex/base64 string"
+// @Failure 400 {object} map[string]string "Invalid txid or format"
 // @Failure 404 {object} map[string]string "Proof not found"
 // @Router /beef/{txid}/proof [get]
 func (r *Routes) getProof(c *fiber.Ctx) error {
@@ -143,8 +171,6 @@ func (r *Routes) getProof(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": err.Error()})
 	}
 
-	c.Set("Content-Type", "application/octet-stream")
-
 	// For proof, we need to parse just enough to get the block height.
 	// LoadBeef is heavier but gives us the BUMP data.
 	beefData, err := r.storage.LoadBeef(c.Context(), txid)
@@ -158,5 +184,5 @@ func (r *Routes) getProof(c *fiber.Ctx) error {
 		httputil.SetNoStore(c)
 	}
 
-	return c.Send(proof)
+	return sendEncoded(c, proof)
 }
