@@ -867,6 +867,7 @@ func (c *Config) Initialize(ctx context.Context, logger *slog.Logger) (*Services
 		start = time.Now()
 		// Set network on P2P config
 		c.P2P.Network = c.Network
+		c.P2P.MsgBus.Logger = p2p.NewSlogLogger(logging.NewComponentLogger(logger, "p2p", ""))
 		p2pClient, err := c.P2P.Initialize(ctx, "1sat-stack")
 		if err != nil {
 			return nil, fmt.Errorf("failed to initialize p2p client: %w", err)
@@ -2211,6 +2212,7 @@ func createOverlayP2PBus(cfg overlay.P2PConfig, walletKeyHex string, s store.Sto
 
 	client, err := msgbus.NewClient(msgbus.Config{
 		Name:           "1sat-overlay",
+		Logger:         p2p.NewSlogLogger(logger.With("subsystem", "overlay-p2p")),
 		PrivateKey:     privKey,
 		Port:           cfg.Port,
 		DHTMode:        cfg.DHTMode,
