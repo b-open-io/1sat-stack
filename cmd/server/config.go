@@ -1477,6 +1477,10 @@ func (c *Config) RegisterRoutes(app *fiber.App, svc *Services) {
 		})
 	}
 
+	// Octet-stream body limit for overlay /submit endpoints. Same source as
+	// the outer Fiber BodyLimit so the two stay in sync.
+	overlayBodyLimit := int64(ParseBodyLimit(c.Server.BodyLimit))
+
 	// Create API group with base path
 	api := app.Group(c.Server.BasePath)
 
@@ -1599,23 +1603,23 @@ func (c *Config) RegisterRoutes(app *fiber.App, svc *Services) {
 	// Register per-module overlay routes
 	if svc.BAP != nil && svc.BAP.OverlayRoutes != nil {
 		bapOverlayGroup := api.Group("/bap/overlay", httputil.NoStoreMiddleware())
-		svc.BAP.OverlayRoutes.Register(bapOverlayGroup)
+		svc.BAP.OverlayRoutes.Register(bapOverlayGroup, overlayBodyLimit)
 	}
 	if svc.BSocial != nil && svc.BSocial.OverlayRoutes != nil {
 		bsocialOverlayGroup := api.Group("/bsocial/overlay", httputil.NoStoreMiddleware())
-		svc.BSocial.OverlayRoutes.Register(bsocialOverlayGroup)
+		svc.BSocial.OverlayRoutes.Register(bsocialOverlayGroup, overlayBodyLimit)
 	}
 	if svc.OPNS != nil && svc.OPNS.OverlayRoutes != nil {
 		opnsOverlayGroup := api.Group("/opns/overlay", httputil.NoStoreMiddleware())
-		svc.OPNS.OverlayRoutes.Register(opnsOverlayGroup)
+		svc.OPNS.OverlayRoutes.Register(opnsOverlayGroup, overlayBodyLimit)
 	}
 	if svc.OrdLock != nil && svc.OrdLock.OverlayRoutes != nil {
 		ordlockOverlayGroup := api.Group("/market/overlay", httputil.NoStoreMiddleware())
-		svc.OrdLock.OverlayRoutes.Register(ordlockOverlayGroup)
+		svc.OrdLock.OverlayRoutes.Register(ordlockOverlayGroup, overlayBodyLimit)
 	}
 	if svc.BSV21 != nil && svc.BSV21.OverlayRoutes != nil {
 		bsv21OverlayGroup := api.Group("/bsv21/overlay", httputil.NoStoreMiddleware())
-		svc.BSV21.OverlayRoutes.Register(bsv21OverlayGroup)
+		svc.BSV21.OverlayRoutes.Register(bsv21OverlayGroup, overlayBodyLimit)
 	}
 	// Register ORDFS routes
 	if svc.ORDFS != nil && svc.ORDFS.Routes != nil {

@@ -24,8 +24,13 @@ func NewRoutes(eng *engine.Engine, cfg *RoutesConfig, logger *slog.Logger) *Rout
 	}
 }
 
-// Register registers overlay routes on a Fiber app group
-func (r *Routes) Register(group fiber.Router) {
+// Register registers overlay routes on a Fiber app group.
+// octetStreamLimit caps incoming application/octet-stream bodies (e.g. BEEF
+// posts to /submit). Pass the same byte value used for the outer Fiber
+// BodyLimit so the two layers stay in sync — RegisterRoutesConfig{} literals
+// inherit Go zero-values, not the package defaults, so an unset field would
+// reject every submit with "exceeds the maximum allowed size: 0 bytes".
+func (r *Routes) Register(group fiber.Router, octetStreamLimit int64) {
 	// Create a sub-app for overlay routes
 	overlayApp := fiber.New(fiber.Config{
 		ErrorHandler: overlayserver.GetErrorHandler(),
@@ -37,6 +42,7 @@ func (r *Routes) Register(group fiber.Router) {
 		AdminBearerToken: r.config.AdminBearerToken,
 		ARCAPIKey:        r.config.ARCAPIKey,
 		ARCCallbackToken: r.config.ARCCallbackToken,
+		OctetStreamLimit: octetStreamLimit,
 	})
 
 	// Mount the overlay app
