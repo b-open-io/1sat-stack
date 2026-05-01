@@ -8,6 +8,8 @@ replace github.com/bsv-blockchain/go-messagebox-server => github.com/b-open-io/g
 
 replace github.com/bsv-blockchain/go-wallet-toolbox => github.com/bsv-blockchain/go-wallet-toolbox v0.181.3-0.20260418154212-0f8dcf220696
 
+replace github.com/bsv-blockchain/arcade => github.com/bsv-blockchain/arcade v0.4.6-0.20260429231013-f85be2e6b9cc
+
 require (
 	github.com/b-open-io/go-junglebus v0.3.5
 	github.com/bitcoin-sv/go-templates v0.1.0
