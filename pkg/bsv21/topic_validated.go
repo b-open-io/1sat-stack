@@ -49,15 +49,46 @@ func (tm *Bsv21ValidatedTopicManager) HasTokenId(tokenId string) bool {
 	return ok
 }
 
-// tokenSummary tracks token balances during admittance
+// tokenSummary tracks per-tokenId state while classifying a tx's outputs and
+// inputs for admittance. The fields are populated per BSV21 op so transfer,
+// burn, mint and auth admission rules can be applied independently.
 type tokenSummary struct {
-	tokensIn  uint64
-	tokensOut uint64
-	vouts     []uint32
-	deploy    bool
+	// Spendable token amount entering the tx from inputs (transfer, mint, or
+	// deploy+mint outputs being spent). Auth and burn inputs do not contribute.
+	tokensIn uint64
+	// Sum of Amt across this tx's transfer outputs.
+	transferOut uint64
+	// Sum of Amt across this tx's burn outputs.
+	burnOut uint64
+	// Output indices grouped by op so each group can be admitted on its own
+	// rule.
+	transferVouts []uint32
+	burnVouts     []uint32
+	mintVouts     []uint32
+	authVouts     []uint32
+	// True when at least one input is an auth UTXO (Op=auth or
+	// Op=deploy+auth) for this tokenId. Confers unlimited mint authority for
+	// the tx's mint and auth outputs.
+	hasAuthInput bool
 }
 
-// IdentifyAdmissibleOutputs determines which outputs should be admitted
+// IdentifyAdmissibleOutputs determines which outputs should be admitted to
+// the topic. Admission rules are split per BSV21 op:
+//
+//   - Deploy outputs (deploy+mint, deploy+auth): admitted unconditionally.
+//   - Transfer / burn outputs: admitted when input token balance covers the
+//     combined transfer + burn output amount for that tokenId.
+//   - Mint / auth outputs: admitted when an auth input for that tokenId is
+//     spent (auth confers unlimited mint authority).
+//
+// Burn outputs are admitted (so circulating supply can be computed from
+// mints minus burns) but their amount is consumed against `tokensIn` so a
+// caller cannot burn tokens it does not hold.
+//
+// Auth inputs are required to be in `previousCoins`; the engine relies on
+// this to enforce the dependency chain. Burn inputs are ignored entirely —
+// a burn output may legitimately be spent later for satoshi recovery, with
+// no contribution to topic state.
 func (tm *Bsv21ValidatedTopicManager) IdentifyAdmissibleOutputs(ctx context.Context, beef *transaction.Beef, txid *chainhash.Hash, previousCoins []uint32) (admit overlay.AdmittanceInstructions, err error) {
 	tx := beef.FindTransactionForSigningByHash(txid)
 	if tx == nil {
@@ -65,100 +96,153 @@ func (tm *Bsv21ValidatedTopicManager) IdentifyAdmissibleOutputs(ctx context.Cont
 	}
 
 	summary := make(map[string]*tokenSummary)
-	relevantTokenIds := make(map[string]struct{})
+	getSummary := func(id string) *tokenSummary {
+		ts, ok := summary[id]
+		if !ok {
+			ts = &tokenSummary{}
+			summary[id] = ts
+		}
+		return ts
+	}
 
-	// First pass: identify all relevant token IDs in outputs
+	// First pass: classify outputs by op.
 	for vout, output := range tx.Outputs {
-		if b := bsv21template.Decode(output.LockingScript); b != nil {
-			// For deploy operations, tokenId = outpoint
-			if b.Op == string(bsv21template.OpDeployMint) || b.Op == string(bsv21template.OpDeployAuth) {
-				b.Id = (&transaction.Outpoint{
-					Txid:  *txid,
-					Index: uint32(vout),
-				}).OrdinalString()
-			}
-			if !tm.HasTokenId(b.Id) {
-				continue
-			}
-			relevantTokenIds[b.Id] = struct{}{}
-
-			// Deploy operations are always admitted (they create the token)
-			if b.Op == string(bsv21template.OpDeployMint) || b.Op == string(bsv21template.OpDeployAuth) {
-				admit.OutputsToAdmit = append(admit.OutputsToAdmit, uint32(vout))
-				continue
-			}
-
-			if token, ok := summary[b.Id]; !ok {
-				summary[b.Id] = &tokenSummary{
-					tokensOut: b.Amt,
-					vouts:     []uint32{uint32(vout)},
-				}
-			} else {
-				token.tokensOut += b.Amt
-				token.vouts = append(token.vouts, uint32(vout))
-			}
+		b := bsv21template.Decode(output.LockingScript)
+		if b == nil {
+			continue
+		}
+		// For deploy operations, tokenId = outpoint of the deploy itself.
+		if b.Op == string(bsv21template.OpDeployMint) || b.Op == string(bsv21template.OpDeployAuth) {
+			b.Id = (&transaction.Outpoint{
+				Txid:  *txid,
+				Index: uint32(vout),
+			}).OrdinalString()
+		}
+		if !tm.HasTokenId(b.Id) {
+			continue
+		}
+		switch b.Op {
+		case string(bsv21template.OpDeployMint), string(bsv21template.OpDeployAuth):
+			admit.OutputsToAdmit = append(admit.OutputsToAdmit, uint32(vout))
+		case string(bsv21template.OpTransfer):
+			ts := getSummary(b.Id)
+			ts.transferOut += b.Amt
+			ts.transferVouts = append(ts.transferVouts, uint32(vout))
+		case string(bsv21template.OpBurn):
+			ts := getSummary(b.Id)
+			ts.burnOut += b.Amt
+			ts.burnVouts = append(ts.burnVouts, uint32(vout))
+		case string(bsv21template.OpMint):
+			ts := getSummary(b.Id)
+			ts.mintVouts = append(ts.mintVouts, uint32(vout))
+		case string(bsv21template.OpAuth):
+			ts := getSummary(b.Id)
+			ts.authVouts = append(ts.authVouts, uint32(vout))
 		}
 	}
 
-	if len(summary) > 0 {
-		ancillaryTxids := make(map[chainhash.Hash]struct{}, len(tx.Inputs))
+	if len(summary) == 0 {
+		// Only deploy outputs (or no relevant outputs) — nothing depends on
+		// input classification.
+		return admit, nil
+	}
 
-		// Process inputs and detect missing inputs
-		for vin, txin := range tx.Inputs {
-			ancillaryTxids[*txin.SourceTXID] = struct{}{}
-			outpoint := &transaction.Outpoint{
+	ancillaryTxids := make(map[chainhash.Hash]struct{}, len(tx.Inputs))
+
+	// Second pass: classify inputs by op.
+	for vin, txin := range tx.Inputs {
+		sourceOutput := txin.SourceTxOutput()
+		if sourceOutput == nil {
+			continue
+		}
+		b := bsv21template.Decode(sourceOutput.LockingScript)
+		if b == nil {
+			continue
+		}
+		if b.Op == string(bsv21template.OpDeployMint) || b.Op == string(bsv21template.OpDeployAuth) {
+			b.Id = (&transaction.Outpoint{
 				Txid:  *txin.SourceTXID,
 				Index: txin.SourceTxOutIndex,
-			}
-			if sourceOutput := txin.SourceTxOutput(); sourceOutput != nil {
-				if b := bsv21template.Decode(sourceOutput.LockingScript); b != nil {
-					// For deploy operations, tokenId = outpoint
-					if b.Op == string(bsv21template.OpDeployMint) || b.Op == string(bsv21template.OpDeployAuth) {
-						b.Id = outpoint.OrdinalString()
-					}
-					if !tm.HasTokenId(b.Id) {
-						continue
-					}
-					if slices.Contains(previousCoins, uint32(vin)) {
-						slog.Debug("BSV21_INPUT_FOUND",
-							"topic", tm.topic,
-							"txid", txid.String(),
-							"vin", vin,
-							"source_txid", txin.SourceTXID.String())
-						admit.CoinsToRetain = append(admit.CoinsToRetain, uint32(vin))
-						if token, ok := summary[b.Id]; ok {
-							token.tokensIn += b.Amt
-						}
-					} else {
-						return admit, &overlayerr.MissingInputError{
-						TransactionID: txid,
-						InputIndex:    uint32(vin),
-						MissingTxID:   txin.SourceTXID,
-						OutputIndex:   txin.SourceTxOutIndex,
-						Topic:         tm.topic,
-					}
-					}
+			}).OrdinalString()
+		}
+		if !tm.HasTokenId(b.Id) {
+			continue
+		}
+		ts, ok := summary[b.Id]
+		if !ok {
+			// No outputs for this tokenId. The input is incidental; nothing to
+			// account for. Don't record an ancillary txid either.
+			continue
+		}
+		ancillaryTxids[*txin.SourceTXID] = struct{}{}
+
+		switch b.Op {
+		case string(bsv21template.OpBurn):
+			// Burn outputs being spent (e.g. to recoup the satoshi). They
+			// contribute nothing to balance and aren't required to be in
+			// previousCoins.
+			continue
+		case string(bsv21template.OpAuth), string(bsv21template.OpDeployAuth):
+			if !slices.Contains(previousCoins, uint32(vin)) {
+				return admit, &overlayerr.MissingInputError{
+					TransactionID: txid,
+					InputIndex:    uint32(vin),
+					MissingTxID:   txin.SourceTXID,
+					OutputIndex:   txin.SourceTxOutIndex,
+					Topic:         tm.topic,
 				}
 			}
-		}
-
-		for _, token := range summary {
-			if token.tokensIn >= token.tokensOut {
-				admit.OutputsToAdmit = append(admit.OutputsToAdmit, token.vouts...)
+			slog.Debug("BSV21_AUTH_INPUT",
+				"topic", tm.topic,
+				"txid", txid.String(),
+				"vin", vin,
+				"source_txid", txin.SourceTXID.String())
+			admit.CoinsToRetain = append(admit.CoinsToRetain, uint32(vin))
+			ts.hasAuthInput = true
+		case string(bsv21template.OpTransfer), string(bsv21template.OpMint), string(bsv21template.OpDeployMint):
+			if !slices.Contains(previousCoins, uint32(vin)) {
+				return admit, &overlayerr.MissingInputError{
+					TransactionID: txid,
+					InputIndex:    uint32(vin),
+					MissingTxID:   txin.SourceTXID,
+					OutputIndex:   txin.SourceTxOutIndex,
+					Topic:         tm.topic,
+				}
 			}
-		}
-
-		// Add ancillary txids
-		if len(ancillaryTxids) > 0 {
-			admit.AncillaryTxids = make([]*chainhash.Hash, 0, len(ancillaryTxids))
-			for txidHash := range ancillaryTxids {
-				hash := txidHash
-				admit.AncillaryTxids = append(admit.AncillaryTxids, &hash)
-			}
+			slog.Debug("BSV21_TOKEN_INPUT",
+				"topic", tm.topic,
+				"txid", txid.String(),
+				"vin", vin,
+				"source_txid", txin.SourceTXID.String(),
+				"amt", b.Amt)
+			admit.CoinsToRetain = append(admit.CoinsToRetain, uint32(vin))
+			ts.tokensIn += b.Amt
 		}
 	}
 
-	return
+	// Per-tokenId admission decisions. Transfer/burn admit on balance;
+	// mint/auth admit on auth-input presence. The two layers are independent:
+	// a tx with insufficient balance can still admit valid mint outputs.
+	for _, ts := range summary {
+		if ts.tokensIn >= ts.transferOut+ts.burnOut {
+			admit.OutputsToAdmit = append(admit.OutputsToAdmit, ts.transferVouts...)
+			admit.OutputsToAdmit = append(admit.OutputsToAdmit, ts.burnVouts...)
+		}
+		if ts.hasAuthInput {
+			admit.OutputsToAdmit = append(admit.OutputsToAdmit, ts.mintVouts...)
+			admit.OutputsToAdmit = append(admit.OutputsToAdmit, ts.authVouts...)
+		}
+	}
+
+	if len(ancillaryTxids) > 0 {
+		admit.AncillaryTxids = make([]*chainhash.Hash, 0, len(ancillaryTxids))
+		for txidHash := range ancillaryTxids {
+			hash := txidHash
+			admit.AncillaryTxids = append(admit.AncillaryTxids, &hash)
+		}
+	}
+
+	return admit, nil
 }
 
 // IdentifyNeededInputs returns the inputs needed for processing
