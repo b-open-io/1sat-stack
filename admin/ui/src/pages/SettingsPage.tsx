@@ -337,6 +337,82 @@ const BEEF_PROVIDER_LABELS: Record<string, string> = {
   junglebus: "JungleBus",
 };
 
+type SpendsProvider = { type: "lru"; size: string } | { type: "store" } | { type: "junglebus" };
+
+const SPENDS_PROVIDER_LABELS: Record<string, string> = {
+  lru: "LRU Cache",
+  store: "Store",
+  junglebus: "JungleBus",
+};
+
+function SpendsChainEditor({ chain, onChange }: { chain: SpendsProvider[]; onChange: (c: SpendsProvider[]) => void }) {
+  function addProvider() {
+    onChange([...chain, { type: "store" }]);
+  }
+  function removeProvider(i: number) {
+    onChange(chain.filter((_, idx) => idx !== i));
+  }
+  function updateProvider(i: number, p: SpendsProvider) {
+    const next = [...chain];
+    next[i] = p;
+    onChange(next);
+  }
+  function changeType(i: number, type: string) {
+    const defaults: Record<string, SpendsProvider> = {
+      lru: { type: "lru", size: "10mb" },
+      store: { type: "store" },
+      junglebus: { type: "junglebus" },
+    };
+    updateProvider(i, defaults[type] || { type: "store" });
+  }
+
+  return (
+    <div className="space-y-2">
+      <p className="text-[11px] text-muted-foreground">
+        Providers are checked in order. First hit wins; later entries are fallbacks.
+      </p>
+      {chain.map((p, i) => (
+        <div key={i} className="flex items-start gap-2 rounded-lg border border-border p-3 bg-background/50">
+          <GripVertical className="w-3.5 h-3.5 text-muted-foreground/40 mt-2 shrink-0" />
+          <div className="flex-1 space-y-2">
+            <div className="flex items-center gap-2">
+              <select
+                value={p.type}
+                onChange={(e) => changeType(i, e.target.value)}
+                className="text-xs bg-background border border-border rounded px-2 py-1 text-foreground"
+              >
+                {Object.entries(SPENDS_PROVIDER_LABELS).map(([val, label]) => (
+                  <option key={val} value={val}>{label}</option>
+                ))}
+              </select>
+              <span className="text-[10px] text-muted-foreground/60">#{i + 1}</span>
+            </div>
+            {p.type === "lru" && (
+              <Input
+                value={p.size}
+                onChange={(e) => updateProvider(i, { ...p, size: e.target.value })}
+                placeholder="10mb"
+                className="font-mono text-xs h-7"
+              />
+            )}
+          </div>
+          <button type="button" onClick={() => removeProvider(i)} className="text-muted-foreground hover:text-destructive mt-1.5">
+            <Trash2 className="w-3.5 h-3.5" />
+          </button>
+        </div>
+      ))}
+      <button
+        type="button"
+        onClick={addProvider}
+        className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors"
+      >
+        <Plus className="w-3.5 h-3.5" />
+        Add provider
+      </button>
+    </div>
+  );
+}
+
 function BeefChainEditor({ chain, onChange }: { chain: BeefProvider[]; onChange: (c: BeefProvider[]) => void }) {
   function addProvider() {
     onChange([...chain, { type: "lru", size: "100mb" }]);
@@ -439,6 +515,8 @@ interface StoragePanelProps {
   setStorePath: (v: string) => void;
   beefChain: BeefProvider[];
   setBeefChain: (v: BeefProvider[]) => void;
+  spendsChain: SpendsProvider[];
+  setSpendsChain: (v: SpendsProvider[]) => void;
   pubsubProvider: "channels" | "redis";
   setPubsubProvider: (v: "channels" | "redis") => void;
   pubsubBuffer: string;
@@ -471,6 +549,7 @@ function StoragePanel({
   storeProvider, setStoreProvider,
   storePath, setStorePath,
   beefChain, setBeefChain,
+  spendsChain, setSpendsChain,
   pubsubProvider, setPubsubProvider,
   pubsubBuffer, setPubsubBuffer,
   pubsubRedisUrl, setPubsubRedisUrl,
@@ -512,6 +591,12 @@ function StoragePanel({
         <SectionHeading>BEEF</SectionHeading>
         <p className="text-[11px] text-muted-foreground">Transaction storage with SPV proofs. Providers form a lookup chain.</p>
         <BeefChainEditor chain={beefChain} onChange={setBeefChain} />
+      </SectionCard>
+
+      <SectionCard>
+        <SectionHeading>Spends</SectionHeading>
+        <p className="text-[11px] text-muted-foreground">Spend records for outputs. Providers form a lookup chain. Leave empty to use the default Store-only chain.</p>
+        <SpendsChainEditor chain={spendsChain} onChange={setSpendsChain} />
       </SectionCard>
 
       <SectionCard>
@@ -1377,6 +1462,7 @@ export default function SettingsPage() {
     { type: "lru", size: "100mb" },
     { type: "filesystem", path: "beef" },
   ]);
+  const [spendsChain, setSpendsChain] = useState<SpendsProvider[]>([]);
   const [pubsubProvider, setPubsubProvider] = useState<"channels" | "redis">("channels");
   const [pubsubBuffer, setPubsubBuffer] = useState("100");
   const [pubsubRedisUrl, setPubsubRedisUrl] = useState("");
@@ -1475,6 +1561,9 @@ export default function SettingsPage() {
         setStorePath(s("store.badger.path", "store"));
         if (cfg["beef.chain"]) {
           try { setBeefChain(JSON.parse(cfg["beef.chain"])); } catch { /* keep default */ }
+        }
+        if (cfg["spends.chain"]) {
+          try { setSpendsChain(JSON.parse(cfg["spends.chain"])); } catch { /* keep default */ }
         }
         if (cfg["pubsub.provider"] === "channels" || cfg["pubsub.provider"] === "redis") setPubsubProvider(cfg["pubsub.provider"]);
         setPubsubBuffer(s("pubsub.channels.buffer_size", "100"));
@@ -1579,7 +1668,7 @@ export default function SettingsPage() {
     "auth.mode", "chaintracks.path", "arcade.path",
     "arcade.teranode.broadcast_urls", "arcade.teranode.datahub_urls",
     "arcade.teranode.auth_token", "arcade.teranode.timeout",
-    "beef.chain", "ordfs.cache.lru_size", "ordfs.cache.redis_url", "ordfs.cache.redis_ttl",
+    "beef.chain", "spends.chain", "ordfs.cache.lru_size", "ordfs.cache.redis_url", "ordfs.cache.redis_ttl",
     "overlay.engine.storage", "overlay.engine.storage_path",
     "overlay.engine.p2p.enabled", "overlay.engine.p2p.port",
     "overlay.engine.p2p.dht_mode", "overlay.engine.p2p.bootstrap_peers",
@@ -1683,6 +1772,7 @@ export default function SettingsPage() {
         "store.provider": storeProvider,
         "store.badger.path": storePath,
         "beef.chain": JSON.stringify(beefChain),
+        "spends.chain": JSON.stringify(spendsChain),
         "pubsub.provider": pubsubProvider,
         "pubsub.channels.buffer_size": pubsubBuffer,
         "pubsub.redis.url": pubsubRedisUrl,
@@ -1882,6 +1972,7 @@ export default function SettingsPage() {
               storeProvider={storeProvider} setStoreProvider={setStoreProvider}
               storePath={storePath} setStorePath={setStorePath}
               beefChain={beefChain} setBeefChain={setBeefChain}
+              spendsChain={spendsChain} setSpendsChain={setSpendsChain}
               pubsubProvider={pubsubProvider} setPubsubProvider={setPubsubProvider}
               pubsubBuffer={pubsubBuffer} setPubsubBuffer={setPubsubBuffer}
               pubsubRedisUrl={pubsubRedisUrl} setPubsubRedisUrl={setPubsubRedisUrl}

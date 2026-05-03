@@ -739,6 +739,13 @@ func (c *Config) applyRuntimeConfig(rc *configpkg.RuntimeConfig) {
 		}
 	}
 
+	// Spends chain
+	if rc.SpendsChain != "" {
+		if chain, err := convertSpendsChain(rc.SpendsChain); err == nil && len(chain) > 0 {
+			c.Spends.Chain = chain
+		}
+	}
+
 	// PubSub
 	if rc.PubSubProvider != "" {
 		c.PubSub.Provider = rc.PubSubProvider
@@ -792,6 +799,30 @@ func convertBeefChain(jsonStr string) ([]beef.ChainConfig, error) {
 		case "badger":
 			cc.Badger.Path = item["path"]
 		case "junglebus", "store":
+			// No additional config needed
+		}
+		chain = append(chain, cc)
+	}
+	return chain, nil
+}
+
+// convertSpendsChain converts the flat admin UI format to the nested Go config format.
+// Admin UI writes: [{"type":"lru","size":"100mb"},{"type":"store"},{"type":"junglebus"}]
+// Go expects: [{"provider":"lru","lru":{"size":"100mb"}},{"provider":"store"},{"provider":"junglebus"}]
+func convertSpendsChain(jsonStr string) ([]spends.ChainConfig, error) {
+	var flat []map[string]string
+	if err := json.Unmarshal([]byte(jsonStr), &flat); err != nil {
+		return nil, err
+	}
+
+	var chain []spends.ChainConfig
+	for _, item := range flat {
+		provider := item["type"]
+		cc := spends.ChainConfig{Provider: provider}
+		switch provider {
+		case "lru":
+			cc.LRU.Size = item["size"]
+		case "store", "junglebus":
 			// No additional config needed
 		}
 		chain = append(chain, cc)

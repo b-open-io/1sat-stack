@@ -134,6 +134,9 @@ type RuntimeConfig struct {
 	// Beef chain (JSON from config DB)
 	BeefChain string
 
+	// Spends chain (JSON from config DB)
+	SpendsChain string
+
 	// PubSub
 	PubSubProvider   string
 	PubSubBufferSize int
@@ -277,6 +280,9 @@ func LoadRuntimeConfig(ctx context.Context, cs Store, logger *slog.Logger) (*Run
 
 	// Beef chain
 	rc.BeefChain = getString(ctx, cs, "beef.chain")
+
+	// Spends chain
+	rc.SpendsChain = getString(ctx, cs, "spends.chain")
 
 	// PubSub
 	rc.PubSubProvider = getString(ctx, cs, "pubsub.provider")
