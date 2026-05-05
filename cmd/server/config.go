@@ -15,9 +15,11 @@ import (
 
 	"github.com/b-open-io/1sat-stack/admin"
 	"github.com/b-open-io/1sat-stack/landing"
+	"github.com/b-open-io/1sat-stack/pkg/arcadeclient"
 	"github.com/b-open-io/1sat-stack/pkg/auth"
 	"github.com/b-open-io/1sat-stack/pkg/bap"
 	"github.com/b-open-io/1sat-stack/pkg/beef"
+	"github.com/b-open-io/1sat-stack/pkg/broadcast"
 	"github.com/b-open-io/1sat-stack/pkg/bsocial"
 	"github.com/b-open-io/1sat-stack/pkg/bsv21"
 	configpkg "github.com/b-open-io/1sat-stack/pkg/config"
@@ -281,6 +283,12 @@ type Services struct {
 	Arcade            *arcadeconfig.Services
 	ArcadeWrapped     service.ArcadeService
 	ArcadeRoutes      *arcaderoutes.Routes
+
+	// External arcade (HTTP)
+	ArcadeClient     *arcadeclient.Client
+	ArcadeBroker     *arcadeclient.EventBroker
+	BroadcastHandler *broadcast.Handler
+	BroadcastRoutes  *broadcast.Routes
 }
 
 // SetDefaults configures viper defaults for all settings
@@ -930,6 +938,24 @@ func (c *Config) Initialize(ctx context.Context, logger *slog.Logger) (*Services
 		svc.Beef.Routes = beef.NewRoutes(beefSvc.Storage, svc.Chaintracks.GetHeight)
 	}
 	logger.Info("beef initialized", "duration", time.Since(start).Round(time.Millisecond))
+
+	// Initialize external arcade HTTP client + event broker + broadcast handler.
+	// This coexists with the embedded arcade below until that is removed.
+	if c.Arcade.URL != "" && runtimeCfg.ArcadeCallbackToken != "" {
+		start = time.Now()
+		arcadeLogger := logging.NewComponentLogger(logger, "arcade", c.Arcade.LogLevel)
+		svc.ArcadeClient = arcadeclient.New(c.Arcade.URL, runtimeCfg.ArcadeCallbackToken, nil, arcadeLogger)
+		svc.ArcadeBroker = arcadeclient.NewEventBroker(svc.ArcadeClient, arcadeLogger)
+
+		waitTimeout := broadcast.DefaultWaitTimeout
+		if d, perr := time.ParseDuration(runtimeCfg.ArcadeWaitTimeout); perr == nil && d > 0 {
+			waitTimeout = d
+		}
+		svc.BroadcastHandler = broadcast.NewHandler(svc.ArcadeBroker, svc.Beef.Storage, waitTimeout, arcadeLogger)
+		svc.BroadcastRoutes = broadcast.NewRoutes(svc.BroadcastHandler, svc.ArcadeClient, arcadeLogger)
+		logger.Info("external arcade client initialized",
+			"url", c.Arcade.URL, "wait_timeout", waitTimeout, "duration", time.Since(start).Round(time.Millisecond))
+	}
 
 	// Initialize Arcade
 	if c.Arcade.Mode != "" && c.Arcade.Mode != "disabled" {
@@ -2092,6 +2118,12 @@ func (svc *Services) StartSubscribers(ctx context.Context, logger *slog.Logger) 
 				logger.Error("failed to start BSV21 event bridge", "error", err)
 			}
 		}
+	}
+
+	// Start the always-on arcade SSE consumer (event broker)
+	if svc.ArcadeBroker != nil {
+		go svc.ArcadeBroker.Run(ctx)
+		logger.Info("started arcade event broker")
 	}
 
 	// Start BSV21 sync services
