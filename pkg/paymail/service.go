@@ -11,9 +11,9 @@ import (
 	"time"
 
 	"github.com/b-open-io/1sat-stack/pkg/beef"
+	"github.com/b-open-io/1sat-stack/pkg/broadcast"
 	"github.com/b-open-io/1sat-stack/pkg/opns"
 	"github.com/b-open-io/1sat-stack/pkg/ordfs"
-	arcadeservice "github.com/bsv-blockchain/arcade/service"
 	ec "github.com/bsv-blockchain/go-sdk/primitives/ec"
 	"github.com/bsv-blockchain/go-sdk/script"
 	"github.com/bsv-blockchain/go-sdk/transaction/template/p2pkh"
@@ -28,21 +28,21 @@ var brc29Protocol = wallet.Protocol{
 
 // Service provides paymail resolution and payment derivation.
 type Service struct {
-	opns              *opns.LookupService
-	ordfs             *ordfs.Ordfs
-	arcade            arcadeservice.ArcadeService
-	messageBoxClient  *MessageBoxClient
-	beefStorage       *beef.Storage
-	store             PendingStore
-	anyoneDeriver     *wallet.KeyDeriver
-	logger            *slog.Logger
+	opns             *opns.LookupService
+	ordfs            *ordfs.Ordfs
+	handler          *broadcast.Handler
+	messageBoxClient *MessageBoxClient
+	beefStorage      *beef.Storage
+	store            PendingStore
+	anyoneDeriver    *wallet.KeyDeriver
+	logger           *slog.Logger
 }
 
 // NewService creates a new paymail service.
 func NewService(
 	opnsLookup *opns.LookupService,
 	ordfsService *ordfs.Ordfs,
-	arcadeService arcadeservice.ArcadeService,
+	handler *broadcast.Handler,
 	messageBoxClient *MessageBoxClient,
 	beefStorage *beef.Storage,
 	store PendingStore,
@@ -55,7 +55,7 @@ func NewService(
 	return &Service{
 		opns:             opnsLookup,
 		ordfs:            ordfsService,
-		arcade:           arcadeService,
+		handler:          handler,
 		messageBoxClient: messageBoxClient,
 		beefStorage:      beefStorage,
 		store:            store,
@@ -182,9 +182,10 @@ func (s *Service) BeefStorage() *beef.Storage {
 	return s.beefStorage
 }
 
-// Arcade returns the arcade service for direct broadcast.
-func (s *Service) Arcade() arcadeservice.ArcadeService {
-	return s.arcade
+// Handler returns the broadcast handler — the broadcast chokepoint that
+// captures BEEF and submits to arcade with the stack's callback token.
+func (s *Service) Handler() *broadcast.Handler {
+	return s.handler
 }
 
 // AnyoneDeriverIdentityKey returns the identity key of the anyone deriver (for PKI responses).

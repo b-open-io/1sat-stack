@@ -6,8 +6,8 @@ import (
 	"log/slog"
 	"strings"
 
+	"github.com/b-open-io/1sat-stack/pkg/arcadeclient"
 	"github.com/b-open-io/1sat-stack/pkg/httputil"
-	"github.com/bsv-blockchain/arcade/models"
 	"github.com/bsv-blockchain/go-sdk/transaction"
 	"github.com/gofiber/fiber/v2"
 )
@@ -237,14 +237,14 @@ func (r *Routes) ReceiveBeef(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": err.Error()})
 	}
 
-	// Broadcast through Arcade synchronously — sender gets immediate feedback
-	status, err := r.service.Arcade().SubmitTransaction(c.Context(), beefBytes, nil)
+	// Broadcast through arcade (via internal handler) — sender gets immediate feedback
+	status, err := r.service.Handler().Submit(c.Context(), beefBytes)
 	if err != nil {
-		r.logger.Error("arcade broadcast failed", "alias", alias, "error", err)
+		r.logger.Error("broadcast failed", "alias", alias, "error", err)
 		return c.Status(fiber.StatusBadGateway).JSON(fiber.Map{"error": fmt.Sprintf("broadcast failed: %v", err)})
 	}
-	if status != nil && status.Status == models.StatusRejected {
-		r.logger.Warn("arcade rejected transaction", "alias", alias, "extraInfo", status.ExtraInfo)
+	if status != nil && arcadeclient.IsRejected(status.TxStatus) {
+		r.logger.Warn("arcade rejected transaction", "alias", alias, "tx_status", status.TxStatus, "extraInfo", status.ExtraInfo)
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "transaction rejected by network"})
 	}
 
@@ -340,14 +340,14 @@ func (r *Routes) ReceiveTransaction(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to build BEEF from transaction"})
 	}
 
-	// Broadcast BEEF through Arcade synchronously
-	status, err := r.service.Arcade().SubmitTransaction(c.Context(), beefBytes, nil)
+	// Broadcast BEEF through arcade (via internal handler)
+	status, err := r.service.Handler().Submit(c.Context(), beefBytes)
 	if err != nil {
-		r.logger.Error("arcade broadcast failed", "alias", alias, "error", err)
+		r.logger.Error("broadcast failed", "alias", alias, "error", err)
 		return c.Status(fiber.StatusBadGateway).JSON(fiber.Map{"error": fmt.Sprintf("broadcast failed: %v", err)})
 	}
-	if status != nil && status.Status == models.StatusRejected {
-		r.logger.Warn("arcade rejected transaction", "alias", alias, "extraInfo", status.ExtraInfo)
+	if status != nil && arcadeclient.IsRejected(status.TxStatus) {
+		r.logger.Warn("arcade rejected transaction", "alias", alias, "tx_status", status.TxStatus, "extraInfo", status.ExtraInfo)
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "transaction rejected by network"})
 	}
 

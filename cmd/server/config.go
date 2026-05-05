@@ -1417,7 +1417,7 @@ func (c *Config) Initialize(ctx context.Context, logger *slog.Logger) (*Services
 
 	}
 
-	// Initialize Paymail service (requires OpNS + ORDFS + Arcade, optionally remote MessageBox)
+	// Initialize Paymail service (requires OpNS + ORDFS + BroadcastHandler, optionally remote MessageBox)
 	if c.Paymail.Mode != paymail.ModeDisabled && c.Paymail.Mode != "" {
 		paymailDeps := &paymail.InitializeDeps{}
 		if svc.OPNS != nil && svc.OPNS.Lookup != nil {
@@ -1426,11 +1426,7 @@ func (c *Config) Initialize(ctx context.Context, logger *slog.Logger) (*Services
 		if svc.ORDFS != nil && svc.ORDFS.Ordfs != nil {
 			paymailDeps.Ordfs = svc.ORDFS.Ordfs
 		}
-		if svc.ArcadeWrapped != nil {
-			paymailDeps.Arcade = svc.ArcadeWrapped
-		} else if svc.Arcade != nil && svc.Arcade.ArcadeService != nil {
-			paymailDeps.Arcade = svc.Arcade.ArcadeService
-		}
+		paymailDeps.BroadcastHandler = svc.BroadcastHandler
 		if svc.Beef != nil && svc.Beef.Storage != nil {
 			paymailDeps.BeefStorage = svc.Beef.Storage
 		}
