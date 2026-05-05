@@ -59,6 +59,10 @@ type RuntimeConfig struct {
 	JungleBusURL   string
 	JungleBusToken string
 
+	// External arcade (HTTP) — ArcadeURL above is reused.
+	ArcadeCallbackToken string // shared callback token for the always-on SSE subscription
+	ArcadeWaitTimeout   string // duration string (e.g. "30s") — wait window for /1sat/tx submit-and-wait
+
 	// Indexer
 	IndexerMode                string // "embedded" or "disabled"
 	IndexerLogLevel            string
@@ -200,6 +204,11 @@ func LoadRuntimeConfig(ctx context.Context, cs Store, logger *slog.Logger) (*Run
 	// JungleBus
 	rc.JungleBusURL = getString(ctx, cs, "junglebus.url")
 	rc.JungleBusToken = getString(ctx, cs, "junglebus.token")
+
+	// External arcade
+	rc.ArcadeURL = getString(ctx, cs, "arcade.url")
+	rc.ArcadeCallbackToken = getString(ctx, cs, "arcade.callback_token")
+	rc.ArcadeWaitTimeout = getString(ctx, cs, "arcade.wait_timeout")
 
 	// Indexer
 	rc.IndexerMode = getString(ctx, cs, "indexer.mode")
