@@ -26,32 +26,20 @@ const DefaultWaitTimeout = 30 * time.Second
 
 // Routes provides the broadcast HTTP surface.
 type Routes struct {
-	broker      *arcadeclient.EventBroker
-	client      *arcadeclient.Client
-	logger      *slog.Logger
-	waitTimeout time.Duration
+	handler *Handler
+	client  *arcadeclient.Client
+	logger  *slog.Logger
 }
 
 // NewRoutes constructs a Routes instance.
 //
-// broker is the always-on event broker (required — used by the submit handler
-// to register a per-txid waiter before submitting). client is used by the
-// status handler for direct GetStatus calls. waitTimeout is the upper bound
-// on how long /1sat/tx blocks before returning what status it has; pass 0 for
-// the default (DefaultWaitTimeout).
-func NewRoutes(
-	broker *arcadeclient.EventBroker,
-	client *arcadeclient.Client,
-	waitTimeout time.Duration,
-	logger *slog.Logger,
-) *Routes {
-	if waitTimeout == 0 {
-		waitTimeout = DefaultWaitTimeout
-	}
+// handler does BEEF capture and the SubmitAndWait dance against arcade.
+// client is used by the status handler for direct GetStatus passthrough.
+func NewRoutes(handler *Handler, client *arcadeclient.Client, logger *slog.Logger) *Routes {
 	if logger == nil {
 		logger = slog.Default()
 	}
-	return &Routes{broker: broker, client: client, logger: logger, waitTimeout: waitTimeout}
+	return &Routes{handler: handler, client: client, logger: logger}
 }
 
 // Register mounts the broadcast routes on the given Fiber router.
@@ -78,23 +66,15 @@ func (r *Routes) Register(router fiber.Router) {
 //   - 400 — REJECTED or DOUBLE_SPEND_ATTEMPTED (or malformed body)
 //   - 502 — upstream arcade error
 func (r *Routes) handleSubmit(c *fiber.Ctx) error {
-	rawTx, err := readRawTx(c)
+	payload, err := readPayload(c)
 	if err != nil {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": err.Error()})
 	}
-	if len(rawTx) == 0 {
+	if len(payload) == 0 {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "empty body"})
 	}
 
-	status, err := r.broker.SubmitAndWait(
-		c.UserContext(),
-		rawTx,
-		arcadeclient.SubmitOptions{}, // intentionally empty — broker uses its own callback token
-		arcadeclient.WaitOptions{
-			Timeout: r.waitTimeout,
-			StopOn:  arcadeclient.StopOnAccepted,
-		},
-	)
+	status, err := r.handler.Submit(c.UserContext(), payload)
 
 	switch {
 	case errors.Is(err, context.Canceled):
@@ -132,8 +112,9 @@ func (r *Routes) handleGetStatus(c *fiber.Ctx) error {
 	return c.Status(fiber.StatusOK).JSON(status)
 }
 
-// readRawTx extracts raw tx bytes from a Fiber request based on Content-Type.
-func readRawTx(c *fiber.Ctx) ([]byte, error) {
+// readPayload extracts request bytes (BEEF or raw tx — Handler auto-detects)
+// from a Fiber request based on Content-Type.
+func readPayload(c *fiber.Ctx) ([]byte, error) {
 	body := c.Body()
 	if len(body) == 0 {
 		return nil, nil
