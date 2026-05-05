@@ -17,7 +17,7 @@
 | Wallet Connect Flow | **Complete** | yours-wallet auth and popup fixes done |
 | [Admin & OpNS Registration](../archive/2026-03-03-admin-opns-registration.md) | **Complete** | Admin setup, OPNS crawl, lookups wired up |
 | [Overlay Storage Isolation](../archive/overlay-storage-isolation.md) | **Complete** | Per-topic SQLite, TxTopicIndex, dead code removed |
-| [OrdLock Overlay](../archive/ordlock-overlay.md) | **Complete** | Deployed to rack, syncing from block 783968 |
+| OrdLock Overlay | **Complete** | Deployed to rack, syncing from block 783968 |
 | [TXO Lookup Fixes](../archive/TXO_LOOKUP_FIXES.md) | **Complete** | LoadOutputsByTxid fixed to use event index |
 | [Config Infrastructure Design](../archive/config-infrastructure-design.md) | **Complete** | OPL-1185 — Two-layer config (static + config store), SQLite backend |
 | [Admin-Configurable Settings](../archive/admin-configurable-settings.md) | **Complete** | OPL-1183 — Store-first config, setup wizard, module hierarchy |
