@@ -130,6 +130,13 @@ func (eb *EventBridge) submitWorker(ctx context.Context) {
 			if !ok {
 				return
 			}
+			// Skip topics that have no registered manager (e.g. non-whitelisted
+			// BSV21 tokens emit per-token topic events but only the whitelisted
+			// token has a manager). No need to build BEEF or attempt Submit.
+			if !eb.config.Engine.HasTopicManager(item.topic) {
+				eb.submitted.Delete(*item.txid)
+				continue
+			}
 			beefBytes, err := eb.config.BeefStorage.BuildFullBeef(ctx, item.txid)
 			if err != nil {
 				eb.logger.Warn("direct submit: failed to build BEEF",
