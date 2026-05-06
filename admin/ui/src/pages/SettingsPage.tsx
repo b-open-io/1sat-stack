@@ -543,6 +543,12 @@ interface StoragePanelProps {
   setArcadeTimeout: (v: string) => void;
   arcadeLogLevel: string;
   setArcadeLogLevel: (v: string) => void;
+  arcadeUrl: string;
+  setArcadeUrl: (v: string) => void;
+  arcadeCallbackToken: string;
+  setArcadeCallbackToken: (v: string) => void;
+  arcadeWaitTimeout: string;
+  setArcadeWaitTimeout: (v: string) => void;
 }
 
 function StoragePanel({
@@ -563,6 +569,9 @@ function StoragePanel({
   arcadeAuthToken, setArcadeAuthToken,
   arcadeTimeout, setArcadeTimeout,
   arcadeLogLevel, setArcadeLogLevel,
+  arcadeUrl, setArcadeUrl,
+  arcadeCallbackToken, setArcadeCallbackToken,
+  arcadeWaitTimeout, setArcadeWaitTimeout,
 }: StoragePanelProps) {
   return (
     <div className="space-y-4">
@@ -647,8 +656,38 @@ function StoragePanel({
       </SectionCard>
 
       <SectionCard>
-        <SectionHeading>Arcade / Teranode</SectionHeading>
-        <p className="text-[11px] text-muted-foreground">Broadcast and datahub endpoints for Teranode transaction submission.</p>
+        <SectionHeading>External Arcade (HTTP)</SectionHeading>
+        <p className="text-[11px] text-muted-foreground">External arcade endpoint for transaction broadcast. 1sat-stack maintains a single SSE subscription with the callback token below; every transaction submitted via /1sat/tx, paymail, or overlay broadcasters flows through this connection.</p>
+        <FieldRow label="URL" hint="Base URL of the external arcade service." badge={<RestartBadge />}>
+          <Input
+            value={arcadeUrl}
+            onChange={(e) => setArcadeUrl(e.target.value)}
+            placeholder="https://arcade.gorillapool.io"
+            className="font-mono text-xs h-8"
+          />
+        </FieldRow>
+        <FieldRow label="Callback token" hint="Shared token used on every Submit so SSE events route back to this stack. Generate any random string; must be set for the broker to start." badge={<RestartBadge />}>
+          <Input
+            type="password"
+            value={arcadeCallbackToken}
+            onChange={(e) => setArcadeCallbackToken(e.target.value)}
+            placeholder="(required)"
+            className="font-mono text-xs h-8"
+          />
+        </FieldRow>
+        <FieldRow label="Wait timeout" hint="Upper bound on /1sat/tx submit-and-wait. Duration string (e.g. 30s, 60s)." badge={<RestartBadge />}>
+          <Input
+            value={arcadeWaitTimeout}
+            onChange={(e) => setArcadeWaitTimeout(e.target.value)}
+            placeholder="30s"
+            className="font-mono text-xs h-8 max-w-[120px]"
+          />
+        </FieldRow>
+      </SectionCard>
+
+      <SectionCard>
+        <SectionHeading>Arcade / Teranode (legacy embedded)</SectionHeading>
+        <p className="text-[11px] text-muted-foreground">Broadcast and datahub endpoints for Teranode transaction submission. Used by the embedded arcade; superseded by the External Arcade settings above and scheduled for removal.</p>
         <FieldRow label="Broadcast URLs" hint="One URL per line. Used for submitting transactions." badge={<RestartBadge />}>
           <textarea
             value={arcadeBroadcastUrls.join("\n")}
@@ -1476,6 +1515,10 @@ export default function SettingsPage() {
   const [arcadeAuthToken, setArcadeAuthToken] = useState("");
   const [arcadeTimeout, setArcadeTimeout] = useState("30");
   const [arcadeLogLevel, setArcadeLogLevel] = useState("info");
+  // External arcade (HTTP) — replaces embedded arcade
+  const [arcadeUrl, setArcadeUrl] = useState("https://arcade.gorillapool.io");
+  const [arcadeCallbackToken, setArcadeCallbackToken] = useState("");
+  const [arcadeWaitTimeout, setArcadeWaitTimeout] = useState("30s");
 
   // Indexer
   const [activeTags, setActiveTags] = useState<string[]>(PARSE_TAGS.map((t) => t.id));
@@ -1584,6 +1627,9 @@ export default function SettingsPage() {
         setArcadeAuthToken(s("arcade.teranode.auth_token", ""));
         setArcadeTimeout(s("arcade.teranode.timeout", "30"));
         setArcadeLogLevel(s("arcade.log_level", "info"));
+        setArcadeUrl(s("arcade.url", "https://arcade.gorillapool.io"));
+        setArcadeCallbackToken(s("arcade.callback_token", ""));
+        setArcadeWaitTimeout(s("arcade.wait_timeout", "30s"));
 
         // Indexer
         if (cfg["indexer.parsers"]) {
@@ -1668,6 +1714,7 @@ export default function SettingsPage() {
     "auth.mode", "chaintracks.path", "arcade.path",
     "arcade.teranode.broadcast_urls", "arcade.teranode.datahub_urls",
     "arcade.teranode.auth_token", "arcade.teranode.timeout",
+    "arcade.url", "arcade.callback_token", "arcade.wait_timeout",
     "beef.chain", "spends.chain", "ordfs.cache.lru_size", "ordfs.cache.redis_url", "ordfs.cache.redis_ttl",
     "overlay.engine.storage", "overlay.engine.storage_path",
     "overlay.engine.p2p.enabled", "overlay.engine.p2p.port",
@@ -1702,6 +1749,9 @@ export default function SettingsPage() {
     "arcade.teranode.auth_token": arcadeAuthToken,
     "arcade.teranode.timeout": arcadeTimeout,
     "arcade.log_level": arcadeLogLevel,
+    "arcade.url": arcadeUrl,
+    "arcade.callback_token": arcadeCallbackToken,
+    "arcade.wait_timeout": arcadeWaitTimeout,
     "overlay.engine.storage": engineStorage,
     "overlay.engine.storage_path": engineStoragePath,
     "overlay.engine.p2p.enabled": String(p2pEnabled),
@@ -1736,6 +1786,7 @@ export default function SettingsPage() {
     bapEnabled, opnsEnabled, bsv21Enabled, bsocialEnabled, ordlockEnabled, ownerSync, faucetEnabled,
     storeProvider, storePath, pubsubProvider, authMode,
     chaintracksPath, arcadeDb, arcadeBroadcastUrls, arcadeDatahubUrls, arcadeAuthToken, arcadeTimeout, arcadeLogLevel,
+    arcadeUrl, arcadeCallbackToken, arcadeWaitTimeout,
     engineStorage, engineStoragePath,
     p2pEnabled, p2pPort, p2pDhtMode, bootstrapPeers, activeTags,
     bapSubId, bapConcurrency, bapBatchSize,
@@ -1786,6 +1837,9 @@ export default function SettingsPage() {
         "arcade.teranode.auth_token": arcadeAuthToken,
         "arcade.teranode.timeout": arcadeTimeout,
         "arcade.log_level": arcadeLogLevel,
+        "arcade.url": arcadeUrl,
+        "arcade.callback_token": arcadeCallbackToken,
+        "arcade.wait_timeout": arcadeWaitTimeout,
 
         // Indexer
         "indexer.parsers": JSON.stringify(activeTags),
@@ -1986,6 +2040,9 @@ export default function SettingsPage() {
               arcadeAuthToken={arcadeAuthToken} setArcadeAuthToken={setArcadeAuthToken}
               arcadeTimeout={arcadeTimeout} setArcadeTimeout={setArcadeTimeout}
               arcadeLogLevel={arcadeLogLevel} setArcadeLogLevel={setArcadeLogLevel}
+              arcadeUrl={arcadeUrl} setArcadeUrl={setArcadeUrl}
+              arcadeCallbackToken={arcadeCallbackToken} setArcadeCallbackToken={setArcadeCallbackToken}
+              arcadeWaitTimeout={arcadeWaitTimeout} setArcadeWaitTimeout={setArcadeWaitTimeout}
             />
           )}
           {activeSection === "indexer" && (
