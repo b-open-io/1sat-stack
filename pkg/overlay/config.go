@@ -61,9 +61,10 @@ func (c *Config) SetDefaults(v *viper.Viper, prefix string) {
 type InitializeDeps struct {
 	OutputStore  *txo.OutputStore
 	ChainTracker chaintracker.ChainTracker
-	Store        store.Store   // For remote config and queue operations
-	BeefStorage  *beef.Storage // For BEEF remote creation
-	P2PBus       *P2PBus       // For overlay P2P broadcast (optional)
+	Store        store.Store             // For remote config and queue operations
+	BeefStorage  *beef.Storage           // For BEEF remote creation
+	P2PBus       *P2PBus                 // For overlay P2P broadcast (optional)
+	Broadcaster  transaction.Broadcaster // For overlay-engine-initiated broadcasts via arcade
 }
 
 // ModuleDeps holds the shared infrastructure that overlay modules use to create their own engines.
@@ -76,6 +77,7 @@ type ModuleDeps struct {
 	IngestTx     overlaystorage.IngestTxFunc
 	RoutesConfig *RoutesConfig
 	P2PBus       *P2PBus
+	Broadcaster  transaction.Broadcaster
 }
 
 // NewModuleEngine creates an engine.Engine for a single overlay module.
@@ -90,6 +92,7 @@ func NewModuleEngine(deps *ModuleDeps, managers map[string]engine.TopicManager, 
 		LookupServices: lookups,
 		Storage:        adapter,
 		ChainTracker:   deps.ChainTracker,
+		Broadcaster:    deps.Broadcaster,
 	})
 
 	if deps.P2PBus != nil {
@@ -165,6 +168,7 @@ func (c *Config) Initialize(ctx context.Context, logger *slog.Logger, deps *Init
 			IngestTx:     ingestTx,
 			RoutesConfig: &c.Routes,
 			P2PBus:       deps.P2PBus,
+			Broadcaster:  deps.Broadcaster,
 		},
 	}
 

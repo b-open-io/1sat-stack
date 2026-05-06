@@ -1014,6 +1014,9 @@ func (c *Config) Initialize(ctx context.Context, logger *slog.Logger) (*Services
 		if svc.Beef != nil {
 			overlayDeps.BeefStorage = svc.Beef.Storage
 		}
+		if svc.ArcadeClient != nil {
+			overlayDeps.Broadcaster = broadcast.NewBroadcaster(svc.ArcadeClient, logger)
+		}
 		overlayLogger := logging.NewComponentLogger(logger, "overlay", "")
 		// Create overlay P2P bus if enabled
 		if c.Overlay.P2P.Enabled && svc.Store != nil {
