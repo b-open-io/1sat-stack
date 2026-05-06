@@ -12,7 +12,6 @@ import (
 	"github.com/b-open-io/1sat-stack/pkg/pubsub"
 	"github.com/b-open-io/1sat-stack/pkg/store"
 	"github.com/b-open-io/1sat-stack/pkg/txo"
-	"github.com/bsv-blockchain/arcade/events"
 	"github.com/bsv-blockchain/go-chaintracks/chaintracks"
 	"github.com/bsv-blockchain/go-overlay-services/pkg/core/engine"
 	"github.com/bsv-blockchain/go-sdk/chainhash"
@@ -103,7 +102,6 @@ func (c *Config) SetDefaults(v *viper.Viper, prefix string) {
 type Services struct {
 	Indexer        *IngestCtx
 	Sync           *IngestSync
-	ArcadeListener *ArcadeListener
 	StatusHandler  *StatusHandler
 	PendingAuditor *PendingAuditor
 	Routes         *Routes
@@ -119,13 +117,6 @@ type InitializeDeps struct {
 	BeefStorage *beef.Storage
 	OutputStore *txo.OutputStore
 	Ordfs       *ordfs.Ordfs
-}
-
-// ArcadeListenerDeps holds dependencies for arcade listener initialization.
-// These are set separately since arcade is initialized after indexer.
-type ArcadeListenerDeps struct {
-	EventPublisher events.Publisher
-	PubSub         pubsub.PubSub
 }
 
 // TopicIndexer looks up which overlay topics contain outputs for a given txid.
@@ -184,28 +175,6 @@ func (c *Config) Initialize(
 	return svc, nil
 }
 
-// SetupArcadeListener initializes the arcade listener with its dependencies.
-// This must be called after arcade is initialized since arcade depends on indexer.
-func (s *Services) SetupArcadeListener(deps *ArcadeListenerDeps) {
-	s.logger.Info("SetupArcadeListener called",
-		"arcade.enabled", s.config.Arcade.Enabled,
-		"eventPublisher", deps.EventPublisher != nil,
-		"pubsub", deps.PubSub != nil)
-
-	if !s.config.Arcade.Enabled || deps.EventPublisher == nil || deps.PubSub == nil {
-		s.logger.Warn("ArcadeListener not initialized",
-			"arcade.enabled", s.config.Arcade.Enabled,
-			"hasEventPublisher", deps.EventPublisher != nil,
-			"hasPubSub", deps.PubSub != nil)
-		return
-	}
-
-	s.ArcadeListener = NewArcadeListener(
-		deps.EventPublisher,
-		deps.PubSub,
-		s.logger,
-	)
-}
 
 // SetupStatusHandler initializes the status handler with its dependencies.
 // This subscribes to the "arc" pubsub topic and handles all transaction status updates.
@@ -270,13 +239,8 @@ func (s *Services) Start(ctx context.Context) error {
 	return nil
 }
 
-// StartEventHandlers starts the arcade listener, status handler, and pending auditor.
+// StartEventHandlers starts the status handler and pending auditor.
 func (s *Services) StartEventHandlers(ctx context.Context) error {
-	if s.ArcadeListener != nil {
-		if err := s.ArcadeListener.Start(ctx); err != nil {
-			return err
-		}
-	}
 	if s.StatusHandler != nil {
 		if err := s.StatusHandler.Start(ctx); err != nil {
 			return err
@@ -295,9 +259,6 @@ func (s *Services) Close() error {
 	}
 	if s.StatusHandler != nil {
 		s.StatusHandler.Stop()
-	}
-	if s.ArcadeListener != nil {
-		s.ArcadeListener.Stop()
 	}
 	if s.Sync != nil {
 		s.Sync.Stop()

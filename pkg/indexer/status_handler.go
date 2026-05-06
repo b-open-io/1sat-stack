@@ -18,6 +18,19 @@ import (
 	"github.com/bsv-blockchain/go-sdk/transaction/chaintracker"
 )
 
+// ArcEvent is the unified event format published to the "arc" pubsub topic.
+// Producers (the SSE bridge in cmd/server) populate it from arcade events;
+// StatusHandler consumes it. MerklePath is binary (decoded from arcade's
+// hex-encoded merklePath field); RawTx is hex-encoded for use in REJECTED
+// debug paths.
+type ArcEvent struct {
+	TxID       string `json:"txId"`
+	Status     string `json:"txStatus"`
+	MerklePath []byte `json:"merklePath,omitempty"`
+	ExtraInfo  string `json:"extraInfo,omitempty"`
+	RawTx      string `json:"rawTx,omitempty"`
+}
+
 // StatusHandler subscribes to the "arc" pubsub topic and handles all transaction status updates.
 // This consolidates ingestion, proof validation, and rollback into one handler.
 type StatusHandler struct {
