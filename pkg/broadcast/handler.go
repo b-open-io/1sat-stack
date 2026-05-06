@@ -69,12 +69,23 @@ func (h *Handler) Submit(ctx context.Context, payload []byte) (*arcadeclient.Tra
 	}
 	rawTx, err := h.captureAndExtractRawTx(ctx, payload)
 	if err != nil {
+		h.logger.Warn("broadcast payload parse failed", "err", err, "payload_size", len(payload))
 		return nil, fmt.Errorf("parse payload: %w", err)
 	}
-	return h.broker.SubmitAndWait(ctx, rawTx, arcadeclient.SubmitOptions{}, arcadeclient.WaitOptions{
+	txid := arcadeclient.ComputeTxid(rawTx)
+	h.logger.Info("broadcast initiated",
+		"txid", txid, "payload_size", len(payload), "raw_size", len(rawTx))
+	status, err := h.broker.SubmitAndWait(ctx, rawTx, arcadeclient.SubmitOptions{}, arcadeclient.WaitOptions{
 		Timeout: h.waitTimeout,
 		StopOn:  arcadeclient.StopOnAccepted,
 	})
+	if status != nil {
+		h.logger.Info("broadcast complete",
+			"txid", status.Txid, "tx_status", status.TxStatus, "timed_out", err != nil)
+	} else {
+		h.logger.Warn("broadcast failed to produce status", "txid", txid, "err", err)
+	}
+	return status, err
 }
 
 // captureAndExtractRawTx auto-detects whether payload is BEEF or a raw tx,

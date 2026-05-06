@@ -107,6 +107,10 @@ func (b *EventBroker) dispatch(ctx context.Context, evt *SSEEvent) {
 	handlers := append([]EventHandler(nil), b.handlers...)
 	b.mu.Unlock()
 
+	b.logger.Info("arcade event dispatching",
+		"txid", evt.Txid, "tx_status", evt.TxStatus,
+		"waiters", len(waiters), "handlers", len(handlers))
+
 	for _, ch := range waiters {
 		select {
 		case ch <- evt:
@@ -192,13 +196,22 @@ func (b *EventBroker) SubmitAndWait(
 		select {
 		case evt, ok := <-eventCh:
 			if !ok {
+				b.logger.Warn("arcade SubmitAndWait: waiter channel closed", "txid", txid)
 				return b.finalStatus(txid, lastEvent), nil
 			}
 			lastEvent = evt
 			if shouldStop(evt.TxStatus, wait.StopOn) {
+				b.logger.Info("arcade SubmitAndWait stop condition reached",
+					"txid", txid, "tx_status", evt.TxStatus)
 				return b.finalStatus(txid, evt), nil
 			}
 		case <-ctx.Done():
+			lastStatus := ""
+			if lastEvent != nil {
+				lastStatus = lastEvent.TxStatus
+			}
+			b.logger.Warn("arcade SubmitAndWait timed out",
+				"txid", txid, "last_status", lastStatus)
 			return b.finalStatus(txid, lastEvent), ctx.Err()
 		}
 	}

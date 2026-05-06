@@ -68,12 +68,14 @@ func (r *Routes) Register(router fiber.Router) {
 func (r *Routes) handleSubmit(c *fiber.Ctx) error {
 	payload, err := readPayload(c)
 	if err != nil {
+		r.logger.Warn("/1sat/tx payload read failed", "err", err)
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": err.Error()})
 	}
 	if len(payload) == 0 {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "empty body"})
 	}
 
+	r.logger.Info("/1sat/tx received", "size", len(payload), "content_type", c.Get(fiber.HeaderContentType))
 	status, err := r.handler.Submit(c.UserContext(), payload)
 
 	switch {

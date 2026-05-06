@@ -71,15 +71,19 @@ func (c *Client) Submit(ctx context.Context, rawTx []byte, opts SubmitOptions) (
 
 	resp, err := c.http.Do(req)
 	if err != nil {
+		c.logger.Error("arcade submit transport error", "txid", txid, "err", err)
 		return "", fmt.Errorf("submit /tx: %w", err)
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusAccepted && resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
+		c.logger.Warn("arcade submit non-success status",
+			"txid", txid, "http_status", resp.StatusCode, "body", string(body))
 		return "", fmt.Errorf("arcade submit returned %d: %s", resp.StatusCode, string(body))
 	}
 
+	c.logger.Info("arcade submit accepted", "txid", txid, "http_status", resp.StatusCode, "size", len(rawTx))
 	return txid, nil
 }
 

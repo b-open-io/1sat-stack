@@ -123,6 +123,8 @@ func (c *Client) consumeStream(ctx context.Context, lastID string, ch chan<- *SS
 						if currentID != "" {
 							emittedID = currentID
 						}
+						c.logger.Debug("arcade SSE event received",
+							"txid", evt.Txid, "tx_status", evt.TxStatus, "id", currentID)
 					case <-ctx.Done():
 						return emittedID, ctx.Err()
 					}
