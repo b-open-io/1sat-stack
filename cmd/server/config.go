@@ -42,7 +42,6 @@ import (
 	"github.com/b-open-io/1sat-stack/pkg/txo"
 	"github.com/b-open-io/1sat-stack/pkg/wallet"
 	"github.com/b-open-io/go-junglebus"
-	arcadeconfig "github.com/bsv-blockchain/arcade/config"
 	"github.com/bsv-blockchain/go-chaintracks/chaintracks"
 	chaintracksconfig "github.com/bsv-blockchain/go-chaintracks/config"
 	chaintracksroutes "github.com/bsv-blockchain/go-chaintracks/routes/fiber"
@@ -89,10 +88,6 @@ type Config struct {
 	// External services
 	P2P         p2p.Config               `mapstructure:"p2p"`
 	Chaintracks chaintracksconfig.Config `mapstructure:"chaintracks"`
-	Arcade      arcadeconfig.Config      `mapstructure:"arcade"`
-
-	// Transaction services
-	Merkle MerkleConfig `mapstructure:"merkle"`
 
 	// Indexer service
 	Indexer indexer.Config `mapstructure:"indexer"`
@@ -161,18 +156,6 @@ type JungleBusConfig struct {
 	SSL     bool   `mapstructure:"ssl"`     // Use SSL (default: true)
 	Version string `mapstructure:"version"` // API version (default: v1)
 	Debug   bool   `mapstructure:"debug"`   // Enable debug logging
-}
-
-// MerkleConfig holds merkle service configuration
-type MerkleConfig struct {
-	Mode   string       `mapstructure:"mode"` // disabled, embedded, remote
-	Routes RoutesConfig `mapstructure:"routes"`
-}
-
-// RoutesConfig holds common route configuration
-type RoutesConfig struct {
-	Enabled bool   `mapstructure:"enabled"`
-	Prefix  string `mapstructure:"prefix"`
 }
 
 // ServerConfig holds HTTP server settings
@@ -324,7 +307,6 @@ func (c *Config) SetDefaults(v *viper.Viper) {
 	v.SetDefault("chaintracks.mode", "embedded")
 	v.SetDefault("chaintracks.storage_path", "chaintracks")
 
-	c.Arcade.SetDefaults(v, "arcade")
 	v.SetDefault("arcade.mode", "embedded")
 	v.SetDefault("arcade.storage_path", "arcade")
 	v.SetDefault("arcade.database.sqlite_path", "arcade/arcade.db")
@@ -388,8 +370,6 @@ func (c *Config) resolveAllPaths() {
 	c.Store.Badger.Path = c.resolvePath(c.Store.Badger.Path)
 	c.Auth.SessionPath = c.resolvePath(c.Auth.SessionPath)
 	c.Chaintracks.StoragePath = c.resolvePath(c.Chaintracks.StoragePath)
-	c.Arcade.StoragePath = c.resolvePath(c.Arcade.StoragePath)
-	c.Arcade.Database.SQLitePath = c.resolvePath(c.Arcade.Database.SQLitePath)
 	c.Overlay.StoragePath = c.resolvePath(c.Overlay.StoragePath)
 	c.Overlay.P2P.StoragePath = c.resolvePath(c.Overlay.P2P.StoragePath)
 	c.P2P.StoragePath = c.resolvePath(c.P2P.StoragePath)
@@ -478,33 +458,6 @@ func (c *Config) applyRuntimeConfig(rc *configpkg.RuntimeConfig) {
 	}
 	if rc.ChaintracksURL != "" {
 		c.Chaintracks.URL = rc.ChaintracksURL
-	}
-
-	// Arcade
-	if rc.ArcadeMode != "" {
-		c.Arcade.Mode = arcadeconfig.Mode(rc.ArcadeMode)
-	}
-	if rc.ArcadePath != "" {
-		c.Arcade.Database.SQLitePath = rc.ArcadePath
-		c.Arcade.StoragePath = filepath.Dir(rc.ArcadePath)
-	}
-	if rc.ArcadeURL != "" {
-		c.Arcade.URL = rc.ArcadeURL
-	}
-	if rc.ArcadeBroadcastURLs != "" {
-		c.Arcade.Teranode.BroadcastURLs = strings.Split(rc.ArcadeBroadcastURLs, ",")
-	}
-	if rc.ArcadeDatahubURLs != "" {
-		c.Arcade.Teranode.DataHubURLs = strings.Split(rc.ArcadeDatahubURLs, ",")
-	}
-	if rc.ArcadeAuthToken != "" {
-		c.Arcade.Teranode.AuthToken = rc.ArcadeAuthToken
-	}
-	if rc.ArcadeTimeout > 0 {
-		c.Arcade.Teranode.Timeout = time.Duration(rc.ArcadeTimeout) * time.Second
-	}
-	if rc.ArcadeLogLevel != "" {
-		c.Arcade.LogLevel = rc.ArcadeLogLevel
 	}
 
 	// JungleBus
@@ -895,8 +848,8 @@ func (c *Config) Initialize(ctx context.Context, logger *slog.Logger) (*Services
 	svc.JungleBus = jbClient
 	logger.Info("junglebus client initialized", "url", c.JungleBus.URL, "duration", time.Since(start).Round(time.Millisecond))
 
-	// Initialize P2P client (shared by chaintracks and arcade)
-	if c.Chaintracks.Mode == chaintracksconfig.ModeEmbedded || c.Arcade.Mode == arcadeconfig.ModeEmbedded {
+	// Initialize P2P client (used by chaintracks)
+	if c.Chaintracks.Mode == chaintracksconfig.ModeEmbedded {
 		start = time.Now()
 		// Set network on P2P config
 		c.P2P.Network = c.Network
@@ -934,11 +887,10 @@ func (c *Config) Initialize(ctx context.Context, logger *slog.Logger) (*Services
 	logger.Info("beef initialized", "duration", time.Since(start).Round(time.Millisecond))
 
 	// Initialize external arcade HTTP client + event broker + broadcast handler.
-	// This coexists with the embedded arcade below until that is removed.
-	if c.Arcade.URL != "" && runtimeCfg.ArcadeCallbackToken != "" {
+	if runtimeCfg.ArcadeURL != "" && runtimeCfg.ArcadeCallbackToken != "" {
 		start = time.Now()
-		arcadeLogger := logging.NewComponentLogger(logger, "arcade", c.Arcade.LogLevel)
-		svc.ArcadeClient = arcadeclient.New(c.Arcade.URL, runtimeCfg.ArcadeCallbackToken, nil, arcadeLogger)
+		arcadeLogger := logging.NewComponentLogger(logger, "arcade", "")
+		svc.ArcadeClient = arcadeclient.New(runtimeCfg.ArcadeURL, runtimeCfg.ArcadeCallbackToken, nil, arcadeLogger)
 		svc.ArcadeBroker = arcadeclient.NewEventBroker(svc.ArcadeClient, arcadeLogger)
 
 		waitTimeout := broadcast.DefaultWaitTimeout
@@ -992,7 +944,7 @@ func (c *Config) Initialize(ctx context.Context, logger *slog.Logger) (*Services
 		}
 
 		logger.Info("external arcade client initialized",
-			"url", c.Arcade.URL, "wait_timeout", waitTimeout, "duration", time.Since(start).Round(time.Millisecond))
+			"url", runtimeCfg.ArcadeURL, "wait_timeout", waitTimeout, "duration", time.Since(start).Round(time.Millisecond))
 	}
 
 	// Initialize TXO storage with shared dependencies

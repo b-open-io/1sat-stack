@@ -45,21 +45,13 @@ type RuntimeConfig struct {
 	ChaintracksPath string
 	ChaintracksURL  string
 
-	// Arcade
-	ArcadeMode          string // "embedded" or "remote"
-	ArcadePath          string
-	ArcadeURL           string
-	ArcadeBroadcastURLs string // comma-separated broadcast endpoint URLs
-	ArcadeDatahubURLs   string // comma-separated datahub endpoint URLs
-	ArcadeAuthToken     string // optional bearer token for Teranode
-	ArcadeTimeout       int    // broadcast timeout in seconds (default 30)
-	ArcadeLogLevel      string // log level for arcade component (debug, info, warn, error)
+	// External arcade
+	ArcadeURL string // base URL of external arcade, e.g. https://arcade.gorillapool.io
 
 	// JungleBus
 	JungleBusURL   string
 	JungleBusToken string
 
-	// External arcade (HTTP) — ArcadeURL above is reused.
 	ArcadeCallbackToken string // shared callback token for the always-on SSE subscription
 	ArcadeWaitTimeout   string // duration string (e.g. "30s") — wait window for /1sat/tx submit-and-wait
 
@@ -191,15 +183,6 @@ func LoadRuntimeConfig(ctx context.Context, cs Store, logger *slog.Logger) (*Run
 	rc.ChaintracksPath = getString(ctx, cs, "chaintracks.path")
 	rc.ChaintracksURL = getString(ctx, cs, "chaintracks.url")
 
-	// Arcade
-	rc.ArcadeMode = getString(ctx, cs, "arcade.mode")
-	rc.ArcadePath = getString(ctx, cs, "arcade.path")
-	rc.ArcadeURL = getString(ctx, cs, "arcade.url")
-	rc.ArcadeBroadcastURLs = getString(ctx, cs, "arcade.teranode.broadcast_urls")
-	rc.ArcadeDatahubURLs = getString(ctx, cs, "arcade.teranode.datahub_urls")
-	rc.ArcadeAuthToken = getString(ctx, cs, "arcade.teranode.auth_token")
-	rc.ArcadeTimeout = getInt(ctx, cs, "arcade.teranode.timeout")
-	rc.ArcadeLogLevel = getString(ctx, cs, "arcade.log_level")
 
 	// JungleBus
 	rc.JungleBusURL = getString(ctx, cs, "junglebus.url")

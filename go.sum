@@ -139,8 +139,6 @@ github.com/bsm/ginkgo/v2 v2.12.0 h1:Ny8MWAHyOepLGlLKYmXG4IEkioBysk6GpaRTLC8zwWs=
 github.com/bsm/ginkgo/v2 v2.12.0/go.mod h1:SwYbGRRDovPVboqFv0tPTcG1sN61LM1Z4ARdbAV9g4c=
 github.com/bsm/gomega v1.27.10 h1:yeMWxP2pV2fG3FgAODIY8EiRE3dy0aeFYt4l7wh6yKA=
 github.com/bsm/gomega v1.27.10/go.mod h1:JyEr/xRbxbtgWNi8tIEVPUYZ5Dzef52k01W3YH0H+O0=
-github.com/bsv-blockchain/arcade v0.4.6-0.20260429231013-f85be2e6b9cc h1:rHj3kcEU5GPCmK7sMrTID/RprpvjVxUGgDxbIUGIK10=
-github.com/bsv-blockchain/arcade v0.4.6-0.20260429231013-f85be2e6b9cc/go.mod h1:HxB7q9XCFAwAP0VX6U+f0f9hHz+Fn3+Yjov/HwUvxH8=
 github.com/bsv-blockchain/go-batcher v1.2.11 h1:jYoEfNukLGbmbtacVYBxt/crSEdMlhIL0VxW6xGIHMI=
 github.com/bsv-blockchain/go-batcher v1.2.11/go.mod h1:NhaO+yJ3eXmR+cavzaUsA2IL5/JQp6wO4OUvJ1JHISI=
 github.com/bsv-blockchain/go-bc v1.1.5 h1:G9hioz7yz6ARS5YHYJhA4c0xCU5EnRm6PsjDM8C6DTA=
@@ -337,8 +335,6 @@ github.com/gofiber/fiber/v2 v2.52.12 h1:0LdToKclcPOj8PktUdIKo9BUohjjwfnQl42Dhw8/
 github.com/gofiber/fiber/v2 v2.52.12/go.mod h1:YEcBbO/FB+5M1IZNBP9FO3J9281zgPAreiI1oqg8nDw=
 github.com/gogo/protobuf v1.3.2 h1:Ov1cvc58UF3b5XjBnZv7+opcTcQFZebYjWzi34vdm4Q=
 github.com/gogo/protobuf v1.3.2/go.mod h1:P1XiOD3dCwIKUDQYPy72D8LYyHL2YPYrpS2s69NZV8Q=
-github.com/golang-migrate/migrate/v4 v4.19.1 h1:OCyb44lFuQfYXYLx1SCxPZQGU7mcaZ7gH9yH4jSFbBA=
-github.com/golang-migrate/migrate/v4 v4.19.1/go.mod h1:CTcgfjxhaUtsLipnLoQRWCrjYXycRz/g5+RWDuYgPrE=
 github.com/golang/glog v0.0.0-20160126235308-23def4e6c14b/go.mod h1:SBH7ygxi8pfUlaOkMMuAQtPIUF8ecWP5IEl/CR7VP2Q=
 github.com/golang/groupcache v0.0.0-20190702054246-869f871628b6/go.mod h1:cIg4eruTrX1D+g88fzRXU5OdNfaM+9IcxsU14FzY7Hc=
 github.com/golang/groupcache v0.0.0-20191227052852-215e87163ea7/go.mod h1:cIg4eruTrX1D+g88fzRXU5OdNfaM+9IcxsU14FzY7Hc=

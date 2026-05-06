@@ -531,18 +531,6 @@ interface StoragePanelProps {
   setOrdfsRedisTtl: React.Dispatch<React.SetStateAction<string>>;
   chaintracksPath: string;
   setChaintracksPath: (v: string) => void;
-  arcadeDb: string;
-  setArcadeDb: (v: string) => void;
-  arcadeBroadcastUrls: string[];
-  setArcadeBroadcastUrls: React.Dispatch<React.SetStateAction<string[]>>;
-  arcadeDatahubUrls: string[];
-  setArcadeDatahubUrls: React.Dispatch<React.SetStateAction<string[]>>;
-  arcadeAuthToken: string;
-  setArcadeAuthToken: (v: string) => void;
-  arcadeTimeout: string;
-  setArcadeTimeout: (v: string) => void;
-  arcadeLogLevel: string;
-  setArcadeLogLevel: (v: string) => void;
   arcadeUrl: string;
   setArcadeUrl: (v: string) => void;
   arcadeCallbackToken: string;
@@ -563,12 +551,6 @@ function StoragePanel({
   ordfsRedisUrl, setOrdfsRedisUrl,
   ordfsRedisTtl, setOrdfsRedisTtl,
   chaintracksPath, setChaintracksPath,
-  arcadeDb, setArcadeDb,
-  arcadeBroadcastUrls, setArcadeBroadcastUrls,
-  arcadeDatahubUrls, setArcadeDatahubUrls,
-  arcadeAuthToken, setArcadeAuthToken,
-  arcadeTimeout, setArcadeTimeout,
-  arcadeLogLevel, setArcadeLogLevel,
   arcadeUrl, setArcadeUrl,
   arcadeCallbackToken, setArcadeCallbackToken,
   arcadeWaitTimeout, setArcadeWaitTimeout,
@@ -650,9 +632,6 @@ function StoragePanel({
         <FieldRow label="Chaintracks" badge={<RestartBadge />}>
           <Input value={chaintracksPath} onChange={(e) => setChaintracksPath(e.target.value)} className="font-mono text-xs h-8" />
         </FieldRow>
-        <FieldRow label="Arcade" badge={<RestartBadge />}>
-          <Input value={arcadeDb} onChange={(e) => setArcadeDb(e.target.value)} className="font-mono text-xs h-8" />
-        </FieldRow>
       </SectionCard>
 
       <SectionCard>
@@ -685,60 +664,6 @@ function StoragePanel({
         </FieldRow>
       </SectionCard>
 
-      <SectionCard>
-        <SectionHeading>Arcade / Teranode (legacy embedded)</SectionHeading>
-        <p className="text-[11px] text-muted-foreground">Broadcast and datahub endpoints for Teranode transaction submission. Used by the embedded arcade; superseded by the External Arcade settings above and scheduled for removal.</p>
-        <FieldRow label="Broadcast URLs" hint="One URL per line. Used for submitting transactions." badge={<RestartBadge />}>
-          <textarea
-            value={arcadeBroadcastUrls.join("\n")}
-            onChange={(e) => setArcadeBroadcastUrls(e.target.value.split("\n").map(u => u.trim()))}
-            onBlur={(e) => setArcadeBroadcastUrls(e.target.value.split("\n").map(u => u.trim()).filter(Boolean))}
-            placeholder="http://mainnet.gorillanode.io:8833"
-            className="w-full font-mono text-xs rounded-md border border-input bg-transparent px-3 py-2 min-h-[60px] resize-y"
-            rows={Math.max(2, arcadeBroadcastUrls.length + 1)}
-          />
-        </FieldRow>
-        <FieldRow label="DataHub URLs" hint="One URL per line. Used for fetching block/subtree data." badge={<RestartBadge />}>
-          <textarea
-            value={arcadeDatahubUrls.join("\n")}
-            onChange={(e) => setArcadeDatahubUrls(e.target.value.split("\n").map(u => u.trim()))}
-            onBlur={(e) => setArcadeDatahubUrls(e.target.value.split("\n").map(u => u.trim()).filter(Boolean))}
-            placeholder="https://mainnet.gorillanode.io/api/v1"
-            className="w-full font-mono text-xs rounded-md border border-input bg-transparent px-3 py-2 min-h-[60px] resize-y"
-            rows={Math.max(2, arcadeDatahubUrls.length + 1)}
-          />
-        </FieldRow>
-        <FieldRow label="Auth token" hint="Optional bearer token for authenticated Teranode access." badge={<RestartBadge />}>
-          <Input
-            type="password"
-            value={arcadeAuthToken}
-            onChange={(e) => setArcadeAuthToken(e.target.value)}
-            placeholder="(none)"
-            className="font-mono text-xs h-8"
-          />
-        </FieldRow>
-        <FieldRow label="Timeout (seconds)" hint="Broadcast request timeout." badge={<RestartBadge />}>
-          <Input
-            type="number"
-            value={arcadeTimeout}
-            onChange={(e) => setArcadeTimeout(e.target.value)}
-            placeholder="30"
-            className="font-mono text-xs h-8 max-w-[120px]"
-          />
-        </FieldRow>
-        <FieldRow label="Log level" hint="Set to debug to see broadcast details." badge={<RestartBadge />}>
-          <SegmentedControl
-            value={arcadeLogLevel}
-            onChange={setArcadeLogLevel}
-            options={[
-              { label: "Error", value: "error" },
-              { label: "Warn", value: "warn" },
-              { label: "Info", value: "info" },
-              { label: "Debug", value: "debug" },
-            ]}
-          />
-        </FieldRow>
-      </SectionCard>
     </div>
   );
 }
@@ -1509,13 +1434,7 @@ export default function SettingsPage() {
   const [ordfsRedisUrl, setOrdfsRedisUrl] = useState("");
   const [ordfsRedisTtl, setOrdfsRedisTtl] = useState("");
   const [chaintracksPath, setChaintracksPath] = useState("chaintracks");
-  const [arcadeDb, setArcadeDb] = useState("arcade/arcade.db");
-  const [arcadeBroadcastUrls, setArcadeBroadcastUrls] = useState<string[]>(["http://mainnet.gorillanode.io:8833"]);
-  const [arcadeDatahubUrls, setArcadeDatahubUrls] = useState<string[]>(["https://mainnet.gorillanode.io/api/v1"]);
-  const [arcadeAuthToken, setArcadeAuthToken] = useState("");
-  const [arcadeTimeout, setArcadeTimeout] = useState("30");
-  const [arcadeLogLevel, setArcadeLogLevel] = useState("info");
-  // External arcade (HTTP) — replaces embedded arcade
+  // External arcade (HTTP)
   const [arcadeUrl, setArcadeUrl] = useState("https://arcade.gorillapool.io");
   const [arcadeCallbackToken, setArcadeCallbackToken] = useState("");
   const [arcadeWaitTimeout, setArcadeWaitTimeout] = useState("30s");
@@ -1615,18 +1534,6 @@ export default function SettingsPage() {
         setOrdfsRedisUrl(s("ordfs.cache.redis_url", ""));
         setOrdfsRedisTtl(s("ordfs.cache.redis_ttl", ""));
         setChaintracksPath(s("chaintracks.path", "chaintracks"));
-        setArcadeDb(s("arcade.path", "arcade/arcade.db"));
-        if (cfg["arcade.teranode.broadcast_urls"]) {
-          const urls = cfg["arcade.teranode.broadcast_urls"].split(",").filter(Boolean);
-          if (urls.length > 0) setArcadeBroadcastUrls(urls);
-        }
-        if (cfg["arcade.teranode.datahub_urls"]) {
-          const urls = cfg["arcade.teranode.datahub_urls"].split(",").filter(Boolean);
-          if (urls.length > 0) setArcadeDatahubUrls(urls);
-        }
-        setArcadeAuthToken(s("arcade.teranode.auth_token", ""));
-        setArcadeTimeout(s("arcade.teranode.timeout", "30"));
-        setArcadeLogLevel(s("arcade.log_level", "info"));
         setArcadeUrl(s("arcade.url", "https://arcade.gorillapool.io"));
         setArcadeCallbackToken(s("arcade.callback_token", ""));
         setArcadeWaitTimeout(s("arcade.wait_timeout", "30s"));
@@ -1711,9 +1618,7 @@ export default function SettingsPage() {
     "overlay.bsocial.enabled", "overlay.ordlock.enabled",
     "owner.enabled", "faucet.enabled",
     "store.provider", "store.badger.path", "pubsub.provider",
-    "auth.mode", "chaintracks.path", "arcade.path",
-    "arcade.teranode.broadcast_urls", "arcade.teranode.datahub_urls",
-    "arcade.teranode.auth_token", "arcade.teranode.timeout",
+    "auth.mode", "chaintracks.path",
     "arcade.url", "arcade.callback_token", "arcade.wait_timeout",
     "beef.chain", "spends.chain", "ordfs.cache.lru_size", "ordfs.cache.redis_url", "ordfs.cache.redis_ttl",
     "overlay.engine.storage", "overlay.engine.storage_path",
@@ -1743,12 +1648,6 @@ export default function SettingsPage() {
     "pubsub.provider": pubsubProvider,
     "auth.mode": authMode,
     "chaintracks.path": chaintracksPath,
-    "arcade.path": arcadeDb,
-    "arcade.teranode.broadcast_urls": arcadeBroadcastUrls.join(","),
-    "arcade.teranode.datahub_urls": arcadeDatahubUrls.join(","),
-    "arcade.teranode.auth_token": arcadeAuthToken,
-    "arcade.teranode.timeout": arcadeTimeout,
-    "arcade.log_level": arcadeLogLevel,
     "arcade.url": arcadeUrl,
     "arcade.callback_token": arcadeCallbackToken,
     "arcade.wait_timeout": arcadeWaitTimeout,
@@ -1785,8 +1684,7 @@ export default function SettingsPage() {
   }), [
     bapEnabled, opnsEnabled, bsv21Enabled, bsocialEnabled, ordlockEnabled, ownerSync, faucetEnabled,
     storeProvider, storePath, pubsubProvider, authMode,
-    chaintracksPath, arcadeDb, arcadeBroadcastUrls, arcadeDatahubUrls, arcadeAuthToken, arcadeTimeout, arcadeLogLevel,
-    arcadeUrl, arcadeCallbackToken, arcadeWaitTimeout,
+    chaintracksPath, arcadeUrl, arcadeCallbackToken, arcadeWaitTimeout,
     engineStorage, engineStoragePath,
     p2pEnabled, p2pPort, p2pDhtMode, bootstrapPeers, activeTags,
     bapSubId, bapConcurrency, bapBatchSize,
@@ -1831,12 +1729,6 @@ export default function SettingsPage() {
         "ordfs.cache.redis_url": ordfsRedisUrl,
         "ordfs.cache.redis_ttl": ordfsRedisTtl,
         "chaintracks.path": chaintracksPath,
-        "arcade.path": arcadeDb,
-        "arcade.teranode.broadcast_urls": arcadeBroadcastUrls.join(","),
-        "arcade.teranode.datahub_urls": arcadeDatahubUrls.join(","),
-        "arcade.teranode.auth_token": arcadeAuthToken,
-        "arcade.teranode.timeout": arcadeTimeout,
-        "arcade.log_level": arcadeLogLevel,
         "arcade.url": arcadeUrl,
         "arcade.callback_token": arcadeCallbackToken,
         "arcade.wait_timeout": arcadeWaitTimeout,
@@ -2034,12 +1926,6 @@ export default function SettingsPage() {
               ordfsRedisUrl={ordfsRedisUrl} setOrdfsRedisUrl={setOrdfsRedisUrl}
               ordfsRedisTtl={ordfsRedisTtl} setOrdfsRedisTtl={setOrdfsRedisTtl}
               chaintracksPath={chaintracksPath} setChaintracksPath={setChaintracksPath}
-              arcadeDb={arcadeDb} setArcadeDb={setArcadeDb}
-              arcadeBroadcastUrls={arcadeBroadcastUrls} setArcadeBroadcastUrls={setArcadeBroadcastUrls}
-              arcadeDatahubUrls={arcadeDatahubUrls} setArcadeDatahubUrls={setArcadeDatahubUrls}
-              arcadeAuthToken={arcadeAuthToken} setArcadeAuthToken={setArcadeAuthToken}
-              arcadeTimeout={arcadeTimeout} setArcadeTimeout={setArcadeTimeout}
-              arcadeLogLevel={arcadeLogLevel} setArcadeLogLevel={setArcadeLogLevel}
               arcadeUrl={arcadeUrl} setArcadeUrl={setArcadeUrl}
               arcadeCallbackToken={arcadeCallbackToken} setArcadeCallbackToken={setArcadeCallbackToken}
               arcadeWaitTimeout={arcadeWaitTimeout} setArcadeWaitTimeout={setArcadeWaitTimeout}
