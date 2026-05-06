@@ -43,8 +43,6 @@ import (
 	"github.com/b-open-io/1sat-stack/pkg/wallet"
 	"github.com/b-open-io/go-junglebus"
 	arcadeconfig "github.com/bsv-blockchain/arcade/config"
-	arcaderoutes "github.com/bsv-blockchain/arcade/routes/fiber"
-	"github.com/bsv-blockchain/arcade/service"
 	"github.com/bsv-blockchain/go-chaintracks/chaintracks"
 	chaintracksconfig "github.com/bsv-blockchain/go-chaintracks/config"
 	chaintracksroutes "github.com/bsv-blockchain/go-chaintracks/routes/fiber"
@@ -280,10 +278,6 @@ type Services struct {
 	P2PClient         *p2p.Client
 	Chaintracks       chaintracks.Chaintracks
 	ChaintracksRoutes *chaintracksroutes.Routes
-	Arcade            *arcadeconfig.Services
-	ArcadeWrapped     service.ArcadeService
-	ArcadeRoutes      *arcaderoutes.Routes
-
 	// External arcade (HTTP)
 	ArcadeClient     *arcadeclient.Client
 	ArcadeBroker     *arcadeclient.EventBroker
@@ -1001,38 +995,6 @@ func (c *Config) Initialize(ctx context.Context, logger *slog.Logger) (*Services
 			"url", c.Arcade.URL, "wait_timeout", waitTimeout, "duration", time.Since(start).Round(time.Millisecond))
 	}
 
-	// Initialize Arcade
-	if c.Arcade.Mode != "" && c.Arcade.Mode != "disabled" {
-		start = time.Now()
-		// Set network from main config
-		c.Arcade.Network = c.Network
-		arcadeLogger := logging.NewComponentLogger(logger, "arcade", c.Arcade.LogLevel)
-		arcadeSvc, err := c.Arcade.Initialize(ctx, arcadeLogger, svc.Chaintracks, svc.P2PClient)
-		if err != nil {
-			return nil, fmt.Errorf("failed to initialize arcade: %w", err)
-		}
-		svc.Arcade = arcadeSvc
-
-		// Wrap arcade service with BEEF capture (saves raw tx at submission time)
-		wrappedService := NewBeefCapturingArcadeService(
-			arcadeSvc.ArcadeService,
-			svc.Beef.Storage,
-			arcadeLogger,
-		)
-
-		svc.ArcadeWrapped = wrappedService
-
-		// Create routes with wrapped service for BEEF capture
-		svc.ArcadeRoutes = arcaderoutes.NewRoutes(arcaderoutes.Config{
-			Service:        wrappedService,
-			Store:          arcadeSvc.Store,
-			EventPublisher: arcadeSvc.EventPublisher,
-			Arcade:         arcadeSvc.Arcade,
-			Logger:         arcadeLogger,
-		})
-		logger.Info("arcade initialized", "mode", c.Arcade.Mode, "duration", time.Since(start).Round(time.Millisecond))
-	}
-
 	// Initialize TXO storage with shared dependencies
 	if c.TXO.Mode != txo.ModeDisabled {
 		start = time.Now()
@@ -1302,10 +1264,6 @@ func (c *Config) Initialize(ctx context.Context, logger *slog.Logger) (*Services
 			})
 		}
 
-		// Setup routes for webhook callbacks
-		if svc.PubSub != nil {
-			svc.Indexer.SetupRoutes(svc.PubSub.PubSub)
-		}
 		// Wire indexer to TXO for overlay flow integration
 		if svc.TXO != nil && svc.TXO.OutputStore != nil {
 			ingestCtx := svc.Indexer.Indexer
@@ -1728,18 +1686,11 @@ func (c *Config) RegisterRoutes(app *fiber.App, svc *Services) {
 		slog.Debug("registered chaintracks routes", "prefix", "/chaintracks")
 	}
 
-	// Register Arcade routes (transaction broadcast, status)
-	if svc.ArcadeRoutes != nil {
-		arcGroup := api.Group("/arcade")
-		svc.ArcadeRoutes.Register(arcGroup)
-		slog.Debug("registered arcade routes", "prefix", "/arcade")
-	}
-
-	// Register Arc callback route (for webhook callbacks from broadcasters)
-	if svc.Indexer != nil && svc.Indexer.Routes != nil {
-		arcGroup := api.Group("/arc")
-		svc.Indexer.Routes.RegisterCallback(arcGroup)
-		slog.Debug("registered arc callback routes", "prefix", "/arc")
+	// Register external arcade broadcast routes (POST /tx, GET /tx/:txid)
+	if svc.BroadcastRoutes != nil {
+		txGroup := api.Group("/tx")
+		svc.BroadcastRoutes.Register(txGroup)
+		slog.Debug("registered broadcast routes", "prefix", "/tx")
 	}
 
 	// Register /.well-known/auth at app root for BRC-103/104 handshake.
@@ -2001,13 +1952,6 @@ func (svc *Services) Close() error {
 	if svc.TXO != nil {
 		if err := svc.TXO.Close(); err != nil {
 			errs = append(errs, fmt.Errorf("txo close: %w", err))
-		}
-	}
-
-	// Close Arcade (depends on chaintracks and P2P)
-	if svc.Arcade != nil {
-		if err := svc.Arcade.Close(); err != nil {
-			errs = append(errs, fmt.Errorf("arcade close: %w", err))
 		}
 	}
 

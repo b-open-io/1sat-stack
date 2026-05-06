@@ -104,7 +104,6 @@ type Services struct {
 	Sync           *IngestSync
 	StatusHandler  *StatusHandler
 	PendingAuditor *PendingAuditor
-	Routes         *Routes
 
 	config   *Config
 	logger   *slog.Logger
@@ -219,14 +218,6 @@ func (s *Services) SetupPendingAuditor(deps *PendingAuditorDeps) {
 		deps.ArcadeClient,
 		s.logger,
 	)
-}
-
-// SetupRoutes initializes the routes with pubsub for webhook callbacks.
-func (s *Services) SetupRoutes(ps pubsub.PubSub) {
-	if !s.config.Routes.Enabled || ps == nil {
-		return
-	}
-	s.Routes = NewRoutes(ps)
 }
 
 // Start starts the JungleBus sync worker (if configured).
