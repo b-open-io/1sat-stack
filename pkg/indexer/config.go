@@ -5,6 +5,7 @@ import (
 	"log/slog"
 	"time"
 
+	"github.com/b-open-io/1sat-stack/pkg/arcadeclient"
 	"github.com/b-open-io/1sat-stack/pkg/beef"
 	"github.com/b-open-io/1sat-stack/pkg/logging"
 	"github.com/b-open-io/1sat-stack/pkg/ordfs"
@@ -12,7 +13,6 @@ import (
 	"github.com/b-open-io/1sat-stack/pkg/store"
 	"github.com/b-open-io/1sat-stack/pkg/txo"
 	"github.com/bsv-blockchain/arcade/events"
-	"github.com/bsv-blockchain/arcade/service"
 	"github.com/bsv-blockchain/go-chaintracks/chaintracks"
 	"github.com/bsv-blockchain/go-overlay-services/pkg/core/engine"
 	"github.com/bsv-blockchain/go-sdk/chainhash"
@@ -230,8 +230,8 @@ func (s *Services) SetupStatusHandler(deps *StatusHandlerDeps) {
 
 // PendingAuditorDeps holds dependencies for pending auditor initialization.
 type PendingAuditorDeps struct {
-	Chaintracks   chaintracks.Chaintracks
-	ArcadeService service.ArcadeService // may be nil
+	Chaintracks  chaintracks.Chaintracks
+	ArcadeClient *arcadeclient.Client // may be nil
 }
 
 // SetupPendingAuditor initializes the pending transaction auditor.
@@ -247,7 +247,7 @@ func (s *Services) SetupPendingAuditor(deps *PendingAuditorDeps) {
 		s.initDeps.BeefStorage,
 		s.Indexer,
 		deps.Chaintracks,
-		deps.ArcadeService,
+		deps.ArcadeClient,
 		s.logger,
 	)
 }

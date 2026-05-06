@@ -1257,15 +1257,9 @@ func (c *Config) Initialize(ctx context.Context, logger *slog.Logger) (*Services
 
 		// Setup pending auditor to verify proofs on each new block
 		if svc.Chaintracks != nil {
-			var arcadeService service.ArcadeService
-			if svc.ArcadeWrapped != nil {
-				arcadeService = svc.ArcadeWrapped
-			} else if svc.Arcade != nil {
-				arcadeService = svc.Arcade.ArcadeService
-			}
 			svc.Indexer.SetupPendingAuditor(&indexer.PendingAuditorDeps{
-				Chaintracks:   svc.Chaintracks,
-				ArcadeService: arcadeService,
+				Chaintracks:  svc.Chaintracks,
+				ArcadeClient: svc.ArcadeClient,
 			})
 		}
 

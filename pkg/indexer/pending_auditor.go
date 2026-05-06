@@ -2,17 +2,18 @@ package indexer
 
 import (
 	"context"
+	"encoding/hex"
 	"errors"
 	"log/slog"
 	"sync"
 	"sync/atomic"
 	"time"
 
+	"github.com/b-open-io/1sat-stack/pkg/arcadeclient"
 	"github.com/b-open-io/1sat-stack/pkg/beef"
 	"github.com/b-open-io/1sat-stack/pkg/store"
 	"github.com/b-open-io/1sat-stack/pkg/txo"
 	"github.com/b-open-io/1sat-stack/pkg/types"
-	"github.com/bsv-blockchain/arcade/service"
 	"github.com/bsv-blockchain/go-chaintracks/chaintracks"
 	"github.com/bsv-blockchain/go-sdk/chainhash"
 	"github.com/bsv-blockchain/go-sdk/transaction"
@@ -37,13 +38,13 @@ const (
 // It promotes confirmed+deep transactions to tx:immutable and rolls back
 // stale unconfirmed transactions that have no proof after rollbackAge.
 type PendingAuditor struct {
-	outputStore   *txo.OutputStore
-	beefStorage   *beef.Storage
-	indexer       *IngestCtx
-	chaintracks   chaintracks.Chaintracks
-	arcadeService service.ArcadeService // may be nil
-	logger        *slog.Logger
-	auditing      atomic.Bool
+	outputStore  *txo.OutputStore
+	beefStorage  *beef.Storage
+	indexer      *IngestCtx
+	chaintracks  chaintracks.Chaintracks
+	arcadeClient *arcadeclient.Client // may be nil
+	logger       *slog.Logger
+	auditing     atomic.Bool
 
 	ctx    context.Context
 	cancel context.CancelFunc
@@ -56,19 +57,19 @@ func NewPendingAuditor(
 	beefStorage *beef.Storage,
 	indexer *IngestCtx,
 	ct chaintracks.Chaintracks,
-	arcadeService service.ArcadeService,
+	arcadeClient *arcadeclient.Client,
 	logger *slog.Logger,
 ) *PendingAuditor {
 	if logger == nil {
 		logger = slog.Default()
 	}
 	return &PendingAuditor{
-		outputStore:   outputStore,
-		beefStorage:   beefStorage,
-		indexer:       indexer,
-		chaintracks:   ct,
-		arcadeService: arcadeService,
-		logger:        logger.With("component", "pending-auditor"),
+		outputStore:  outputStore,
+		beefStorage:  beefStorage,
+		indexer:      indexer,
+		chaintracks:  ct,
+		arcadeClient: arcadeClient,
+		logger:       logger.With("component", "pending-auditor"),
 	}
 }
 
@@ -275,15 +276,18 @@ func (a *PendingAuditor) processUnconfirmed(ctx context.Context, members []store
 			defer func() { <-limiter; wg.Done() }()
 
 			// Try Arcade first (opportunistic — 404 is not authoritative)
-			if a.arcadeService != nil {
-				status, err := a.arcadeService.GetStatus(ctx, txidHex)
+			if a.arcadeClient != nil {
+				status, err := a.arcadeClient.GetStatus(ctx, txidHex)
 				if err == nil && status != nil && len(status.MerklePath) > 0 {
-					// Arcade has a proof — update BEEF and re-ingest
-					if a.applyMerkleProof(ctx, txid, txidHex, status.MerklePath) {
-						mu.Lock()
-						proofsFound++
-						mu.Unlock()
-						return
+					if pathBytes, decodeErr := hex.DecodeString(status.MerklePath); decodeErr == nil {
+						if a.applyMerkleProof(ctx, txid, txidHex, pathBytes) {
+							mu.Lock()
+							proofsFound++
+							mu.Unlock()
+							return
+						}
+					} else {
+						a.logger.Warn("invalid merkle path hex from arcade", "txid", txidHex, "error", decodeErr)
 					}
 				}
 			}
@@ -352,11 +356,15 @@ func (a *PendingAuditor) processUnconfirmed(ctx context.Context, members []store
 // refetchAndReingest attempts to get a fresh proof from Arcade or JungleBus and re-ingest.
 func (a *PendingAuditor) refetchAndReingest(ctx context.Context, txid *chainhash.Hash, txidHex string) bool {
 	// Try Arcade
-	if a.arcadeService != nil {
-		status, err := a.arcadeService.GetStatus(ctx, txidHex)
+	if a.arcadeClient != nil {
+		status, err := a.arcadeClient.GetStatus(ctx, txidHex)
 		if err == nil && status != nil && len(status.MerklePath) > 0 {
-			if a.applyMerkleProof(ctx, txid, txidHex, status.MerklePath) {
-				return true
+			if pathBytes, decodeErr := hex.DecodeString(status.MerklePath); decodeErr == nil {
+				if a.applyMerkleProof(ctx, txid, txidHex, pathBytes) {
+					return true
+				}
+			} else {
+				a.logger.Warn("invalid merkle path hex from arcade", "txid", txidHex, "error", decodeErr)
 			}
 		}
 	}
