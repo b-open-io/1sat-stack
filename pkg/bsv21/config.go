@@ -7,7 +7,6 @@ import (
 
 	"github.com/b-open-io/1sat-stack/pkg/beef"
 	"github.com/b-open-io/1sat-stack/pkg/config"
-	"github.com/b-open-io/1sat-stack/pkg/logging"
 	lookuppkg "github.com/b-open-io/1sat-stack/pkg/lookup"
 	"github.com/b-open-io/1sat-stack/pkg/overlay"
 	"github.com/b-open-io/1sat-stack/pkg/txo"
@@ -97,9 +96,6 @@ func (c *Config) Initialize(
 	if logger == nil {
 		logger = slog.Default()
 	}
-
-	// Apply the module-level log level so all child loggers inherit it.
-	logger = logging.NewComponentLogger(logger, "bsv21", c.LogLevel)
 
 	switch c.Mode {
 	case ModeEmbedded:
