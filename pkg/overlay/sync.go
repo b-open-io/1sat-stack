@@ -148,13 +148,17 @@ func (s *OverlaySync) Start(ctx context.Context) error {
 
 	if s.config.ResolveDependencies {
 		logPrefix := fmt.Sprintf("[GASP %s] ", s.topicName)
+		gaspLogger := s.logger.With("component", "gasp")
+		gaspStorage := engine.NewOverlayGASPStorage(s.topicName, s.engine, nil)
+		gaspStorage.Logger = gaspLogger
 		s.gasp = gasp.NewGASP(gasp.Params{
-			Storage:        engine.NewOverlayGASPStorage(s.topicName, s.engine, nil),
+			Storage:        gaspStorage,
 			Remote:         gaspqueue.NewBeefRemote(s.beefStorage, s.store, ""),
 			Unidirectional: true,
 			Topic:          s.topicName,
 			Concurrency:    s.config.Concurrency,
 			LogPrefix:      &logPrefix,
+			Logger:         gaspLogger,
 		})
 	}
 
