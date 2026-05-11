@@ -148,11 +148,13 @@ func (h *SQLiteHandler) Enabled(_ context.Context, level slog.Level) bool {
 }
 
 // Handle sends the record to the background writer via a non-blocking channel send.
+//
+// Per the slog Handler contract, callers are expected to check Enabled before
+// calling Handle. A wrapping handler (e.g. LeveledHandler used by
+// NewComponentLogger) may legitimately raise the effective level above
+// h.opts.Level; re-checking opts.Level here would defeat that override and
+// silently drop records the caller intended to keep.
 func (h *SQLiteHandler) Handle(_ context.Context, r slog.Record) error {
-	if r.Level < h.opts.Level {
-		return nil
-	}
-
 	component := h.component
 	attrsMap := make(map[string]any, len(h.preAttrs))
 
