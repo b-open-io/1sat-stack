@@ -1130,6 +1130,9 @@ func (c *Config) Initialize(ctx context.Context, logger *slog.Logger) (*Services
 		svc.Spends = spendsSvc
 		if svc.TXO != nil && spendsSvc != nil {
 			svc.TXO.OutputStore.SpendService = spendsSvc.Storage
+			if svc.TXO.Routes != nil {
+				svc.TXO.Routes.Spends = spendsSvc.Storage
+			}
 		}
 		logger.Info("spends initialized", "duration", time.Since(start).Round(time.Millisecond))
 	}

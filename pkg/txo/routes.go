@@ -3,6 +3,7 @@ package txo
 import (
 	"strings"
 
+	"github.com/b-open-io/1sat-stack/pkg/spends"
 	"github.com/b-open-io/1sat-stack/pkg/store"
 	"github.com/bsv-blockchain/go-sdk/chainhash"
 	"github.com/bsv-blockchain/go-sdk/transaction"
@@ -10,11 +11,20 @@ import (
 )
 
 // Routes provides HTTP handlers for TXO queries.
+//
+// Spends is the public spend resolver used by the /spend and /spends API
+// handlers — it delegates through the configured provider chain (local
+// store, JungleBus fallback, etc.) so external callers see spends recorded
+// by upstream sources even when the local index hasn't ingested them yet.
+// When nil, the handlers fall back to OutputStore's local-only path.
 type Routes struct {
 	outputStore *OutputStore
+	Spends      *spends.Storage
 }
 
-// NewRoutes creates a new Routes instance.
+// NewRoutes creates a new Routes instance. Set Spends after construction
+// to enable the provider-chain spend lookup for the public API handlers;
+// without it, /spend and /spends only see locally-indexed data.
 func NewRoutes(outputStore *OutputStore) *Routes {
 	return &Routes{outputStore: outputStore}
 }
@@ -92,7 +102,12 @@ func (r *Routes) GetSpend(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusBadRequest).SendString("Invalid outpoint format")
 	}
 
-	spendTxid, err := r.outputStore.GetSpend(c.Context(), op)
+	var spendTxid *chainhash.Hash
+	if r.Spends != nil {
+		spendTxid, err = r.Spends.GetSpend(c.Context(), op)
+	} else {
+		spendTxid, err = r.outputStore.GetSpend(c.Context(), op)
+	}
 	if err != nil {
 		return err
 	}
@@ -177,13 +192,19 @@ func (r *Routes) GetSpends(c *fiber.Ctx) error {
 		ops[i] = op
 	}
 
-	spends, err := r.outputStore.GetSpends(c.Context(), ops)
+	var spendList []*chainhash.Hash
+	var err error
+	if r.Spends != nil {
+		spendList, err = r.Spends.GetSpends(c.Context(), ops)
+	} else {
+		spendList, err = r.outputStore.GetSpends(c.Context(), ops)
+	}
 	if err != nil {
 		return err
 	}
 
-	responses := make([]SpendResponse, len(spends))
-	for i, spend := range spends {
+	responses := make([]SpendResponse, len(spendList))
+	for i, spend := range spendList {
 		if spend != nil {
 			txidStr := spend.String()
 			responses[i].SpendTxid = &txidStr

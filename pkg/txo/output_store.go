@@ -297,16 +297,11 @@ func buildSpendEvents(output *IndexedOutput) []string {
 }
 
 // GetSpend returns the spending txid for an outpoint (nil if unspent).
-// When SpendService is configured, the lookup delegates to the configured
-// provider chain (local store first, then any fallbacks like JungleBus) so
-// that callers see spends recorded by upstream sources even when the local
-// index hasn't yet ingested the spending transaction. With SpendService nil
-// (e.g. tests), the legacy local-only behavior is preserved.
+// Reads come directly from local Badger. Internal callers (sync streams,
+// filter operations, indexer) must never make HTTP calls from this path;
+// the SpendService chain (with JungleBus fallback) is reserved for the
+// public spend API handlers in routes.go.
 func (s *OutputStore) GetSpend(ctx context.Context, op *transaction.Outpoint) (*chainhash.Hash, error) {
-	if s.SpendService != nil {
-		return s.SpendService.GetSpend(ctx, op)
-	}
-
 	spendBytes, err := s.Store.HGet(ctx, hashSpnd, op.Bytes())
 	if err == store.ErrKeyNotFound {
 		return nil, nil
@@ -323,16 +318,11 @@ func (s *OutputStore) GetSpend(ctx context.Context, op *transaction.Outpoint) (*
 	return txid, nil
 }
 
-// GetSpends returns spending txids for multiple outpoints (bulk). Same
-// delegation rules as GetSpend: SpendService chain when set, local-only
-// fallback otherwise.
+// GetSpends returns spending txids for multiple outpoints (bulk). Reads
+// come directly from local Badger; see GetSpend for the rationale.
 func (s *OutputStore) GetSpends(ctx context.Context, ops []*transaction.Outpoint) ([]*chainhash.Hash, error) {
 	if len(ops) == 0 {
 		return nil, nil
-	}
-
-	if s.SpendService != nil {
-		return s.SpendService.GetSpends(ctx, ops)
 	}
 
 	fields := make([][]byte, len(ops))
