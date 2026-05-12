@@ -2,6 +2,7 @@ package spends
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/b-open-io/go-junglebus"
 	"github.com/bsv-blockchain/go-sdk/chainhash"
@@ -28,9 +29,20 @@ func (j *JunglebusSpendStorage) GetSpend(ctx context.Context, outpoint *transact
 	if len(spendBytes) == 0 {
 		return nil, nil
 	}
+	if len(spendBytes) != chainhash.HashSize {
+		return nil, fmt.Errorf("junglebus spend lookup returned %d bytes, want %d", len(spendBytes), chainhash.HashSize)
+	}
 
+	// JungleBus returns the spending txid as raw bytes in DISPLAY order
+	// (byte 0 is the first hex pair shown to users). chainhash.Hash stores
+	// bytes in INTERNAL order so that .String() reverses on output. Copying
+	// directly would put the bytes in the wrong order and yield a reversed
+	// display string; reverse here to keep the hash consistent with the rest
+	// of the system (indexer-written spends are already internal-order).
 	txid := &chainhash.Hash{}
-	copy(txid[:], spendBytes)
+	for i, b := range spendBytes {
+		txid[chainhash.HashSize-1-i] = b
+	}
 	return txid, nil
 }
 
