@@ -41,6 +41,7 @@ func (r *DataRoutes) Register(group fiber.Router) {
 	hash.Get("/getall/:key", r.handleHashGetAll)
 	hash.Get("/get/:key/:field", r.handleHashGet)
 	hash.Post("/mget/:key", r.handleHashMGet)
+	hash.Post("/del/:key", r.handleHashDel)
 
 	// ZSet operations
 	zset := group.Group("/zset")
@@ -330,6 +331,54 @@ func (r *DataRoutes) handleHashMGet(c *fiber.Ctx) error {
 		"key":    key,
 		"count":  len(rendered),
 		"fields": rendered,
+	})
+}
+
+// handleHashDel deletes one or more fields from a hash. Fields must be
+// supplied as a JSON array of hex-encoded byte sequences; this lets callers
+// delete fields whose underlying bytes are binary (e.g. outpoint bytes in the
+// "spnd" hash) without URL-encoding pitfalls.
+func (r *DataRoutes) handleHashDel(c *fiber.Ctx) error {
+	key := c.Params("key")
+	if key == "" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": "key is required",
+		})
+	}
+
+	var fields []string
+	if err := c.BodyParser(&fields); err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": "invalid request body, expected JSON array of hex-encoded field bytes",
+		})
+	}
+	if len(fields) == 0 {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": "at least one field is required",
+		})
+	}
+
+	fieldBytes := make([][]byte, len(fields))
+	for i, f := range fields {
+		b, err := hex.DecodeString(f)
+		if err != nil {
+			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+				"error": "invalid hex in field at index " + strconv.Itoa(i),
+			})
+		}
+		fieldBytes[i] = b
+	}
+
+	if err := r.store.HDel(c.Context(), []byte(key), fieldBytes...); err != nil {
+		r.logger.Error("failed to delete hash fields", "key", key, "count", len(fields), "error", err)
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"error": "failed to delete fields",
+		})
+	}
+
+	return c.JSON(fiber.Map{
+		"key":     key,
+		"deleted": len(fieldBytes),
 	})
 }
 
