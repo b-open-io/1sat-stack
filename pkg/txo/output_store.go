@@ -296,7 +296,11 @@ func buildSpendEvents(output *IndexedOutput) []string {
 	return events
 }
 
-// GetSpend returns the spending txid for an outpoint (nil if unspent)
+// GetSpend returns the spending txid for an outpoint (nil if unspent).
+// Reads come directly from local Badger. Internal callers (sync streams,
+// filter operations, indexer) must never make HTTP calls from this path;
+// the SpendService chain (with JungleBus fallback) is reserved for the
+// public spend API handlers in routes.go.
 func (s *OutputStore) GetSpend(ctx context.Context, op *transaction.Outpoint) (*chainhash.Hash, error) {
 	spendBytes, err := s.Store.HGet(ctx, hashSpnd, op.Bytes())
 	if err == store.ErrKeyNotFound {
@@ -314,7 +318,8 @@ func (s *OutputStore) GetSpend(ctx context.Context, op *transaction.Outpoint) (*
 	return txid, nil
 }
 
-// GetSpends returns spending txids for multiple outpoints (bulk)
+// GetSpends returns spending txids for multiple outpoints (bulk). Reads
+// come directly from local Badger; see GetSpend for the rationale.
 func (s *OutputStore) GetSpends(ctx context.Context, ops []*transaction.Outpoint) ([]*chainhash.Hash, error) {
 	if len(ops) == 0 {
 		return nil, nil
