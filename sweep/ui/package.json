@@ -9,7 +9,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "@1sat/sweep-ui": "0.0.27",
+    "@1sat/sweep-ui": "0.0.57",
     "@bsv/sdk": "^2.0.4",
     "react": "^19.0.0",
     "react-dom": "^19.0.0"
