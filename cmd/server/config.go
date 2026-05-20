@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -785,6 +786,25 @@ func convertSpendsChain(jsonStr string) ([]spends.ChainConfig, error) {
 	return chain, nil
 }
 
+// arcadeCheckpointStore adapts configpkg.Store to arcadeclient.CheckpointStore,
+// translating configpkg.ErrNotFound into ("", nil) so a missing key on first
+// run is treated as "no prior checkpoint" rather than a store error.
+type arcadeCheckpointStore struct {
+	cs configpkg.Store
+}
+
+func (a *arcadeCheckpointStore) Get(ctx context.Context, key string) (string, error) {
+	v, err := a.cs.Get(ctx, key)
+	if errors.Is(err, configpkg.ErrNotFound) {
+		return "", nil
+	}
+	return v, err
+}
+
+func (a *arcadeCheckpointStore) Set(ctx context.Context, key string, value string) error {
+	return a.cs.Set(ctx, key, value)
+}
+
 // Initialize creates all services from the configuration
 func (c *Config) Initialize(ctx context.Context, logger *slog.Logger) (*Services, error) {
 	if logger == nil {
@@ -892,6 +912,7 @@ func (c *Config) Initialize(ctx context.Context, logger *slog.Logger) (*Services
 		arcadeLogger := logging.NewComponentLogger(logger, "arcade", "")
 		svc.ArcadeClient = arcadeclient.New(runtimeCfg.ArcadeURL, runtimeCfg.ArcadeCallbackToken, nil, arcadeLogger)
 		svc.ArcadeBroker = arcadeclient.NewEventBroker(svc.ArcadeClient, arcadeLogger)
+		svc.ArcadeBroker.SetCheckpointStore(&arcadeCheckpointStore{cs: svc.ConfigStore}, "progress:arcade_sse")
 
 		waitTimeout := broadcast.DefaultWaitTimeout
 		if d, perr := time.ParseDuration(runtimeCfg.ArcadeWaitTimeout); perr == nil && d > 0 {

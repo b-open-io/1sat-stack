@@ -13,16 +13,27 @@ import (
 // handler is logged and recovered so it does not stop the broker.
 type EventHandler func(context.Context, *SSEEvent)
 
+// CheckpointStore is the minimal key/value surface the broker uses to persist
+// its lastEventID cursor across restarts. The caller picks the storage key
+// via SetCheckpointStore. Get should return ("", nil) when the key does not
+// exist (caller wraps any "not found" error into the nil-value form).
+type CheckpointStore interface {
+	Get(ctx context.Context, key string) (string, error)
+	Set(ctx context.Context, key string, value string) error
+}
+
 // EventBroker wraps a Client's Subscribe stream and fans events out to
 // per-txid waiters and always-on handlers. One broker per 1sat-stack instance.
 type EventBroker struct {
 	client *Client
 	logger *slog.Logger
 
-	mu          sync.Mutex
-	waiters     map[string][]chan *SSEEvent
-	handlers    []EventHandler
-	lastEventID string
+	mu              sync.Mutex
+	waiters         map[string][]chan *SSEEvent
+	handlers        []EventHandler
+	lastEventID     string
+	checkpointStore CheckpointStore
+	checkpointKey   string
 }
 
 // NewEventBroker creates a broker. Call Run to start consuming the SSE stream.
@@ -42,6 +53,18 @@ func (b *EventBroker) SetLastEventID(id string) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	b.lastEventID = id
+}
+
+// SetCheckpointStore wires a CheckpointStore (and its key) into the broker.
+// Must be called before Run. Once set, Run loads the prior cursor from cs
+// before subscribing, and every dispatched event triggers a Set. Save
+// failures log a warning and are otherwise ignored — the next event will
+// overwrite the stored value.
+func (b *EventBroker) SetCheckpointStore(cs CheckpointStore, key string) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	b.checkpointStore = cs
+	b.checkpointKey = key
 }
 
 // LastEventID returns the most recently dispatched event's ID. Safe to call
@@ -92,10 +115,37 @@ func (b *EventBroker) Wait(txid string) (<-chan *SSEEvent, func()) {
 // matching per-txid waiters and to all always-on handlers. Blocks until ctx
 // is cancelled or the underlying SSE stream cannot be re-established.
 func (b *EventBroker) Run(ctx context.Context) {
+	b.loadCheckpoint(ctx)
 	startID := b.LastEventID()
 	for evt := range b.client.Subscribe(ctx, startID) {
 		b.dispatch(ctx, evt)
 	}
+}
+
+// loadCheckpoint pulls the last persisted cursor from the configured
+// CheckpointStore (if any) and seeds the in-memory lastEventID before
+// Subscribe runs. Errors are logged and tolerated — broker simply starts
+// from "now".
+func (b *EventBroker) loadCheckpoint(ctx context.Context) {
+	b.mu.Lock()
+	cs := b.checkpointStore
+	key := b.checkpointKey
+	b.mu.Unlock()
+	if cs == nil || key == "" {
+		return
+	}
+	id, err := cs.Get(ctx, key)
+	if err != nil {
+		b.logger.Warn("arcade broker: failed to load checkpoint, starting from now",
+			"key", key, "err", err)
+		return
+	}
+	if id == "" {
+		return
+	}
+	b.SetLastEventID(id)
+	b.logger.Info("arcade broker: resumed from checkpoint",
+		"key", key, "last_event_id", id)
 }
 
 func (b *EventBroker) dispatch(ctx context.Context, evt *SSEEvent) {
@@ -105,7 +155,16 @@ func (b *EventBroker) dispatch(ctx context.Context, evt *SSEEvent) {
 	}
 	waiters := append([]chan *SSEEvent(nil), b.waiters[evt.Txid]...)
 	handlers := append([]EventHandler(nil), b.handlers...)
+	cs := b.checkpointStore
+	key := b.checkpointKey
 	b.mu.Unlock()
+
+	if cs != nil && key != "" && evt.ID != "" {
+		if err := cs.Set(ctx, key, evt.ID); err != nil {
+			b.logger.Warn("arcade broker: failed to save checkpoint",
+				"key", key, "id", evt.ID, "err", err)
+		}
+	}
 
 	b.logger.Info("arcade event dispatching",
 		"txid", evt.Txid, "tx_status", evt.TxStatus,
