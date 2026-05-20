@@ -15,14 +15,21 @@ import (
 	"log/slog"
 	"net/http"
 	"strings"
+	"time"
 )
+
+// defaultSSEIdleTimeout is the default read-idle window on the /events stream.
+// Arcade sends a keepalive comment every 15s; this gives ~2 missed pings before
+// we force a reconnect.
+const defaultSSEIdleTimeout = 30 * time.Second
 
 // Client is an HTTP client for arcade's transaction API.
 type Client struct {
-	baseURL       string
-	callbackToken string
-	http          *http.Client
-	logger        *slog.Logger
+	baseURL        string
+	callbackToken  string
+	http           *http.Client
+	logger         *slog.Logger
+	sseIdleTimeout time.Duration
 }
 
 // New constructs a new arcade HTTP client.
@@ -42,10 +49,11 @@ func New(baseURL, callbackToken string, httpClient *http.Client, logger *slog.Lo
 		logger = slog.Default()
 	}
 	return &Client{
-		baseURL:       strings.TrimRight(baseURL, "/"),
-		callbackToken: callbackToken,
-		http:          httpClient,
-		logger:        logger,
+		baseURL:        strings.TrimRight(baseURL, "/"),
+		callbackToken:  callbackToken,
+		http:           httpClient,
+		logger:         logger,
+		sseIdleTimeout: defaultSSEIdleTimeout,
 	}
 }
 

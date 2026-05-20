@@ -5,11 +5,27 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"net/url"
 	"strings"
 	"time"
 )
+
+// idleReader wraps an io.Reader and resets a timer on every successful read.
+// Used to detect a silently dead SSE connection: when no bytes arrive within
+// the idle window the timer fires and cancels the stream context, which
+// aborts the in-flight Read and lets the reconnect loop take over.
+type idleReader struct {
+	r       io.Reader
+	timer   *time.Timer
+	timeout time.Duration
+}
+
+func (i *idleReader) Read(p []byte) (int, error) {
+	i.timer.Reset(i.timeout)
+	return i.r.Read(p)
+}
 
 // Subscribe opens a long-lived SSE connection to arcade /events using the client's callback token.
 //
@@ -74,7 +90,10 @@ func (c *Client) consumeStream(ctx context.Context, lastID string, ch chan<- *SS
 		endpoint += "?callbackToken=" + url.QueryEscape(c.callbackToken)
 	}
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
+	streamCtx, cancelStream := context.WithCancel(ctx)
+	defer cancelStream()
+
+	req, err := http.NewRequestWithContext(streamCtx, http.MethodGet, endpoint, nil)
 	if err != nil {
 		return lastID, fmt.Errorf("build SSE request: %w", err)
 	}
@@ -93,9 +112,11 @@ func (c *Client) consumeStream(ctx context.Context, lastID string, ch chan<- *SS
 		return lastID, fmt.Errorf("arcade SSE returned %d", resp.StatusCode)
 	}
 
-	c.logger.Info("arcade SSE connected", "last_event_id", lastID)
+	c.logger.Info("arcade SSE connected", "last_event_id", lastID, "idle_timeout", c.sseIdleTimeout.String())
 
-	reader := bufio.NewReader(resp.Body)
+	idleTimer := time.AfterFunc(c.sseIdleTimeout, cancelStream)
+	defer idleTimer.Stop()
+	reader := bufio.NewReader(&idleReader{r: resp.Body, timer: idleTimer, timeout: c.sseIdleTimeout})
 	var (
 		currentID    string
 		currentEvent string
