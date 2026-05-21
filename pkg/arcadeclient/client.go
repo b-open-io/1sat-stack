@@ -23,6 +23,13 @@ import (
 // we force a reconnect.
 const defaultSSEIdleTimeout = 30 * time.Second
 
+// defaultResponseHeaderTimeout caps how long http.Client.Do will wait for
+// response headers after the request is fully sent. Without this the SSE
+// consumer can block indefinitely if arcade accepts the TCP connection but
+// never returns HTTP headers (observed during arcade restart windows).
+// Healthy responses are sub-second; 5s is comfortably above normal noise.
+const defaultResponseHeaderTimeout = 5 * time.Second
+
 // Client is an HTTP client for arcade's transaction API.
 type Client struct {
 	baseURL        string
@@ -38,12 +45,15 @@ type Client struct {
 // callbackToken is registered with arcade on every Submit so SSE can fan
 // status updates back to this client. Pass "" if SSE is not used.
 //
-// If httpClient is nil, a default client without a global timeout is used —
-// callers control timeouts via context. SSE consumes long-lived responses
-// from this same client, so do not configure http.Client.Timeout on it.
+// If httpClient is nil, a default client is constructed with a custom
+// transport that sets ResponseHeaderTimeout (so initial connect can't hang
+// forever) but no overall http.Client.Timeout — SSE consumes long-lived
+// response bodies. Callers control overall request lifetime via context.
 func New(baseURL, callbackToken string, httpClient *http.Client, logger *slog.Logger) *Client {
 	if httpClient == nil {
-		httpClient = &http.Client{}
+		transport := http.DefaultTransport.(*http.Transport).Clone()
+		transport.ResponseHeaderTimeout = defaultResponseHeaderTimeout
+		httpClient = &http.Client{Transport: transport}
 	}
 	if logger == nil {
 		logger = slog.Default()
