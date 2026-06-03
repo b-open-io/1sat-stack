@@ -40,7 +40,14 @@ func (b *Broadcaster) Broadcast(tx *transaction.Transaction) (*transaction.Broad
 // arcade-acknowledged 202. The caller does not wait for terminal status;
 // downstream subscribers on the SSE stream observe lifecycle updates.
 func (b *Broadcaster) BroadcastCtx(ctx context.Context, tx *transaction.Transaction) (*transaction.BroadcastSuccess, *transaction.BroadcastFailure) {
-	rawTx := tx.Bytes()
+	rawTx, err := tx.EF()
+	if err != nil {
+		b.logger.Warn("overlay broadcast: extended-format serialization failed", "txid", tx.TxID().String(), "err", err)
+		return nil, &transaction.BroadcastFailure{
+			Code:        "ef_error",
+			Description: err.Error(),
+		}
+	}
 	txid, err := b.client.Submit(ctx, rawTx, arcadeclient.SubmitOptions{})
 	if err != nil {
 		b.logger.Warn("overlay broadcast failed", "err", err, "raw_size", len(rawTx))

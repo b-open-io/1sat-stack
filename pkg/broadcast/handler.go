@@ -100,33 +100,32 @@ func (h *Handler) captureAndExtractRawTx(ctx context.Context, payload []byte) ([
 				h.logger.Warn("failed to save BEEF", "err", saveErr)
 			}
 		}
-		rawTx := tx.Bytes()
-		return rawTx, nil
+		return tx.EF()
 	}
 
-	// Not BEEF — try as raw tx.
+	// Not BEEF — parse as a raw tx and load its ancestors so the submission
+	// carries per-input source data (arcade validates scripts at intake).
 	tx, err := sdkTx.NewTransactionFromBytes(payload)
 	if err != nil {
 		return nil, fmt.Errorf("payload is neither BEEF nor a valid transaction: %w", err)
 	}
 
-	if h.beefStorage != nil {
-		if saveErr := h.beefStorage.SaveRaw(ctx, payload); saveErr != nil {
-			h.logger.Warn("failed to save raw tx", "err", saveErr)
-		}
-		// Best-effort enrichment: pull ancestors from local storage and persist
-		// the resulting BEEF envelope for indexing/ORDFS. Failures here don't
-		// block submission of the leaf raw tx.
-		if ancErr := h.beefStorage.PopulateAncestors(ctx, tx); ancErr == nil {
-			if beefBytes, beefErr := tx.BEEF(); beefErr == nil {
-				if saveErr := h.beefStorage.SaveRaw(ctx, beefBytes); saveErr != nil {
-					h.logger.Warn("failed to save enriched BEEF", "txid", tx.TxID().String(), "err", saveErr)
-				}
-			}
-		} else {
-			h.logger.Debug("could not populate ancestors", "txid", tx.TxID().String(), "err", ancErr)
+	// No storage to source ancestors from: capture disabled, submit as-is.
+	if h.beefStorage == nil {
+		return payload, nil
+	}
+
+	if saveErr := h.beefStorage.SaveRaw(ctx, payload); saveErr != nil {
+		h.logger.Warn("failed to save raw tx", "err", saveErr)
+	}
+	if ancErr := h.beefStorage.PopulateAncestors(ctx, tx); ancErr != nil {
+		return nil, fmt.Errorf("populate ancestors for %s: %w", tx.TxID().String(), ancErr)
+	}
+	if beefBytes, beefErr := tx.BEEF(); beefErr == nil {
+		if saveErr := h.beefStorage.SaveRaw(ctx, beefBytes); saveErr != nil {
+			h.logger.Warn("failed to save enriched BEEF", "txid", tx.TxID().String(), "err", saveErr)
 		}
 	}
 
-	return payload, nil
+	return tx.EF()
 }
