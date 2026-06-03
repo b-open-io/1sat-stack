@@ -72,7 +72,10 @@ func (h *Handler) Submit(ctx context.Context, payload []byte) (*arcadeclient.Tra
 		h.logger.Warn("broadcast payload parse failed", "err", err, "payload_size", len(payload))
 		return nil, fmt.Errorf("parse payload: %w", err)
 	}
-	txid := arcadeclient.ComputeTxid(rawTx)
+	txid, err := arcadeclient.ComputeTxid(rawTx)
+	if err != nil {
+		return nil, fmt.Errorf("compute txid: %w", err)
+	}
 	h.logger.Info("broadcast initiated",
 		"txid", txid, "payload_size", len(payload), "raw_size", len(rawTx))
 	status, err := h.broker.SubmitAndWait(ctx, rawTx, arcadeclient.SubmitOptions{}, arcadeclient.WaitOptions{

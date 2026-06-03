@@ -7,8 +7,6 @@ package arcadeclient
 import (
 	"bytes"
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -16,6 +14,8 @@ import (
 	"net/http"
 	"strings"
 	"time"
+
+	"github.com/bsv-blockchain/go-sdk/transaction"
 )
 
 // defaultSSEIdleTimeout is the default read-idle window on the /events stream.
@@ -78,7 +78,10 @@ func (c *Client) CallbackToken() string {
 // the txid; we compute it client-side from rawTx. Track the lifecycle via
 // GetStatus or by listening on Subscribe.
 func (c *Client) Submit(ctx context.Context, rawTx []byte, opts SubmitOptions) (string, error) {
-	txid := ComputeTxid(rawTx)
+	txid, err := ComputeTxid(rawTx)
+	if err != nil {
+		return "", err
+	}
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.baseURL+"/tx", bytes.NewReader(rawTx))
 	if err != nil {
@@ -152,15 +155,13 @@ func (c *Client) applySubmitHeaders(req *http.Request, opts SubmitOptions) {
 	}
 }
 
-// ComputeTxid returns the hex-encoded txid (display order) of a serialized BSV transaction.
-// The txid is sha256d of the raw tx bytes; BSV displays it in reverse byte order from
-// the natural hash output.
-func ComputeTxid(rawTx []byte) string {
-	h1 := sha256.Sum256(rawTx)
-	h2 := sha256.Sum256(h1[:])
-	reversed := make([]byte, 32)
-	for i := 0; i < 32; i++ {
-		reversed[31-i] = h2[i]
+// ComputeTxid returns the canonical hex-encoded txid of a serialized BSV
+// transaction. rawTx may be standard or Extended Format; the SDK parses both
+// and TxID is computed over the canonical form.
+func ComputeTxid(rawTx []byte) (string, error) {
+	tx, err := transaction.NewTransactionFromBytes(rawTx)
+	if err != nil {
+		return "", fmt.Errorf("parse tx for txid: %w", err)
 	}
-	return hex.EncodeToString(reversed)
+	return tx.TxID().String(), nil
 }

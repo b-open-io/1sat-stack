@@ -240,7 +240,10 @@ func (b *EventBroker) SubmitAndWait(
 		defer cancel()
 	}
 
-	txid := ComputeTxid(rawTx)
+	txid, err := ComputeTxid(rawTx)
+	if err != nil {
+		return nil, fmt.Errorf("compute txid: %w", err)
+	}
 
 	// Register waiter before submit so we don't race the first event.
 	eventCh, cleanup := b.Wait(txid)
