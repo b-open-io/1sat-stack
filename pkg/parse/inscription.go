@@ -53,13 +53,20 @@ func ParseInscription(ctx *ParseContext) (*ParseResult, error) {
 		result.Events = append(result.Events, "parent:"+insc.Parent.String())
 	}
 
-	// Check suffix for P2PKH owner (some inscriptions place P2PKH after OP_ENDIF)
+	// Check suffix for P2PKH owner. 1Sat ordinals place the P2PKH lock after
+	// the inscription envelope, optionally preceded by OP_CODESEPARATOR and
+	// followed by MAP metadata. Decode the 25-byte lock at the start of the
+	// suffix rather than the whole suffix.
 	if len(insc.ScriptSuffix) > 0 {
-		suffix := script.NewFromBytes(insc.ScriptSuffix)
-		if addr := p2pkh.Decode(suffix, true); addr != nil {
-			owner := types.PKHashFromBytes(addr.PublicKeyHash)
-			if owner != nil {
-				result.Owners = append(result.Owners, owner)
+		suffix := insc.ScriptSuffix
+		if suffix[0] == script.OpCODESEPARATOR {
+			suffix = suffix[1:]
+		}
+		if len(suffix) >= 25 {
+			if addr := p2pkh.Decode(script.NewFromBytes(suffix[:25]), true); addr != nil {
+				if owner := types.PKHashFromBytes(addr.PublicKeyHash); owner != nil {
+					result.Owners = append(result.Owners, owner)
+				}
 			}
 		}
 	}
