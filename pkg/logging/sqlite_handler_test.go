@@ -2,6 +2,7 @@ package logging
 
 import (
 	"context"
+	"database/sql"
 	"log/slog"
 	"path/filepath"
 	"testing"
@@ -239,5 +240,82 @@ func TestSQLiteHandler_DropWhenFull(t *testing.T) {
 	}
 	if total == 0 {
 		t.Error("expected at least some records to be written")
+	}
+}
+
+func autoVacuumMode(t *testing.T, h *SQLiteHandler) int {
+	t.Helper()
+	var mode int
+	if err := h.db.QueryRow("PRAGMA auto_vacuum").Scan(&mode); err != nil {
+		t.Fatalf("read auto_vacuum: %v", err)
+	}
+	return mode
+}
+
+// TestSQLiteHandler_AutoVacuumOnFreshDB verifies a newly created log database is
+// opened with incremental auto-vacuum (mode 2) — the prerequisite for the
+// pruner's incremental_vacuum to return freed pages to the OS.
+func TestSQLiteHandler_AutoVacuumOnFreshDB(t *testing.T) {
+	dbPath := filepath.Join(t.TempDir(), "test-logs.db")
+	h, err := NewSQLiteHandler(dbPath, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer h.Close()
+
+	if mode := autoVacuumMode(t, h); mode != 2 {
+		t.Errorf("expected auto_vacuum=INCREMENTAL (2) on fresh db, got %d", mode)
+	}
+}
+
+// TestSQLiteHandler_LegacyNONEDBLeftIntact verifies that opening a pre-existing
+// database created with auto_vacuum=NONE neither errors nor loses data. The
+// handler intentionally does not convert it in place — the operator deletes the
+// file to start fresh with incremental auto-vacuum — so the mode stays NONE.
+func TestSQLiteHandler_LegacyNONEDBLeftIntact(t *testing.T) {
+	dbPath := filepath.Join(t.TempDir(), "test-logs.db")
+
+	legacy, err := sql.Open("sqlite", dbPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	legacy.SetMaxOpenConns(1)
+	if _, err := legacy.Exec("PRAGMA journal_mode=WAL"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := legacy.Exec(logsSchema); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := legacy.Exec(
+		`INSERT INTO logs (time_ns, level, msg) VALUES (?, 'INFO', 'legacy row')`,
+		time.Now().UnixNano(),
+	); err != nil {
+		t.Fatal(err)
+	}
+	var legacyMode int
+	if err := legacy.QueryRow("PRAGMA auto_vacuum").Scan(&legacyMode); err != nil {
+		t.Fatal(err)
+	}
+	if legacyMode != 0 {
+		t.Fatalf("precondition: expected legacy db auto_vacuum=NONE (0), got %d", legacyMode)
+	}
+	legacy.Close()
+
+	h, err := NewSQLiteHandler(dbPath, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer h.Close()
+
+	if mode := autoVacuumMode(t, h); mode != 0 {
+		t.Errorf("expected legacy db left at auto_vacuum=NONE (0), got %d", mode)
+	}
+
+	_, total, err := h.Query(LogQuery{Limit: 10})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if total != 1 {
+		t.Errorf("expected legacy row preserved, got %d", total)
 	}
 }

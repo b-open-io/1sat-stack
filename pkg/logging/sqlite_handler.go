@@ -86,12 +86,12 @@ type logRecord struct {
 
 // SQLiteHandler is an slog.Handler that writes log records to a SQLite database.
 type SQLiteHandler struct {
-	opts      SQLiteHandlerOptions
-	db        *sql.DB
+	opts       SQLiteHandlerOptions
+	db         *sql.DB
 	insertStmt *sql.Stmt
-	ch        chan logRecord
-	closeOnce sync.Once
-	done      chan struct{}
+	ch         chan logRecord
+	closeOnce  sync.Once
+	done       chan struct{}
 	// pre-applied attrs from WithAttrs
 	component string
 	group     string
@@ -112,6 +112,25 @@ func NewSQLiteHandler(dbPath string, opts *SQLiteHandlerOptions) (*SQLiteHandler
 		return nil, fmt.Errorf("open log db %s: %w", dbPath, err)
 	}
 	db.SetMaxOpenConns(1)
+
+	// Enable incremental auto-vacuum so the pruner's incremental_vacuum can
+	// return freed pages to the OS instead of leaving the file at its high-water
+	// mark. This takes effect on a fresh database; a file previously created with
+	// auto_vacuum=NONE keeps its old mode until deleted and recreated. Logs are
+	// disposable, so we warn rather than rebuild it in place.
+	if _, err := db.Exec("PRAGMA auto_vacuum=INCREMENTAL"); err != nil {
+		db.Close()
+		return nil, fmt.Errorf("set auto_vacuum: %w", err)
+	}
+	var autoVacuum int
+	if err := db.QueryRow("PRAGMA auto_vacuum").Scan(&autoVacuum); err != nil {
+		db.Close()
+		return nil, fmt.Errorf("read auto_vacuum: %w", err)
+	}
+	if autoVacuum != 2 { // 2 == INCREMENTAL
+		slog.Warn("logs.db opened with auto_vacuum disabled; delete the file to reclaim log disk space",
+			"path", dbPath, "mode", autoVacuum)
+	}
 
 	if _, err := db.Exec("PRAGMA journal_mode=WAL"); err != nil {
 		db.Close()
@@ -409,7 +428,15 @@ func (h *SQLiteHandler) pruner() {
 		select {
 		case <-ticker.C:
 			cutoff := time.Now().Add(-h.opts.Retention).UnixNano()
-			h.db.Exec(`DELETE FROM logs WHERE time_ns < ?`, cutoff)
+			if _, err := h.db.Exec(`DELETE FROM logs WHERE time_ns < ?`, cutoff); err != nil {
+				slog.Error("log pruner: delete failed", "error", err)
+				continue
+			}
+			// Return pages freed by the delete to the OS. Requires
+			// auto_vacuum=INCREMENTAL; a no-op under any other mode.
+			if _, err := h.db.Exec(`PRAGMA incremental_vacuum`); err != nil {
+				slog.Error("log pruner: incremental_vacuum failed", "error", err)
+			}
 		case <-h.done:
 			return
 		}
