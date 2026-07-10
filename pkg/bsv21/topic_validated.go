@@ -6,7 +6,7 @@ import (
 	"slices"
 
 	overlayerr "github.com/b-open-io/1sat-stack/pkg/overlay"
-	bsv21template "github.com/bitcoin-sv/go-templates/template/bsv21"
+	bsv21template "github.com/b-open-io/1sat-stack/pkg/template/bsv21"
 	"github.com/bsv-blockchain/go-overlay-services/pkg/core/engine"
 	"github.com/bsv-blockchain/go-sdk/chainhash"
 	"github.com/bsv-blockchain/go-sdk/overlay"

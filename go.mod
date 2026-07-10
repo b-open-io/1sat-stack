@@ -2,14 +2,12 @@ module github.com/b-open-io/1sat-stack
 
 go 1.26.3
 
-replace github.com/bitcoin-sv/go-templates => github.com/b-open-io/go-templates v0.0.0-20260302230614-be91c94f1d27
-
 replace github.com/bsv-blockchain/go-messagebox-server => github.com/b-open-io/go-messagebox-server v0.0.0-20260406134028-ee4a55ff0f6e
 
 require (
 	github.com/b-open-io/go-junglebus v0.3.5
-	github.com/bitcoin-sv/go-templates v0.1.0
 	github.com/bitcoinschema/go-bmap v0.2.4
+	github.com/bitcoinschema/go-sigma v0.1.2
 	github.com/bsv-blockchain/go-bsv-middleware v0.13.3
 	github.com/bsv-blockchain/go-chaintracks v1.2.6
 	github.com/bsv-blockchain/go-overlay-services v1.2.5-0.20260317181539-0c270ae9ee31
@@ -18,6 +16,7 @@ require (
 	github.com/bsv-blockchain/go-teranode-p2p-client v0.2.5
 	github.com/bsv-blockchain/go-wallet-toolbox v0.183.8
 	github.com/dgraph-io/badger/v4 v4.9.1
+	github.com/fxamacker/cbor/v2 v2.9.2
 	github.com/gofiber/fiber/v2 v2.52.13
 	github.com/jackc/pgx/v5 v5.9.2
 	github.com/joho/godotenv v1.6.0-pre.2
@@ -25,6 +24,7 @@ require (
 	github.com/mattn/go-sqlite3 v1.14.44
 	github.com/redis/go-redis/v9 v9.17.2
 	github.com/spf13/viper v1.21.0
+	github.com/stretchr/testify v1.11.1
 	github.com/swaggo/swag v1.16.6
 	github.com/testcontainers/testcontainers-go v0.42.0
 	github.com/testcontainers/testcontainers-go/modules/postgres v0.42.0
@@ -72,7 +72,6 @@ require (
 	github.com/bitcoinschema/go-boost v0.2.2 // indirect
 	github.com/bitcoinschema/go-bpu v0.2.2 // indirect
 	github.com/bitcoinschema/go-map v0.2.2 // indirect
-	github.com/bitcoinschema/go-sigma v0.1.2 // indirect
 	github.com/bsv-blockchain/go-batcher v1.2.11 // indirect
 	github.com/bsv-blockchain/go-bt/v2 v2.6.3 // indirect
 	github.com/bsv-blockchain/go-chaincfg v1.5.7 // indirect
@@ -112,7 +111,6 @@ require (
 	github.com/filecoin-project/go-clock v0.1.0 // indirect
 	github.com/flynn/noise v1.1.0 // indirect
 	github.com/fsnotify/fsnotify v1.10.0 // indirect
-	github.com/fxamacker/cbor/v2 v2.9.1 // indirect
 	github.com/go-logr/logr v1.4.3 // indirect
 	github.com/go-logr/stdr v1.2.2 // indirect
 	github.com/go-ole/go-ole v1.3.0 // indirect
@@ -267,7 +265,6 @@ require (
 	github.com/spf13/cast v1.10.0 // indirect
 	github.com/spf13/pflag v1.0.10 // indirect
 	github.com/stretchr/objx v0.5.3 // indirect
-	github.com/stretchr/testify v1.11.1 // indirect
 	github.com/subosito/gotenv v1.6.0 // indirect
 	github.com/tinylib/msgp v1.6.3 // indirect
 	github.com/tklauser/go-sysconf v0.3.16 // indirect

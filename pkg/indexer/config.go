@@ -174,7 +174,6 @@ func (c *Config) Initialize(
 	return svc, nil
 }
 
-
 // SetupStatusHandler initializes the status handler with its dependencies.
 // This subscribes to the "arc" pubsub topic and handles all transaction status updates.
 func (s *Services) SetupStatusHandler(deps *StatusHandlerDeps) {

@@ -1,7 +1,7 @@
 package parse
 
 import (
-	"github.com/bitcoin-sv/go-templates/template/bsv21"
+	"github.com/b-open-io/1sat-stack/pkg/template/bsv21"
 	"github.com/bsv-blockchain/go-sdk/script"
 	"github.com/bsv-blockchain/go-sdk/transaction"
 )

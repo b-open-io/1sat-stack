@@ -1,7 +1,7 @@
 package parse
 
 import (
-	"github.com/bitcoin-sv/go-templates/template/bitcom"
+	"github.com/b-open-io/1sat-stack/pkg/template/bitcom"
 	"github.com/bsv-blockchain/go-sdk/script"
 )
 
@@ -74,7 +74,7 @@ func ParseMAP(ctx *ParseContext) (*ParseResult, error) {
 				if t, ok := m.Data["type"]; ok {
 					result.Events = append(result.Events, "map:type:"+t)
 				}
-					return result, nil
+				return result, nil
 			}
 		}
 	}

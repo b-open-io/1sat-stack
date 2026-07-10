@@ -11,8 +11,8 @@ import (
 
 	"github.com/b-open-io/1sat-stack/pkg/beef"
 	"github.com/b-open-io/1sat-stack/pkg/spends"
-	"github.com/bitcoin-sv/go-templates/template/bitcom"
-	"github.com/bitcoin-sv/go-templates/template/inscription"
+	"github.com/b-open-io/1sat-stack/pkg/template/bitcom"
+	"github.com/b-open-io/1sat-stack/pkg/template/inscription"
 	"github.com/bsv-blockchain/go-sdk/chainhash"
 	"github.com/bsv-blockchain/go-sdk/script"
 	"github.com/bsv-blockchain/go-sdk/transaction"

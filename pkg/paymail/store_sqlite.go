@@ -106,4 +106,3 @@ func (s *SQLiteStore) Delete(ctx context.Context, reference string) error {
 func (s *SQLiteStore) Close() error {
 	return s.db.Close()
 }
-

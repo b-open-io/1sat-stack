@@ -183,7 +183,6 @@ func LoadRuntimeConfig(ctx context.Context, cs Store, logger *slog.Logger) (*Run
 	rc.ChaintracksPath = getString(ctx, cs, "chaintracks.path")
 	rc.ChaintracksURL = getString(ctx, cs, "chaintracks.url")
 
-
 	// JungleBus
 	rc.JungleBusURL = getString(ctx, cs, "junglebus.url")
 	rc.JungleBusToken = getString(ctx, cs, "junglebus.token")

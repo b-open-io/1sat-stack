@@ -25,11 +25,11 @@ type Listener interface {
 // Activation is atomic: when a topic is activated, all components start together.
 // Deactivation stops all components and unregisters from the engine.
 type Topic struct {
-	Name        string               // Topic name (e.g., "tm_abc123...")
-	Manager     engine.TopicManager  // Handles admission logic for the overlay engine
-	Remotes     []gasplib.Remote     // Remote chain for GASP dependency resolution
-	OnProcessed func(string) error   // Called after each successful item (optional)
-	Listeners   []Listener           // External data sources (optional)
+	Name        string              // Topic name (e.g., "tm_abc123...")
+	Manager     engine.TopicManager // Handles admission logic for the overlay engine
+	Remotes     []gasplib.Remote    // Remote chain for GASP dependency resolution
+	OnProcessed func(string) error  // Called after each successful item (optional)
+	Listeners   []Listener          // External data sources (optional)
 
 	// Runtime state (internal)
 	worker   *OverlaySync

@@ -38,15 +38,15 @@ type Worker struct {
 // Config holds worker configuration.
 type Config struct {
 	Store        store.Store
-	Key          string           // Sorted set key to consume from
-	Limiter      chan struct{}    // Controls concurrency - required
-	Handler      Handler          // Called for each item
-	OnError      ErrorHandler     // Called on handler error (optional)
-	OnBatchStart func()          // Called when a new batch is fetched (optional)
-	Logger       *slog.Logger     // Logger (optional)
-	PageSize     uint32           // Items to fetch per batch (default: 100)
-	PollDelay    time.Duration    // Delay when queue is empty (default: 1s)
-	StatusDelay  time.Duration    // Status log interval (default: 15s)
+	Key          string        // Sorted set key to consume from
+	Limiter      chan struct{} // Controls concurrency - required
+	Handler      Handler       // Called for each item
+	OnError      ErrorHandler  // Called on handler error (optional)
+	OnBatchStart func()        // Called when a new batch is fetched (optional)
+	Logger       *slog.Logger  // Logger (optional)
+	PageSize     uint32        // Items to fetch per batch (default: 100)
+	PollDelay    time.Duration // Delay when queue is empty (default: 1s)
+	StatusDelay  time.Duration // Status log interval (default: 15s)
 }
 
 // New creates a new Worker.

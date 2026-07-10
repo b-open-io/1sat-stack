@@ -10,6 +10,7 @@
 | BSV21 TopicWorker → OverlaySync | **In Progress** | OPL-1468 — Unify BSV21 token workers with OverlaySync, add OnProcessed, delete TopicWorker |
 | [Persistent Logging](./2026-03-26-persistent-logging.md) | **Not Started** | SQLite log persistence, multi-handler, module tagging, admin log viewer |
 | [External Arcade Migration](./external-arcade-migration.md) | **In Progress** | Migrate to arcade.gorillapool.io via new `/1sat/tx` route, always-on SSE consumer with event broker, custom overlay broadcaster |
+| [Shrug Token Parity](./shrug-parity.md) | **In Progress** | Shrug (¯\\_(ツ)\_/¯) token to BSV-21 parity — templates and spec done, stack topic managers + lookup next |
 
 ## Completed Plans
 

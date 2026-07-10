@@ -2,6 +2,7 @@ package paymail
 
 import (
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"log/slog"
 	"strings"
@@ -100,17 +101,19 @@ func (r *Routes) PKI(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": err.Error()})
 	}
 
-	// Resolve identity key for the alias
-	identityKey, err := r.service.ResolveIdentityKey(c.Context(), alias)
+	resolved, err := r.service.ResolveName(c.Context(), alias)
 	if err != nil {
 		r.logger.Warn("PKI lookup failed", "alias", alias, "error", err)
 		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "paymail not found"})
+	}
+	if resolved.IdentityKey == nil {
+		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "no identity key registered"})
 	}
 
 	return c.JSON(fiber.Map{
 		"bsvalias": "1.0",
 		"handle":   paymailAddr,
-		"pubkey":   identityKey.ToDERHex(),
+		"pubkey":   resolved.IdentityKey.ToDERHex(),
 	})
 }
 
@@ -119,9 +122,9 @@ type paymentDestinationRequest struct {
 	Satoshis uint64 `json:"satoshis"`
 }
 
-// PaymentDestination generates a BRC-29 payment destination for a paymail address.
+// PaymentDestination generates a payment destination for a paymail address.
 // @Summary Get P2P payment destination
-// @Description Generates a BRC-29 payment destination with output script and reference
+// @Description Generates a payment destination: BRC-29 derived when the name has a registered identity key, otherwise the P2PKH output currently holding the name
 // @Tags paymail
 // @Accept json
 // @Produce json
@@ -144,14 +147,23 @@ func (r *Routes) PaymentDestination(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid request body"})
 	}
 
-	identityKey, err := r.service.ResolveIdentityKey(c.Context(), alias)
+	resolved, err := r.service.ResolveName(c.Context(), alias)
 	if err != nil {
 		r.logger.Warn("payment destination lookup failed", "alias", alias, "error", err)
 		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "paymail not found"})
 	}
 
-	pending, err := r.service.DerivePaymentDestination(c.Context(), alias, domain, identityKey, req.Satoshis)
+	var pending *PendingPayment
+	if resolved.IdentityKey != nil {
+		pending, err = r.service.DerivePaymentDestination(c.Context(), alias, domain, resolved.IdentityKey, req.Satoshis)
+	} else {
+		pending, err = r.service.DeriveFallbackDestination(c.Context(), alias, domain, resolved.Outpoint, req.Satoshis)
+	}
 	if err != nil {
+		if errors.Is(err, ErrUndeliverable) {
+			r.logger.Warn("payment destination undeliverable", "alias", alias, "error", err)
+			return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "paymail not found"})
+		}
 		r.logger.Error("failed to derive payment destination", "alias", alias, "error", err)
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "derivation failed"})
 	}
@@ -382,4 +394,3 @@ func verifyPayment(tx *transaction.Transaction, pending *PendingPayment) (int, e
 	}
 	return -1, fmt.Errorf("no output matches the expected payment destination")
 }
-
