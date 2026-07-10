@@ -6,6 +6,7 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"time"
@@ -16,6 +17,7 @@ import (
 	"github.com/b-open-io/1sat-stack/pkg/ordfs"
 	ec "github.com/bsv-blockchain/go-sdk/primitives/ec"
 	"github.com/bsv-blockchain/go-sdk/script"
+	"github.com/bsv-blockchain/go-sdk/transaction"
 	"github.com/bsv-blockchain/go-sdk/transaction/template/p2pkh"
 	"github.com/bsv-blockchain/go-sdk/wallet"
 )
@@ -64,9 +66,17 @@ func NewService(
 	}
 }
 
-// ResolveIdentityKey resolves a paymail alias to an identity public key
-// by looking up the OpNS origin and reading the MAP opns.idKey field via ORDFS.
-func (s *Service) ResolveIdentityKey(ctx context.Context, alias string) (*ec.PublicKey, error) {
+// ResolvedName is the payment-relevant state of an OpNS name: where the name
+// ordinal currently rests and the identity key bound to it, if any.
+type ResolvedName struct {
+	IdentityKey *ec.PublicKey
+	Outpoint    *transaction.Outpoint
+}
+
+// ResolveName resolves a paymail alias to its current OpNS state by looking up
+// the OpNS origin and reading the merged MAP metadata via ORDFS. IdentityKey is
+// nil when no opns.idKey is registered.
+func (s *Service) ResolveName(ctx context.Context, alias string) (*ResolvedName, error) {
 	outpoint, err := s.opns.Origin(ctx, alias)
 	if err != nil {
 		return nil, fmt.Errorf("failed to resolve OpNS name %q: %w", alias, err)
@@ -87,8 +97,13 @@ func (s *Service) ResolveIdentityKey(ctx context.Context, alias string) (*ec.Pub
 	if err != nil {
 		return nil, fmt.Errorf("ORDFS resolution failed for %q: %w", alias, err)
 	}
-	if resp == nil || resp.Map == nil {
-		return nil, fmt.Errorf("no MAP data found for OpNS name %q", alias)
+	if resp == nil {
+		return nil, fmt.Errorf("ORDFS resolution returned no state for %q", alias)
+	}
+
+	resolved := &ResolvedName{Outpoint: resp.Outpoint}
+	if resp.Map == nil {
+		return resolved, nil
 	}
 
 	// Extract opns.idKey from merged MAP data
@@ -99,7 +114,7 @@ func (s *Service) ResolveIdentityKey(ctx context.Context, alias string) (*ec.Pub
 
 	idKeyHex, ok := mapData["opns.idKey"]
 	if !ok || idKeyHex == "" {
-		return nil, fmt.Errorf("no identity key registered for OpNS name %q", alias)
+		return resolved, nil
 	}
 
 	pubKeyBytes, err := hex.DecodeString(idKeyHex)
@@ -107,12 +122,11 @@ func (s *Service) ResolveIdentityKey(ctx context.Context, alias string) (*ec.Pub
 		return nil, fmt.Errorf("invalid identity key hex for %q: %w", alias, err)
 	}
 
-	pubKey, err := ec.PublicKeyFromBytes(pubKeyBytes)
-	if err != nil {
+	if resolved.IdentityKey, err = ec.PublicKeyFromBytes(pubKeyBytes); err != nil {
 		return nil, fmt.Errorf("invalid identity public key for %q: %w", alias, err)
 	}
 
-	return pubKey, nil
+	return resolved, nil
 }
 
 // DerivePaymentDestination generates a BRC-29 payment destination for the given
@@ -172,6 +186,49 @@ func (s *Service) DerivePaymentDestination(ctx context.Context, alias, domain st
 	return pending, nil
 }
 
+// ErrUndeliverable indicates the name has no registered identity key and its
+// ordinal is not held in a plain P2PKH output, so no payment destination exists.
+var ErrUndeliverable = errors.New("name has no identity key and is not held in a P2PKH output")
+
+// DeriveFallbackDestination returns a payment destination paying directly to the
+// P2PKH output that currently holds the name ordinal. This serves names without
+// a registered identity key; there is no per-payment derivation and no message
+// box delivery on this path.
+func (s *Service) DeriveFallbackDestination(ctx context.Context, alias, domain string, current *transaction.Outpoint, satoshis uint64) (*PendingPayment, error) {
+	if current == nil {
+		return nil, fmt.Errorf("no current outpoint for %q", alias)
+	}
+	tx, err := s.beefStorage.LoadTx(ctx, &current.Txid)
+	if err != nil {
+		return nil, fmt.Errorf("failed to load current tx for %q: %w", alias, err)
+	}
+	if int(current.Index) >= len(tx.Outputs) {
+		return nil, fmt.Errorf("outpoint index %d out of range for %q", current.Index, alias)
+	}
+
+	lockingScript := tx.Outputs[current.Index].LockingScript
+	if !lockingScript.IsP2PKH() {
+		return nil, fmt.Errorf("%q: %w", alias, ErrUndeliverable)
+	}
+
+	now := time.Now()
+	pending := &PendingPayment{
+		Reference:    generateReference(),
+		Alias:        alias,
+		Domain:       domain,
+		Satoshis:     satoshis,
+		OutputScript: hex.EncodeToString(*lockingScript),
+		CreatedAt:    now,
+		ExpiresAt:    now.Add(defaultTTL),
+	}
+
+	if err := s.store.Create(ctx, pending); err != nil {
+		return nil, fmt.Errorf("failed to store pending payment: %w", err)
+	}
+
+	return pending, nil
+}
+
 // Store returns the pending payment store.
 func (s *Service) Store() PendingStore {
 	return s.store
@@ -211,6 +268,14 @@ func (s *Service) DeliverToMessageBox(
 	outputIndex uint32,
 	pending *PendingPayment,
 ) error {
+	if pending.IdentityPubKey == "" {
+		s.logger.Info("fallback payment to owner address, no message box delivery",
+			"alias", pending.Alias,
+			"satoshis", pending.Satoshis,
+		)
+		return nil
+	}
+
 	if s.messageBoxClient == nil {
 		s.logger.Warn("messagebox not configured, skipping payment delivery",
 			"alias", pending.Alias,
