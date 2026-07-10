@@ -2,7 +2,7 @@ module github.com/b-open-io/1sat-stack
 
 go 1.26.3
 
-replace github.com/bitcoin-sv/go-templates => github.com/b-open-io/go-templates v0.0.0-20260302230614-be91c94f1d27
+replace github.com/bitcoin-sv/go-templates => github.com/b-open-io/go-templates v0.0.0-20260709202946-0cdf69ccb5dc
 
 replace github.com/bsv-blockchain/go-messagebox-server => github.com/b-open-io/go-messagebox-server v0.0.0-20260406134028-ee4a55ff0f6e
 
@@ -112,7 +112,7 @@ require (
 	github.com/filecoin-project/go-clock v0.1.0 // indirect
 	github.com/flynn/noise v1.1.0 // indirect
 	github.com/fsnotify/fsnotify v1.10.0 // indirect
-	github.com/fxamacker/cbor/v2 v2.9.1 // indirect
+	github.com/fxamacker/cbor/v2 v2.9.2 // indirect
 	github.com/go-logr/logr v1.4.3 // indirect
 	github.com/go-logr/stdr v1.2.2 // indirect
 	github.com/go-ole/go-ole v1.3.0 // indirect

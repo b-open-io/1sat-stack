@@ -2,7 +2,7 @@
 
 Status: **In Progress**
 
-Phase 1 (spec + templates) is complete: go-templates decoder/metadata codec, @1sat/templates Shrug template with shared golden vectors, and the spec page in 1sat-ordinals. Remaining: Phase 2 (stack topic managers, lookup, config).
+Phase 1 (spec + templates) is complete: go-templates decoder/metadata codec, @1sat/templates Shrug template with shared golden vectors, and the spec page in 1sat-ordinals. Phase 2 components are built but unwired: pkg/shrug topic managers (discovery + validated, contextual mint, big.Int accumulation) and pkg/lookup/shrug.go. Remaining: server config registration, routes, sync worker wiring, and topic manager tests.
 
 Goal: bring the shrug token (`¯\_(ツ)_/¯`) to functional parity with BSV-21: a working parser, balance/auth validation, overlay topics, a lookup service, and a published spec. Dynamic overlay topic infrastructure is out of scope.
 
