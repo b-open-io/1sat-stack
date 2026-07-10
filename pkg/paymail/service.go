@@ -31,7 +31,7 @@ var brc29Protocol = wallet.Protocol{
 // Service provides paymail resolution and payment derivation.
 type Service struct {
 	opns             *opns.LookupService
-	ordfs            *ordfs.Ordfs
+	ordfs            ordfs.Loader
 	handler          *broadcast.Handler
 	messageBoxClient *MessageBoxClient
 	beefStorage      *beef.Storage
@@ -43,7 +43,7 @@ type Service struct {
 // NewService creates a new paymail service.
 func NewService(
 	opnsLookup *opns.LookupService,
-	ordfsService *ordfs.Ordfs,
+	ordfsService ordfs.Loader,
 	handler *broadcast.Handler,
 	messageBoxClient *MessageBoxClient,
 	beefStorage *beef.Storage,

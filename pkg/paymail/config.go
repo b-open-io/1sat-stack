@@ -59,7 +59,7 @@ func (c *Config) SetDefaults(v *viper.Viper, prefix string) {
 // InitializeDeps holds dependencies for paymail initialization.
 type InitializeDeps struct {
 	OpnsLookup       *opns.LookupService
-	Ordfs            *ordfs.Ordfs
+	Ordfs            ordfs.Loader
 	BroadcastHandler *broadcast.Handler
 	BeefStorage      *beef.Storage
 	MessageBoxClient *MessageBoxClient
