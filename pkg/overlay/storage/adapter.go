@@ -153,6 +153,8 @@ func (a *EngineAdapter) FindOutput(ctx context.Context, outpoint *transaction.Ou
 }
 
 // FindOutputs finds multiple outputs by outpoints.
+// The returned slice is index-aligned with outpoints: missing (or spent-filtered)
+// entries are nil. GASP HasOutputs and engine input resolution depend on this.
 func (a *EngineAdapter) FindOutputs(ctx context.Context, outpoints []*transaction.Outpoint, topic string, spent *bool, includeBEEF bool) ([]*engine.Output, error) {
 	db, err := a.topicDB(topic)
 	if err != nil {
@@ -164,7 +166,7 @@ func (a *EngineAdapter) FindOutputs(ctx context.Context, outpoints []*transactio
 		return nil, err
 	}
 
-	outputs := make([]*engine.Output, 0, len(recs))
+	byOutpoint := make(map[string]*engine.Output, len(recs))
 	for i := range recs {
 		o := recordToEngineOutput(&recs[i], topic)
 		if spent != nil && o.Spent != *spent {
@@ -175,7 +177,15 @@ func (a *EngineAdapter) FindOutputs(ctx context.Context, outpoints []*transactio
 				return nil, err
 			}
 		}
-		outputs = append(outputs, o)
+		byOutpoint[recs[i].Outpoint.String()] = o
+	}
+
+	outputs := make([]*engine.Output, len(outpoints))
+	for i, op := range outpoints {
+		if op == nil {
+			continue
+		}
+		outputs[i] = byOutpoint[op.String()]
 	}
 
 	return outputs, nil
