@@ -4,14 +4,12 @@ import (
 	"context"
 	"log/slog"
 
-	bsv21template "github.com/bitcoin-sv/go-templates/template/bsv21"
+	bsv21template "github.com/b-open-io/1sat-stack/pkg/template/bsv21"
 	"github.com/bsv-blockchain/go-overlay-services/pkg/core/engine"
 	"github.com/bsv-blockchain/go-sdk/chainhash"
 	"github.com/bsv-blockchain/go-sdk/overlay"
 	"github.com/bsv-blockchain/go-sdk/transaction"
 )
-
-
 
 // Bsv21DiscoveryTopicManager implements a global topic manager that admits ALL deploy operations.
 // This is used for token discovery - registered as topic "tm_bsv21".

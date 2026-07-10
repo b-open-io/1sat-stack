@@ -4,7 +4,7 @@ import (
 	"context"
 	"log/slog"
 
-	"github.com/bitcoin-sv/go-templates/template/ordlock"
+	"github.com/b-open-io/1sat-stack/pkg/template/ordlock"
 	"github.com/bsv-blockchain/go-overlay-services/pkg/core/engine"
 	"github.com/bsv-blockchain/go-sdk/chainhash"
 	"github.com/bsv-blockchain/go-sdk/overlay"

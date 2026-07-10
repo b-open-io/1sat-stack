@@ -6,9 +6,9 @@ import (
 	"log/slog"
 
 	overlaystorage "github.com/b-open-io/1sat-stack/pkg/overlay/storage"
+	"github.com/b-open-io/1sat-stack/pkg/template/inscription"
+	"github.com/b-open-io/1sat-stack/pkg/template/opns"
 	"github.com/b-open-io/1sat-stack/pkg/types"
-	"github.com/bitcoin-sv/go-templates/template/inscription"
-	"github.com/bitcoin-sv/go-templates/template/opns"
 	"github.com/bsv-blockchain/go-overlay-services/pkg/core/engine"
 	"github.com/bsv-blockchain/go-sdk/chainhash"
 	"github.com/bsv-blockchain/go-sdk/overlay"

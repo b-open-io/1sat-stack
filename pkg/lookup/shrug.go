@@ -9,10 +9,10 @@ import (
 
 	overlaystorage "github.com/b-open-io/1sat-stack/pkg/overlay/storage"
 	"github.com/b-open-io/1sat-stack/pkg/store"
+	"github.com/b-open-io/1sat-stack/pkg/template/cosign"
+	shrugtemplate "github.com/b-open-io/1sat-stack/pkg/template/shrug"
 	"github.com/b-open-io/1sat-stack/pkg/txo"
 	"github.com/b-open-io/1sat-stack/pkg/types"
-	"github.com/bitcoin-sv/go-templates/template/cosign"
-	shrugtemplate "github.com/bitcoin-sv/go-templates/template/shrug"
 	"github.com/bsv-blockchain/go-overlay-services/pkg/core/engine"
 	"github.com/bsv-blockchain/go-sdk/chainhash"
 	"github.com/bsv-blockchain/go-sdk/overlay"

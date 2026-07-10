@@ -1,9 +1,9 @@
 package parse
 
 import (
+	"github.com/b-open-io/1sat-stack/pkg/template/p2pkh"
+	"github.com/b-open-io/1sat-stack/pkg/template/shrug"
 	"github.com/b-open-io/1sat-stack/pkg/types"
-	"github.com/bitcoin-sv/go-templates/template/p2pkh"
-	"github.com/bitcoin-sv/go-templates/template/shrug"
 	"github.com/bsv-blockchain/go-sdk/script"
 )
 

@@ -1,7 +1,7 @@
 package parse
 
 import (
-	"github.com/bitcoin-sv/go-templates/template/opns"
+	"github.com/b-open-io/1sat-stack/pkg/template/opns"
 	"github.com/bsv-blockchain/go-sdk/script"
 )
 

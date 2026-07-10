@@ -5,8 +5,8 @@ import (
 	"encoding/json"
 	"fmt"
 
+	"github.com/b-open-io/1sat-stack/pkg/template/bitcom"
 	"github.com/b-open-io/1sat-stack/pkg/types"
-	"github.com/bitcoin-sv/go-templates/template/bitcom"
 	"github.com/bsv-blockchain/go-overlay-services/pkg/core/engine"
 	"github.com/bsv-blockchain/go-sdk/chainhash"
 	"github.com/bsv-blockchain/go-sdk/overlay"
