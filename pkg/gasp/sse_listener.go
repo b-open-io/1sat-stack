@@ -16,7 +16,8 @@ import (
 
 // SSEListenerConfig configures an SSE listener for a topic.
 type SSEListenerConfig struct {
-	// PeerURL is the base URL of the remote peer (e.g., "https://peer.example.com")
+	// PeerURL is the peer's stack API base (e.g. "https://api.1sat.app/1sat").
+	// The listener requests GET {PeerURL}/sse/{TopicName}.
 	PeerURL string
 	// TopicName is the topic to subscribe to
 	TopicName string
@@ -91,8 +92,8 @@ func (l *SSEListener) Stop() {
 
 // connect establishes an SSE connection and processes events.
 func (l *SSEListener) connect(ctx context.Context) error {
-	// Build SSE URL - peer should expose /sse/topics/{topicName} or similar
-	url := fmt.Sprintf("%s/sse/topics/%s", l.config.PeerURL, l.config.TopicName)
+	// Match pkg/pubsub routes: GET {base}/sse/{topics} (comma-separated topics).
+	url := fmt.Sprintf("%s/sse/%s", strings.TrimRight(l.config.PeerURL, "/"), l.config.TopicName)
 
 	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
 	if err != nil {
