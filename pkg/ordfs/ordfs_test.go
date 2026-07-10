@@ -230,21 +230,24 @@ func TestConfigSetDefaults(t *testing.T) {
 	cfg.SetDefaults(v, "ordfs")
 
 	// Verify defaults are set
-	if v.GetBool("ordfs.enabled") != false {
-		t.Errorf("expected enabled=false, got %v", v.GetBool("ordfs.enabled"))
+	if !v.GetBool("ordfs.enabled") {
+		t.Errorf("expected enabled=true, got %v", v.GetBool("ordfs.enabled"))
 	}
 	if !v.GetBool("ordfs.routes.enabled") {
 		t.Error("expected routes.enabled=true")
 	}
-	if v.GetString("ordfs.redis.url") != "redis://localhost:6379/0" {
-		t.Errorf("expected redis.url=redis://localhost:6379/0, got %s", v.GetString("ordfs.redis.url"))
+	if v.GetString("ordfs.routes.prefix") != "/ordfs" {
+		t.Errorf("expected routes.prefix=/ordfs, got %s", v.GetString("ordfs.routes.prefix"))
+	}
+	if v.GetInt("ordfs.cache.lru_size") != 10000 {
+		t.Errorf("expected cache.lru_size=10000, got %d", v.GetInt("ordfs.cache.lru_size"))
 	}
 }
 
 func TestConfigInitializeDisabled(t *testing.T) {
 	cfg := &Config{Enabled: false}
 
-	svc, err := cfg.Initialize(nil, nil, nil, nil)
+	svc, err := cfg.Initialize(nil, nil, "", nil, nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -256,7 +259,7 @@ func TestConfigInitializeDisabled(t *testing.T) {
 func TestConfigInitializeNilDeps(t *testing.T) {
 	cfg := &Config{Enabled: true}
 
-	_, err := cfg.Initialize(nil, nil, nil, nil)
+	_, err := cfg.Initialize(nil, nil, "", nil, nil)
 	if err == nil {
 		t.Fatal("expected error when beef storage is nil")
 	}
