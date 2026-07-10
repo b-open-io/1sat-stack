@@ -50,13 +50,19 @@ func (f *FilesystemBeefStorage) Put(ctx context.Context, txid *chainhash.Hash, b
 		return fmt.Errorf("failed to create directory: %w", err)
 	}
 
+	// Fixed .tmp path races under concurrent Put of the same txid (e.g. shared
+	// BEEF ancestors from parallel crawl workers). Another writer may rename
+	// the shared tmp away before we do; if the final file is present, treat as success.
 	tempFile := filePath + ".tmp"
 	if err := os.WriteFile(tempFile, beefBytes, 0644); err != nil {
 		return fmt.Errorf("failed to write temp file: %w", err)
 	}
 
 	if err := os.Rename(tempFile, filePath); err != nil {
-		os.Remove(tempFile)
+		_ = os.Remove(tempFile)
+		if _, statErr := os.Stat(filePath); statErr == nil {
+			return nil
+		}
 		return fmt.Errorf("failed to rename file: %w", err)
 	}
 
