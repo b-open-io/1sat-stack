@@ -241,4 +241,3 @@ func (s *PostgresStorage) FindByEvent(ctx context.Context, event string, opts *Q
 	defer rows.Close()
 	return scanOutputs(rows)
 }
-
