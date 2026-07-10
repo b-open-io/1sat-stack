@@ -35,17 +35,17 @@ func TestConfigSetDefaults(t *testing.T) {
 	}
 
 	// Verify package defaults are set
-	if v.GetString("store.mode") != store.ModeDisabled {
-		t.Errorf("expected store.mode=disabled, got %s", v.GetString("store.mode"))
+	if v.GetString("store.mode") != store.ModeEmbedded {
+		t.Errorf("expected store.mode=embedded, got %s", v.GetString("store.mode"))
 	}
-	if v.GetString("pubsub.mode") != pubsub.ModeDisabled {
-		t.Errorf("expected pubsub.mode=disabled, got %s", v.GetString("pubsub.mode"))
+	if v.GetString("pubsub.mode") != pubsub.ModeEmbedded {
+		t.Errorf("expected pubsub.mode=embedded, got %s", v.GetString("pubsub.mode"))
 	}
-	if v.GetString("beef.mode") != beef.ModeDisabled {
-		t.Errorf("expected beef.mode=disabled, got %s", v.GetString("beef.mode"))
+	if v.GetString("beef.mode") != beef.ModeEmbedded {
+		t.Errorf("expected beef.mode=embedded, got %s", v.GetString("beef.mode"))
 	}
-	if v.GetString("txo.mode") != txo.ModeDisabled {
-		t.Errorf("expected txo.mode=disabled, got %s", v.GetString("txo.mode"))
+	if v.GetString("txo.mode") != txo.ModeEmbedded {
+		t.Errorf("expected txo.mode=embedded, got %s", v.GetString("txo.mode"))
 	}
 	if v.GetString("bsv21.mode") != bsv21.ModeDisabled {
 		t.Errorf("expected bsv21.mode=disabled, got %s", v.GetString("bsv21.mode"))
@@ -53,8 +53,8 @@ func TestConfigSetDefaults(t *testing.T) {
 	if v.GetString("overlay.mode") != overlay.ModeDisabled {
 		t.Errorf("expected overlay.mode=disabled, got %s", v.GetString("overlay.mode"))
 	}
-	if v.GetBool("ordfs.enabled") != false {
-		t.Errorf("expected ordfs.enabled=false, got %v", v.GetBool("ordfs.enabled"))
+	if !v.GetBool("ordfs.enabled") {
+		t.Errorf("expected ordfs.enabled=true, got %v", v.GetBool("ordfs.enabled"))
 	}
 }
 
