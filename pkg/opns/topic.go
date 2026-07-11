@@ -64,10 +64,21 @@ func (tm *TopicManager) IdentifyAdmissibleOutputs(ctx context.Context, beef *tra
 	return
 }
 
-// IdentifyNeededInputs returns the list of inputs needed for validation.
-// OpNS does not require any additional inputs.
+// IdentifyNeededInputs returns inputs GASP must walk before admitting this tx.
+// Every mint after genesis spends the parent mine contract as input 0.
 func (tm *TopicManager) IdentifyNeededInputs(ctx context.Context, beef *transaction.Beef, txid *chainhash.Hash) ([]*transaction.Outpoint, error) {
-	return nil, nil
+	tx := beef.FindTransactionForSigningByHash(txid)
+	if tx == nil {
+		return nil, engine.ErrInvalidBeef
+	}
+	if txid.IsEqual(&opns.GENESIS.Txid) || len(tx.Inputs) == 0 {
+		return nil, nil
+	}
+	txin := tx.Inputs[0]
+	return []*transaction.Outpoint{{
+		Txid:  *txin.SourceTXID,
+		Index: txin.SourceTxOutIndex,
+	}}, nil
 }
 
 // GetDocumentation returns documentation for this topic manager.
