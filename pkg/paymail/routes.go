@@ -93,7 +93,7 @@ func (r *Routes) Capabilities(c *fiber.Ctx) error {
 // @Success 200 {object} object{bsvalias=string,handle=string,pubkey=string}
 // @Failure 400 {object} object{error=string}
 // @Failure 404 {object} object{error=string}
-// @Router /v1/bsvalias/id/{paymail} [get]
+// @Router /id/{paymail} [get]
 func (r *Routes) PKI(c *fiber.Ctx) error {
 	paymailAddr := c.Params("paymail")
 	alias, _, err := parsePaymail(paymailAddr)
@@ -134,7 +134,7 @@ type paymentDestinationRequest struct {
 // @Failure 400 {object} object{error=string}
 // @Failure 404 {object} object{error=string}
 // @Failure 500 {object} object{error=string}
-// @Router /v1/bsvalias/p2p-payment-destination/{paymail} [post]
+// @Router /p2p-payment-destination/{paymail} [post]
 func (r *Routes) PaymentDestination(c *fiber.Ctx) error {
 	paymailAddr := c.Params("paymail")
 	alias, domain, err := parsePaymail(paymailAddr)
@@ -205,7 +205,7 @@ type receiveBeefRequest struct {
 // @Failure 404 {object} object{error=string}
 // @Failure 500 {object} object{error=string}
 // @Failure 502 {object} object{error=string}
-// @Router /v1/bsvalias/receive-beef/{paymail} [post]
+// @Router /receive-beef/{paymail} [post]
 func (r *Routes) ReceiveBeef(c *fiber.Ctx) error {
 	paymailAddr := c.Params("paymail")
 	alias, _, err := parsePaymail(paymailAddr)
@@ -298,7 +298,7 @@ type receiveTransactionRequest struct {
 // @Failure 404 {object} object{error=string}
 // @Failure 500 {object} object{error=string}
 // @Failure 502 {object} object{error=string}
-// @Router /v1/bsvalias/receive-transaction/{paymail} [post]
+// @Router /receive-transaction/{paymail} [post]
 func (r *Routes) ReceiveTransaction(c *fiber.Ctx) error {
 	paymailAddr := c.Params("paymail")
 	alias, _, err := parsePaymail(paymailAddr)

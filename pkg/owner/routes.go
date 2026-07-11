@@ -67,7 +67,7 @@ func (r *Routes) Register(router fiber.Router) {
 // @Param limit query int false "Maximum number of results" default(100)
 // @Success 200 {string} string "SSE stream of sync progress and TXO events"
 // @Failure 400 {string} string "Bad request"
-// @Router /owner/{owner}/txos [get]
+// @Router /{owner}/txos [get]
 func (r *Routes) OwnerTxos(c *fiber.Ctx) error {
 	owner := c.Params("owner")
 	refresh := c.QueryBool("refresh", true)
@@ -194,7 +194,7 @@ func (r *Routes) OwnerTxos(c *fiber.Ctx) error {
 // @Param owner path string true "Owner identifier (address, pubkey, or script hash)"
 // @Success 200 {object} BalanceResponse
 // @Failure 500 {string} string "Internal server error"
-// @Router /owner/{owner}/balance [get]
+// @Router /{owner}/balance [get]
 func (r *Routes) OwnerBalance(c *fiber.Ctx) error {
 	owner := c.Params("owner")
 
@@ -236,7 +236,7 @@ type SyncOutput struct {
 // @Param owner query []string true "Owner identifier(s) (address, pubkey, or script hash)"
 // @Param from query number false "Starting score for pagination"
 // @Success 200 {string} string "SSE stream of SyncOutput events"
-// @Router /owner/sync [get]
+// @Router /sync [get]
 func (r *Routes) OwnerSync(c *fiber.Ctx) error {
 	owners := c.Context().QueryArgs().PeekMulti("owner")
 	if len(owners) == 0 {

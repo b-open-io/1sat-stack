@@ -88,7 +88,7 @@ func (r *Routes) setBeefCache(c *fiber.Ctx, beefBytes []byte) {
 // @Success 200 {file} binary "BEEF bytes (binary) or hex/base64 string"
 // @Failure 400 {object} map[string]string "Invalid txid or format"
 // @Failure 404 {object} map[string]string "Transaction not found"
-// @Router /beef/{txid} [get]
+// @Router /{txid} [get]
 func (r *Routes) getBeef(c *fiber.Ctx) error {
 	txidStr := c.Params("txid")
 	txid, err := chainhash.NewHashFromHex(txidStr)
@@ -124,7 +124,7 @@ func (r *Routes) getBeef(c *fiber.Ctx) error {
 // @Success 200 {file} binary "Transaction bytes (binary) or hex/base64 string"
 // @Failure 400 {object} map[string]string "Invalid txid or format"
 // @Failure 404 {object} map[string]string "Transaction not found"
-// @Router /beef/{txid}/tx [get]
+// @Router /{txid}/tx [get]
 func (r *Routes) getRawTx(c *fiber.Ctx) error {
 	txidStr := c.Params("txid")
 	txid, err := chainhash.NewHashFromHex(txidStr)
@@ -155,7 +155,7 @@ func (r *Routes) getRawTx(c *fiber.Ctx) error {
 // @Success 200 {file} binary "Merkle proof bytes (binary) or hex/base64 string"
 // @Failure 400 {object} map[string]string "Invalid txid or format"
 // @Failure 404 {object} map[string]string "Proof not found"
-// @Router /beef/{txid}/proof [get]
+// @Router /{txid}/proof [get]
 func (r *Routes) getProof(c *fiber.Ctx) error {
 	txidStr := c.Params("txid")
 	txid, err := chainhash.NewHashFromHex(txidStr)

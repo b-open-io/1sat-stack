@@ -65,6 +65,20 @@ func (r *Routes) Register(router fiber.Router) {
 //   - 202 — wait timed out; tx is in flight, status is best-effort
 //   - 400 — REJECTED or DOUBLE_SPEND_ATTEMPTED (or malformed body)
 //   - 502 — upstream arcade error
+//
+// @Summary Broadcast transaction
+// @Description Submits a raw transaction or BEEF to arcade and waits for acceptance. Body is raw bytes (application/octet-stream), hex (text/plain), or JSON {"rawTx":"<hex>"}
+// @Tags broadcast
+// @Accept application/octet-stream
+// @Accept text/plain
+// @Accept json
+// @Produce json
+// @Param transaction body []byte true "Raw transaction or BEEF"
+// @Success 200 {object} arcadeclient.TransactionStatus "Accepted or terminal success"
+// @Success 202 {object} arcadeclient.TransactionStatus "Wait timed out; status is best-effort"
+// @Failure 400 {object} arcadeclient.TransactionStatus "Rejected or malformed body"
+// @Failure 502 {object} object{error=string} "Upstream arcade error"
+// @Router / [post]
 func (r *Routes) handleSubmit(c *fiber.Ctx) error {
 	payload, err := readPayload(c)
 	if err != nil {
@@ -98,6 +112,16 @@ func (r *Routes) handleSubmit(c *fiber.Ctx) error {
 }
 
 // handleGetStatus handles GET /1sat/tx/:txid — direct passthrough to arcade.
+// @Summary Get transaction status
+// @Description Returns the arcade broadcast status for a transaction
+// @Tags broadcast
+// @Produce json
+// @Param txid path string true "Transaction ID"
+// @Success 200 {object} arcadeclient.TransactionStatus
+// @Failure 400 {object} object{error=string}
+// @Failure 404 {object} object{error=string}
+// @Failure 502 {object} object{error=string}
+// @Router /{txid} [get]
 func (r *Routes) handleGetStatus(c *fiber.Ctx) error {
 	txid := strings.TrimSpace(c.Params("txid"))
 	if txid == "" {

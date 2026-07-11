@@ -37,7 +37,7 @@ type ErrorResponse struct {
 // @Produce json
 // @Success 200 {object} NetworkResponse
 // @Failure 500 {object} ErrorResponse
-// @Router /chaintracks/network [get]
+// @Router /network [get]
 func getNetwork() {}
 
 // getHeight returns the current chain height
@@ -46,7 +46,7 @@ func getNetwork() {}
 // @Tags chaintracks
 // @Produce json
 // @Success 200 {object} HeightResponse
-// @Router /chaintracks/height [get]
+// @Router /height [get]
 func getHeight() {}
 
 // getTip returns the current chain tip
@@ -56,7 +56,7 @@ func getHeight() {}
 // @Produce json
 // @Success 200 {object} BlockHeader
 // @Failure 404 {object} ErrorResponse
-// @Router /chaintracks/tip [get]
+// @Router /tip [get]
 func getTip() {}
 
 // streamTipUpdates streams chain tip updates via SSE
@@ -65,7 +65,7 @@ func getTip() {}
 // @Tags chaintracks
 // @Produce text/event-stream
 // @Success 200 {string} string "SSE stream of BlockHeader JSON objects"
-// @Router /chaintracks/tip/stream [get]
+// @Router /tip/stream [get]
 func streamTipUpdates() {}
 
 // getHeaderByHeight returns a block header by height
@@ -77,7 +77,7 @@ func streamTipUpdates() {}
 // @Success 200 {object} BlockHeader
 // @Failure 400 {object} ErrorResponse
 // @Failure 404 {object} ErrorResponse
-// @Router /chaintracks/header/height/{height} [get]
+// @Router /header/height/{height} [get]
 func getHeaderByHeight() {}
 
 // getHeaderByHash returns a block header by hash
@@ -89,7 +89,7 @@ func getHeaderByHeight() {}
 // @Success 200 {object} BlockHeader
 // @Failure 400 {object} ErrorResponse
 // @Failure 404 {object} ErrorResponse
-// @Router /chaintracks/header/hash/{hash} [get]
+// @Router /header/hash/{hash} [get]
 func getHeaderByHash() {}
 
 // getHeaders returns multiple block headers as binary data
@@ -101,5 +101,5 @@ func getHeaderByHash() {}
 // @Param count query int true "Number of headers to return"
 // @Success 200 {string} binary "Concatenated 80-byte headers"
 // @Failure 400 {object} ErrorResponse
-// @Router /chaintracks/headers [get]
+// @Router /headers [get]
 func getHeaders() {}

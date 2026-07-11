@@ -40,6 +40,7 @@ type Registrar struct {
 	api          fiber.Router
 	capabilities []string
 	specs        []specEntry
+	docInfo      *DocInfo
 }
 
 type specEntry struct {
@@ -95,6 +96,7 @@ func (r *Registrar) Finalize() {
 	r.api.Get("/capabilities", func(c *fiber.Ctx) error {
 		return c.JSON(capabilities)
 	})
+	r.serveDocs()
 }
 
 func mount(parent fiber.Router, m Mount) {

@@ -42,7 +42,7 @@ func (r *Routes) Register(router fiber.Router) {
 // @Failure 400 {object} object{message=string}
 // @Failure 404 {object} object{message=string}
 // @Failure 500 {object} object{message=string}
-// @Router /bap/identity/get [post]
+// @Router /identity/get [post]
 func (r *Routes) GetIdentity(c *fiber.Ctx) error {
 	req := map[string]string{}
 	if err := c.BodyParser(&req); err != nil {
@@ -81,7 +81,7 @@ func (r *Routes) GetIdentity(c *fiber.Ctx) error {
 // @Param offset query int false "Results offset" default(0)
 // @Success 200 {array} Identity
 // @Failure 500 {object} object{message=string}
-// @Router /bap/identity/search [get]
+// @Router /identity/search [get]
 func (r *Routes) SearchIdentities(c *fiber.Ctx) error {
 	q := c.Query("q")
 	limit := c.QueryInt("limit", 20)
@@ -112,7 +112,7 @@ func (r *Routes) SearchIdentities(c *fiber.Ctx) error {
 // @Param offset query int false "Results offset" default(0)
 // @Success 200 {array} Profile
 // @Failure 500 {object} object{message=string}
-// @Router /bap/profile [get]
+// @Router /profile [get]
 func (r *Routes) ListProfiles(c *fiber.Ctx) error {
 	limit := c.QueryInt("limit", 20)
 	offset := c.QueryInt("offset", 0)
@@ -141,7 +141,7 @@ func (r *Routes) ListProfiles(c *fiber.Ctx) error {
 // @Param bapId path string true "BAP Identity ID"
 // @Success 200 {object} object
 // @Failure 500 {object} object{message=string}
-// @Router /bap/profile/{bapId} [get]
+// @Router /profile/{bapId} [get]
 func (r *Routes) GetProfileByBapId(c *fiber.Ctx) error {
 	bapId := c.Params("bapId")
 
@@ -176,7 +176,7 @@ func (r *Routes) GetProfileByBapId(c *fiber.Ctx) error {
 // @Failure 400 {object} object{message=string}
 // @Failure 404 {object} object{message=string}
 // @Failure 500 {object} object{message=string}
-// @Router /bap/identity/validByAddress [post]
+// @Router /identity/validByAddress [post]
 func (r *Routes) ValidByAddress(c *fiber.Ctx) error {
 	var req ValidByAddressRequest
 	if err := c.BodyParser(&req); err != nil {

@@ -43,7 +43,7 @@ func (r *Routes) Register(router fiber.Router) {
 // @Param rev query bool false "Reverse order" default(true)
 // @Success 200 {array} object
 // @Failure 500 {object} object{message=string}
-// @Router /market/listings [get]
+// @Router /listings [get]
 func (r *Routes) SearchListings(c *fiber.Ctx) error {
 	status := c.Query("status", "active")
 	contentType := c.Query("type")
@@ -82,7 +82,7 @@ func (r *Routes) SearchListings(c *fiber.Ctx) error {
 // @Failure 400 {object} object{message=string}
 // @Failure 404 {object} object{message=string}
 // @Failure 500 {object} object{message=string}
-// @Router /market/origin/{origin} [get]
+// @Router /origin/{origin} [get]
 func (r *Routes) GetListingByOrigin(c *fiber.Ctx) error {
 	origin, err := transaction.OutpointFromString(c.Params("origin"))
 	if err != nil {
@@ -115,7 +115,7 @@ func (r *Routes) GetListingByOrigin(c *fiber.Ctx) error {
 // @Success 200 {object} object "Map of origin to listing"
 // @Failure 400 {object} object{message=string}
 // @Failure 500 {object} object{message=string}
-// @Router /market/origins [post]
+// @Router /origins [post]
 func (r *Routes) GetListingsByOrigins(c *fiber.Ctx) error {
 	var originStrs []string
 	if err := c.BodyParser(&originStrs); err != nil {
@@ -154,7 +154,7 @@ func (r *Routes) GetListingsByOrigins(c *fiber.Ctx) error {
 // @Success 200 {object} object
 // @Failure 404 {object} object{message=string}
 // @Failure 500 {object} object{message=string}
-// @Router /market/listing/{outpoint} [get]
+// @Router /listing/{outpoint} [get]
 func (r *Routes) GetListing(c *fiber.Ctx) error {
 	op, err := transaction.OutpointFromString(c.Params("outpoint"))
 	if err != nil {

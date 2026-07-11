@@ -37,7 +37,7 @@ func (r *Routes) Register(router fiber.Router) {
 // @Param offset query int false "Results offset" default(0)
 // @Success 200 {array} object
 // @Failure 500 {object} object{message=string}
-// @Router /bsocial/post/search [get]
+// @Router /post/search [get]
 func (r *Routes) SearchPosts(c *fiber.Ctx) error {
 	q := c.Query("q")
 	limit := c.QueryInt("limit", 20)

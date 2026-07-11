@@ -9,7 +9,7 @@ package bsocial
 // @Tags bsocial-overlay
 // @Produce json
 // @Success 200 {object} map[string]interface{}
-// @Router /bsocial/overlay/listTopicManagers [get]
+// @Router /overlay/listTopicManagers [get]
 func bsocialListTopicManagers() {}
 
 // bsocialListLookupServiceProviders lists BSocial lookup service providers
@@ -18,7 +18,7 @@ func bsocialListTopicManagers() {}
 // @Tags bsocial-overlay
 // @Produce json
 // @Success 200 {object} map[string]interface{}
-// @Router /bsocial/overlay/listLookupServiceProviders [get]
+// @Router /overlay/listLookupServiceProviders [get]
 func bsocialListLookupServiceProviders() {}
 
 // bsocialSubmitTransaction submits a transaction to the BSocial overlay engine
@@ -32,7 +32,7 @@ func bsocialListLookupServiceProviders() {}
 // @Success 200 {object} map[string]interface{} "STEAK response"
 // @Failure 400 {object} map[string]string
 // @Failure 500 {object} map[string]string
-// @Router /bsocial/overlay/submit [post]
+// @Router /overlay/submit [post]
 func bsocialSubmitTransaction() {}
 
 // bsocialLookupQuestion performs a BSocial overlay lookup query
@@ -45,7 +45,7 @@ func bsocialSubmitTransaction() {}
 // @Success 200 {object} map[string]interface{}
 // @Failure 400 {object} map[string]string
 // @Failure 500 {object} map[string]string
-// @Router /bsocial/overlay/lookup [post]
+// @Router /overlay/lookup [post]
 func bsocialLookupQuestion() {}
 
 // bsocialRequestSyncResponse requests sync data from BSocial overlay
@@ -59,7 +59,7 @@ func bsocialLookupQuestion() {}
 // @Success 200 {object} map[string]interface{}
 // @Failure 400 {object} map[string]string
 // @Failure 500 {object} map[string]string
-// @Router /bsocial/overlay/requestSyncResponse [post]
+// @Router /overlay/requestSyncResponse [post]
 func bsocialRequestSyncResponse() {}
 
 // bsocialRequestForeignGASPNode requests a foreign GASP node from BSocial overlay
@@ -73,5 +73,5 @@ func bsocialRequestSyncResponse() {}
 // @Success 200 {object} map[string]interface{}
 // @Failure 400 {object} map[string]string
 // @Failure 500 {object} map[string]string
-// @Router /bsocial/overlay/requestForeignGASPNode [post]
+// @Router /overlay/requestForeignGASPNode [post]
 func bsocialRequestForeignGASPNode() {}

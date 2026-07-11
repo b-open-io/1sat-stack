@@ -100,6 +100,17 @@ func isPrintable(b []byte) bool {
 
 // Key handlers
 
+// handleDeleteKey deletes a storage key, draining sorted-set members first.
+// @Summary Delete key
+// @Description Deletes a storage key; sorted-set members are drained first, then the KV key is removed
+// @Tags admin
+// @Produce json
+// @Param key path string true "Storage key"
+// @Success 200 {object} map[string]interface{} "key, removed member count, deleted flag"
+// @Failure 400 {object} map[string]string "Bad request"
+// @Failure 500 {object} map[string]string "Internal server error"
+// @Security BearerAuth
+// @Router /api/data/key/{key} [delete]
 func (r *DataRoutes) handleDeleteKey(c *fiber.Ctx) error {
 	key := c.Params("*")
 	if key == "" {
@@ -143,6 +154,18 @@ func (r *DataRoutes) handleDeleteKey(c *fiber.Ctx) error {
 
 // KV handlers
 
+// handleKVGet returns the value stored at a KV key.
+// @Summary Get KV value
+// @Description Returns the value stored at a key, rendered as txid, outpoint, string, or hex
+// @Tags admin
+// @Produce json
+// @Param key path string true "Storage key"
+// @Success 200 {object} map[string]string "key and value"
+// @Failure 400 {object} map[string]string "Bad request"
+// @Failure 404 {object} map[string]string "Key not found"
+// @Failure 500 {object} map[string]string "Internal server error"
+// @Security BearerAuth
+// @Router /api/data/kv/get/{key} [get]
 func (r *DataRoutes) handleKVGet(c *fiber.Ctx) error {
 	key := c.Params("key")
 	if key == "" {
@@ -173,6 +196,17 @@ func (r *DataRoutes) handleKVGet(c *fiber.Ctx) error {
 
 // Set handlers
 
+// handleSetMembers returns all members of a set.
+// @Summary Get set members
+// @Description Returns all members of a set
+// @Tags admin
+// @Produce json
+// @Param key path string true "Set key"
+// @Success 200 {object} map[string]interface{} "key, count, and members"
+// @Failure 400 {object} map[string]string "Bad request"
+// @Failure 500 {object} map[string]string "Internal server error"
+// @Security BearerAuth
+// @Router /api/data/set/members/{key} [get]
 func (r *DataRoutes) handleSetMembers(c *fiber.Ctx) error {
 	key := c.Params("key")
 	if key == "" {
@@ -201,6 +235,18 @@ func (r *DataRoutes) handleSetMembers(c *fiber.Ctx) error {
 	})
 }
 
+// handleSetIsMember checks set membership.
+// @Summary Check set membership
+// @Description Checks whether a member is in a set
+// @Tags admin
+// @Produce json
+// @Param key path string true "Set key"
+// @Param member path string true "Member value"
+// @Success 200 {object} map[string]interface{} "key, member, and is_member flag"
+// @Failure 400 {object} map[string]string "Bad request"
+// @Failure 500 {object} map[string]string "Internal server error"
+// @Security BearerAuth
+// @Router /api/data/set/ismember/{key}/{member} [get]
 func (r *DataRoutes) handleSetIsMember(c *fiber.Ctx) error {
 	key := c.Params("key")
 	member := c.Params("member")
@@ -228,6 +274,17 @@ func (r *DataRoutes) handleSetIsMember(c *fiber.Ctx) error {
 
 // Hash handlers
 
+// handleHashGetAll returns all fields of a hash.
+// @Summary Get all hash fields
+// @Description Returns all fields and values of a hash
+// @Tags admin
+// @Produce json
+// @Param key path string true "Hash key"
+// @Success 200 {object} map[string]interface{} "key, count, and fields"
+// @Failure 400 {object} map[string]string "Bad request"
+// @Failure 500 {object} map[string]string "Internal server error"
+// @Security BearerAuth
+// @Router /api/data/hash/getall/{key} [get]
 func (r *DataRoutes) handleHashGetAll(c *fiber.Ctx) error {
 	key := c.Params("key")
 	if key == "" {
@@ -256,6 +313,19 @@ func (r *DataRoutes) handleHashGetAll(c *fiber.Ctx) error {
 	})
 }
 
+// handleHashGet returns a single hash field.
+// @Summary Get hash field
+// @Description Returns the value of a single hash field
+// @Tags admin
+// @Produce json
+// @Param key path string true "Hash key"
+// @Param field path string true "Field name"
+// @Success 200 {object} map[string]string "key, field, and value"
+// @Failure 400 {object} map[string]string "Bad request"
+// @Failure 404 {object} map[string]string "Field not found"
+// @Failure 500 {object} map[string]string "Internal server error"
+// @Security BearerAuth
+// @Router /api/data/hash/get/{key}/{field} [get]
 func (r *DataRoutes) handleHashGet(c *fiber.Ctx) error {
 	key := c.Params("key")
 	field := c.Params("field")
@@ -286,6 +356,19 @@ func (r *DataRoutes) handleHashGet(c *fiber.Ctx) error {
 	})
 }
 
+// handleHashMGet returns multiple hash fields.
+// @Summary Get multiple hash fields
+// @Description Returns the values of the requested hash fields
+// @Tags admin
+// @Accept json
+// @Produce json
+// @Param key path string true "Hash key"
+// @Param body body []string true "Field names"
+// @Success 200 {object} map[string]interface{} "key, count, and fields"
+// @Failure 400 {object} map[string]string "Bad request"
+// @Failure 500 {object} map[string]string "Internal server error"
+// @Security BearerAuth
+// @Router /api/data/hash/mget/{key} [post]
 func (r *DataRoutes) handleHashMGet(c *fiber.Ctx) error {
 	key := c.Params("key")
 	if key == "" {
@@ -338,6 +421,18 @@ func (r *DataRoutes) handleHashMGet(c *fiber.Ctx) error {
 // supplied as a JSON array of hex-encoded byte sequences; this lets callers
 // delete fields whose underlying bytes are binary (e.g. outpoint bytes in the
 // "spnd" hash) without URL-encoding pitfalls.
+// @Summary Delete hash fields
+// @Description Deletes one or more hash fields; fields are supplied as hex-encoded byte sequences
+// @Tags admin
+// @Accept json
+// @Produce json
+// @Param key path string true "Hash key"
+// @Param body body []string true "Hex-encoded field bytes"
+// @Success 200 {object} map[string]interface{} "key and deleted count"
+// @Failure 400 {object} map[string]string "Bad request"
+// @Failure 500 {object} map[string]string "Internal server error"
+// @Security BearerAuth
+// @Router /api/data/hash/del/{key} [post]
 func (r *DataRoutes) handleHashDel(c *fiber.Ctx) error {
 	key := c.Params("key")
 	if key == "" {
@@ -384,6 +479,21 @@ func (r *DataRoutes) handleHashDel(c *fiber.Ctx) error {
 
 // ZSet handlers
 
+// handleZSetRange returns sorted-set members in ascending score order.
+// @Summary Get sorted set range
+// @Description Returns sorted-set members with scores in ascending order
+// @Tags admin
+// @Produce json
+// @Param key path string true "Sorted set key"
+// @Param min query number false "Minimum score"
+// @Param max query number false "Maximum score"
+// @Param offset query int false "Pagination offset"
+// @Param count query int false "Max results (default 25)"
+// @Success 200 {object} map[string]interface{} "key, count, and items"
+// @Failure 400 {object} map[string]string "Bad request"
+// @Failure 500 {object} map[string]string "Internal server error"
+// @Security BearerAuth
+// @Router /api/data/zset/range/{key} [get]
 func (r *DataRoutes) handleZSetRange(c *fiber.Ctx) error {
 	key := c.Params("key")
 	if key == "" {
@@ -419,6 +529,21 @@ func (r *DataRoutes) handleZSetRange(c *fiber.Ctx) error {
 	})
 }
 
+// handleZSetRevRange returns sorted-set members in descending score order.
+// @Summary Get sorted set reverse range
+// @Description Returns sorted-set members with scores in descending order
+// @Tags admin
+// @Produce json
+// @Param key path string true "Sorted set key"
+// @Param min query number false "Minimum score"
+// @Param max query number false "Maximum score"
+// @Param offset query int false "Pagination offset"
+// @Param count query int false "Max results (default 25)"
+// @Success 200 {object} map[string]interface{} "key, count, and items"
+// @Failure 400 {object} map[string]string "Bad request"
+// @Failure 500 {object} map[string]string "Internal server error"
+// @Security BearerAuth
+// @Router /api/data/zset/revrange/{key} [get]
 func (r *DataRoutes) handleZSetRevRange(c *fiber.Ctx) error {
 	key := c.Params("key")
 	if key == "" {
@@ -454,6 +579,17 @@ func (r *DataRoutes) handleZSetRevRange(c *fiber.Ctx) error {
 	})
 }
 
+// handleZSetScore returns the score of a sorted-set member.
+// @Summary Get sorted set member score
+// @Description Returns the score of a member, or exists=false if not present
+// @Tags admin
+// @Produce json
+// @Param key path string true "Sorted set key"
+// @Param member path string true "Member value"
+// @Success 200 {object} map[string]interface{} "key, member, score, and exists flag"
+// @Failure 400 {object} map[string]string "Bad request"
+// @Security BearerAuth
+// @Router /api/data/zset/score/{key}/{member} [get]
 func (r *DataRoutes) handleZSetScore(c *fiber.Ctx) error {
 	key := c.Params("key")
 	member := c.Params("member")
@@ -482,6 +618,18 @@ func (r *DataRoutes) handleZSetScore(c *fiber.Ctx) error {
 	})
 }
 
+// handleZSetRem removes a member from a sorted set.
+// @Summary Remove sorted set member
+// @Description Removes a member from a sorted set; member is parsed as txid, hex, or string
+// @Tags admin
+// @Produce json
+// @Param key path string true "Sorted set key"
+// @Param member path string true "Member value (txid hex, raw hex, or string)"
+// @Success 200 {object} map[string]interface{} "key, member, and removed flag"
+// @Failure 400 {object} map[string]string "Bad request"
+// @Failure 500 {object} map[string]string "Internal server error"
+// @Security BearerAuth
+// @Router /api/data/zset/rem/{key}/{member} [delete]
 func (r *DataRoutes) handleZSetRem(c *fiber.Ctx) error {
 	key := c.Params("key")
 	member := c.Params("member")
@@ -520,6 +668,17 @@ func (r *DataRoutes) handleZSetRem(c *fiber.Ctx) error {
 	})
 }
 
+// handleZSetCard returns the member count of a sorted set.
+// @Summary Get sorted set cardinality
+// @Description Returns the number of members in a sorted set
+// @Tags admin
+// @Produce json
+// @Param key path string true "Sorted set key"
+// @Success 200 {object} map[string]interface{} "key and count"
+// @Failure 400 {object} map[string]string "Bad request"
+// @Failure 500 {object} map[string]string "Internal server error"
+// @Security BearerAuth
+// @Router /api/data/zset/card/{key} [get]
 func (r *DataRoutes) handleZSetCard(c *fiber.Ctx) error {
 	key := c.Params("key")
 	if key == "" {
@@ -542,6 +701,17 @@ func (r *DataRoutes) handleZSetCard(c *fiber.Ctx) error {
 	})
 }
 
+// handleZSetSum returns the sum of scores in a sorted set.
+// @Summary Get sorted set score sum
+// @Description Returns the sum of all member scores in a sorted set
+// @Tags admin
+// @Produce json
+// @Param key path string true "Sorted set key"
+// @Success 200 {object} map[string]interface{} "key and sum"
+// @Failure 400 {object} map[string]string "Bad request"
+// @Failure 500 {object} map[string]string "Internal server error"
+// @Security BearerAuth
+// @Router /api/data/zset/sum/{key} [get]
 func (r *DataRoutes) handleZSetSum(c *fiber.Ctx) error {
 	key := c.Params("key")
 	if key == "" {
@@ -564,6 +734,16 @@ func (r *DataRoutes) handleZSetSum(c *fiber.Ctx) error {
 	})
 }
 
+// handleZSetKeys lists sorted-set keys matching a prefix.
+// @Summary List sorted set keys
+// @Description Returns sorted-set keys matching a prefix
+// @Tags admin
+// @Produce json
+// @Param prefix path string true "Key prefix"
+// @Success 200 {object} map[string]interface{} "prefix, count, and keys"
+// @Failure 500 {object} map[string]string "Internal server error"
+// @Security BearerAuth
+// @Router /api/data/zset/keys/{prefix} [get]
 func (r *DataRoutes) handleZSetKeys(c *fiber.Ctx) error {
 	prefix := c.Params("prefix")
 
@@ -588,6 +768,18 @@ func (r *DataRoutes) handleZSetKeys(c *fiber.Ctx) error {
 
 // Search handler
 
+// handleSearch queries members across multiple sorted-set keys.
+// @Summary Search sorted sets
+// @Description Queries members across multiple sorted-set keys with union, intersect, or difference join
+// @Tags admin
+// @Accept json
+// @Produce json
+// @Param body body object{keys=[]string,from=number,to=number,limit=int,join=string,reverse=bool} true "Search query"
+// @Success 200 {object} map[string]interface{} "count and results"
+// @Failure 400 {object} map[string]string "Bad request"
+// @Failure 500 {object} map[string]string "Internal server error"
+// @Security BearerAuth
+// @Router /api/data/search [post]
 func (r *DataRoutes) handleSearch(c *fiber.Ctx) error {
 	var req struct {
 		Keys    []string `json:"keys"`

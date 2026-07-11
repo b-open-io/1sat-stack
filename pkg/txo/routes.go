@@ -61,7 +61,7 @@ func (r *Routes) Register(router fiber.Router) {
 // @Failure 400 {string} string "Invalid outpoint format"
 // @Failure 404 {string} string "TXO not found"
 // @Failure 500 {string} string "Internal server error"
-// @Router /txo/{outpoint} [get]
+// @Router /{outpoint} [get]
 func (r *Routes) GetTxo(c *fiber.Ctx) error {
 	op, err := transaction.OutpointFromString(c.Params("outpoint"))
 	if err != nil {
@@ -95,7 +95,7 @@ func (r *Routes) GetTxo(c *fiber.Ctx) error {
 // @Success 200 {object} SpendResponse
 // @Failure 400 {string} string "Invalid outpoint format"
 // @Failure 500 {string} string "Internal server error"
-// @Router /txo/{outpoint}/spend [get]
+// @Router /{outpoint}/spend [get]
 func (r *Routes) GetSpend(c *fiber.Ctx) error {
 	op, err := transaction.OutpointFromString(c.Params("outpoint"))
 	if err != nil {
@@ -137,7 +137,7 @@ type SpendResponse struct {
 // @Param spend query bool false "Include spend txid" default(true)
 // @Success 200 {array} IndexedOutputResponse
 // @Failure 500 {string} string "Internal server error"
-// @Router /txo/outpoints [post]
+// @Router /outpoints [post]
 func (r *Routes) GetTxos(c *fiber.Ctx) error {
 	var outpoints []string
 	if err := c.BodyParser(&outpoints); err != nil {
@@ -176,7 +176,7 @@ func (r *Routes) GetTxos(c *fiber.Ctx) error {
 // @Param outpoints body []string true "Array of outpoints"
 // @Success 200 {array} SpendResponse
 // @Failure 500 {string} string "Internal server error"
-// @Router /txo/spends [post]
+// @Router /spends [post]
 func (r *Routes) GetSpends(c *fiber.Ctx) error {
 	var outpoints []string
 	if err := c.BodyParser(&outpoints); err != nil {
@@ -225,7 +225,7 @@ func (r *Routes) GetSpends(c *fiber.Ctx) error {
 // @Success 200 {array} IndexedOutputResponse
 // @Failure 400 {string} string "Invalid txid"
 // @Failure 500 {string} string "Internal server error"
-// @Router /txo/tx/{txid} [get]
+// @Router /tx/{txid} [get]
 func (r *Routes) TxosByTxid(c *fiber.Ctx) error {
 	txidStr := c.Params("txid")
 
@@ -268,7 +268,7 @@ func (r *Routes) TxosByTxid(c *fiber.Ctx) error {
 // @Success 200 {array} IndexedOutputResponse
 // @Failure 400 {string} string "At least one key is required"
 // @Failure 500 {string} string "Internal server error"
-// @Router /txo/search [get]
+// @Router /search [get]
 func (r *Routes) Search(c *fiber.Ctx) error {
 	keys := c.Context().QueryArgs().PeekMulti("key")
 	if len(keys) == 0 {

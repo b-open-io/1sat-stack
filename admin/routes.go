@@ -169,7 +169,7 @@ func (r *Routes) Register(guardedGroup fiber.Router, publicGroup fiber.Router, a
 // @Success 200 {array} string "List of whitelisted tokens"
 // @Failure 500 {object} map[string]string "Internal server error"
 // @Security BearerAuth
-// @Router /admin/whitelist [get]
+// @Router /api/whitelist [get]
 func (r *Routes) handleGetWhitelist(c *fiber.Ctx) error {
 	entries, err := r.configStore.List(c.Context(), "bsv21.whitelist:")
 	if err != nil {
@@ -197,7 +197,7 @@ func (r *Routes) handleGetWhitelist(c *fiber.Ctx) error {
 // @Failure 400 {object} map[string]string "Bad request"
 // @Failure 500 {object} map[string]string "Internal server error"
 // @Security BearerAuth
-// @Router /admin/whitelist [post]
+// @Router /api/whitelist [post]
 func (r *Routes) handleAddToWhitelist(c *fiber.Ctx) error {
 	var req struct {
 		Topic string `json:"topic"`
@@ -237,7 +237,7 @@ func (r *Routes) handleAddToWhitelist(c *fiber.Ctx) error {
 // @Success 200 {object} map[string]string "success message"
 // @Failure 500 {object} map[string]string "Internal server error"
 // @Security BearerAuth
-// @Router /admin/whitelist/{token} [delete]
+// @Router /api/whitelist/{token} [delete]
 func (r *Routes) handleRemoveFromWhitelist(c *fiber.Ctx) error {
 	token := c.Params("token")
 	if token == "" {
@@ -268,7 +268,7 @@ func (r *Routes) handleRemoveFromWhitelist(c *fiber.Ctx) error {
 // @Success 200 {array} string "List of blacklisted topics"
 // @Failure 500 {object} map[string]string "Internal server error"
 // @Security BearerAuth
-// @Router /admin/blacklist [get]
+// @Router /api/blacklist [get]
 func (r *Routes) handleGetBlacklist(c *fiber.Ctx) error {
 	entries, err := r.configStore.List(c.Context(), "bsv21.blacklist:")
 	if err != nil {
@@ -296,7 +296,7 @@ func (r *Routes) handleGetBlacklist(c *fiber.Ctx) error {
 // @Failure 400 {object} map[string]string "Bad request"
 // @Failure 500 {object} map[string]string "Internal server error"
 // @Security BearerAuth
-// @Router /admin/blacklist [post]
+// @Router /api/blacklist [post]
 func (r *Routes) handleAddToBlacklist(c *fiber.Ctx) error {
 	var req struct {
 		Topic string `json:"topic"`
@@ -336,7 +336,7 @@ func (r *Routes) handleAddToBlacklist(c *fiber.Ctx) error {
 // @Success 200 {object} map[string]string "success message"
 // @Failure 500 {object} map[string]string "Internal server error"
 // @Security BearerAuth
-// @Router /admin/blacklist/{topic} [delete]
+// @Router /api/blacklist/{topic} [delete]
 func (r *Routes) handleRemoveFromBlacklist(c *fiber.Ctx) error {
 	topic := c.Params("topic")
 	if topic == "" {
@@ -366,7 +366,7 @@ func (r *Routes) handleRemoveFromBlacklist(c *fiber.Ctx) error {
 // @Produce json
 // @Success 200 {array} string "List of active topics"
 // @Security BearerAuth
-// @Router /admin/topics/active [get]
+// @Router /api/topics/active [get]
 func (r *Routes) handleGetActiveTopics(c *fiber.Ctx) error {
 	var topics []string
 	for _, eng := range r.engines {
@@ -387,7 +387,7 @@ func (r *Routes) handleGetActiveTopics(c *fiber.Ctx) error {
 // @Produce json
 // @Success 200 {array} string "List of active lookup services"
 // @Security BearerAuth
-// @Router /admin/lookups/active [get]
+// @Router /api/lookups/active [get]
 func (r *Routes) handleGetActiveLookups(c *fiber.Ctx) error {
 	var lookups []string
 	for _, eng := range r.engines {
@@ -414,7 +414,7 @@ type ProgressItem struct {
 // @Produce json
 // @Success 200 {array} ProgressItem "List of progress entries"
 // @Security BearerAuth
-// @Router /admin/progress [get]
+// @Router /api/progress [get]
 func (r *Routes) handleGetProgress(c *fiber.Ctx) error {
 	entries, err := r.configStore.List(c.Context(), "progress:")
 	if err != nil {
@@ -456,7 +456,7 @@ func (r *Routes) handleGetProgress(c *fiber.Ctx) error {
 // @Failure 400 {object} map[string]string "Bad request"
 // @Failure 500 {object} map[string]string "Internal server error"
 // @Security BearerAuth
-// @Router /admin/progress/{id} [put]
+// @Router /api/progress/{id} [put]
 func (r *Routes) handleUpdateProgress(c *fiber.Ctx) error {
 	id := c.Params("id")
 	if id == "" {
@@ -498,7 +498,7 @@ func (r *Routes) handleUpdateProgress(c *fiber.Ctx) error {
 // @Success 200 {object} map[string]string "success message"
 // @Failure 500 {object} map[string]string "Internal server error"
 // @Security BearerAuth
-// @Router /admin/progress/{id} [delete]
+// @Router /api/progress/{id} [delete]
 func (r *Routes) handleDeleteProgress(c *fiber.Ctx) error {
 	id := c.Params("id")
 	if id == "" {
@@ -530,7 +530,7 @@ func (r *Routes) handleDeleteProgress(c *fiber.Ctx) error {
 // @Success 200 {array} overlay.RemoteConfig "List of configured remotes"
 // @Failure 500 {object} map[string]string "Internal server error"
 // @Security BearerAuth
-// @Router /admin/topics/{name}/remotes [get]
+// @Router /api/topics/{name}/remotes [get]
 func (r *Routes) handleGetTopicRemotes(c *fiber.Ctx) error {
 	if r.overlay == nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
@@ -572,7 +572,7 @@ func (r *Routes) handleGetTopicRemotes(c *fiber.Ctx) error {
 // @Failure 400 {object} map[string]string "Bad request"
 // @Failure 500 {object} map[string]string "Internal server error"
 // @Security BearerAuth
-// @Router /admin/topics/{name}/remotes [put]
+// @Router /api/topics/{name}/remotes [put]
 func (r *Routes) handleSetTopicRemotes(c *fiber.Ctx) error {
 	if r.overlay == nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
@@ -618,7 +618,7 @@ func (r *Routes) handleSetTopicRemotes(c *fiber.Ctx) error {
 // @Success 200 {object} map[string]string "success message"
 // @Failure 500 {object} map[string]string "Internal server error"
 // @Security BearerAuth
-// @Router /admin/topics/{name}/remotes [delete]
+// @Router /api/topics/{name}/remotes [delete]
 func (r *Routes) handleDeleteTopicRemotes(c *fiber.Ctx) error {
 	if r.overlay == nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
@@ -654,7 +654,7 @@ func (r *Routes) handleDeleteTopicRemotes(c *fiber.Ctx) error {
 // @Produce json
 // @Success 200 {array} bsv21.WorkerStatus "List of active workers"
 // @Security BearerAuth
-// @Router /admin/bsv21/workers [get]
+// @Router /api/bsv21/workers [get]
 func (r *Routes) handleGetBSV21Workers(c *fiber.Ctx) error {
 	if r.bsv21Sync == nil {
 		r.logger.Debug("bsv21 workers: sync service is nil")
@@ -689,7 +689,7 @@ func (r *Routes) handleGetBSV21Workers(c *fiber.Ctx) error {
 // @Produce json
 // @Success 200 {object} map[string]bool "configured status"
 // @Failure 500 {object} map[string]string "Internal server error"
-// @Router /admin/status [get]
+// @Router /setup/status [get]
 func (r *Routes) handleGetSetupStatus(c *fiber.Ctx) error {
 	configured, err := auth.IsSetup(c.Context(), r.configStore)
 	if err != nil {
@@ -713,7 +713,7 @@ func (r *Routes) handleGetSetupStatus(c *fiber.Ctx) error {
 // @Failure 401 {object} map[string]string "Unauthorized"
 // @Failure 409 {object} map[string]string "Already configured"
 // @Failure 500 {object} map[string]string "Internal server error"
-// @Router /admin/setup [post]
+// @Router /setup [post]
 func (r *Routes) handleSetup(c *fiber.Ctx) error {
 	identity := auth.GetIdentity(c)
 	if identity == nil {
@@ -752,6 +752,15 @@ func (r *Routes) handleSetup(c *fiber.Ctx) error {
 	})
 }
 
+// handleGetUsers returns all configured admin users.
+// @Summary List users
+// @Description Returns all configured admin users
+// @Tags admin
+// @Produce json
+// @Success 200 {array} auth.AdminUser "List of users"
+// @Failure 500 {object} map[string]string "Internal server error"
+// @Security BearerAuth
+// @Router /api/users [get]
 func (r *Routes) handleGetUsers(c *fiber.Ctx) error {
 	users, err := auth.ListAdminUsers(c.Context(), r.configStore)
 	if err != nil {
@@ -763,6 +772,18 @@ func (r *Routes) handleGetUsers(c *fiber.Ctx) error {
 	return c.JSON(users)
 }
 
+// handleAddUser adds an admin user.
+// @Summary Add user
+// @Description Adds a user identified by pubkey
+// @Tags admin
+// @Accept json
+// @Produce json
+// @Param body body auth.AdminUser true "User to add"
+// @Success 200 {object} auth.AdminUser "Added user"
+// @Failure 400 {object} map[string]string "Bad request"
+// @Failure 500 {object} map[string]string "Internal server error"
+// @Security BearerAuth
+// @Router /api/users [post]
 func (r *Routes) handleAddUser(c *fiber.Ctx) error {
 	var user auth.AdminUser
 	if err := c.BodyParser(&user); err != nil {
@@ -787,6 +808,20 @@ func (r *Routes) handleAddUser(c *fiber.Ctx) error {
 	return c.JSON(user)
 }
 
+// handleUpdateUser updates a user's name and/or admin flag.
+// @Summary Update user
+// @Description Updates the name and/or admin flag of an existing user
+// @Tags admin
+// @Accept json
+// @Produce json
+// @Param pubkey path string true "User pubkey (DER hex)"
+// @Param body body object{name=string,admin=bool} true "Fields to update"
+// @Success 200 {object} auth.AdminUser "Updated user"
+// @Failure 400 {object} map[string]string "Bad request"
+// @Failure 404 {object} map[string]string "User not found"
+// @Failure 500 {object} map[string]string "Internal server error"
+// @Security BearerAuth
+// @Router /api/users/{pubkey} [put]
 func (r *Routes) handleUpdateUser(c *fiber.Ctx) error {
 	pubkey := c.Params("pubkey")
 	if pubkey == "" {
@@ -839,6 +874,17 @@ func (r *Routes) handleUpdateUser(c *fiber.Ctx) error {
 	return c.JSON(existing)
 }
 
+// handleDeleteUser removes an admin user.
+// @Summary Delete user
+// @Description Removes a user by pubkey
+// @Tags admin
+// @Produce json
+// @Param pubkey path string true "User pubkey (DER hex)"
+// @Success 200 {object} map[string]string "success message"
+// @Failure 400 {object} map[string]string "Bad request"
+// @Failure 500 {object} map[string]string "Internal server error"
+// @Security BearerAuth
+// @Router /api/users/{pubkey} [delete]
 func (r *Routes) handleDeleteUser(c *fiber.Ctx) error {
 	pubkey := c.Params("pubkey")
 	if pubkey == "" {
@@ -860,6 +906,15 @@ func (r *Routes) handleDeleteUser(c *fiber.Ctx) error {
 	})
 }
 
+// handleCheckAccess reports the authenticated identity's access status.
+// @Summary Check access
+// @Description Returns whether the authenticated identity is an approved user
+// @Tags admin
+// @Produce json
+// @Success 200 {object} map[string]interface{} "status and admin flag"
+// @Failure 401 {object} map[string]string "Unauthorized"
+// @Failure 500 {object} map[string]string "Internal server error"
+// @Router /setup/check [get]
 func (r *Routes) handleCheckAccess(c *fiber.Ctx) error {
 	identity := auth.GetIdentity(c)
 	if identity == nil {
@@ -889,6 +944,18 @@ func (r *Routes) handleCheckAccess(c *fiber.Ctx) error {
 	})
 }
 
+// handleRequestAccess submits an access request for the authenticated identity.
+// @Summary Request access
+// @Description Submits an access request for the authenticated identity
+// @Tags admin
+// @Accept json
+// @Produce json
+// @Param body body object{name=string} true "Requester name"
+// @Success 200 {object} map[string]string "success message"
+// @Failure 400 {object} map[string]string "Bad request"
+// @Failure 401 {object} map[string]string "Unauthorized"
+// @Failure 500 {object} map[string]string "Internal server error"
+// @Router /setup/request [post]
 func (r *Routes) handleRequestAccess(c *fiber.Ctx) error {
 	identity := auth.GetIdentity(c)
 	if identity == nil {
@@ -923,6 +990,15 @@ func (r *Routes) handleRequestAccess(c *fiber.Ctx) error {
 	})
 }
 
+// handleGetRequests returns pending access requests.
+// @Summary List access requests
+// @Description Returns pending access requests
+// @Tags admin
+// @Produce json
+// @Success 200 {array} auth.AccessRequest "List of pending requests"
+// @Failure 500 {object} map[string]string "Internal server error"
+// @Security BearerAuth
+// @Router /api/requests [get]
 func (r *Routes) handleGetRequests(c *fiber.Ctx) error {
 	requests, err := auth.ListAccessRequests(c.Context(), r.configStore)
 	if err != nil {
@@ -934,6 +1010,19 @@ func (r *Routes) handleGetRequests(c *fiber.Ctx) error {
 	return c.JSON(requests)
 }
 
+// handleApproveRequest approves an access request, creating a user.
+// @Summary Approve access request
+// @Description Approves a pending access request and creates the user
+// @Tags admin
+// @Accept json
+// @Produce json
+// @Param pubkey path string true "Requester pubkey (DER hex)"
+// @Param body body object{admin=bool} false "Grant admin rights"
+// @Success 200 {object} auth.AdminUser "Created user"
+// @Failure 400 {object} map[string]string "Bad request"
+// @Failure 500 {object} map[string]string "Internal server error"
+// @Security BearerAuth
+// @Router /api/requests/{pubkey}/approve [post]
 func (r *Routes) handleApproveRequest(c *fiber.Ctx) error {
 	pubkey := c.Params("pubkey")
 	if pubkey == "" {
@@ -986,6 +1075,17 @@ func (r *Routes) handleApproveRequest(c *fiber.Ctx) error {
 	return c.JSON(user)
 }
 
+// handleDenyRequest deletes a pending access request.
+// @Summary Deny access request
+// @Description Deletes a pending access request
+// @Tags admin
+// @Produce json
+// @Param pubkey path string true "Requester pubkey (DER hex)"
+// @Success 200 {object} map[string]string "success message"
+// @Failure 400 {object} map[string]string "Bad request"
+// @Failure 500 {object} map[string]string "Internal server error"
+// @Security BearerAuth
+// @Router /api/requests/{pubkey} [delete]
 func (r *Routes) handleDenyRequest(c *fiber.Ctx) error {
 	pubkey := c.Params("pubkey")
 	if pubkey == "" {
@@ -1031,7 +1131,7 @@ type SetupCompleteRequest struct {
 // @Success 200 {object} map[string]string "status and restart flag"
 // @Failure 400 {object} map[string]string "Bad request"
 // @Failure 500 {object} map[string]string "Internal server error"
-// @Router /admin/setup/complete [post]
+// @Router /setup/complete [post]
 func (r *Routes) handleSetupComplete(c *fiber.Ctx) error {
 	var req SetupCompleteRequest
 	if err := c.BodyParser(&req); err != nil {
@@ -1127,7 +1227,7 @@ type SetupConfigResponse struct {
 // @Produce json
 // @Success 200 {object} SetupConfigResponse "Current setup configuration"
 // @Failure 500 {object} map[string]string "Internal server error"
-// @Router /admin/setup/config [get]
+// @Router /setup/config [get]
 func (r *Routes) handleGetSetupConfig(c *fiber.Ctx) error {
 	ctx := c.Context()
 
@@ -1173,7 +1273,7 @@ func (r *Routes) handleGetSetupConfig(c *fiber.Ctx) error {
 // @Success 200 {object} map[string]string "All config key-value pairs"
 // @Failure 500 {object} map[string]string "Internal server error"
 // @Security BearerAuth
-// @Router /admin/config [get]
+// @Router /api/config [get]
 func (r *Routes) handleGetConfig(c *fiber.Ctx) error {
 	entries, err := r.configStore.List(c.Context(), "")
 	if err != nil {
@@ -1199,7 +1299,7 @@ func (r *Routes) handleGetConfig(c *fiber.Ctx) error {
 // @Failure 400 {object} map[string]string "Bad request"
 // @Failure 500 {object} map[string]string "Internal server error"
 // @Security BearerAuth
-// @Router /admin/config [put]
+// @Router /api/config [put]
 func (r *Routes) handleUpdateConfig(c *fiber.Ctx) error {
 	var updates map[string]string
 	if err := c.BodyParser(&updates); err != nil {
@@ -1296,6 +1396,15 @@ func (r *Routes) syncPrefixedKeys(ctx context.Context, prefix string, jsonVal st
 }
 
 // handleTriggerOpnsCrawl triggers the OpNS genesis crawl.
+// @Summary Trigger OpNS crawl
+// @Description Starts the OpNS genesis crawl
+// @Tags admin
+// @Produce json
+// @Success 200 {object} map[string]string "success message"
+// @Failure 500 {object} map[string]string "Internal server error"
+// @Failure 503 {object} map[string]string "OpNS crawl not available"
+// @Security BearerAuth
+// @Router /api/opns/crawl [post]
 func (r *Routes) handleTriggerOpnsCrawl(c *fiber.Ctx) error {
 	if r.triggerOpnsCrawl == nil {
 		return c.Status(fiber.StatusServiceUnavailable).JSON(fiber.Map{
@@ -1323,7 +1432,7 @@ func (r *Routes) handleTriggerOpnsCrawl(c *fiber.Ctx) error {
 // @Success 200 {object} map[string]string "restarting status"
 // @Failure 503 {object} map[string]string "restart not available"
 // @Security BearerAuth
-// @Router /admin/restart [post]
+// @Router /api/restart [post]
 func (r *Routes) handleRestart(c *fiber.Ctx) error {
 	if r.requestRestart == nil {
 		return c.Status(fiber.StatusServiceUnavailable).JSON(fiber.Map{

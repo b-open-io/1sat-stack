@@ -40,7 +40,7 @@ func (r *Routes) Register(router fiber.Router) {
 // @Failure 400 {object} object{error=string}
 // @Failure 404 {object} object{error=string}
 // @Failure 500 {object} object{error=string}
-// @Router /opns/origin/{name} [get]
+// @Router /origin/{name} [get]
 func (r *Routes) GetOrigin(c *fiber.Ctx) error {
 	name := c.Params("name")
 	if name == "" {
@@ -81,7 +81,7 @@ func (r *Routes) GetOrigin(c *fiber.Ctx) error {
 // @Failure 400 {object} object{error=string}
 // @Failure 404 {object} object{error=string}
 // @Failure 500 {object} object{error=string}
-// @Router /opns/mine/{name} [get]
+// @Router /mine/{name} [get]
 func (r *Routes) GetMine(c *fiber.Ctx) error {
 	name := c.Params("name")
 	if name == "" {
@@ -119,7 +119,7 @@ func (r *Routes) GetMine(c *fiber.Ctx) error {
 // @Success 200 {object} object "Map of outpoint string to boolean"
 // @Failure 400 {object} object{error=string}
 // @Failure 500 {object} object{error=string}
-// @Router /opns/origins [post]
+// @Router /origins [post]
 func (r *Routes) ValidateOrigins(c *fiber.Ctx) error {
 	var strs []string
 	if err := c.BodyParser(&strs); err != nil {

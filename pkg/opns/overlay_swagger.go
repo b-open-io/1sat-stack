@@ -9,7 +9,7 @@ package opns
 // @Tags opns-overlay
 // @Produce json
 // @Success 200 {object} map[string]interface{}
-// @Router /opns/overlay/listTopicManagers [get]
+// @Router /overlay/listTopicManagers [get]
 func opnsListTopicManagers() {}
 
 // opnsListLookupServiceProviders lists OPNS lookup service providers
@@ -18,7 +18,7 @@ func opnsListTopicManagers() {}
 // @Tags opns-overlay
 // @Produce json
 // @Success 200 {object} map[string]interface{}
-// @Router /opns/overlay/listLookupServiceProviders [get]
+// @Router /overlay/listLookupServiceProviders [get]
 func opnsListLookupServiceProviders() {}
 
 // opnsSubmitTransaction submits a transaction to the OPNS overlay engine
@@ -32,7 +32,7 @@ func opnsListLookupServiceProviders() {}
 // @Success 200 {object} map[string]interface{} "STEAK response"
 // @Failure 400 {object} map[string]string
 // @Failure 500 {object} map[string]string
-// @Router /opns/overlay/submit [post]
+// @Router /overlay/submit [post]
 func opnsSubmitTransaction() {}
 
 // opnsLookupQuestion performs an OPNS overlay lookup query
@@ -45,7 +45,7 @@ func opnsSubmitTransaction() {}
 // @Success 200 {object} map[string]interface{}
 // @Failure 400 {object} map[string]string
 // @Failure 500 {object} map[string]string
-// @Router /opns/overlay/lookup [post]
+// @Router /overlay/lookup [post]
 func opnsLookupQuestion() {}
 
 // opnsRequestSyncResponse requests sync data from OPNS overlay
@@ -59,7 +59,7 @@ func opnsLookupQuestion() {}
 // @Success 200 {object} map[string]interface{}
 // @Failure 400 {object} map[string]string
 // @Failure 500 {object} map[string]string
-// @Router /opns/overlay/requestSyncResponse [post]
+// @Router /overlay/requestSyncResponse [post]
 func opnsRequestSyncResponse() {}
 
 // opnsRequestForeignGASPNode requests a foreign GASP node from OPNS overlay
@@ -73,5 +73,5 @@ func opnsRequestSyncResponse() {}
 // @Success 200 {object} map[string]interface{}
 // @Failure 400 {object} map[string]string
 // @Failure 500 {object} map[string]string
-// @Router /opns/overlay/requestForeignGASPNode [post]
+// @Router /overlay/requestForeignGASPNode [post]
 func opnsRequestForeignGASPNode() {}

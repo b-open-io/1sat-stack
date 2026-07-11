@@ -24,7 +24,7 @@ import (
 // @Failure 400 {object} map[string]string
 // @Failure 500 {object} map[string]string
 // @Security BearerAuth
-// @Router /admin/logs [get]
+// @Router /api/logs [get]
 func (r *Routes) handleQueryLogs(c *fiber.Ctx) error {
 	if r.logStore == nil {
 		return c.Status(fiber.StatusServiceUnavailable).JSON(fiber.Map{
@@ -80,7 +80,16 @@ func (r *Routes) handleQueryLogs(c *fiber.Ctx) error {
 	})
 }
 
-// handleGetLogComponents returns distinct component names from stored logs.
+// handleQueryLogComponents returns distinct component names from stored logs.
+// @Summary List log components
+// @Description Returns distinct component names present in stored logs
+// @Tags admin
+// @Produce json
+// @Success 200 {array} string "Component names"
+// @Failure 500 {object} map[string]string "Internal server error"
+// @Failure 503 {object} map[string]string "Log store not available"
+// @Security BearerAuth
+// @Router /api/logs/components [get]
 func (r *Routes) handleQueryLogComponents(c *fiber.Ctx) error {
 	if r.logStore == nil {
 		return c.Status(fiber.StatusServiceUnavailable).JSON(fiber.Map{"error": "log store not available"})

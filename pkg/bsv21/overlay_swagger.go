@@ -9,7 +9,7 @@ package bsv21
 // @Tags bsv21-overlay
 // @Produce json
 // @Success 200 {object} map[string]interface{}
-// @Router /bsv21/overlay/listTopicManagers [get]
+// @Router /overlay/listTopicManagers [get]
 func bsv21ListTopicManagers() {}
 
 // bsv21ListLookupServiceProviders lists BSV21 lookup service providers
@@ -18,7 +18,7 @@ func bsv21ListTopicManagers() {}
 // @Tags bsv21-overlay
 // @Produce json
 // @Success 200 {object} map[string]interface{}
-// @Router /bsv21/overlay/listLookupServiceProviders [get]
+// @Router /overlay/listLookupServiceProviders [get]
 func bsv21ListLookupServiceProviders() {}
 
 // bsv21SubmitTransaction submits a transaction to the BSV21 overlay engine
@@ -32,7 +32,7 @@ func bsv21ListLookupServiceProviders() {}
 // @Success 200 {object} map[string]interface{} "STEAK response"
 // @Failure 400 {object} map[string]string
 // @Failure 500 {object} map[string]string
-// @Router /bsv21/overlay/submit [post]
+// @Router /overlay/submit [post]
 func bsv21SubmitTransaction() {}
 
 // bsv21LookupQuestion performs a BSV21 overlay lookup query
@@ -45,7 +45,7 @@ func bsv21SubmitTransaction() {}
 // @Success 200 {object} map[string]interface{}
 // @Failure 400 {object} map[string]string
 // @Failure 500 {object} map[string]string
-// @Router /bsv21/overlay/lookup [post]
+// @Router /overlay/lookup [post]
 func bsv21LookupQuestion() {}
 
 // bsv21RequestSyncResponse requests sync data from BSV21 overlay
@@ -59,7 +59,7 @@ func bsv21LookupQuestion() {}
 // @Success 200 {object} map[string]interface{}
 // @Failure 400 {object} map[string]string
 // @Failure 500 {object} map[string]string
-// @Router /bsv21/overlay/requestSyncResponse [post]
+// @Router /overlay/requestSyncResponse [post]
 func bsv21RequestSyncResponse() {}
 
 // bsv21RequestForeignGASPNode requests a foreign GASP node from BSV21 overlay
@@ -73,5 +73,5 @@ func bsv21RequestSyncResponse() {}
 // @Success 200 {object} map[string]interface{}
 // @Failure 400 {object} map[string]string
 // @Failure 500 {object} map[string]string
-// @Router /bsv21/overlay/requestForeignGASPNode [post]
+// @Router /overlay/requestForeignGASPNode [post]
 func bsv21RequestForeignGASPNode() {}

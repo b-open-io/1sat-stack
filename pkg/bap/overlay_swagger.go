@@ -9,7 +9,7 @@ package bap
 // @Tags bap-overlay
 // @Produce json
 // @Success 200 {object} map[string]interface{}
-// @Router /bap/overlay/listTopicManagers [get]
+// @Router /overlay/listTopicManagers [get]
 func bapListTopicManagers() {}
 
 // bapListLookupServiceProviders lists BAP lookup service providers
@@ -18,7 +18,7 @@ func bapListTopicManagers() {}
 // @Tags bap-overlay
 // @Produce json
 // @Success 200 {object} map[string]interface{}
-// @Router /bap/overlay/listLookupServiceProviders [get]
+// @Router /overlay/listLookupServiceProviders [get]
 func bapListLookupServiceProviders() {}
 
 // bapSubmitTransaction submits a transaction to the BAP overlay engine
@@ -32,7 +32,7 @@ func bapListLookupServiceProviders() {}
 // @Success 200 {object} map[string]interface{} "STEAK response"
 // @Failure 400 {object} map[string]string
 // @Failure 500 {object} map[string]string
-// @Router /bap/overlay/submit [post]
+// @Router /overlay/submit [post]
 func bapSubmitTransaction() {}
 
 // bapLookupQuestion performs a BAP overlay lookup query
@@ -45,7 +45,7 @@ func bapSubmitTransaction() {}
 // @Success 200 {object} map[string]interface{}
 // @Failure 400 {object} map[string]string
 // @Failure 500 {object} map[string]string
-// @Router /bap/overlay/lookup [post]
+// @Router /overlay/lookup [post]
 func bapLookupQuestion() {}
 
 // bapRequestSyncResponse requests sync data from BAP overlay
@@ -59,7 +59,7 @@ func bapLookupQuestion() {}
 // @Success 200 {object} map[string]interface{}
 // @Failure 400 {object} map[string]string
 // @Failure 500 {object} map[string]string
-// @Router /bap/overlay/requestSyncResponse [post]
+// @Router /overlay/requestSyncResponse [post]
 func bapRequestSyncResponse() {}
 
 // bapRequestForeignGASPNode requests a foreign GASP node from BAP overlay
@@ -73,5 +73,5 @@ func bapRequestSyncResponse() {}
 // @Success 200 {object} map[string]interface{}
 // @Failure 400 {object} map[string]string
 // @Failure 500 {object} map[string]string
-// @Router /bap/overlay/requestForeignGASPNode [post]
+// @Router /overlay/requestForeignGASPNode [post]
 func bapRequestForeignGASPNode() {}
