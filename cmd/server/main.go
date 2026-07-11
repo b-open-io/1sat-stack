@@ -16,8 +16,8 @@ import (
 	"github.com/b-open-io/1sat-stack/pkg/logging"
 	"github.com/b-open-io/1sat-stack/pkg/wallet"
 
+	"github.com/b-open-io/1sat-stack/pkg/registrar"
 	"github.com/gofiber/fiber/v2"
-	"github.com/gofiber/fiber/v2/middleware/cors"
 	"github.com/gofiber/fiber/v2/middleware/recover"
 	"github.com/joho/godotenv"
 
@@ -212,22 +212,7 @@ func main() {
 		)
 		return err
 	})
-	app.Use(cors.New(cors.Config{
-		AllowOrigins: "*",
-		AllowMethods: "GET,POST,OPTIONS",
-		AllowHeaders: "Content-Type,Authorization,X-CallbackUrl,X-CallbackToken," +
-			"x-bsv-auth-version,x-bsv-auth-message-type,x-bsv-auth-identity-key," +
-			"x-bsv-auth-nonce,x-bsv-auth-your-nonce,x-bsv-auth-signature," +
-			"x-bsv-auth-request-id,x-bsv-auth-requested-certificates," +
-			"X-BSV-Payment,X-BSV-Payment-Version,X-BSV-Payment-Satoshis-Required," +
-			"X-BSV-Payment-Derivation-Prefix",
-		ExposeHeaders: "x-bsv-auth-version,x-bsv-auth-message-type,x-bsv-auth-identity-key," +
-			"x-bsv-auth-nonce,x-bsv-auth-your-nonce,x-bsv-auth-signature," +
-			"x-bsv-auth-request-id,x-bsv-auth-requested-certificates," +
-			"X-BSV-Payment-Satoshis-Required,X-BSV-Payment-Satoshis-Paid," +
-			"X-BSV-Payment-Derivation-Prefix",
-		AllowCredentials: false,
-	}))
+	app.Use(registrar.DefaultCORS())
 
 	// Register routes
 	cfg.RegisterRoutes(app, svc)

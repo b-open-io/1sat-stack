@@ -34,6 +34,7 @@ import (
 	"github.com/b-open-io/1sat-stack/pkg/ordfs"
 	ordlockpkg "github.com/b-open-io/1sat-stack/pkg/ordlock"
 	"github.com/b-open-io/1sat-stack/pkg/overlay"
+	"github.com/b-open-io/1sat-stack/pkg/registrar"
 
 	"github.com/b-open-io/1sat-stack/pkg/owner"
 	"github.com/b-open-io/1sat-stack/pkg/paymail"
@@ -1490,269 +1491,238 @@ func (c *Config) Initialize(ctx context.Context, logger *slog.Logger) (*Services
 
 // RegisterRoutes registers all HTTP routes on the Fiber app
 func (c *Config) RegisterRoutes(app *fiber.App, svc *Services) {
-	// Redirect root to base path
-	if c.Server.BasePath != "" && c.Server.BasePath != "/" {
-		app.Get("/", func(ctx *fiber.Ctx) error {
-			return ctx.Redirect(c.Server.BasePath+"/home/", fiber.StatusMovedPermanently)
-		})
-	}
-
 	// Octet-stream body limit for overlay /submit endpoints. Same source as
 	// the outer Fiber BodyLimit so the two stay in sync.
 	overlayBodyLimit := int64(ParseBodyLimit(c.Server.BodyLimit))
 
-	// Create API group with base path
-	api := app.Group(c.Server.BasePath)
-
+	reg := registrar.New(app, c.Server.BasePath)
 	slog.Debug("registering routes", "basePath", c.Server.BasePath)
 
-	// Always-on capabilities
-	capabilities := []string{
-		"beef", "pubsub", "txo", "ordfs", "indexer",
-		"chaintracks", "arcade", "admin",
+	// Redirect root to base path
+	if c.Server.BasePath != "" && c.Server.BasePath != "/" {
+		reg.Add(registrar.Registration{RootMounts: []registrar.Mount{{
+			Register: func(r fiber.Router) {
+				r.Get("/", func(ctx *fiber.Ctx) error {
+					return ctx.Redirect(c.Server.BasePath+"/home/", fiber.StatusMovedPermanently)
+				})
+			},
+		}}})
 	}
 
-	// Overlay capabilities from initialized services
-	if svc.Overlay != nil {
-		capabilities = append(capabilities, "overlay")
-	}
-	if svc.BAP != nil {
-		capabilities = append(capabilities, "bap")
-	}
-	if svc.OPNS != nil {
-		capabilities = append(capabilities, "opns")
-	}
-	if svc.BSV21 != nil {
-		capabilities = append(capabilities, "bsv21")
-	}
-	if svc.BSocial != nil {
-		capabilities = append(capabilities, "bsocial")
-	}
-	if svc.OrdLock != nil {
-		capabilities = append(capabilities, "market")
-	}
-	if svc.Own != nil {
-		capabilities = append(capabilities, "owner")
-	}
-	if svc.Paymail != nil {
-		capabilities = append(capabilities, "paymail")
-	}
-
-	// Register beef routes
 	if svc.Beef != nil && svc.Beef.Routes != nil {
-		beefGroup := api.Group("/beef")
-		svc.Beef.Routes.Register(beefGroup)
+		reg.Add(registrar.Registration{Capability: "beef", Mounts: []registrar.Mount{
+			{Prefix: "/beef", Register: svc.Beef.Routes.Register},
+		}})
 	}
 
-	// Register pubsub/SSE routes
+	// Label predates the /sse mount path; kept for SDK compatibility.
 	if svc.PubSub != nil && svc.PubSub.Routes != nil {
-		sseGroup := api.Group("/sse")
-		svc.PubSub.Routes.Register(sseGroup)
+		reg.Add(registrar.Registration{Capability: "pubsub", Mounts: []registrar.Mount{
+			{Prefix: "/sse", Register: svc.PubSub.Routes.Register},
+		}})
 	}
 
-	// Register TXO routes (mutable — spend status changes)
+	// TXO responses are mutable — spend status changes
 	if svc.TXO != nil && svc.TXO.Routes != nil {
-		txoGroup := api.Group("/txo", httputil.NoStoreMiddleware())
-		svc.TXO.Routes.Register(txoGroup)
+		reg.Add(registrar.Registration{Capability: "txo", Mounts: []registrar.Mount{
+			{Prefix: "/txo", Middlewares: noStore(), Register: svc.TXO.Routes.Register},
+		}})
 	}
 
-	// Register owner routes
 	if svc.Own != nil && svc.Own.Routes != nil {
-		prefix := c.Owner.Routes.Prefix
-		if prefix == "" {
-			prefix = "/owner"
-		}
-		ownGroup := api.Group(prefix, httputil.NoStoreMiddleware())
-		svc.Own.Routes.Register(ownGroup)
-		slog.Debug("registered owner routes", "prefix", prefix)
+		reg.Add(registrar.Registration{Capability: "owner", Mounts: []registrar.Mount{
+			{Prefix: prefixOr(c.Owner.Routes.Prefix, "/owner"), Middlewares: noStore(), Register: svc.Own.Routes.Register},
+		}})
 	} else {
 		slog.Debug("owner routes not registered", "ownNil", svc.Own == nil, "ownMode", c.Owner.Mode)
 	}
 
-	// Register BSV21 routes
-	if svc.BSV21 != nil && svc.BSV21.Routes != nil {
-		prefix := c.BSV21.Routes.Prefix
-		if prefix == "" {
-			prefix = "/bsv21"
-		}
-		bsv21Group := api.Group(prefix, httputil.NoStoreMiddleware())
-		svc.BSV21.Routes.Register(bsv21Group)
-
-	}
-
-	// Register BAP routes
-	if svc.BAP != nil && svc.BAP.Routes != nil {
-		prefix := c.BAP.Routes.Prefix
-		if prefix == "" {
-			prefix = "/bap"
-		}
-		bapGroup := api.Group(prefix, httputil.NoStoreMiddleware())
-		svc.BAP.Routes.Register(bapGroup)
-	}
-
-	// Register BSocial routes
-	if svc.BSocial != nil && svc.BSocial.Routes != nil {
-		prefix := c.BSocial.Routes.Prefix
-		if prefix == "" {
-			prefix = "/bsocial"
-		}
-		bsocialGroup := api.Group(prefix, httputil.NoStoreMiddleware())
-		svc.BSocial.Routes.Register(bsocialGroup)
-	}
-
-	// Register OPNS routes
-	if svc.OPNS != nil && svc.OPNS.Routes != nil {
-		prefix := c.OPNS.Routes.Prefix
-		if prefix == "" {
-			prefix = "/opns"
-		}
-		opnsGroup := api.Group(prefix, httputil.NoStoreMiddleware())
-		svc.OPNS.Routes.Register(opnsGroup)
-	}
-
-	// Register OrdLock routes
-	if svc.OrdLock != nil && svc.OrdLock.Routes != nil {
-		prefix := c.OrdLock.Routes.Prefix
-		if prefix == "" {
-			prefix = "/market"
-		}
-		ordlockGroup := api.Group(prefix, httputil.NoStoreMiddleware())
-		svc.OrdLock.Routes.Register(ordlockGroup)
-	}
-
-	// Register per-module overlay routes
-	if svc.BAP != nil && svc.BAP.OverlayRoutes != nil {
-		bapOverlayGroup := api.Group("/bap/overlay", httputil.NoStoreMiddleware())
-		svc.BAP.OverlayRoutes.Register(bapOverlayGroup, overlayBodyLimit)
-	}
-	if svc.BSocial != nil && svc.BSocial.OverlayRoutes != nil {
-		bsocialOverlayGroup := api.Group("/bsocial/overlay", httputil.NoStoreMiddleware())
-		svc.BSocial.OverlayRoutes.Register(bsocialOverlayGroup, overlayBodyLimit)
-	}
-	if svc.OPNS != nil && svc.OPNS.OverlayRoutes != nil {
-		opnsOverlayGroup := api.Group("/opns/overlay", httputil.NoStoreMiddleware())
-		svc.OPNS.OverlayRoutes.Register(opnsOverlayGroup, overlayBodyLimit)
-	}
-	if svc.OrdLock != nil && svc.OrdLock.OverlayRoutes != nil {
-		ordlockOverlayGroup := api.Group("/market/overlay", httputil.NoStoreMiddleware())
-		svc.OrdLock.OverlayRoutes.Register(ordlockOverlayGroup, overlayBodyLimit)
-	}
-	if svc.BSV21 != nil && svc.BSV21.OverlayRoutes != nil {
-		bsv21OverlayGroup := api.Group("/bsv21/overlay", httputil.NoStoreMiddleware())
-		svc.BSV21.OverlayRoutes.Register(bsv21OverlayGroup, overlayBodyLimit)
-	}
-	// Register ORDFS routes
-	if svc.ORDFS != nil && svc.ORDFS.Routes != nil {
-		prefix := c.ORDFS.Routes.Prefix
-		if prefix == "" {
-			prefix = "/ordfs"
-		}
-		ordfsGroup := api.Group(prefix)
-		svc.ORDFS.Routes.Register(ordfsGroup)
-
-		// Also register content at root level for compatibility with ordfs protocol
-		contentGroup := app.Group("/content")
-		svc.ORDFS.Routes.RegisterContent(contentGroup)
-	}
-
-	// Register Chaintracks routes (block headers, chain tip, etc.)
-	if svc.ChaintracksRoutes != nil {
-		blockGroup := api.Group("/chaintracks")
-		svc.ChaintracksRoutes.Register(blockGroup)
-		slog.Debug("registered chaintracks routes", "prefix", "/chaintracks")
-	}
-
-	// Register external arcade broadcast routes (POST /tx, GET /tx/:txid)
-	if svc.BroadcastRoutes != nil {
-		txGroup := api.Group("/tx")
-		svc.BroadcastRoutes.Register(txGroup)
-		slog.Debug("registered broadcast routes", "prefix", "/tx")
-	}
-
-	// Register /.well-known/auth at app root for BRC-103/104 handshake.
-	// The auth middleware intercepts handshake requests before they reach the
-	// no-op; a 404 is only returned for non-handshake requests hitting this path.
-	if svc.AuthMiddleware != nil {
-		noOp := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-			w.WriteHeader(http.StatusNotFound)
+	if svc.BSV21 != nil {
+		reg.Add(registrar.Registration{
+			Capability: "bsv21",
+			Mounts: moduleMounts(prefixOr(c.BSV21.Routes.Prefix, "/bsv21"), "/bsv21/overlay",
+				registerFunc(svc.BSV21.Routes), svc.BSV21.OverlayRoutes, overlayBodyLimit),
 		})
-		app.All("/.well-known/auth", adaptor.HTTPHandler(svc.AuthMiddleware.HTTPHandler(noOp)))
-		slog.Debug("registered /.well-known/auth handshake route")
 	}
 
-	// Register Admin routes: static UI files are public, API endpoints are guarded.
-	// Setup routes (status, setup) need identity but not AdminGuard.
-	// API routes are mounted under {prefix}/api/ with AdminGuard middleware.
-	// Static UI files are mounted directly at {prefix}/ without auth so the
-	// browser can load the app before performing the BRC-103/104 handshake.
+	if svc.BAP != nil {
+		reg.Add(registrar.Registration{
+			Capability: "bap",
+			Mounts: moduleMounts(prefixOr(c.BAP.Routes.Prefix, "/bap"), "/bap/overlay",
+				registerFunc(svc.BAP.Routes), svc.BAP.OverlayRoutes, overlayBodyLimit),
+		})
+	}
+
+	if svc.BSocial != nil {
+		reg.Add(registrar.Registration{
+			Capability: "bsocial",
+			Mounts: moduleMounts(prefixOr(c.BSocial.Routes.Prefix, "/bsocial"), "/bsocial/overlay",
+				registerFunc(svc.BSocial.Routes), svc.BSocial.OverlayRoutes, overlayBodyLimit),
+		})
+	}
+
+	if svc.OPNS != nil {
+		reg.Add(registrar.Registration{
+			Capability: "opns",
+			Mounts: moduleMounts(prefixOr(c.OPNS.Routes.Prefix, "/opns"), "/opns/overlay",
+				registerFunc(svc.OPNS.Routes), svc.OPNS.OverlayRoutes, overlayBodyLimit),
+		})
+	}
+
+	if svc.OrdLock != nil {
+		reg.Add(registrar.Registration{
+			Capability: "market",
+			Mounts: moduleMounts(prefixOr(c.OrdLock.Routes.Prefix, "/market"), "/market/overlay",
+				registerFunc(svc.OrdLock.Routes), svc.OrdLock.OverlayRoutes, overlayBodyLimit),
+		})
+	}
+
+	if svc.Overlay != nil {
+		reg.Add(registrar.Registration{Capability: "overlay"})
+	}
+
+	if svc.ORDFS != nil && svc.ORDFS.Routes != nil {
+		reg.Add(registrar.Registration{
+			Capability: "ordfs",
+			Mounts: []registrar.Mount{
+				{Prefix: prefixOr(c.ORDFS.Routes.Prefix, "/ordfs"), Register: svc.ORDFS.Routes.Register},
+			},
+			// Content at root level for compatibility with the ordfs protocol
+			RootMounts: []registrar.Mount{
+				{Prefix: "/content", Register: svc.ORDFS.Routes.RegisterContent},
+			},
+		})
+	}
+
+	if svc.ChaintracksRoutes != nil {
+		reg.Add(registrar.Registration{Capability: "chaintracks", Mounts: []registrar.Mount{
+			{Prefix: "/chaintracks", Register: svc.ChaintracksRoutes.Register},
+		}})
+	}
+
+	// Broadcast routes (POST /tx, GET /tx/:txid). Label predates the arcade
+	// removal; kept for SDK compatibility.
+	if svc.BroadcastRoutes != nil {
+		reg.Add(registrar.Registration{Capability: "arcade", Mounts: []registrar.Mount{
+			{Prefix: "/tx", Register: svc.BroadcastRoutes.Register},
+		}})
+	}
+
+	// /.well-known/auth at app root for BRC-103/104 handshake. The auth
+	// middleware intercepts handshake requests before they reach the no-op;
+	// a 404 is only returned for non-handshake requests hitting this path.
+	if svc.AuthMiddleware != nil {
+		reg.Add(registrar.Registration{RootMounts: []registrar.Mount{{
+			Register: func(r fiber.Router) {
+				noOp := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+					w.WriteHeader(http.StatusNotFound)
+				})
+				r.All("/.well-known/auth", adaptor.HTTPHandler(svc.AuthMiddleware.HTTPHandler(noOp)))
+			},
+		}}})
+	}
+
+	// Admin: static UI files are public, API endpoints are guarded. Setup
+	// routes (status, setup) need identity but not AdminGuard. API routes
+	// mount under {prefix}/api/ with AdminGuard; static UI mounts at
+	// {prefix}/ without auth so the browser can load the app before the
+	// BRC-103/104 handshake.
 	if svc.Admin != nil && svc.Admin.Routes != nil && svc.AuthMiddleware != nil {
-		prefix := c.Admin.Routes.Prefix
-		if prefix == "" {
-			prefix = "/admin"
-		}
-		guardedGroup := api.Group(prefix+"/api",
-			httputil.PrivateNoStoreMiddleware(),
-			svc.AuthMiddleware.Handler(),
-			auth.AdminGuard(svc.ConfigStore, c.Auth.AllowUnauthenticated, slog.Default()),
-		)
-		publicGroup := api.Group(prefix, httputil.PrivateNoStoreMiddleware())
-		svc.Admin.Routes.Register(guardedGroup, publicGroup, svc.AuthMiddleware.Handler())
-		slog.Debug("registered admin routes", "prefix", prefix)
+		reg.Add(registrar.Registration{Capability: "admin", Mounts: []registrar.Mount{{
+			Prefix:      prefixOr(c.Admin.Routes.Prefix, "/admin"),
+			Middlewares: []fiber.Handler{httputil.PrivateNoStoreMiddleware()},
+			Register: func(g fiber.Router) {
+				guarded := g.Group("/api",
+					svc.AuthMiddleware.Handler(),
+					auth.AdminGuard(svc.ConfigStore, c.Auth.AllowUnauthenticated, slog.Default()),
+				)
+				svc.Admin.Routes.Register(guarded, g, svc.AuthMiddleware.Handler())
+			},
+		}}})
 	}
 
-	// Register Sweep UI routes (no auth required)
 	if svc.Sweep != nil && svc.Sweep.Routes != nil {
-		prefix := c.Sweep.Routes.Prefix
-		if prefix == "" {
-			prefix = "/sweep"
-		}
-		sweepGroup := api.Group(prefix)
-		svc.Sweep.Routes.Register(sweepGroup)
-		slog.Debug("registered sweep routes", "prefix", prefix)
+		reg.Add(registrar.Registration{Capability: "sweep", Mounts: []registrar.Mount{
+			{Prefix: prefixOr(c.Sweep.Routes.Prefix, "/sweep"), Register: svc.Sweep.Routes.Register},
+		}})
 	}
 
-	// Register Paymail routes
 	if svc.Paymail != nil && svc.Paymail.Routes != nil {
-		prefix := c.Paymail.Routes.Prefix
-		if prefix == "" {
-			prefix = "/bsvalias"
-		}
-		fullPrefix := c.Server.BasePath + prefix
-		svc.Paymail.Routes.SetPathPrefix(fullPrefix)
-		paymailGroup := api.Group(prefix)
-		svc.Paymail.Routes.Register(paymailGroup)
-		slog.Debug("registered paymail routes", "prefix", fullPrefix)
-
-		// Register /.well-known/bsvalias at app root for capability discovery
-		svc.Paymail.Routes.RegisterWellKnown(app)
-		slog.Debug("registered paymail .well-known/bsvalias route")
+		prefix := prefixOr(c.Paymail.Routes.Prefix, "/bsvalias")
+		svc.Paymail.Routes.SetPathPrefix(c.Server.BasePath + prefix)
+		reg.Add(registrar.Registration{
+			Capability: "paymail",
+			Mounts: []registrar.Mount{
+				{Prefix: prefix, Register: svc.Paymail.Routes.Register},
+			},
+			// /.well-known/bsvalias at app root for capability discovery
+			RootMounts: []registrar.Mount{
+				{Register: func(fiber.Router) { svc.Paymail.Routes.RegisterWellKnown(app) }},
+			},
+		})
 	}
 
-	// Health check endpoint
-	api.Get("/health", handleHealth(svc.Chaintracks))
-
-	// Capabilities endpoint - returns list of enabled services
-	api.Get("/capabilities", handleCapabilities(capabilities))
+	reg.Add(registrar.Registration{Mounts: []registrar.Mount{{
+		Register: func(r fiber.Router) { r.Get("/health", handleHealth(svc.Chaintracks)) },
+	}}})
 
 	// Setup API documentation routes
 	registerDocsRoutes(app)
 
-	// Register Landing page routes (no auth required)
+	// Landing page (no auth required)
 	if svc.Landing != nil && svc.Landing.Routes != nil {
-		prefix := c.Landing.Routes.Prefix
-		if prefix == "" {
-			prefix = "/home"
-		}
-		landingGroup := api.Group(prefix)
-		svc.Landing.Routes.Register(landingGroup)
-
-		// Redirect base path to landing page
-		api.Get("/", func(c *fiber.Ctx) error {
-			return c.Redirect(c.Path()+prefix+"/", fiber.StatusTemporaryRedirect)
-		})
-
-		slog.Debug("registered landing routes", "prefix", prefix)
+		prefix := prefixOr(c.Landing.Routes.Prefix, "/home")
+		reg.Add(registrar.Registration{Mounts: []registrar.Mount{
+			{Prefix: prefix, Register: svc.Landing.Routes.Register},
+			{Register: func(r fiber.Router) {
+				// Redirect base path to landing page
+				r.Get("/", func(ctx *fiber.Ctx) error {
+					return ctx.Redirect(ctx.Path()+prefix+"/", fiber.StatusTemporaryRedirect)
+				})
+			}},
+		}})
 	}
+
+	reg.Finalize()
+}
+
+func prefixOr(prefix, fallback string) string {
+	if prefix == "" {
+		return fallback
+	}
+	return prefix
+}
+
+func noStore() []fiber.Handler {
+	return []fiber.Handler{httputil.NoStoreMiddleware()}
+}
+
+// registerFunc returns the Register method of routes, or nil when routes is nil.
+func registerFunc[T any, PT interface {
+	*T
+	Register(fiber.Router)
+}](routes PT) func(fiber.Router) {
+	if routes == nil {
+		return nil
+	}
+	return routes.Register
+}
+
+// moduleMounts builds the standard overlay-module mount pair: lookup routes
+// at prefix, engine overlay routes at overlayPrefix.
+func moduleMounts(prefix, overlayPrefix string, routes func(fiber.Router), overlayRoutes *overlay.Routes, bodyLimit int64) []registrar.Mount {
+	mounts := []registrar.Mount{}
+	if routes != nil {
+		mounts = append(mounts, registrar.Mount{Prefix: prefix, Middlewares: noStore(), Register: routes})
+	}
+	if overlayRoutes != nil {
+		mounts = append(mounts, registrar.Mount{
+			Prefix:      overlayPrefix,
+			Middlewares: noStore(),
+			Register:    func(r fiber.Router) { overlayRoutes.Register(r, bodyLimit) },
+		})
+	}
+	return mounts
 }
 
 // handleHealth returns the health status
@@ -1776,19 +1746,6 @@ func handleHealth(ct chaintracks.Chaintracks) fiber.Handler {
 			}
 		}
 		return c.JSON(resp)
-	}
-}
-
-// handleCapabilities returns the list of enabled capabilities
-// @Summary Get capabilities
-// @Description Returns the list of enabled service capabilities
-// @Tags system
-// @Produce json
-// @Success 200 {array} string "List of enabled capabilities"
-// @Router /capabilities [get]
-func handleCapabilities(capabilities []string) fiber.Handler {
-	return func(c *fiber.Ctx) error {
-		return c.JSON(capabilities)
 	}
 }
 
