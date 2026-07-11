@@ -1,0 +1,323 @@
+{
+    "swagger": "2.0",
+    "info": {
+        "contact": {}
+    },
+    "paths": {
+        "/content/{path}": {
+            "get": {
+                "description": "Serve the content of an inscription by outpoint or txid, with directory and SPA support",
+                "produces": [
+                    "application/octet-stream"
+                ],
+                "tags": [
+                    "ordfs"
+                ],
+                "summary": "Get inscription content",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Outpoint (txid_vout) or txid, optionally with :seq and /filepath",
+                        "name": "path",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Content",
+                        "schema": {
+                            "type": "file"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Not found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/metadata": {
+            "post": {
+                "description": "Get metadata for multiple outpoints in a single request",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "ordfs"
+                ],
+                "summary": "Bulk metadata lookup",
+                "parameters": [
+                    {
+                        "description": "Outpoints to look up",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "type": "object"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Map of outpoint to metadata (null if not found)",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "400": {
+                        "description": "Bad request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/metadata/{path}": {
+            "get": {
+                "description": "Get metadata about inscription content without downloading the content",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "ordfs"
+                ],
+                "summary": "Get content metadata",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Outpoint (txid_vout) or txid",
+                        "name": "path",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Metadata",
+                        "schema": {
+                            "$ref": "#/definitions/ordfs.Response"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Not found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/preview": {
+            "post": {
+                "description": "Echo back the request body for preview rendering",
+                "consumes": [
+                    "*/*"
+                ],
+                "produces": [
+                    "*/*"
+                ],
+                "tags": [
+                    "ordfs"
+                ],
+                "summary": "Preview posted content",
+                "responses": {
+                    "200": {
+                        "description": "Content",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/preview/{b64HtmlData}": {
+            "get": {
+                "description": "Decode and render base64-encoded HTML",
+                "produces": [
+                    "text/html"
+                ],
+                "tags": [
+                    "ordfs"
+                ],
+                "summary": "Preview HTML content",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Base64-encoded HTML content",
+                        "name": "b64HtmlData",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "HTML content",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/stream/{outpoint}": {
+            "get": {
+                "description": "Stream content from an ordinal chain",
+                "produces": [
+                    "application/octet-stream"
+                ],
+                "tags": [
+                    "ordfs"
+                ],
+                "summary": "Stream content",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Outpoint (txid_vout)",
+                        "name": "outpoint",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Streamed content",
+                        "schema": {
+                            "type": "file"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Not found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    },
+    "definitions": {
+        "ordfs.Response": {
+            "type": "object",
+            "properties": {
+                "content": {
+                    "type": "array",
+                    "items": {
+                        "type": "integer"
+                    }
+                },
+                "contentLength": {
+                    "type": "integer"
+                },
+                "contentType": {
+                    "type": "string"
+                },
+                "map": {
+                    "type": "array",
+                    "items": {
+                        "type": "integer"
+                    }
+                },
+                "origin": {
+                    "$ref": "#/definitions/transaction.Outpoint"
+                },
+                "outpoint": {
+                    "$ref": "#/definitions/transaction.Outpoint"
+                },
+                "parent": {
+                    "$ref": "#/definitions/transaction.Outpoint"
+                },
+                "sequence": {
+                    "type": "integer"
+                }
+            }
+        },
+        "transaction.Outpoint": {
+            "type": "object",
+            "properties": {
+                "index": {
+                    "type": "integer"
+                },
+                "txid": {
+                    "type": "array",
+                    "items": {
+                        "type": "integer"
+                    }
+                }
+            }
+        }
+    }
+}

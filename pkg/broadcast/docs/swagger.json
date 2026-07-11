@@ -1,0 +1,166 @@
+{
+    "swagger": "2.0",
+    "info": {
+        "contact": {}
+    },
+    "paths": {
+        "/": {
+            "post": {
+                "description": "Submits a raw transaction or BEEF to arcade and waits for acceptance. Body is raw bytes (application/octet-stream), hex (text/plain), or JSON {\"rawTx\":\"\u003chex\u003e\"}",
+                "consumes": [
+                    "application/octet-stream",
+                    "text/plain",
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "broadcast"
+                ],
+                "summary": "Broadcast transaction",
+                "parameters": [
+                    {
+                        "description": "Raw transaction or BEEF",
+                        "name": "transaction",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "type": "integer"
+                            }
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Accepted or terminal success",
+                        "schema": {
+                            "$ref": "#/definitions/arcadeclient.TransactionStatus"
+                        }
+                    },
+                    "202": {
+                        "description": "Wait timed out; status is best-effort",
+                        "schema": {
+                            "$ref": "#/definitions/arcadeclient.TransactionStatus"
+                        }
+                    },
+                    "400": {
+                        "description": "Rejected or malformed body",
+                        "schema": {
+                            "$ref": "#/definitions/arcadeclient.TransactionStatus"
+                        }
+                    },
+                    "502": {
+                        "description": "Upstream arcade error",
+                        "schema": {
+                            "type": "object",
+                            "properties": {
+                                "error": {
+                                    "type": "string"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/{txid}": {
+            "get": {
+                "description": "Returns the arcade broadcast status for a transaction",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "broadcast"
+                ],
+                "summary": "Get transaction status",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Transaction ID",
+                        "name": "txid",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/arcadeclient.TransactionStatus"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "type": "object",
+                            "properties": {
+                                "error": {
+                                    "type": "string"
+                                }
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "type": "object",
+                            "properties": {
+                                "error": {
+                                    "type": "string"
+                                }
+                            }
+                        }
+                    },
+                    "502": {
+                        "description": "Bad Gateway",
+                        "schema": {
+                            "type": "object",
+                            "properties": {
+                                "error": {
+                                    "type": "string"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    },
+    "definitions": {
+        "arcadeclient.TransactionStatus": {
+            "type": "object",
+            "properties": {
+                "blockHash": {
+                    "type": "string"
+                },
+                "blockHeight": {
+                    "type": "integer"
+                },
+                "competingTxs": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "extraInfo": {
+                    "type": "string"
+                },
+                "merklePath": {
+                    "type": "string"
+                },
+                "timestamp": {
+                    "type": "string"
+                },
+                "txStatus": {
+                    "type": "string"
+                },
+                "txid": {
+                    "type": "string"
+                }
+            }
+        }
+    }
+}

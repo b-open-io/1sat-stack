@@ -1,3 +1,7 @@
+// @securityDefinitions.apiKey BearerAuth
+// @in header
+// @name Authorization
+// @description Enter "Bearer {token}" (with quotes around the full value)
 package admin
 
 import (

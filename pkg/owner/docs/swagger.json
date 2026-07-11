@@ -1,0 +1,203 @@
+{
+    "swagger": "2.0",
+    "info": {
+        "contact": {}
+    },
+    "paths": {
+        "/sync": {
+            "get": {
+                "description": "Stream paginated outputs for wallet synchronization via Server-Sent Events. Streams all outputs until exhausted, then triggers background sync and sends retry directive.",
+                "produces": [
+                    "text/event-stream"
+                ],
+                "tags": [
+                    "owner"
+                ],
+                "summary": "Stream owner sync via SSE",
+                "parameters": [
+                    {
+                        "type": "array",
+                        "items": {
+                            "type": "string"
+                        },
+                        "collectionFormat": "csv",
+                        "description": "Owner identifier(s) (address, pubkey, or script hash)",
+                        "name": "owner",
+                        "in": "query",
+                        "required": true
+                    },
+                    {
+                        "type": "number",
+                        "description": "Starting score for pagination",
+                        "name": "from",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "SSE stream of SyncOutput events",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
+        "/{owner}/balance": {
+            "get": {
+                "description": "Get the satoshi balance for a specific owner",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "owner"
+                ],
+                "summary": "Get owner balance",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Owner identifier (address, pubkey, or script hash)",
+                        "name": "owner",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/owner.BalanceResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
+        "/{owner}/txos": {
+            "get": {
+                "description": "Stream transaction outputs owned by a specific owner via Server-Sent Events. When refresh is enabled, sync progress is streamed first, followed by results. On reconnect, the browser sends Last-Event-ID which skips refresh and resumes from that score.",
+                "produces": [
+                    "text/event-stream"
+                ],
+                "tags": [
+                    "owner"
+                ],
+                "summary": "Stream owner TXOs via SSE",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Owner identifier (address, pubkey, or script hash)",
+                        "name": "owner",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Score of last received event (sent automatically by EventSource on reconnect). When present, refresh is skipped.",
+                        "name": "Last-Event-ID",
+                        "in": "header"
+                    },
+                    {
+                        "type": "boolean",
+                        "default": true,
+                        "description": "Refresh owner data from blockchain before returning",
+                        "name": "refresh",
+                        "in": "query"
+                    },
+                    {
+                        "type": "boolean",
+                        "default": true,
+                        "description": "Filter for unspent outputs only",
+                        "name": "unspent",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Comma-separated list of tags to include (* for all)",
+                        "name": "tags",
+                        "in": "query"
+                    },
+                    {
+                        "type": "boolean",
+                        "default": true,
+                        "description": "Include satoshi values",
+                        "name": "sats",
+                        "in": "query"
+                    },
+                    {
+                        "type": "boolean",
+                        "default": true,
+                        "description": "Include spend txid",
+                        "name": "spend",
+                        "in": "query"
+                    },
+                    {
+                        "type": "boolean",
+                        "default": true,
+                        "description": "Include events array",
+                        "name": "events",
+                        "in": "query"
+                    },
+                    {
+                        "type": "boolean",
+                        "default": true,
+                        "description": "Include block height and index",
+                        "name": "block",
+                        "in": "query"
+                    },
+                    {
+                        "type": "number",
+                        "description": "Starting score for pagination",
+                        "name": "from",
+                        "in": "query"
+                    },
+                    {
+                        "type": "boolean",
+                        "description": "Reverse order",
+                        "name": "rev",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "default": 100,
+                        "description": "Maximum number of results",
+                        "name": "limit",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "SSE stream of sync progress and TXO events",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad request",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        }
+    },
+    "definitions": {
+        "owner.BalanceResponse": {
+            "type": "object",
+            "properties": {
+                "balance": {
+                    "type": "integer"
+                },
+                "count": {
+                    "type": "integer"
+                }
+            }
+        }
+    }
+}

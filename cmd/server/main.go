@@ -20,8 +20,6 @@ import (
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/middleware/recover"
 	"github.com/joho/godotenv"
-
-	_ "github.com/b-open-io/1sat-stack/docs"
 )
 
 var (
@@ -37,53 +35,6 @@ func RequestRestart() {
 	default:
 	}
 }
-
-// @title 1Sat Stack API
-// @version 1.0
-// @description Composable BSV blockchain services API
-// @termsOfService http://swagger.io/terms/
-
-// @contact.name API Support
-// @contact.url https://github.com/b-open-io/1sat-stack
-
-// @license.name MIT
-// @license.url https://opensource.org/licenses/MIT
-
-// @BasePath /1sat
-
-// @securityDefinitions.apiKey BearerAuth
-// @in header
-// @name Authorization
-// @description Enter "Bearer {token}" (with quotes around the full value)
-
-// @tag.name txos
-// @tag.description Transaction output queries
-// @tag.name ordfs
-// @tag.description Ordinals file system
-// @tag.name bsv21
-// @tag.description BSV21 token operations
-// @tag.name owner
-// @tag.description Owner-based queries
-// @tag.name overlay
-// @tag.description Overlay network services
-// @tag.name beef
-// @tag.description BEEF transaction data
-// @tag.name arcade
-// @tag.description Transaction broadcasting
-// @tag.name chaintracks
-// @tag.description Chain tracking services
-// @tag.name sse
-// @tag.description Server-sent events
-// @tag.name arc
-// @tag.description ARC callback endpoints
-// @tag.name system
-// @tag.description System health and info
-// @tag.name admin
-// @tag.description Administrative endpoints (requires auth)
-// @tag.name overlay-admin
-// @tag.description Overlay admin endpoints (requires auth)
-// @tag.name paymail
-// @tag.description BSV paymail protocol endpoints (BRC-29)
 
 func main() {
 	// Load .env file if present (optional, won't error if missing)

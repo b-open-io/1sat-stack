@@ -1,0 +1,298 @@
+{
+    "swagger": "2.0",
+    "info": {
+        "contact": {}
+    },
+    "paths": {
+        "/header/hash/{hash}": {
+            "get": {
+                "description": "Returns a block header with the specified hash",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "chaintracks"
+                ],
+                "summary": "Get header by hash",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Block hash (hex)",
+                        "name": "hash",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/chaintracks.BlockHeader"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/chaintracks.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/chaintracks.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/header/height/{height}": {
+            "get": {
+                "description": "Returns a block header at the specified height",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "chaintracks"
+                ],
+                "summary": "Get header by height",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "Block height",
+                        "name": "height",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/chaintracks.BlockHeader"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/chaintracks.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/chaintracks.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/headers": {
+            "get": {
+                "description": "Returns block headers starting from height as binary data (80 bytes per header)",
+                "produces": [
+                    "application/octet-stream"
+                ],
+                "tags": [
+                    "chaintracks"
+                ],
+                "summary": "Get multiple headers",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "Starting block height",
+                        "name": "height",
+                        "in": "query",
+                        "required": true
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Number of headers to return",
+                        "name": "count",
+                        "in": "query",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Concatenated 80-byte headers",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/chaintracks.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/height": {
+            "get": {
+                "description": "Returns the current blockchain height",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "chaintracks"
+                ],
+                "summary": "Get chain height",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/chaintracks.HeightResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/network": {
+            "get": {
+                "description": "Returns the Bitcoin network this service is connected to",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "chaintracks"
+                ],
+                "summary": "Get network name",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/chaintracks.NetworkResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/chaintracks.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/tip": {
+            "get": {
+                "description": "Returns the current chain tip block header",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "chaintracks"
+                ],
+                "summary": "Get chain tip",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/chaintracks.BlockHeader"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/chaintracks.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/tip/stream": {
+            "get": {
+                "description": "Server-Sent Events stream of chain tip updates. Sends the current tip immediately, then broadcasts new tips as they arrive.",
+                "produces": [
+                    "text/event-stream"
+                ],
+                "tags": [
+                    "chaintracks"
+                ],
+                "summary": "Stream chain tip updates",
+                "responses": {
+                    "200": {
+                        "description": "SSE stream of BlockHeader JSON objects",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        }
+    },
+    "definitions": {
+        "chaintracks.BlockHeader": {
+            "type": "object",
+            "properties": {
+                "bits": {
+                    "description": "4 bytes - Difficulty target",
+                    "type": "integer"
+                },
+                "hash": {
+                    "type": "array",
+                    "items": {
+                        "type": "integer"
+                    }
+                },
+                "height": {
+                    "description": "Block height in the chain",
+                    "type": "integer"
+                },
+                "merkleRoot": {
+                    "description": "32 bytes - Merkle root hash",
+                    "type": "array",
+                    "items": {
+                        "type": "integer"
+                    }
+                },
+                "nonce": {
+                    "description": "4 bytes - Nonce",
+                    "type": "integer"
+                },
+                "previousHash": {
+                    "description": "32 bytes - Previous block hash",
+                    "type": "array",
+                    "items": {
+                        "type": "integer"
+                    }
+                },
+                "time": {
+                    "description": "4 bytes - Block timestamp (Unix time)",
+                    "type": "integer"
+                },
+                "version": {
+                    "description": "4 bytes - Block version",
+                    "type": "integer"
+                }
+            }
+        },
+        "chaintracks.ErrorResponse": {
+            "type": "object",
+            "properties": {
+                "error": {
+                    "type": "string",
+                    "example": "Header not found"
+                }
+            }
+        },
+        "chaintracks.HeightResponse": {
+            "type": "object",
+            "properties": {
+                "height": {
+                    "type": "integer",
+                    "example": 874123
+                }
+            }
+        },
+        "chaintracks.NetworkResponse": {
+            "type": "object",
+            "properties": {
+                "network": {
+                    "type": "string",
+                    "example": "mainnet"
+                }
+            }
+        }
+    }
+}

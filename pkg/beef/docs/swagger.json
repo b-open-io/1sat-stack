@@ -1,0 +1,188 @@
+{
+    "swagger": "2.0",
+    "info": {
+        "contact": {}
+    },
+    "paths": {
+        "/{txid}": {
+            "get": {
+                "description": "Retrieves the BEEF (BSV Envelope Format) for a specific transaction. Use the format query parameter to choose binary (default), hex, or base64 encoding.",
+                "produces": [
+                    "application/octet-stream",
+                    "text/plain"
+                ],
+                "tags": [
+                    "beef"
+                ],
+                "summary": "Get BEEF for a transaction",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Transaction ID",
+                        "name": "txid",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "enum": [
+                            "binary",
+                            "hex",
+                            "base64"
+                        ],
+                        "type": "string",
+                        "default": "binary",
+                        "description": "Response encoding",
+                        "name": "format",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "BEEF bytes (binary) or hex/base64 string",
+                        "schema": {
+                            "type": "file"
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid txid or format",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Transaction not found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/{txid}/proof": {
+            "get": {
+                "description": "Retrieves just the merkle proof bytes for a transaction. Use the format query parameter to choose binary (default), hex, or base64 encoding.",
+                "produces": [
+                    "application/octet-stream",
+                    "text/plain"
+                ],
+                "tags": [
+                    "beef"
+                ],
+                "summary": "Get merkle proof",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Transaction ID",
+                        "name": "txid",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "enum": [
+                            "binary",
+                            "hex",
+                            "base64"
+                        ],
+                        "type": "string",
+                        "default": "binary",
+                        "description": "Response encoding",
+                        "name": "format",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Merkle proof bytes (binary) or hex/base64 string",
+                        "schema": {
+                            "type": "file"
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid txid or format",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Proof not found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/{txid}/tx": {
+            "get": {
+                "description": "Retrieves just the raw transaction bytes (without proof). Use the format query parameter to choose binary (default), hex, or base64 encoding.",
+                "produces": [
+                    "application/octet-stream",
+                    "text/plain"
+                ],
+                "tags": [
+                    "beef"
+                ],
+                "summary": "Get transaction",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Transaction ID",
+                        "name": "txid",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "enum": [
+                            "binary",
+                            "hex",
+                            "base64"
+                        ],
+                        "type": "string",
+                        "default": "binary",
+                        "description": "Response encoding",
+                        "name": "format",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Transaction bytes (binary) or hex/base64 string",
+                        "schema": {
+                            "type": "file"
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid txid or format",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Transaction not found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}

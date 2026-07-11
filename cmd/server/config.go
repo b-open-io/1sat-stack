@@ -27,14 +27,28 @@ import (
 	"github.com/b-open-io/1sat-stack/pkg/httputil"
 	"github.com/b-open-io/1sat-stack/sweep"
 
+	admindocs "github.com/b-open-io/1sat-stack/admin/docs"
+	bapdocs "github.com/b-open-io/1sat-stack/pkg/bap/docs"
+	beefdocs "github.com/b-open-io/1sat-stack/pkg/beef/docs"
+	broadcastdocs "github.com/b-open-io/1sat-stack/pkg/broadcast/docs"
+	bsocialdocs "github.com/b-open-io/1sat-stack/pkg/bsocial/docs"
+	bsv21docs "github.com/b-open-io/1sat-stack/pkg/bsv21/docs"
+	chaintracksdocs "github.com/b-open-io/1sat-stack/pkg/chaintracks/docs"
 	"github.com/b-open-io/1sat-stack/pkg/indexer"
 	"github.com/b-open-io/1sat-stack/pkg/jbsync"
 	"github.com/b-open-io/1sat-stack/pkg/logging"
 	"github.com/b-open-io/1sat-stack/pkg/opns"
+	opnsdocs "github.com/b-open-io/1sat-stack/pkg/opns/docs"
 	"github.com/b-open-io/1sat-stack/pkg/ordfs"
+	ordfsdocs "github.com/b-open-io/1sat-stack/pkg/ordfs/docs"
 	ordlockpkg "github.com/b-open-io/1sat-stack/pkg/ordlock"
+	ordlockdocs "github.com/b-open-io/1sat-stack/pkg/ordlock/docs"
 	"github.com/b-open-io/1sat-stack/pkg/overlay"
+	ownerdocs "github.com/b-open-io/1sat-stack/pkg/owner/docs"
+	paymaildocs "github.com/b-open-io/1sat-stack/pkg/paymail/docs"
+	pubsubdocs "github.com/b-open-io/1sat-stack/pkg/pubsub/docs"
 	"github.com/b-open-io/1sat-stack/pkg/registrar"
+	txodocs "github.com/b-open-io/1sat-stack/pkg/txo/docs"
 
 	"github.com/b-open-io/1sat-stack/pkg/owner"
 	"github.com/b-open-io/1sat-stack/pkg/paymail"
@@ -1510,27 +1524,27 @@ func (c *Config) RegisterRoutes(app *fiber.App, svc *Services) {
 	}
 
 	if svc.Beef != nil && svc.Beef.Routes != nil {
-		reg.Add(registrar.Registration{Capability: "beef", Mounts: []registrar.Mount{
+		reg.Add(registrar.Registration{Capability: "beef", Spec: beefdocs.Spec, Mounts: []registrar.Mount{
 			{Prefix: "/beef", Register: svc.Beef.Routes.Register},
 		}})
 	}
 
 	// Label predates the /sse mount path; kept for SDK compatibility.
 	if svc.PubSub != nil && svc.PubSub.Routes != nil {
-		reg.Add(registrar.Registration{Capability: "pubsub", Mounts: []registrar.Mount{
+		reg.Add(registrar.Registration{Capability: "pubsub", Spec: pubsubdocs.Spec, Mounts: []registrar.Mount{
 			{Prefix: "/sse", Register: svc.PubSub.Routes.Register},
 		}})
 	}
 
 	// TXO responses are mutable — spend status changes
 	if svc.TXO != nil && svc.TXO.Routes != nil {
-		reg.Add(registrar.Registration{Capability: "txo", Mounts: []registrar.Mount{
+		reg.Add(registrar.Registration{Capability: "txo", Spec: txodocs.Spec, Mounts: []registrar.Mount{
 			{Prefix: "/txo", Middlewares: noStore(), Register: svc.TXO.Routes.Register},
 		}})
 	}
 
 	if svc.Own != nil && svc.Own.Routes != nil {
-		reg.Add(registrar.Registration{Capability: "owner", Mounts: []registrar.Mount{
+		reg.Add(registrar.Registration{Capability: "owner", Spec: ownerdocs.Spec, Mounts: []registrar.Mount{
 			{Prefix: prefixOr(c.Owner.Routes.Prefix, "/owner"), Middlewares: noStore(), Register: svc.Own.Routes.Register},
 		}})
 	} else {
@@ -1540,6 +1554,7 @@ func (c *Config) RegisterRoutes(app *fiber.App, svc *Services) {
 	if svc.BSV21 != nil {
 		reg.Add(registrar.Registration{
 			Capability: "bsv21",
+			Spec:       bsv21docs.Spec,
 			Mounts: moduleMounts(prefixOr(c.BSV21.Routes.Prefix, "/bsv21"), "/bsv21/overlay",
 				registerFunc(svc.BSV21.Routes), svc.BSV21.OverlayRoutes, overlayBodyLimit),
 		})
@@ -1548,6 +1563,7 @@ func (c *Config) RegisterRoutes(app *fiber.App, svc *Services) {
 	if svc.BAP != nil {
 		reg.Add(registrar.Registration{
 			Capability: "bap",
+			Spec:       bapdocs.Spec,
 			Mounts: moduleMounts(prefixOr(c.BAP.Routes.Prefix, "/bap"), "/bap/overlay",
 				registerFunc(svc.BAP.Routes), svc.BAP.OverlayRoutes, overlayBodyLimit),
 		})
@@ -1556,6 +1572,7 @@ func (c *Config) RegisterRoutes(app *fiber.App, svc *Services) {
 	if svc.BSocial != nil {
 		reg.Add(registrar.Registration{
 			Capability: "bsocial",
+			Spec:       bsocialdocs.Spec,
 			Mounts: moduleMounts(prefixOr(c.BSocial.Routes.Prefix, "/bsocial"), "/bsocial/overlay",
 				registerFunc(svc.BSocial.Routes), svc.BSocial.OverlayRoutes, overlayBodyLimit),
 		})
@@ -1564,6 +1581,7 @@ func (c *Config) RegisterRoutes(app *fiber.App, svc *Services) {
 	if svc.OPNS != nil {
 		reg.Add(registrar.Registration{
 			Capability: "opns",
+			Spec:       opnsdocs.Spec,
 			Mounts: moduleMounts(prefixOr(c.OPNS.Routes.Prefix, "/opns"), "/opns/overlay",
 				registerFunc(svc.OPNS.Routes), svc.OPNS.OverlayRoutes, overlayBodyLimit),
 		})
@@ -1572,6 +1590,7 @@ func (c *Config) RegisterRoutes(app *fiber.App, svc *Services) {
 	if svc.OrdLock != nil {
 		reg.Add(registrar.Registration{
 			Capability: "market",
+			Spec:       ordlockdocs.Spec,
 			Mounts: moduleMounts(prefixOr(c.OrdLock.Routes.Prefix, "/market"), "/market/overlay",
 				registerFunc(svc.OrdLock.Routes), svc.OrdLock.OverlayRoutes, overlayBodyLimit),
 		})
@@ -1584,6 +1603,7 @@ func (c *Config) RegisterRoutes(app *fiber.App, svc *Services) {
 	if svc.ORDFS != nil && svc.ORDFS.Routes != nil {
 		reg.Add(registrar.Registration{
 			Capability: "ordfs",
+			Spec:       ordfsdocs.Spec,
 			Mounts: []registrar.Mount{
 				{Prefix: prefixOr(c.ORDFS.Routes.Prefix, "/ordfs"), Register: svc.ORDFS.Routes.Register},
 			},
@@ -1595,7 +1615,7 @@ func (c *Config) RegisterRoutes(app *fiber.App, svc *Services) {
 	}
 
 	if svc.ChaintracksRoutes != nil {
-		reg.Add(registrar.Registration{Capability: "chaintracks", Mounts: []registrar.Mount{
+		reg.Add(registrar.Registration{Capability: "chaintracks", Spec: chaintracksdocs.Spec, Mounts: []registrar.Mount{
 			{Prefix: "/chaintracks", Register: svc.ChaintracksRoutes.Register},
 		}})
 	}
@@ -1603,7 +1623,7 @@ func (c *Config) RegisterRoutes(app *fiber.App, svc *Services) {
 	// Broadcast routes (POST /tx, GET /tx/:txid). Label predates the arcade
 	// removal; kept for SDK compatibility.
 	if svc.BroadcastRoutes != nil {
-		reg.Add(registrar.Registration{Capability: "arcade", Mounts: []registrar.Mount{
+		reg.Add(registrar.Registration{Capability: "arcade", Spec: broadcastdocs.Spec, Mounts: []registrar.Mount{
 			{Prefix: "/tx", Register: svc.BroadcastRoutes.Register},
 		}})
 	}
@@ -1628,7 +1648,7 @@ func (c *Config) RegisterRoutes(app *fiber.App, svc *Services) {
 	// {prefix}/ without auth so the browser can load the app before the
 	// BRC-103/104 handshake.
 	if svc.Admin != nil && svc.Admin.Routes != nil && svc.AuthMiddleware != nil {
-		reg.Add(registrar.Registration{Capability: "admin", Mounts: []registrar.Mount{{
+		reg.Add(registrar.Registration{Capability: "admin", Spec: admindocs.Spec, Mounts: []registrar.Mount{{
 			Prefix:      prefixOr(c.Admin.Routes.Prefix, "/admin"),
 			Middlewares: []fiber.Handler{httputil.PrivateNoStoreMiddleware()},
 			Register: func(g fiber.Router) {
@@ -1652,6 +1672,7 @@ func (c *Config) RegisterRoutes(app *fiber.App, svc *Services) {
 		svc.Paymail.Routes.SetPathPrefix(c.Server.BasePath + prefix)
 		reg.Add(registrar.Registration{
 			Capability: "paymail",
+			Spec:       paymaildocs.Spec,
 			Mounts: []registrar.Mount{
 				{Prefix: prefix, Register: svc.Paymail.Routes.Register},
 			},
@@ -1666,8 +1687,11 @@ func (c *Config) RegisterRoutes(app *fiber.App, svc *Services) {
 		Register: func(r fiber.Router) { r.Get("/health", handleHealth(svc.Chaintracks)) },
 	}}})
 
-	// Setup API documentation routes
-	registerDocsRoutes(app)
+	reg.SetDocInfo(registrar.DocInfo{
+		Title:       "1Sat Stack API",
+		Description: "Composable BSV blockchain services API",
+		Version:     Version,
+	})
 
 	// Landing page (no auth required)
 	if svc.Landing != nil && svc.Landing.Routes != nil {
@@ -1747,56 +1771,6 @@ func handleHealth(ct chaintracks.Chaintracks) fiber.Handler {
 		}
 		return c.JSON(resp)
 	}
-}
-
-// registerDocsRoutes sets up Swagger/Scalar API documentation
-func registerDocsRoutes(app *fiber.App) {
-	// Get current working directory
-	cwd, _ := os.Getwd()
-
-	// Try to find docs folder in multiple locations
-	possiblePaths := []string{
-		"./docs",
-		"../../docs",
-		filepath.Join(cwd, "docs"),
-	}
-
-	var docsPath string
-	for _, p := range possiblePaths {
-		absPath, _ := filepath.Abs(p)
-		swaggerPath := filepath.Join(absPath, "swagger.json")
-		if _, err := os.Stat(swaggerPath); err == nil {
-			docsPath = absPath
-			slog.Info("found swagger.json", "path", swaggerPath)
-			break
-		}
-	}
-
-	if docsPath == "" {
-		slog.Warn("swagger.json not found", "searchPaths", possiblePaths)
-		docsPath = "./docs" // fallback
-	}
-
-	// Serve swagger files at /api-spec
-	app.Static("/api-spec", docsPath)
-
-	// Serve Scalar API reference UI at /1sat/docs
-	app.Get("/1sat/docs", func(c *fiber.Ctx) error {
-		html := `<!doctype html>
-<html>
-<head>
-    <title>1Sat Stack API</title>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-</head>
-<body>
-    <script id="api-reference" data-url="/api-spec/swagger.json" data-configuration='{"defaultOpenAllTags": false}'></script>
-    <script src="https://cdn.jsdelivr.net/npm/@scalar/api-reference"></script>
-</body>
-</html>`
-		c.Set("Content-Type", "text/html")
-		return c.SendString(html)
-	})
 }
 
 // Close closes all services

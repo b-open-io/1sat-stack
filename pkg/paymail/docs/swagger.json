@@ -1,0 +1,426 @@
+{
+    "swagger": "2.0",
+    "info": {
+        "contact": {}
+    },
+    "paths": {
+        "/.well-known/bsvalias": {
+            "get": {
+                "description": "Returns the .well-known/bsvalias capability document listing supported paymail features",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "paymail"
+                ],
+                "summary": "BSV alias capability discovery",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "properties": {
+                                "bsvalias": {
+                                    "type": "string"
+                                },
+                                "capabilities": {
+                                    "type": "object"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/id/{paymail}": {
+            "get": {
+                "description": "Returns the identity public key for a paymail address",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "paymail"
+                ],
+                "summary": "Get public key for paymail address",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Paymail address (alias@domain)",
+                        "name": "paymail",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "properties": {
+                                "bsvalias": {
+                                    "type": "string"
+                                },
+                                "handle": {
+                                    "type": "string"
+                                },
+                                "pubkey": {
+                                    "type": "string"
+                                }
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "type": "object",
+                            "properties": {
+                                "error": {
+                                    "type": "string"
+                                }
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "type": "object",
+                            "properties": {
+                                "error": {
+                                    "type": "string"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/p2p-payment-destination/{paymail}": {
+            "post": {
+                "description": "Generates a payment destination: BRC-29 derived when the name has a registered identity key, otherwise the P2PKH output currently holding the name",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "paymail"
+                ],
+                "summary": "Get P2P payment destination",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Paymail address (alias@domain)",
+                        "name": "paymail",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Payment request",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/paymail.paymentDestinationRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "properties": {
+                                "outputs": {
+                                    "type": "array",
+                                    "items": {
+                                        "type": "object",
+                                        "properties": {
+                                            "satoshis": {
+                                                "type": "integer"
+                                            },
+                                            "script": {
+                                                "type": "string"
+                                            }
+                                        }
+                                    }
+                                },
+                                "reference": {
+                                    "type": "string"
+                                }
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "type": "object",
+                            "properties": {
+                                "error": {
+                                    "type": "string"
+                                }
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "type": "object",
+                            "properties": {
+                                "error": {
+                                    "type": "string"
+                                }
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "type": "object",
+                            "properties": {
+                                "error": {
+                                    "type": "string"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/receive-beef/{paymail}": {
+            "post": {
+                "description": "Receives a BEEF-encoded transaction payment, verifies it, broadcasts via Arcade, and internalizes into wallet",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "paymail"
+                ],
+                "summary": "Receive BEEF payment",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Paymail address (alias@domain)",
+                        "name": "paymail",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "BEEF payment",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/paymail.receiveBeefRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "properties": {
+                                "note": {
+                                    "type": "string"
+                                },
+                                "txid": {
+                                    "type": "string"
+                                }
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "type": "object",
+                            "properties": {
+                                "error": {
+                                    "type": "string"
+                                }
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "type": "object",
+                            "properties": {
+                                "error": {
+                                    "type": "string"
+                                }
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "type": "object",
+                            "properties": {
+                                "error": {
+                                    "type": "string"
+                                }
+                            }
+                        }
+                    },
+                    "502": {
+                        "description": "Bad Gateway",
+                        "schema": {
+                            "type": "object",
+                            "properties": {
+                                "error": {
+                                    "type": "string"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/receive-transaction/{paymail}": {
+            "post": {
+                "description": "Receives a raw hex transaction payment, verifies it, broadcasts via Arcade, and internalizes into wallet",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "paymail"
+                ],
+                "summary": "Receive raw transaction payment",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Paymail address (alias@domain)",
+                        "name": "paymail",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Transaction payment",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/paymail.receiveTransactionRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "properties": {
+                                "note": {
+                                    "type": "string"
+                                },
+                                "txid": {
+                                    "type": "string"
+                                }
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "type": "object",
+                            "properties": {
+                                "error": {
+                                    "type": "string"
+                                }
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "type": "object",
+                            "properties": {
+                                "error": {
+                                    "type": "string"
+                                }
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "type": "object",
+                            "properties": {
+                                "error": {
+                                    "type": "string"
+                                }
+                            }
+                        }
+                    },
+                    "502": {
+                        "description": "Bad Gateway",
+                        "schema": {
+                            "type": "object",
+                            "properties": {
+                                "error": {
+                                    "type": "string"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    },
+    "definitions": {
+        "paymail.p2pMetadata": {
+            "type": "object",
+            "properties": {
+                "note": {
+                    "type": "string"
+                },
+                "sender": {
+                    "type": "string"
+                }
+            }
+        },
+        "paymail.paymentDestinationRequest": {
+            "type": "object",
+            "properties": {
+                "satoshis": {
+                    "type": "integer"
+                }
+            }
+        },
+        "paymail.receiveBeefRequest": {
+            "type": "object",
+            "properties": {
+                "beef": {
+                    "type": "string"
+                },
+                "metadata": {
+                    "$ref": "#/definitions/paymail.p2pMetadata"
+                },
+                "reference": {
+                    "type": "string"
+                }
+            }
+        },
+        "paymail.receiveTransactionRequest": {
+            "type": "object",
+            "properties": {
+                "hex": {
+                    "type": "string"
+                },
+                "metadata": {
+                    "$ref": "#/definitions/paymail.p2pMetadata"
+                },
+                "reference": {
+                    "type": "string"
+                }
+            }
+        }
+    }
+}

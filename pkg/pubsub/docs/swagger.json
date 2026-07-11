@@ -1,0 +1,37 @@
+{
+    "swagger": "2.0",
+    "info": {
+        "contact": {}
+    },
+    "paths": {
+        "/{topics}": {
+            "get": {
+                "description": "Establishes an SSE connection for real-time event streaming",
+                "produces": [
+                    "text/event-stream"
+                ],
+                "tags": [
+                    "sse"
+                ],
+                "summary": "Subscribe to Server-Sent Events",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Comma-separated list of topics to subscribe to",
+                        "name": "topics",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "SSE stream",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        }
+    }
+}

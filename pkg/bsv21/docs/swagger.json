@@ -1,0 +1,1023 @@
+{
+    "swagger": "2.0",
+    "info": {
+        "description": "Transaction details with inputs, outputs, and optional BEEF",
+        "contact": {}
+    },
+    "paths": {
+        "/overlay/listLookupServiceProviders": {
+            "get": {
+                "description": "Returns BSV21 overlay lookup service providers",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "bsv21-overlay"
+                ],
+                "summary": "List BSV21 lookup services",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    }
+                }
+            }
+        },
+        "/overlay/listTopicManagers": {
+            "get": {
+                "description": "Returns BSV21 overlay topic managers",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "bsv21-overlay"
+                ],
+                "summary": "List BSV21 topic managers",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    }
+                }
+            }
+        },
+        "/overlay/lookup": {
+            "post": {
+                "description": "Query the BSV21 overlay lookup service",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "bsv21-overlay"
+                ],
+                "summary": "BSV21 overlay lookup",
+                "parameters": [
+                    {
+                        "description": "Lookup query",
+                        "name": "query",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "type": "object"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/overlay/requestForeignGASPNode": {
+            "post": {
+                "description": "Request a GASP node from the BSV21 overlay",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "bsv21-overlay"
+                ],
+                "summary": "BSV21 overlay foreign GASP node",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Topic identifier",
+                        "name": "X-BSV-Topic",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "description": "Request with graphID, txID, and outputIndex",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "type": "object"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/overlay/requestSyncResponse": {
+            "post": {
+                "description": "Request GASP synchronization data from BSV21 overlay",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "bsv21-overlay"
+                ],
+                "summary": "BSV21 overlay sync response",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Topic identifier",
+                        "name": "X-BSV-Topic",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "description": "Sync request",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "type": "object"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/overlay/submit": {
+            "post": {
+                "description": "Submit a transaction to the BSV21 overlay engine for processing",
+                "consumes": [
+                    "application/octet-stream"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "bsv21-overlay"
+                ],
+                "summary": "Submit transaction to BSV21 overlay",
+                "parameters": [
+                    {
+                        "type": "array",
+                        "items": {
+                            "type": "string"
+                        },
+                        "collectionFormat": "csv",
+                        "description": "Topic names to submit to",
+                        "name": "x-topics",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "description": "Serialized transaction data",
+                        "name": "transaction",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "type": "integer"
+                            }
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "STEAK response",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/tokens": {
+            "get": {
+                "description": "Returns active tokens by default. Pass ?all=true to include all known tokens.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "bsv21"
+                ],
+                "summary": "List tokens",
+                "parameters": [
+                    {
+                        "type": "boolean",
+                        "description": "Include inactive tokens",
+                        "name": "all",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/bsv21.TokenStatus"
+                            }
+                        }
+                    }
+                }
+            },
+            "post": {
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "bsv21"
+                ],
+                "summary": "Lookup tokens (bulk)",
+                "parameters": [
+                    {
+                        "description": "Array of token IDs (max 100)",
+                        "name": "tokenIds",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/bsv21.TokenDetailResponse"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/{tokenId}": {
+            "get": {
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "bsv21"
+                ],
+                "summary": "Get token details",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Token ID (outpoint format: txid_vout)",
+                        "name": "tokenId",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/bsv21.TokenDetailResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/{tokenId}/outputs": {
+            "post": {
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "bsv21"
+                ],
+                "summary": "Validate outpoints (bulk)",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Token ID",
+                        "name": "tokenId",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Array of outpoints to validate (max 1000)",
+                        "name": "outpoints",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/txo.IndexedOutputResponse"
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/bsv21.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/bsv21.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/{tokenId}/outputs/{outpoint}": {
+            "get": {
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "bsv21"
+                ],
+                "summary": "Validate outpoint",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Token ID",
+                        "name": "tokenId",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Outpoint (format: txid_vout or txid.vout)",
+                        "name": "outpoint",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/txo.IndexedOutputResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/bsv21.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/bsv21.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/bsv21.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/{tokenId}/tx/{txid}": {
+            "get": {
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "bsv21"
+                ],
+                "summary": "Get transaction",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Token ID",
+                        "name": "tokenId",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Transaction ID",
+                        "name": "txid",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "boolean",
+                        "description": "Include BEEF data",
+                        "name": "beef",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/bsv21.TransactionData"
+                        }
+                    }
+                }
+            }
+        },
+        "/{tokenId}/{lockType}/balance": {
+            "post": {
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "bsv21"
+                ],
+                "summary": "Get balance (multi-address)",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Token ID",
+                        "name": "tokenId",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Lock type",
+                        "name": "lockType",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Array of addresses (max 100)",
+                        "name": "addresses",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/bsv21.BalanceResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/{tokenId}/{lockType}/history": {
+            "post": {
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "bsv21"
+                ],
+                "summary": "Get history (multi-address)",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Token ID",
+                        "name": "tokenId",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Lock type",
+                        "name": "lockType",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Array of addresses (max 100)",
+                        "name": "addresses",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/txo.IndexedOutput"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/{tokenId}/{lockType}/unspent": {
+            "post": {
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "bsv21"
+                ],
+                "summary": "Get unspent (multi-address)",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Token ID",
+                        "name": "tokenId",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Lock type",
+                        "name": "lockType",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Array of addresses (max 100)",
+                        "name": "addresses",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/txo.IndexedOutput"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/{tokenId}/{lockType}/{address}/balance": {
+            "get": {
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "bsv21"
+                ],
+                "summary": "Get address balance",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Token ID",
+                        "name": "tokenId",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Lock type (p2pkh, cos, list, etc.)",
+                        "name": "lockType",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Address",
+                        "name": "address",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/bsv21.BalanceResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/{tokenId}/{lockType}/{address}/history": {
+            "get": {
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "bsv21"
+                ],
+                "summary": "Get address history",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Token ID",
+                        "name": "tokenId",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Lock type",
+                        "name": "lockType",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Address",
+                        "name": "address",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/txo.IndexedOutput"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/{tokenId}/{lockType}/{address}/unspent": {
+            "get": {
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "bsv21"
+                ],
+                "summary": "Get address unspent",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Token ID",
+                        "name": "tokenId",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Lock type",
+                        "name": "lockType",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Address",
+                        "name": "address",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/txo.IndexedOutput"
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    },
+    "definitions": {
+        "bsv21.BalanceResponse": {
+            "type": "object",
+            "properties": {
+                "balance": {
+                    "type": "integer"
+                },
+                "utxoCount": {
+                    "type": "integer"
+                }
+            }
+        },
+        "bsv21.ErrorResponse": {
+            "type": "object",
+            "properties": {
+                "message": {
+                    "type": "string"
+                }
+            }
+        },
+        "bsv21.OutputData": {
+            "description": "Output or input data for a transaction",
+            "type": "object",
+            "properties": {
+                "data": {
+                    "type": "object",
+                    "additionalProperties": {}
+                },
+                "spend": {
+                    "description": "Spending txid hex (for outputs only, null if unspent)",
+                    "type": "string"
+                },
+                "txid": {
+                    "description": "Source txid (for inputs only)",
+                    "type": "string"
+                },
+                "vout": {
+                    "type": "integer"
+                }
+            }
+        },
+        "bsv21.TokenDetailResponse": {
+            "description": "Combined token metadata and funding status",
+            "type": "object",
+            "properties": {
+                "status": {
+                    "$ref": "#/definitions/bsv21.TokenStatus"
+                },
+                "token": {
+                    "$ref": "#/definitions/parse.BSV21"
+                },
+                "tokenId": {
+                    "type": "string"
+                }
+            }
+        },
+        "bsv21.TokenStatus": {
+            "type": "object",
+            "properties": {
+                "credits": {
+                    "description": "Funding metrics (from DB on creation/recalc)",
+                    "type": "integer"
+                },
+                "debits": {
+                    "type": "integer"
+                },
+                "decimals": {
+                    "type": "integer"
+                },
+                "fee_address": {
+                    "type": "string"
+                },
+                "fee_per_output": {
+                    "type": "integer"
+                },
+                "icon": {
+                    "type": "string"
+                },
+                "is_blacklisted": {
+                    "type": "boolean"
+                },
+                "is_whitelisted": {
+                    "description": "List status",
+                    "type": "boolean"
+                },
+                "output_count": {
+                    "type": "integer"
+                },
+                "symbol": {
+                    "description": "Token metadata",
+                    "type": "string"
+                },
+                "token_id": {
+                    "description": "Identity",
+                    "type": "string"
+                }
+            }
+        },
+        "bsv21.TransactionData": {
+            "description": "Transaction details with inputs, outputs, and optional BEEF",
+            "type": "object",
+            "properties": {
+                "beef": {
+                    "type": "array",
+                    "items": {
+                        "type": "integer"
+                    }
+                },
+                "inputs": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/bsv21.OutputData"
+                    }
+                },
+                "outputs": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/bsv21.OutputData"
+                    }
+                },
+                "txid": {
+                    "type": "string"
+                }
+            }
+        },
+        "parse.BSV21": {
+            "type": "object",
+            "properties": {
+                "amt": {
+                    "type": "string",
+                    "example": "0"
+                },
+                "dec": {
+                    "type": "string",
+                    "example": "0"
+                },
+                "icon": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "op": {
+                    "type": "string"
+                },
+                "sym": {
+                    "type": "string"
+                }
+            }
+        },
+        "txo.IndexedOutput": {
+            "type": "object"
+        },
+        "txo.IndexedOutputResponse": {
+            "description": "Transaction output with indexing metadata",
+            "type": "object",
+            "properties": {
+                "blockHeight": {
+                    "description": "Present if IncludeBlock",
+                    "type": "integer"
+                },
+                "blockIdx": {
+                    "description": "Present if IncludeBlock",
+                    "type": "integer"
+                },
+                "data": {
+                    "description": "Present if IncludeTags has entries",
+                    "type": "object",
+                    "additionalProperties": {}
+                },
+                "events": {
+                    "description": "Present if IncludeEvents",
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "outpoint": {
+                    "description": "Always present: \"txid.vout\" format",
+                    "type": "string"
+                },
+                "satoshis": {
+                    "description": "Present if IncludeSats",
+                    "type": "integer"
+                },
+                "score": {
+                    "description": "Always present",
+                    "type": "number"
+                },
+                "spend": {
+                    "description": "Present if IncludeSpend (nil = unspent, string = spend txid)",
+                    "type": "string"
+                }
+            }
+        }
+    }
+}
