@@ -940,43 +940,8 @@ func (c *Config) Initialize(ctx context.Context, logger *slog.Logger) (*Services
 		// existing StatusHandler (and any other arc-pubsub consumer) keeps
 		// working without changes. For terminal statuses, we fetch the full
 		// status to populate MerklePath / ExtraInfo (SSE payload is slim).
-		if svc.PubSub != nil && svc.PubSub.PubSub != nil {
-			arcadeLogger.Info("registering SSE → arc pubsub bridge")
-			ps := svc.PubSub.PubSub
-			ac := svc.ArcadeClient
-			svc.ArcadeBroker.AddHandler(func(handlerCtx context.Context, evt *arcadeclient.SSEEvent) {
-				arcEvent := indexer.ArcEvent{
-					TxID:   evt.Txid,
-					Status: evt.TxStatus,
-				}
-				// Fetch full status for terminal events to capture MerklePath / ExtraInfo.
-				if arcadeclient.IsTerminal(evt.TxStatus) {
-					fetchCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-					if status, err := ac.GetStatus(fetchCtx, evt.Txid); err == nil && status != nil {
-						if path, decodeErr := hex.DecodeString(status.MerklePath); decodeErr == nil {
-							arcEvent.MerklePath = path
-						} else if status.MerklePath != "" {
-							arcadeLogger.Warn("invalid merkle path hex from arcade",
-								"txid", evt.Txid, "err", decodeErr)
-						}
-						arcEvent.ExtraInfo = status.ExtraInfo
-					} else if err != nil {
-						arcadeLogger.Warn("failed to fetch full status for terminal event",
-							"txid", evt.Txid, "tx_status", evt.TxStatus, "err", err)
-					}
-					cancel()
-				}
-				data, err := json.Marshal(arcEvent)
-				if err != nil {
-					arcadeLogger.Error("failed to marshal arc event", "txid", evt.Txid, "err", err)
-					return
-				}
-				if err := ps.Publish(handlerCtx, "arc", string(data)); err != nil {
-					arcadeLogger.Error("failed to publish arc event", "txid", evt.Txid, "err", err)
-					return
-				}
-				arcadeLogger.Info("arc event bridged", "txid", evt.Txid, "tx_status", evt.TxStatus)
-			})
+		if svc.PubSub != nil {
+			indexer.StartArcBridge(svc.ArcadeBroker, svc.PubSub.PubSub, svc.ArcadeClient, arcadeLogger)
 		}
 
 		logger.Info("external arcade client initialized",
