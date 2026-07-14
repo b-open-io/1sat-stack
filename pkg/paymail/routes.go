@@ -1,6 +1,7 @@
 package paymail
 
 import (
+	"context"
 	"encoding/hex"
 	"errors"
 	"fmt"
@@ -185,6 +186,36 @@ type p2pMetadata struct {
 	Note   string `json:"note,omitempty"`
 }
 
+// rejectBroadcast reports whether a Submit result should abort the payment, and
+// if so writes the response. A wait timeout is tolerated when arcade still
+// confirms the network accepted the transaction: arcade only emits a status
+// event on a state transition, so a txid the sender already broadcast produces
+// no event and the wait burns its full deadline on a healthy transaction.
+func (r *Routes) rejectBroadcast(
+	c *fiber.Ctx,
+	alias string,
+	status *arcadeclient.TransactionStatus,
+	err error,
+) (bool, error) {
+	if err != nil && !errors.Is(err, context.DeadlineExceeded) {
+		r.logger.Error("broadcast failed", "alias", alias, "error", err)
+		return true, c.Status(fiber.StatusBadGateway).JSON(fiber.Map{"error": fmt.Sprintf("broadcast failed: %v", err)})
+	}
+	if status != nil && arcadeclient.IsRejected(status.TxStatus) {
+		r.logger.Warn("arcade rejected transaction", "alias", alias, "tx_status", status.TxStatus, "extraInfo", status.ExtraInfo)
+		return true, c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "transaction rejected by network"})
+	}
+	if err != nil && (status == nil || !arcadeclient.IsAccepted(status.TxStatus)) {
+		txStatus := ""
+		if status != nil {
+			txStatus = status.TxStatus
+		}
+		r.logger.Error("broadcast unconfirmed after wait timeout", "alias", alias, "tx_status", txStatus)
+		return true, c.Status(fiber.StatusBadGateway).JSON(fiber.Map{"error": "broadcast unconfirmed"})
+	}
+	return false, nil
+}
+
 // receiveBeefRequest is the JSON body for the receive-beef endpoint.
 type receiveBeefRequest struct {
 	Beef      string       `json:"beef"`
@@ -251,13 +282,8 @@ func (r *Routes) ReceiveBeef(c *fiber.Ctx) error {
 
 	// Broadcast through arcade (via internal handler) — sender gets immediate feedback
 	status, err := r.service.Handler().Submit(c.Context(), beefBytes)
-	if err != nil {
-		r.logger.Error("broadcast failed", "alias", alias, "error", err)
-		return c.Status(fiber.StatusBadGateway).JSON(fiber.Map{"error": fmt.Sprintf("broadcast failed: %v", err)})
-	}
-	if status != nil && arcadeclient.IsRejected(status.TxStatus) {
-		r.logger.Warn("arcade rejected transaction", "alias", alias, "tx_status", status.TxStatus, "extraInfo", status.ExtraInfo)
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "transaction rejected by network"})
+	if rejected, resp := r.rejectBroadcast(c, alias, status, err); rejected {
+		return resp
 	}
 
 	// Record the txid before internalization so we can trace back if it fails
@@ -354,13 +380,8 @@ func (r *Routes) ReceiveTransaction(c *fiber.Ctx) error {
 
 	// Broadcast BEEF through arcade (via internal handler)
 	status, err := r.service.Handler().Submit(c.Context(), beefBytes)
-	if err != nil {
-		r.logger.Error("broadcast failed", "alias", alias, "error", err)
-		return c.Status(fiber.StatusBadGateway).JSON(fiber.Map{"error": fmt.Sprintf("broadcast failed: %v", err)})
-	}
-	if status != nil && arcadeclient.IsRejected(status.TxStatus) {
-		r.logger.Warn("arcade rejected transaction", "alias", alias, "tx_status", status.TxStatus, "extraInfo", status.ExtraInfo)
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "transaction rejected by network"})
+	if rejected, resp := r.rejectBroadcast(c, alias, status, err); rejected {
+		return resp
 	}
 
 	// Record the txid before internalization
