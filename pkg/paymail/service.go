@@ -22,10 +22,15 @@ import (
 	"github.com/bsv-blockchain/go-sdk/wallet"
 )
 
-// BRC-29 protocol constants
-var brc29Protocol = wallet.Protocol{
-	SecurityLevel: 2,
-	Protocol:      "3241645161d8",
+// Payment destinations derive under the P1SAT protocol (security level 0)
+// rather than BRC-29 (level 2). Level-2 signing permission covers the
+// wallet's entire default basket, so assets received at a level-2-derived
+// destination would force a broad spend prompt to move. Level 0 matches the
+// wallet's receive-address scheme; plain funds are swept into BRC-29 keys
+// by the wallet internally.
+var p1satProtocol = wallet.Protocol{
+	SecurityLevel: 0,
+	Protocol:      "p 1sat",
 }
 
 // Service provides paymail resolution and payment derivation.
@@ -150,7 +155,7 @@ func (s *Service) DerivePaymentDestination(ctx context.Context, alias, domain st
 		Type:         wallet.CounterpartyTypeOther,
 		Counterparty: identityPubKey,
 	}
-	paymentPubKey, err := s.anyoneDeriver.DerivePublicKey(brc29Protocol, keyID, counterparty, false)
+	paymentPubKey, err := s.anyoneDeriver.DerivePublicKey(p1satProtocol, keyID, counterparty, false)
 	if err != nil {
 		return nil, fmt.Errorf("failed to derive payment public key: %w", err)
 	}
