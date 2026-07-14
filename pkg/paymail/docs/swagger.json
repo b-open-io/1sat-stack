@@ -187,6 +187,62 @@
                 }
             }
         },
+        "/public-profile/{paymail}": {
+            "get": {
+                "description": "Returns the display name for a paymail address",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "paymail"
+                ],
+                "summary": "Get public profile for paymail address",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Paymail address (alias@domain)",
+                        "name": "paymail",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "properties": {
+                                "name": {
+                                    "type": "string"
+                                }
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "type": "object",
+                            "properties": {
+                                "error": {
+                                    "type": "string"
+                                }
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "type": "object",
+                            "properties": {
+                                "error": {
+                                    "type": "string"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
         "/receive-beef/{paymail}": {
             "post": {
                 "description": "Receives a BEEF-encoded transaction payment, verifies it, broadcasts via Arcade, and internalizes into wallet",

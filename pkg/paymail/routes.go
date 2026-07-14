@@ -41,6 +41,7 @@ func (r *Routes) SetPathPrefix(prefix string) {
 // Register registers paymail routes with the Fiber router.
 func (r *Routes) Register(router fiber.Router) {
 	router.Get("/id/:paymail", r.PKI)
+	router.Get("/public-profile/:paymail", r.PublicProfile)
 	router.Post("/p2p-payment-destination/:paymail", r.PaymentDestination)
 	router.Post("/receive-beef/:paymail", r.ReceiveBeef)
 	router.Post("/receive-transaction/:paymail", r.ReceiveTransaction)
@@ -78,6 +79,8 @@ func (r *Routes) Capabilities(c *fiber.Ctx) error {
 		"capabilities": fiber.Map{
 			"6745385c3fc0": false,
 			"pki":          base + "/id/{alias}@{domain.tld}",
+			"0c4339ef99c2": base + "/id/{alias}@{domain.tld}",
+			"f12f968c92d6": base + "/public-profile/{alias}@{domain.tld}",
 			"2a40af698840": base + "/p2p-payment-destination/{alias}@{domain.tld}",
 			"5c55a7fdb7bb": base + "/receive-beef/{alias}@{domain.tld}",
 			"5f1323cddf31": base + "/receive-transaction/{alias}@{domain.tld}",
@@ -116,6 +119,30 @@ func (r *Routes) PKI(c *fiber.Ctx) error {
 		"handle":   paymailAddr,
 		"pubkey":   resolved.IdentityKey.ToDERHex(),
 	})
+}
+
+// PublicProfile returns the public profile for a paymail address.
+// @Summary Get public profile for paymail address
+// @Description Returns the display name for a paymail address
+// @Tags paymail
+// @Produce json
+// @Param paymail path string true "Paymail address (alias@domain)"
+// @Success 200 {object} object{name=string}
+// @Failure 400 {object} object{error=string}
+// @Failure 404 {object} object{error=string}
+// @Router /public-profile/{paymail} [get]
+func (r *Routes) PublicProfile(c *fiber.Ctx) error {
+	alias, _, err := parsePaymail(c.Params("paymail"))
+	if err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": err.Error()})
+	}
+
+	if _, err := r.service.ResolveName(c.Context(), alias); err != nil {
+		r.logger.Warn("public profile lookup failed", "alias", alias, "error", err)
+		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "paymail not found"})
+	}
+
+	return c.JSON(fiber.Map{"name": alias})
 }
 
 // paymentDestinationRequest is the JSON body for the destinations endpoint.
