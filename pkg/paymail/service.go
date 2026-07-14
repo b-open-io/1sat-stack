@@ -186,48 +186,9 @@ func (s *Service) DerivePaymentDestination(ctx context.Context, alias, domain st
 	return pending, nil
 }
 
-// ErrUndeliverable indicates the name has no registered identity key and its
-// ordinal is not held in a plain P2PKH output, so no payment destination exists.
-var ErrUndeliverable = errors.New("name has no identity key and is not held in a P2PKH output")
-
-// DeriveFallbackDestination returns a payment destination paying directly to the
-// P2PKH output that currently holds the name ordinal. This serves names without
-// a registered identity key; there is no per-payment derivation and no message
-// box delivery on this path.
-func (s *Service) DeriveFallbackDestination(ctx context.Context, alias, domain string, current *transaction.Outpoint, satoshis uint64) (*PendingPayment, error) {
-	if current == nil {
-		return nil, fmt.Errorf("no current outpoint for %q", alias)
-	}
-	tx, err := s.beefStorage.LoadTx(ctx, &current.Txid)
-	if err != nil {
-		return nil, fmt.Errorf("failed to load current tx for %q: %w", alias, err)
-	}
-	if int(current.Index) >= len(tx.Outputs) {
-		return nil, fmt.Errorf("outpoint index %d out of range for %q", current.Index, alias)
-	}
-
-	lockingScript := tx.Outputs[current.Index].LockingScript
-	if !lockingScript.IsP2PKH() {
-		return nil, fmt.Errorf("%q: %w", alias, ErrUndeliverable)
-	}
-
-	now := time.Now()
-	pending := &PendingPayment{
-		Reference:    generateReference(),
-		Alias:        alias,
-		Domain:       domain,
-		Satoshis:     satoshis,
-		OutputScript: hex.EncodeToString(*lockingScript),
-		CreatedAt:    now,
-		ExpiresAt:    now.Add(defaultTTL),
-	}
-
-	if err := s.store.Create(ctx, pending); err != nil {
-		return nil, fmt.Errorf("failed to store pending payment: %w", err)
-	}
-
-	return pending, nil
-}
+// ErrUndeliverable indicates the name has no registered identity key, so no
+// payment destination can be derived and no messagebox delivery is possible.
+var ErrUndeliverable = errors.New("name has no identity key registered")
 
 // Store returns the pending payment store.
 func (s *Service) Store() PendingStore {

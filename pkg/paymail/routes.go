@@ -154,17 +154,16 @@ func (r *Routes) PaymentDestination(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "paymail not found"})
 	}
 
-	var pending *PendingPayment
-	if resolved.IdentityKey != nil {
-		pending, err = r.service.DerivePaymentDestination(c.Context(), alias, domain, resolved.IdentityKey, req.Satoshis)
-	} else {
-		pending, err = r.service.DeriveFallbackDestination(c.Context(), alias, domain, resolved.Outpoint, req.Satoshis)
+	// A name without a registered identity key cannot receive payments:
+	// there is no key to derive a destination from, and no messagebox
+	// identity to deliver to.
+	if resolved.IdentityKey == nil {
+		r.logger.Warn("payment destination undeliverable", "alias", alias, "error", ErrUndeliverable)
+		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "paymail cannot receive payments: no identity key registered"})
 	}
+
+	pending, err := r.service.DerivePaymentDestination(c.Context(), alias, domain, resolved.IdentityKey, req.Satoshis)
 	if err != nil {
-		if errors.Is(err, ErrUndeliverable) {
-			r.logger.Warn("payment destination undeliverable", "alias", alias, "error", err)
-			return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "paymail not found"})
-		}
 		r.logger.Error("failed to derive payment destination", "alias", alias, "error", err)
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "derivation failed"})
 	}
