@@ -249,8 +249,18 @@ func (b *EventBroker) SubmitAndWait(
 	eventCh, cleanup := b.Wait(txid)
 	defer cleanup()
 
-	if _, err := b.client.Submit(ctx, rawTx, submit); err != nil {
+	_, submitStatus, err := b.client.Submit(ctx, rawTx, submit)
+	if err != nil {
 		return nil, fmt.Errorf("submit: %w", err)
+	}
+
+	// An idempotent re-submit echoes the existing status and produces no
+	// status event, so waiting would burn the full timeout. If the echoed
+	// status already satisfies the stop condition, resolve immediately.
+	if shouldStop(submitStatus, wait.StopOn) {
+		b.logger.Info("arcade submit already satisfied stop condition",
+			"txid", txid, "tx_status", submitStatus)
+		return b.finalStatus(txid, &SSEEvent{Txid: txid, TxStatus: submitStatus}), nil
 	}
 
 	var lastEvent *SSEEvent

@@ -72,20 +72,20 @@ func (c *Client) CallbackToken() string {
 	return c.callbackToken
 }
 
-// Submit posts a serialized BSV transaction to arcade and returns the computed txid.
-//
-// Arcade returns 202 Accepted with body {"status":"submitted"} and does NOT echo
-// the txid; we compute it client-side from rawTx. Track the lifecycle via
-// GetStatus or by listening on Subscribe.
-func (c *Client) Submit(ctx context.Context, rawTx []byte, opts SubmitOptions) (string, error) {
+// Submit posts a serialized BSV transaction to arcade and returns the computed
+// txid plus the txStatus arcade reported in the submit response. A fresh submit
+// reports RECEIVED; an idempotent re-submit of a known txid echoes the existing
+// status (arcade does not re-broadcast and will emit no status event for it, so
+// the echoed status is the only signal the caller gets).
+func (c *Client) Submit(ctx context.Context, rawTx []byte, opts SubmitOptions) (string, string, error) {
 	txid, err := ComputeTxid(rawTx)
 	if err != nil {
-		return "", err
+		return "", "", err
 	}
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.baseURL+"/tx", bytes.NewReader(rawTx))
 	if err != nil {
-		return "", fmt.Errorf("build submit request: %w", err)
+		return "", "", fmt.Errorf("build submit request: %w", err)
 	}
 	req.Header.Set("Content-Type", "application/octet-stream")
 	c.applySubmitHeaders(req, opts)
@@ -93,19 +93,27 @@ func (c *Client) Submit(ctx context.Context, rawTx []byte, opts SubmitOptions) (
 	resp, err := c.http.Do(req)
 	if err != nil {
 		c.logger.Error("arcade submit transport error", "txid", txid, "err", err)
-		return "", fmt.Errorf("submit /tx: %w", err)
+		return "", "", fmt.Errorf("submit /tx: %w", err)
 	}
 	defer resp.Body.Close()
+	body, _ := io.ReadAll(resp.Body)
 
 	if resp.StatusCode != http.StatusAccepted && resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
 		c.logger.Warn("arcade submit non-success status",
 			"txid", txid, "http_status", resp.StatusCode, "body", string(body))
-		return "", fmt.Errorf("arcade submit returned %d: %s", resp.StatusCode, string(body))
+		return "", "", fmt.Errorf("arcade submit returned %d: %s", resp.StatusCode, string(body))
 	}
 
-	c.logger.Info("arcade submit accepted", "txid", txid, "http_status", resp.StatusCode, "size", len(rawTx))
-	return txid, nil
+	var submitResp struct {
+		TxStatus string `json:"txStatus"`
+	}
+	if err := json.Unmarshal(body, &submitResp); err != nil {
+		c.logger.Warn("arcade submit response unparseable", "txid", txid, "body", string(body))
+	}
+
+	c.logger.Info("arcade submit accepted",
+		"txid", txid, "http_status", resp.StatusCode, "tx_status", submitResp.TxStatus, "size", len(rawTx))
+	return txid, submitResp.TxStatus, nil
 }
 
 // GetStatus fetches the current status of a transaction by txid.

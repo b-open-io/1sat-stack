@@ -48,7 +48,7 @@ func (b *Broadcaster) BroadcastCtx(ctx context.Context, tx *transaction.Transact
 			Description: err.Error(),
 		}
 	}
-	txid, err := b.client.Submit(ctx, rawTx, arcadeclient.SubmitOptions{})
+	txid, _, err := b.client.Submit(ctx, rawTx, arcadeclient.SubmitOptions{})
 	if err != nil {
 		b.logger.Warn("overlay broadcast failed", "err", err, "raw_size", len(rawTx))
 		return nil, &transaction.BroadcastFailure{
