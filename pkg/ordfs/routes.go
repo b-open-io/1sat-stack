@@ -132,22 +132,6 @@ func (r *Routes) HandleContent(c *fiber.Ctx) error {
 		})
 	}
 
-	// Content refs: follow source unless ?raw
-	if c.Query("raw") == "" {
-		resp, err = r.ordfs.ResolveContentRef(loadCtx, resp)
-		if err != nil {
-			r.logger.Debug("failed to resolve content ref", "path", path, "error", err)
-			if errors.Is(err, ErrNotFound) {
-				return c.Status(fiber.StatusNotFound).JSON(fiber.Map{
-					"error": "content ref source not found",
-				})
-			}
-			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
-				"error": err.Error(),
-			})
-		}
-	}
-
 	// Check if this is a directory (ord-fs/json)
 	if resp.ContentType == "ord-fs/json" {
 		return r.handleDirectory(c, resp, pp, req.Seq)
@@ -158,6 +142,24 @@ func (r *Routes) HandleContent(c *fiber.Ctx) error {
 }
 
 const maxDirectoryDepth = 8
+
+// Directory default entry keys (empty path). "." takes precedence over index.html.
+const (
+	dirDefaultDot   = "."
+	dirDefaultIndex = "index.html"
+)
+
+// pickDefaultDirectoryKey returns the preferred default map key for an empty path.
+// "." wins over index.html so non-HTML payloads are not forced under an HTML name.
+func pickDefaultDirectoryKey(directory map[string]string) (key string, ok bool) {
+	if _, ok := directory[dirDefaultDot]; ok {
+		return dirDefaultDot, true
+	}
+	if _, ok := directory[dirDefaultIndex]; ok {
+		return dirDefaultIndex, true
+	}
+	return "", false
+}
 
 // handleDirectory handles ord-fs/json directory content with recursive traversal.
 // Subdirectory entries pointing to other ord-fs/json inscriptions are followed
@@ -171,13 +173,22 @@ func (r *Routes) handleDirectory(c *fiber.Ctx, resp *Response, pp *pointerPath, 
 		})
 	}
 
-	// No file path — redirect to index.html (unless raw query param)
+	// No file path — default entry (unless raw query param)
 	if pp.FilePath == "" {
 		if c.Query("raw") != "" {
 			return r.sendContentResponse(c, resp, seq)
 		}
-		redirectURL := fmt.Sprintf("%s/index.html", c.Path())
-		return c.Redirect(redirectURL)
+		key, ok := pickDefaultDirectoryKey(directory)
+		if !ok {
+			return c.Status(fiber.StatusNotFound).JSON(fiber.Map{
+				"error": "directory has no default entry (. or index.html)",
+			})
+		}
+		// Sites: keep redirect to index.html. Type-neutral default: serve "." in place.
+		if key == dirDefaultIndex {
+			return c.Redirect(fmt.Sprintf("%s/%s", c.Path(), dirDefaultIndex))
+		}
+		return r.resolveDirectoryPath(c, resp, directory, []string{key}, 0)
 	}
 
 	// Split path into segments for recursive traversal
@@ -207,9 +218,9 @@ func (r *Routes) resolveDirectoryPath(
 	// Look up this segment in the directory
 	filePointer, exists := directory[segment]
 
-	// SPA fallback: if not found, try index.html (only for the final segment)
+	// SPA fallback: if not found, try index.html only (not ".") for the final segment
 	if !exists && len(remaining) == 0 {
-		filePointer, exists = directory["index.html"]
+		filePointer, exists = directory[dirDefaultIndex]
 	}
 	if !exists {
 		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{
@@ -221,19 +232,6 @@ func (r *Routes) resolveDirectoryPath(
 	fileResp, err := r.loadDirectoryEntry(c, dirResp, filePointer)
 	if err != nil {
 		return err // already an HTTP response
-	}
-
-	// Follow content refs on directory entries (single hop)
-	fileResp, err = r.ordfs.ResolveContentRef(c.Context(), fileResp)
-	if err != nil {
-		if errors.Is(err, ErrNotFound) {
-			return c.Status(fiber.StatusNotFound).JSON(fiber.Map{
-				"error": "content ref source not found",
-			})
-		}
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
-			"error": err.Error(),
-		})
 	}
 
 	// If there are more path segments and this entry is a subdirectory, recurse

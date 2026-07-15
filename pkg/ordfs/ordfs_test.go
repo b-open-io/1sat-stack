@@ -298,54 +298,26 @@ func TestParseRelativeVout(t *testing.T) {
 	}
 }
 
-func TestIsContentRef(t *testing.T) {
+func TestPickDefaultDirectoryKey(t *testing.T) {
 	tests := []struct {
-		contentType string
-		want        bool
+		name string
+		dir  map[string]string
+		key  string
+		ok   bool
 	}{
-		{"image/png; ref=ordfs", true},
-		{"image/png;ref=ordfs", true},
-		{"image/png; charset=utf-8; ref=ordfs", true},
-		{"video/mp4; stream=ordfs; ref=ordfs", true},
-		{"image/png; ref = ordfs", true},
-		{"image/png", false},
-		{"image/png; stream=ordfs", false},
-		{"ord-fs/json", false},
-		{"ordfs/stream", false},
-		{"", false},
+		{"empty", map[string]string{}, "", false},
+		{"only index", map[string]string{"index.html": "_1"}, "index.html", true},
+		{"only dot", map[string]string{".": "_0"}, ".", true},
+		{"dot wins over index", map[string]string{".": "_0", "index.html": "_1"}, ".", true},
+		{"other keys only", map[string]string{"style.css": "_2"}, "", false},
 	}
 	for _, tt := range tests {
-		t.Run(tt.contentType, func(t *testing.T) {
-			if got := IsContentRef(tt.contentType); got != tt.want {
-				t.Errorf("IsContentRef(%q) = %v, want %v", tt.contentType, got, tt.want)
+		t.Run(tt.name, func(t *testing.T) {
+			key, ok := pickDefaultDirectoryKey(tt.dir)
+			if ok != tt.ok || key != tt.key {
+				t.Errorf("pickDefaultDirectoryKey() = (%q, %v), want (%q, %v)", key, ok, tt.key, tt.ok)
 			}
 		})
-	}
-}
-
-func TestResolveContentRefNoOp(t *testing.T) {
-	o := &Ordfs{}
-	resp := &Response{
-		ContentType: "image/png",
-		Content:     []byte("png-bytes"),
-	}
-	got, err := o.ResolveContentRef(t.Context(), resp)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if got != resp {
-		t.Error("expected same response for non-ref")
-	}
-}
-
-func TestResolveContentRefEmptyPointer(t *testing.T) {
-	o := &Ordfs{}
-	_, err := o.ResolveContentRef(t.Context(), &Response{
-		ContentType: "image/png; ref=ordfs",
-		Content:     []byte("   "),
-	})
-	if err == nil {
-		t.Fatal("expected error for empty pointer")
 	}
 }
 
