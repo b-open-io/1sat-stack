@@ -298,6 +298,57 @@ func TestParseRelativeVout(t *testing.T) {
 	}
 }
 
+func TestIsContentRef(t *testing.T) {
+	tests := []struct {
+		contentType string
+		want        bool
+	}{
+		{"image/png; ref=ordfs", true},
+		{"image/png;ref=ordfs", true},
+		{"image/png; charset=utf-8; ref=ordfs", true},
+		{"video/mp4; stream=ordfs; ref=ordfs", true},
+		{"image/png; ref = ordfs", true},
+		{"image/png", false},
+		{"image/png; stream=ordfs", false},
+		{"ord-fs/json", false},
+		{"ordfs/stream", false},
+		{"", false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.contentType, func(t *testing.T) {
+			if got := IsContentRef(tt.contentType); got != tt.want {
+				t.Errorf("IsContentRef(%q) = %v, want %v", tt.contentType, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestResolveContentRefNoOp(t *testing.T) {
+	o := &Ordfs{}
+	resp := &Response{
+		ContentType: "image/png",
+		Content:     []byte("png-bytes"),
+	}
+	got, err := o.ResolveContentRef(t.Context(), resp)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != resp {
+		t.Error("expected same response for non-ref")
+	}
+}
+
+func TestResolveContentRefEmptyPointer(t *testing.T) {
+	o := &Ordfs{}
+	_, err := o.ResolveContentRef(t.Context(), &Response{
+		ContentType: "image/png; ref=ordfs",
+		Content:     []byte("   "),
+	})
+	if err == nil {
+		t.Fatal("expected error for empty pointer")
+	}
+}
+
 // Helper function
 func intPtr(i int) *int {
 	return &i

@@ -132,6 +132,22 @@ func (r *Routes) HandleContent(c *fiber.Ctx) error {
 		})
 	}
 
+	// Content refs: follow source unless ?raw
+	if c.Query("raw") == "" {
+		resp, err = r.ordfs.ResolveContentRef(loadCtx, resp)
+		if err != nil {
+			r.logger.Debug("failed to resolve content ref", "path", path, "error", err)
+			if errors.Is(err, ErrNotFound) {
+				return c.Status(fiber.StatusNotFound).JSON(fiber.Map{
+					"error": "content ref source not found",
+				})
+			}
+			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+				"error": err.Error(),
+			})
+		}
+	}
+
 	// Check if this is a directory (ord-fs/json)
 	if resp.ContentType == "ord-fs/json" {
 		return r.handleDirectory(c, resp, pp, req.Seq)
@@ -207,6 +223,19 @@ func (r *Routes) resolveDirectoryPath(
 		return err // already an HTTP response
 	}
 
+	// Follow content refs on directory entries (single hop)
+	fileResp, err = r.ordfs.ResolveContentRef(c.Context(), fileResp)
+	if err != nil {
+		if errors.Is(err, ErrNotFound) {
+			return c.Status(fiber.StatusNotFound).JSON(fiber.Map{
+				"error": "content ref source not found",
+			})
+		}
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"error": err.Error(),
+		})
+	}
+
 	// If there are more path segments and this entry is a subdirectory, recurse
 	if len(remaining) > 0 && fileResp.ContentType == "ord-fs/json" {
 		var subdir map[string]string
@@ -229,65 +258,25 @@ func (r *Routes) loadDirectoryEntry(
 	dirResp *Response,
 	pointer string,
 ) (*Response, error) {
-	pointer = strings.TrimPrefix(pointer, "ord://")
-
-	// Relative vout reference (_N) — sibling output in same transaction
-	if vout, ok := parseRelativeVout(pointer); ok {
-		if dirResp.Outpoint == nil {
-			return nil, c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
-				"error": "cannot resolve relative vout — directory outpoint unknown",
-			})
-		}
-		fileResp, err := r.ordfs.Load(c.Context(), &Request{
-			Outpoint: &transaction.Outpoint{
-				Txid:  dirResp.Outpoint.Txid,
-				Index: vout,
-			},
-			Content: true,
-			Map:     c.QueryBool("map", false),
-		})
-		if err != nil {
-			if errors.Is(err, ErrNotFound) {
-				return nil, c.Status(fiber.StatusNotFound).JSON(fiber.Map{
-					"error": fmt.Sprintf("file at vout %d not found", vout),
-				})
-			}
-			return nil, c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
-				"error": err.Error(),
-			})
-		}
-		return fileResp, nil
-	}
-
-	// Absolute outpoint or txid
-	outpoint, isTxid, err := resolvePointerToOutpoint(pointer)
-	if err != nil {
-		return nil, c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
-			"error": fmt.Sprintf("invalid file pointer: %v", err),
-		})
-	}
-
-	var req *Request
-	if isTxid {
-		req = &Request{Txid: &outpoint.Txid, Content: true, Map: c.QueryBool("map", false)}
-	} else {
-		req = &Request{Outpoint: outpoint, Content: true, Map: c.QueryBool("map", false)}
-	}
-
 	fileCtx, fileCancel := context.WithTimeout(c.Context(), ResolveTimeout)
 	defer fileCancel()
-	fileResp, err := r.ordfs.Load(fileCtx, req)
+
+	fileResp, err := r.ordfs.LoadByPointer(fileCtx, dirResp.Outpoint, pointer, true)
 	if err != nil {
 		if errors.Is(err, ErrNotFound) {
 			return nil, c.Status(fiber.StatusNotFound).JSON(fiber.Map{
 				"error": "file not found",
 			})
 		}
+		if strings.Contains(err.Error(), "invalid") || strings.Contains(err.Error(), "cannot resolve relative") {
+			return nil, c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+				"error": err.Error(),
+			})
+		}
 		return nil, c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
 			"error": err.Error(),
 		})
 	}
-
 	return fileResp, nil
 }
 

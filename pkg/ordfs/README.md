@@ -69,6 +69,17 @@ Large files can be split across multiple inscriptions in a transfer chain. The f
 
 OrdFS detects this pattern and concatenates chunks by following the spend chain. HTTP Range requests are supported for partial content retrieval.
 
+### Content references (`ref=ordfs`)
+
+An edition can share another inscription’s payload without re-inscribing the bytes:
+
+- Content type: public MIME plus parameter `ref=ordfs` (e.g. `image/png; ref=ordfs`)
+- Body: a single OrdFS pointer (`txid_vout`, `_N` sibling, bare txid, optional `ord://`)
+
+On `/content/{edition}`, OrdFS follows **one hop** for **body bytes** and **Content-Type** only. Ordinal headers (`X-Outpoint`, `X-Origin`, `X-Ord-Seq`, MAP, parent) stay on the requested resource’s ordinal resolution — they do not track the content-ref target.
+
+Use `?raw` to return the pointer inscription without following. Nested refs on the source are not followed. Metadata does not follow refs (envelope type/length only).
+
 ### DNS Routing
 
 A domain can point to an inscription by adding a TXT record:
@@ -191,7 +202,7 @@ All content responses include:
 
 | Header | Description |
 |--------|-------------|
-| `X-Outpoint` | Resolved outpoint |
+| `X-Outpoint` | Ordinal-resolved outpoint for the request (not a content-ref target) |
 | `X-Origin` | Origin outpoint (when seq is used) |
 | `X-Ord-Seq` | Resolved sequence number |
 | `X-Map` | Merged MAP JSON (when `?map=true`) |
