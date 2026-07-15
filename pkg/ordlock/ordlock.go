@@ -273,7 +273,9 @@ func (o *OrdLock) SearchListings(ctx context.Context, status, contentType, query
 	}
 	defer rows.Close()
 
-	var results []*txo.IndexedOutput
+	// Non-nil so a no-match search marshals to [] rather than null; clients
+	// type this as an array and a nil slice breaks them.
+	results := make([]*txo.IndexedOutput, 0)
 	for rows.Next() {
 		out, err := scanListing(rows)
 		if err != nil {
