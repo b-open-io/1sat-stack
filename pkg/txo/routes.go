@@ -1,8 +1,13 @@
 package txo
 
 import (
+	"context"
+	"encoding/json"
+	"fmt"
 	"strings"
 
+	"github.com/b-open-io/1sat-stack/pkg/ordfs"
+	"github.com/b-open-io/1sat-stack/pkg/parse"
 	"github.com/b-open-io/1sat-stack/pkg/spends"
 	"github.com/b-open-io/1sat-stack/pkg/store"
 	"github.com/bsv-blockchain/go-sdk/chainhash"
@@ -18,8 +23,14 @@ import (
 // by upstream sources even when the local index hasn't ingested them yet.
 // When nil, the handlers fall back to OutputStore's local-only path.
 type Routes struct {
-	outputStore *OutputStore
-	Spends      *spends.Storage
+	outputStore         *OutputStore
+	Spends              *spends.Storage
+	CollectionOwnership CollectionOwnershipResolver
+}
+
+// CollectionOwnershipResolver follows an ordinal root's ownership history.
+type CollectionOwnershipResolver interface {
+	OwnershipChain(ctx context.Context, root *transaction.Outpoint) ([]ordfs.OwnershipEntry, error)
 }
 
 // NewRoutes creates a new Routes instance. Set Spends after construction
@@ -44,9 +55,196 @@ func (r *Routes) Register(router fiber.Router) {
 	// Generic search
 	router.Get("/search", r.Search)
 
+	// Collection membership
+	router.Get("/collections/:collectionId", r.CollectionMembers)
+
 	// Direct outpoint lookups (pattern-matched)
 	router.Get("/:outpoint<regex("+outpointPattern+")>", r.GetTxo)
 	router.Get("/:outpoint<regex("+outpointPattern+")>/spend", r.GetSpend)
+}
+
+// CollectionMemberResponse is an authoritative collection member with the
+// small MAP subset needed by collection UIs.
+type CollectionMemberResponse struct {
+	Outpoint string         `json:"outpoint"`
+	Map      map[string]any `json:"map,omitempty"`
+}
+
+// CollectionMembers returns members signed by the controller of the
+// collection root at each member's inscription block position.
+// @Summary List authoritative collection members
+// @Description Returns signed collectionItem outputs, including spent origins, whose signer controlled the collection root when the item was inscribed.
+// @Tags txos
+// @Produce json
+// @Param collectionId path string true "Collection root outpoint"
+// @Param limit query int false "Maximum candidates to inspect" default(100)
+// @Param rev query bool false "Reverse order"
+// @Success 200 {array} CollectionMemberResponse
+// @Failure 400 {string} string "Invalid collection ID"
+// @Failure 404 {string} string "Collection root not found"
+// @Failure 500 {string} string "Internal server error"
+// @Router /collections/{collectionId} [get]
+func (r *Routes) CollectionMembers(c *fiber.Ctx) error {
+	collectionRoot, err := transaction.OutpointFromString(c.Params("collectionId"))
+	if err != nil {
+		return c.Status(fiber.StatusBadRequest).SendString("Invalid collection ID")
+	}
+	collectionID := collectionRoot.OrdinalString()
+
+	root, err := r.outputStore.LoadOutput(c.Context(), collectionRoot, &OutputSearchCfg{
+		IncludeSats:  true,
+		IncludeBlock: true,
+		IncludeTags:  []string{parse.TagMAP},
+	})
+	if err != nil {
+		return err
+	}
+	if root == nil {
+		return c.Status(fiber.StatusNotFound).SendString("Collection root not found")
+	}
+	rootMap, ok := outputMAPData(root)
+	if !ok || rootMap["subType"] != "collection" || root.Satoshis == nil || *root.Satoshis != 1 {
+		return c.Status(fiber.StatusNotFound).SendString("Collection root not found")
+	}
+	if r.CollectionOwnership == nil {
+		return fmt.Errorf("collection ownership resolver is not configured")
+	}
+
+	ownership, err := r.CollectionOwnership.OwnershipChain(c.Context(), collectionRoot)
+	if err != nil {
+		return err
+	}
+	if len(ownership) == 0 || ownership[0].Address == "" {
+		return c.JSON([]CollectionMemberResponse{})
+	}
+
+	ownershipOutpoints := make([]*transaction.Outpoint, len(ownership))
+	for i := range ownership {
+		ownershipOutpoints[i] = &ownership[i].Outpoint
+	}
+	ownershipOutputs, err := r.outputStore.LoadOutputs(c.Context(), ownershipOutpoints, &OutputSearchCfg{
+		IncludeBlock: true,
+	})
+	if err != nil {
+		return err
+	}
+
+	cfg := &OutputSearchCfg{
+		IncludeEvents: true,
+		IncludeBlock:  true,
+		IncludeTags:   []string{parse.TagMAP},
+	}
+	cfg.Keys = [][]byte{[]byte("ev:map:collectionId:" + collectionID)}
+	cfg.Limit = uint32(c.QueryInt("limit", 100))
+	cfg.Reverse = c.QueryBool("rev", false)
+
+	results, err := r.outputStore.Search(c.Context(), cfg)
+	if err != nil {
+		return err
+	}
+	candidates, err := r.outputStore.LoadOutputsFromResults(c.Context(), results, cfg)
+	if err != nil {
+		return err
+	}
+
+	members := make([]CollectionMemberResponse, 0, len(candidates))
+	for _, candidate := range candidates {
+		if candidate == nil {
+			continue
+		}
+		mapData, ok := outputMAPData(candidate)
+		if !ok || mapData["subType"] != "collectionItem" {
+			continue
+		}
+
+		controller := controllingAddressAt(candidate, ownership, ownershipOutputs)
+		if controller == "" || !hasSigner(candidate.Events, controller) {
+			continue
+		}
+
+		memberMap := make(map[string]any, 2)
+		if subTypeData, ok := mapData["subTypeData"]; ok {
+			var metadata map[string]any
+			if json.Unmarshal([]byte(subTypeData), &metadata) == nil {
+				if mintNumber, ok := metadata["mintNumber"]; ok {
+					memberMap["mintNumber"] = mintNumber
+				}
+				if rarityLabel, ok := metadata["rarityLabel"]; ok {
+					memberMap["rarityLabel"] = rarityLabel
+				}
+			}
+		}
+
+		members = append(members, CollectionMemberResponse{
+			Outpoint: candidate.Outpoint.OrdinalString(),
+			Map:      memberMap,
+		})
+	}
+
+	return c.JSON(members)
+}
+
+func outputMAPData(output *IndexedOutput) (map[string]string, bool) {
+	if output == nil || output.Data == nil {
+		return nil, false
+	}
+	raw, ok := output.Data[parse.TagMAP]
+	if !ok {
+		return nil, false
+	}
+	encoded, err := json.Marshal(raw)
+	if err != nil {
+		return nil, false
+	}
+	var decoded struct {
+		Data map[string]string `json:"data"`
+	}
+	if json.Unmarshal(encoded, &decoded) != nil || decoded.Data == nil {
+		return nil, false
+	}
+	return decoded.Data, true
+}
+
+func controllingAddressAt(candidate *IndexedOutput, ownership []ordfs.OwnershipEntry, outputs []*IndexedOutput) string {
+	var controller string
+	for i, entry := range ownership {
+		if i >= len(outputs) || outputs[i] == nil || ownershipAfterCandidate(outputs[i], candidate) {
+			break
+		}
+		controller = entry.Address
+	}
+	return controller
+}
+
+func ownershipAfterCandidate(ownership, candidate *IndexedOutput) bool {
+	if candidate == nil || candidate.BlockHeight == nil || *candidate.BlockHeight == 0 {
+		return false
+	}
+	if ownership == nil || ownership.BlockHeight == nil || *ownership.BlockHeight == 0 {
+		return true
+	}
+	if *ownership.BlockHeight != *candidate.BlockHeight {
+		return *ownership.BlockHeight > *candidate.BlockHeight
+	}
+
+	var ownershipIdx, candidateIdx uint64
+	if ownership.BlockIdx != nil {
+		ownershipIdx = *ownership.BlockIdx
+	}
+	if candidate.BlockIdx != nil {
+		candidateIdx = *candidate.BlockIdx
+	}
+	return ownershipIdx > candidateIdx
+}
+
+func hasSigner(events []string, address string) bool {
+	want := "signer:" + address
+	for _, event := range events {
+		if event == want {
+			return true
+		}
+	}
+	return false
 }
 
 // GetTxo returns a single TXO by outpoint.

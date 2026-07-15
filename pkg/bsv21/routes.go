@@ -54,6 +54,7 @@ func (r *Routes) Register(router fiber.Router) {
 	// Output validation routes
 	router.Post("/:tokenId/outputs", r.ValidateOutputs)
 	router.Get("/:tokenId/outputs/:outpoint", r.GetTokenOutput)
+	router.Get("/:tokenId/collection", r.GetTokenCollection)
 
 	router.Get("/:tokenId", r.GetToken)
 	router.Get("/:tokenId/tx/:txid", r.GetTransaction)
@@ -63,6 +64,36 @@ func (r *Routes) Register(router fiber.Router) {
 	router.Post("/:tokenId/:lockType/balance", r.GetMultiAddressBalance)
 	router.Post("/:tokenId/:lockType/history", r.GetMultiAddressHistory)
 	router.Post("/:tokenId/:lockType/unspent", r.GetMultiAddressUnspent)
+}
+
+// TokenCollectionResponse maps a BSV-21 deploy outpoint to its collection.
+type TokenCollectionResponse struct {
+	TokenID      string `json:"tokenId"`
+	CollectionID string `json:"collectionId"`
+}
+
+// GetTokenCollection resolves collection membership from the deploy's MAP.
+// @Summary Resolve a token's collection
+// @Tags bsv21
+// @Produce json
+// @Param tokenId path string true "Token ID (deploy outpoint)"
+// @Success 200 {object} TokenCollectionResponse
+// @Failure 400 {object} ErrorResponse
+// @Failure 404 {object} ErrorResponse
+// @Router /{tokenId}/collection [get]
+func (r *Routes) GetTokenCollection(c *fiber.Ctx) error {
+	tokenID := c.Params("tokenId")
+	if _, err := transaction.OutpointFromString(tokenID); err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(ErrorResponse{Message: "invalid token ID format"})
+	}
+	collectionID, err := r.lookup.ResolveCollection(c.Context(), tokenID)
+	if err != nil {
+		return c.Status(fiber.StatusNotFound).JSON(ErrorResponse{Message: err.Error()})
+	}
+	return c.JSON(TokenCollectionResponse{
+		TokenID:      tokenID,
+		CollectionID: collectionID,
+	})
 }
 
 // TokenDetailResponse represents combined BSV21 token details and funding status

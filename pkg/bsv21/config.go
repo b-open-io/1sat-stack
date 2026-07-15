@@ -99,7 +99,7 @@ func (c *Config) Initialize(
 
 	switch c.Mode {
 	case ModeEmbedded:
-		bsv21Lookup := lookuppkg.NewBSV21Lookup(deps.Factory)
+		bsv21Lookup := lookuppkg.NewBSV21Lookup(deps.Factory, txoStorage)
 		topicManager := NewBsv21ValidatedTopicManager("bsv21", c.WhitelistTokens, nil)
 		discoveryManager := NewBsv21DiscoveryTopicManager("tm_bsv21", logger)
 

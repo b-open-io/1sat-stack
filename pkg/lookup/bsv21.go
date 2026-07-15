@@ -3,6 +3,7 @@ package lookup
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"fmt"
 	"strconv"
 	"sync"
@@ -46,14 +47,19 @@ CREATE INDEX IF NOT EXISTS idx_token_deploy ON token_outputs(token_id) WHERE op 
 // Uses the overlay storage factory to resolve per-topic databases.
 // Each topic's database gets its own token_outputs table.
 type BSV21Lookup struct {
-	topicDB   overlaystorage.Factory
-	ready     sync.Map // tracks which topics have had schema created
-	mintCache sync.Map
+	topicDB     overlaystorage.Factory
+	outputStore *txo.OutputStore
+	ready       sync.Map // tracks which topics have had schema created
+	mintCache   sync.Map
 }
 
 // NewBSV21Lookup creates a new BSV21 lookup service backed by per-topic overlay storage.
-func NewBSV21Lookup(topicDB overlaystorage.Factory) *BSV21Lookup {
-	return &BSV21Lookup{topicDB: topicDB}
+func NewBSV21Lookup(topicDB overlaystorage.Factory, outputStores ...*txo.OutputStore) *BSV21Lookup {
+	lookup := &BSV21Lookup{topicDB: topicDB}
+	if len(outputStores) > 0 {
+		lookup.outputStore = outputStores[0]
+	}
+	return lookup
 }
 
 // db resolves the TopicStorage for a topic and ensures the token_outputs schema exists.
@@ -401,6 +407,57 @@ func (l *BSV21Lookup) GetToken(ctx context.Context, outpoint *transaction.Outpoi
 
 	l.mintCache.Store(tokenId, token)
 	return token, nil
+}
+
+// ResolveCollection loads a BSV-21 deploy from the general TXO index and
+// returns the normalized collectionId from its collectionItem MAP metadata.
+func (l *BSV21Lookup) ResolveCollection(ctx context.Context, tokenId string) (string, error) {
+	if l.outputStore == nil {
+		return "", fmt.Errorf("general txo store is not configured")
+	}
+	outpoint, err := transaction.OutpointFromString(tokenId)
+	if err != nil {
+		return "", fmt.Errorf("invalid token ID %q: %w", tokenId, err)
+	}
+
+	output, err := l.outputStore.LoadOutput(ctx, outpoint, &txo.OutputSearchCfg{
+		IncludeTags: []string{parse.TagMAP},
+	})
+	if err != nil {
+		return "", err
+	}
+	if output == nil || output.Data == nil {
+		return "", fmt.Errorf("token collection not found")
+	}
+
+	rawMAP, ok := output.Data[parse.TagMAP]
+	if !ok {
+		return "", fmt.Errorf("token collection not found")
+	}
+	encoded, err := json.Marshal(rawMAP)
+	if err != nil {
+		return "", fmt.Errorf("failed to encode token MAP: %w", err)
+	}
+	var mapData struct {
+		Data map[string]string `json:"data"`
+	}
+	if err := json.Unmarshal(encoded, &mapData); err != nil {
+		return "", fmt.Errorf("failed to decode token MAP: %w", err)
+	}
+	if mapData.Data["subType"] != "collectionItem" {
+		return "", fmt.Errorf("token collection not found")
+	}
+
+	var subTypeData struct {
+		CollectionID string `json:"collectionId"`
+	}
+	if err := json.Unmarshal([]byte(mapData.Data["subTypeData"]), &subTypeData); err != nil {
+		return "", fmt.Errorf("failed to decode token collection metadata: %w", err)
+	}
+	if subTypeData.CollectionID == "" {
+		return "", fmt.Errorf("token collection not found")
+	}
+	return parse.NormalizeCollectionID(subTypeData.CollectionID, outpoint), nil
 }
 
 // LoadOutputs loads full output data for a list of outpoints from a token's database.

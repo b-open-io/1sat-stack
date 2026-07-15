@@ -1154,6 +1154,9 @@ func (c *Config) Initialize(ctx context.Context, logger *slog.Logger) (*Services
 			return nil, fmt.Errorf("failed to initialize ordfs: %w", err)
 		}
 		svc.ORDFS = ordfsSvc
+		if svc.TXO != nil && svc.TXO.Routes != nil {
+			svc.TXO.Routes.CollectionOwnership = ordfsSvc.Ordfs
+		}
 
 		// Wire ORDFS into OrdLock for origin resolution on transferred ordinals
 		if svc.OrdLock != nil && svc.OrdLock.Lookup != nil {

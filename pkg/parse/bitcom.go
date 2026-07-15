@@ -1,8 +1,13 @@
 package parse
 
 import (
+	"encoding/json"
+	"strconv"
+	"strings"
+
 	"github.com/b-open-io/1sat-stack/pkg/template/bitcom"
 	"github.com/bsv-blockchain/go-sdk/script"
+	"github.com/bsv-blockchain/go-sdk/transaction"
 )
 
 const TagBitcom = "bitcom"
@@ -74,11 +79,42 @@ func ParseMAP(ctx *ParseContext) (*ParseResult, error) {
 				if t, ok := m.Data["type"]; ok {
 					result.Events = append(result.Events, "map:type:"+t)
 				}
+				if subType, ok := m.Data["subType"]; ok && subType != "" {
+					result.Events = append(result.Events, "map:subType:"+subType)
+				}
+				if subTypeData, ok := m.Data["subTypeData"]; ok {
+					var data struct {
+						CollectionID string `json:"collectionId"`
+					}
+					if json.Unmarshal([]byte(subTypeData), &data) == nil && data.CollectionID != "" {
+						collectionID := NormalizeCollectionID(data.CollectionID, ctx.Outpoint)
+						result.Events = append(result.Events, "map:collectionId:"+collectionID)
+					}
+				}
 				return result, nil
 			}
 		}
 	}
 	return nil, nil
+}
+
+// NormalizeCollectionID expands a same-transaction relative collection ID
+// (for example, "_1") to its absolute ordinal outpoint form. Other values are
+// returned unchanged so existing absolute collection IDs remain queryable.
+func NormalizeCollectionID(collectionID string, outpoint *transaction.Outpoint) string {
+	if outpoint == nil || !strings.HasPrefix(collectionID, "_") {
+		return collectionID
+	}
+
+	index, err := strconv.ParseUint(strings.TrimPrefix(collectionID, "_"), 10, 32)
+	if err != nil {
+		return collectionID
+	}
+
+	return (&transaction.Outpoint{
+		Txid:  outpoint.Txid,
+		Index: uint32(index),
+	}).OrdinalString()
 }
 
 // ParseAIP parses AIP signatures from previously parsed bitcom.
