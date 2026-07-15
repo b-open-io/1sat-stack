@@ -152,7 +152,7 @@ type paymentDestinationRequest struct {
 
 // PaymentDestination generates a payment destination for a paymail address.
 // @Summary Get P2P payment destination
-// @Description Generates a payment destination: BRC-29 derived when the name has a registered identity key, otherwise the P2PKH output currently holding the name
+// @Description Generates a payment destination from opns.idKey: BRC-29 when a hex identity key is registered, or a fixed P2PKH script for a legacy Base58 address
 // @Tags paymail
 // @Accept json
 // @Produce json
@@ -181,18 +181,24 @@ func (r *Routes) PaymentDestination(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "paymail not found"})
 	}
 
-	// A name without a registered identity key cannot receive payments:
-	// there is no key to derive a destination from, and no messagebox
-	// identity to deliver to.
-	if resolved.IdentityKey == nil {
+	if !resolved.CanReceive() {
 		r.logger.Warn("payment destination undeliverable", "alias", alias, "error", ErrUndeliverable)
-		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "paymail cannot receive payments: no identity key registered"})
+		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "paymail cannot receive payments: no payment binding registered"})
 	}
 
-	pending, err := r.service.DerivePaymentDestination(c.Context(), alias, domain, resolved.IdentityKey, req.Satoshis)
-	if err != nil {
-		r.logger.Error("failed to derive payment destination", "alias", alias, "error", err)
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "derivation failed"})
+	var pending *PendingPayment
+	if resolved.IdentityKey != nil {
+		pending, err = r.service.DerivePaymentDestination(c.Context(), alias, domain, resolved.IdentityKey, req.Satoshis)
+		if err != nil {
+			r.logger.Error("failed to derive payment destination", "alias", alias, "error", err)
+			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "derivation failed"})
+		}
+	} else {
+		pending, err = r.service.AddressPaymentDestination(c.Context(), alias, domain, resolved.Address, req.Satoshis)
+		if err != nil {
+			r.logger.Error("failed to build address payment destination", "alias", alias, "error", err)
+			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "destination failed"})
+		}
 	}
 
 	return c.JSON(fiber.Map{

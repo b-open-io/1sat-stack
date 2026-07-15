@@ -67,15 +67,23 @@ func NewService(
 }
 
 // ResolvedName is the payment-relevant state of an OpNS name: where the name
-// ordinal currently rests and the identity key bound to it, if any.
+// ordinal currently rests and the binding in opns.idKey, if any.
+// IdentityKey is the BRC-100 identity public key path; Address is a legacy
+// Base58Check P2PKH binding. At most one is set.
 type ResolvedName struct {
 	IdentityKey *ec.PublicKey
+	Address     string
 	Outpoint    *transaction.Outpoint
 }
 
+// CanReceive reports whether the name has a usable payment binding.
+func (r *ResolvedName) CanReceive() bool {
+	return r != nil && (r.IdentityKey != nil || r.Address != "")
+}
+
 // ResolveName resolves a paymail alias to its current OpNS state by looking up
-// the OpNS origin and reading the merged MAP metadata via ORDFS. IdentityKey is
-// nil when no opns.idKey is registered.
+// the OpNS origin and reading the merged MAP metadata via ORDFS.
+// opns.idKey is either a hex identity public key or a Base58Check P2PKH address.
 func (s *Service) ResolveName(ctx context.Context, alias string) (*ResolvedName, error) {
 	outpoint, err := s.opns.Origin(ctx, alias)
 	if err != nil {
@@ -112,20 +120,26 @@ func (s *Service) ResolveName(ctx context.Context, alias string) (*ResolvedName,
 		return nil, fmt.Errorf("failed to parse MAP data for %q: %w", alias, err)
 	}
 
-	idKeyHex, ok := mapData["opns.idKey"]
-	if !ok || idKeyHex == "" {
+	idKey, ok := mapData["opns.idKey"]
+	if !ok || idKey == "" {
 		return resolved, nil
 	}
 
-	pubKeyBytes, err := hex.DecodeString(idKeyHex)
-	if err != nil {
-		return nil, fmt.Errorf("invalid identity key hex for %q: %w", alias, err)
+	// Prefer identity public key (hex); else legacy P2PKH address.
+	if pubKeyBytes, err := hex.DecodeString(idKey); err == nil {
+		if pk, err := ec.PublicKeyFromBytes(pubKeyBytes); err == nil {
+			resolved.IdentityKey = pk
+			return resolved, nil
+		}
+	}
+	if addr, err := script.NewAddressFromString(idKey); err == nil {
+		resolved.Address = addr.AddressString
+		return resolved, nil
 	}
 
-	if resolved.IdentityKey, err = ec.PublicKeyFromBytes(pubKeyBytes); err != nil {
-		return nil, fmt.Errorf("invalid identity public key for %q: %w", alias, err)
-	}
-
+	s.logger.Warn("opns.idKey is neither a public key nor a P2PKH address",
+		"alias", alias,
+	)
 	return resolved, nil
 }
 
@@ -186,9 +200,39 @@ func (s *Service) DerivePaymentDestination(ctx context.Context, alias, domain st
 	return pending, nil
 }
 
-// ErrUndeliverable indicates the name has no registered identity key, so no
-// payment destination can be derived and no messagebox delivery is possible.
-var ErrUndeliverable = errors.New("name has no identity key registered")
+// AddressPaymentDestination creates a pending payment to a fixed P2PKH address
+// (legacy opns.idKey binding). Derivation fields and IdentityPubKey stay empty
+// so receive skips messagebox delivery.
+func (s *Service) AddressPaymentDestination(ctx context.Context, alias, domain, address string, satoshis uint64) (*PendingPayment, error) {
+	addr, err := script.NewAddressFromString(address)
+	if err != nil {
+		return nil, fmt.Errorf("invalid payment address: %w", err)
+	}
+	lockingScript, err := p2pkh.Lock(addr)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create locking script: %w", err)
+	}
+
+	now := time.Now()
+	pending := &PendingPayment{
+		Reference:    generateReference(),
+		Alias:        alias,
+		Domain:       domain,
+		Satoshis:     satoshis,
+		OutputScript: hex.EncodeToString(*lockingScript),
+		CreatedAt:    now,
+		ExpiresAt:    now.Add(defaultTTL),
+	}
+
+	if err := s.store.Create(ctx, pending); err != nil {
+		return nil, fmt.Errorf("failed to store pending payment: %w", err)
+	}
+
+	return pending, nil
+}
+
+// ErrUndeliverable indicates the name has no usable payment binding.
+var ErrUndeliverable = errors.New("name has no payment binding registered")
 
 // Store returns the pending payment store.
 func (s *Service) Store() PendingStore {
@@ -229,8 +273,10 @@ func (s *Service) DeliverToMessageBox(
 	outputIndex uint32,
 	pending *PendingPayment,
 ) error {
+	// Identity path only: empty IdentityPubKey means address-mode (or unbound)
+	// pending — payment is on-chain at OutputScript with no inbox remittance.
 	if pending.IdentityPubKey == "" {
-		s.logger.Info("fallback payment to owner address, no message box delivery",
+		s.logger.Info("address-mode payment, no message box delivery",
 			"alias", pending.Alias,
 			"satoshis", pending.Satoshis,
 		)
