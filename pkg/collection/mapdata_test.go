@@ -62,9 +62,9 @@ func TestDecodeMapFieldsCollectionRoot(t *testing.T) {
 	}
 }
 
-func TestMemberTopicHelpers(t *testing.T) {
+func TestItemTopicHelpers(t *testing.T) {
 	id := "aabbccddeeff00112233445566778899aabbccddeeff00112233445566778899_0"
-	topic := MemberTopic(id)
+	topic := ItemTopic(id)
 	if topic != "tm_col_"+id {
 		t.Fatalf("topic: %q", topic)
 	}
@@ -72,10 +72,10 @@ func TestMemberTopicHelpers(t *testing.T) {
 		t.Fatalf("roundtrip id: %q", CollectionIDFromTopic(topic))
 	}
 	if CollectionIDFromTopic(DiscoveryTopic) != "" {
-		t.Fatal("discovery is not a member topic")
+		t.Fatal("discovery is not an item topic")
 	}
-	if !IsDiscoveryTopic(DiscoveryTopic) {
-		t.Fatal("expected discovery")
+	if !IsDiscoveryTopic(DiscoveryTopic) || !IsItemTopic(topic) {
+		t.Fatal("expected discovery/item topic helpers")
 	}
 }
 
@@ -116,7 +116,7 @@ func TestDiscoveryRejectsWithoutSigma(t *testing.T) {
 	}
 }
 
-func TestMemberRejectsWrongCollection(t *testing.T) {
+func TestItemRejectsWrongCollection(t *testing.T) {
 	wantID := "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb_0"
 	tx := transaction.NewTransaction()
 	tx.Outputs = []*transaction.TransactionOutput{{
@@ -133,7 +133,7 @@ func TestMemberRejectsWrongCollection(t *testing.T) {
 		t.Fatalf("MergeTransaction: %v", err)
 	}
 	hash := tx.TxID()
-	tm := NewMemberTopicManager(wantID, nil)
+	tm := NewItemTopicManager(wantID, nil)
 	admit, err := tm.IdentifyAdmissibleOutputs(t.Context(), beef, hash, nil)
 	if err != nil {
 		t.Fatal(err)

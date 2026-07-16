@@ -3,28 +3,28 @@ package collection
 // Topic name constants and helpers.
 
 const (
-	// DiscoveryTopic is the global topic for collection root mints.
+	// DiscoveryTopic is the global topic for collection mints.
 	DiscoveryTopic = "tm_1sat_collection"
 
 	// LookupName is the engine lookup service key for this module.
 	LookupName = "collection"
 
-	// memberTopicPrefix prefixes per-collection member topics.
-	memberTopicPrefix = "tm_col_"
+	// itemTopicPrefix prefixes per-collection item topics.
+	itemTopicPrefix = "tm_col_"
 )
 
-// MemberTopic returns the per-collection topic name for a collectionId outpoint.
-func MemberTopic(collectionID string) string {
-	return memberTopicPrefix + collectionID
+// ItemTopic returns the per-collection topic name for a collectionId outpoint.
+func ItemTopic(collectionID string) string {
+	return itemTopicPrefix + collectionID
 }
 
-// CollectionIDFromTopic extracts the collectionId from a member topic name.
-// Returns empty string if topic is not a member topic.
+// CollectionIDFromTopic extracts the collectionId from an item topic name.
+// Returns empty string if topic is not an item topic.
 func CollectionIDFromTopic(topic string) string {
-	if len(topic) <= len(memberTopicPrefix) || topic[:len(memberTopicPrefix)] != memberTopicPrefix {
+	if len(topic) <= len(itemTopicPrefix) || topic[:len(itemTopicPrefix)] != itemTopicPrefix {
 		return ""
 	}
-	return topic[len(memberTopicPrefix):]
+	return topic[len(itemTopicPrefix):]
 }
 
 // IsDiscoveryTopic reports whether topic is the collection discovery topic.
@@ -32,7 +32,7 @@ func IsDiscoveryTopic(topic string) bool {
 	return topic == DiscoveryTopic
 }
 
-// IsMemberTopic reports whether topic is a per-collection member topic.
-func IsMemberTopic(topic string) bool {
+// IsItemTopic reports whether topic is a per-collection item topic.
+func IsItemTopic(topic string) bool {
 	return CollectionIDFromTopic(topic) != ""
 }

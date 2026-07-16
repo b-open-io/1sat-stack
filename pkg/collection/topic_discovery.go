@@ -10,7 +10,7 @@ import (
 	"github.com/bsv-blockchain/go-sdk/transaction"
 )
 
-// DiscoveryTopicManager admits collection root mints to tm_1sat_collection.
+// DiscoveryTopicManager admits collection mints to tm_1sat_collection.
 // Requires MAP subType=collection and a valid SIGMA signature on the output.
 // Mint-only: no transfer tracking.
 type DiscoveryTopicManager struct {
@@ -25,7 +25,7 @@ func NewDiscoveryTopicManager(logger *slog.Logger) *DiscoveryTopicManager {
 	return &DiscoveryTopicManager{logger: logger.With("component", "collection-discovery")}
 }
 
-// IdentifyAdmissibleOutputs admits roots with collection MAP + valid SIGMA.
+// IdentifyAdmissibleOutputs admits collections with MAP + valid SIGMA.
 func (tm *DiscoveryTopicManager) IdentifyAdmissibleOutputs(ctx context.Context, beef *transaction.Beef, txid *chainhash.Hash, previousCoins []uint32) (admit overlay.AdmittanceInstructions, err error) {
 	tx := beef.FindTransactionForSigningByHash(txid)
 	if tx == nil {
@@ -41,14 +41,14 @@ func (tm *DiscoveryTopicManager) IdentifyAdmissibleOutputs(ctx context.Context, 
 			continue
 		}
 		if FirstValidSigma(tx, vout) == nil {
-			tm.logger.Debug("collection root missing valid SIGMA",
+			tm.logger.Debug("collection missing valid SIGMA",
 				"txid", txid.String(),
 				"vout", vout,
 			)
 			continue
 		}
 		admit.OutputsToAdmit = append(admit.OutputsToAdmit, uint32(vout))
-		tm.logger.Debug("collection root admitted",
+		tm.logger.Debug("collection admitted",
 			"txid", txid.String(),
 			"vout", vout,
 			"name", fields.Name,
@@ -64,7 +64,7 @@ func (tm *DiscoveryTopicManager) IdentifyNeededInputs(ctx context.Context, beef 
 
 // GetDocumentation returns documentation for this topic manager.
 func (tm *DiscoveryTopicManager) GetDocumentation() string {
-	return "1Sat collection discovery — admits collection root mints (MAP subType=collection + SIGMA)"
+	return "1Sat collection discovery — admits collection mints (MAP subType=collection + SIGMA)"
 }
 
 // GetMetaData returns metadata for this topic manager.

@@ -22,24 +22,24 @@ func NewRoutes(lookup *LookupService, logger *slog.Logger) *Routes {
 
 // Register mounts collection routes on the router.
 func (r *Routes) Register(router fiber.Router) {
-	router.Get("/", r.ListRoots)
-	router.Get("/:collectionId", r.GetRoot)
-	router.Get("/:collectionId/members", r.ListMembers)
-	router.Get("/:collectionId/member/:outpoint", r.GetMember)
+	router.Get("/", r.ListCollections)
+	router.Get("/:collectionId", r.GetCollection)
+	router.Get("/:collectionId/items", r.ListItems)
+	router.Get("/:collectionId/item/:outpoint", r.GetItem)
 }
 
-// ListRoots returns discovered collection roots.
-// @Summary List collection roots
+// ListCollections returns discovered collections.
+// @Summary List collections
 // @Tags collection
 // @Produce json
 // @Param limit query int false "Max results" default(100)
 // @Param rev query bool false "Reverse score order"
 // @Success 200 {array} Entry
 // @Router / [get]
-func (r *Routes) ListRoots(c *fiber.Ctx) error {
+func (r *Routes) ListCollections(c *fiber.Ctx) error {
 	limit := c.QueryInt("limit", 100)
 	reverse := c.QueryBool("rev", false)
-	entries, err := r.lookup.ListRoots(c.Context(), limit, reverse)
+	entries, err := r.lookup.ListCollections(c.Context(), limit, reverse)
 	if err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": err.Error()})
 	}
@@ -49,24 +49,23 @@ func (r *Routes) ListRoots(c *fiber.Ctx) error {
 	return c.JSON(entries)
 }
 
-// GetRoot returns one collection root by collectionId (root outpoint).
-// @Summary Get collection root
+// GetCollection returns one collection by collectionId (outpoint).
+// @Summary Get collection
 // @Tags collection
 // @Produce json
-// @Param collectionId path string true "Collection root outpoint (txid_vout)"
+// @Param collectionId path string true "Collection outpoint (txid_vout)"
 // @Success 200 {object} Entry
 // @Failure 404 {object} object{error=string}
 // @Router /{collectionId} [get]
-func (r *Routes) GetRoot(c *fiber.Ctx) error {
+func (r *Routes) GetCollection(c *fiber.Ctx) error {
 	collectionID := c.Params("collectionId")
-	if _, err := parseOutpoint(collectionID); err != nil {
+	op, err := parseOutpoint(collectionID)
+	if err != nil {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid collectionId"})
 	}
-	// normalize to ordinal form for storage key
-	op, _ := parseOutpoint(collectionID)
 	collectionID = op.OrdinalString()
 
-	entry, err := r.lookup.GetRoot(c.Context(), collectionID)
+	entry, err := r.lookup.GetCollection(c.Context(), collectionID)
 	if err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": err.Error()})
 	}
@@ -76,16 +75,16 @@ func (r *Routes) GetRoot(c *fiber.Ctx) error {
 	return c.JSON(entry)
 }
 
-// ListMembers returns members for a collection.
-// @Summary List collection members
+// ListItems returns items for a collection.
+// @Summary List collection items
 // @Tags collection
 // @Produce json
-// @Param collectionId path string true "Collection root outpoint"
+// @Param collectionId path string true "Collection outpoint"
 // @Param limit query int false "Max results" default(100)
 // @Param rev query bool false "Reverse score order"
 // @Success 200 {array} Entry
-// @Router /{collectionId}/members [get]
-func (r *Routes) ListMembers(c *fiber.Ctx) error {
+// @Router /{collectionId}/items [get]
+func (r *Routes) ListItems(c *fiber.Ctx) error {
 	collectionID := c.Params("collectionId")
 	op, err := parseOutpoint(collectionID)
 	if err != nil {
@@ -95,7 +94,7 @@ func (r *Routes) ListMembers(c *fiber.Ctx) error {
 	limit := c.QueryInt("limit", 100)
 	reverse := c.QueryBool("rev", false)
 
-	entries, err := r.lookup.ListMembers(c.Context(), collectionID, limit, reverse)
+	entries, err := r.lookup.ListItems(c.Context(), collectionID, limit, reverse)
 	if err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": err.Error()})
 	}
@@ -105,16 +104,16 @@ func (r *Routes) ListMembers(c *fiber.Ctx) error {
 	return c.JSON(entries)
 }
 
-// GetMember returns a single member.
-// @Summary Get collection member
+// GetItem returns a single collection item.
+// @Summary Get collection item
 // @Tags collection
 // @Produce json
-// @Param collectionId path string true "Collection root outpoint"
-// @Param outpoint path string true "Member outpoint"
+// @Param collectionId path string true "Collection outpoint"
+// @Param outpoint path string true "Item outpoint"
 // @Success 200 {object} Entry
 // @Failure 404 {object} object{error=string}
-// @Router /{collectionId}/member/{outpoint} [get]
-func (r *Routes) GetMember(c *fiber.Ctx) error {
+// @Router /{collectionId}/item/{outpoint} [get]
+func (r *Routes) GetItem(c *fiber.Ctx) error {
 	collectionID := c.Params("collectionId")
 	op, err := parseOutpoint(collectionID)
 	if err != nil {
@@ -123,12 +122,12 @@ func (r *Routes) GetMember(c *fiber.Ctx) error {
 	collectionID = op.OrdinalString()
 	outpoint := c.Params("outpoint")
 
-	entry, err := r.lookup.GetMember(c.Context(), collectionID, outpoint)
+	entry, err := r.lookup.GetItem(c.Context(), collectionID, outpoint)
 	if err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": err.Error()})
 	}
 	if entry == nil {
-		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "member not found"})
+		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "item not found"})
 	}
 	return c.JSON(entry)
 }

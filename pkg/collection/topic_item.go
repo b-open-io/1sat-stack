@@ -10,36 +10,36 @@ import (
 	"github.com/bsv-blockchain/go-sdk/transaction"
 )
 
-// MemberTopicManager admits collection item mints for a single collectionId.
+// ItemTopicManager admits collection item mints for a single collectionId.
 // Requires MAP subType=collectionItem, matching normalized collectionId, and
-// a valid SIGMA signature. Does not match signer against root authority at
+// a valid SIGMA signature. Does not match signer against collection authority at
 // ingest (BAP key rotation can race). Mint-only: no transfer tracking.
-type MemberTopicManager struct {
+type ItemTopicManager struct {
 	collectionID string
 	logger       *slog.Logger
 }
 
-// NewMemberTopicManager creates a per-collection member topic manager.
-func NewMemberTopicManager(collectionID string, logger *slog.Logger) *MemberTopicManager {
+// NewItemTopicManager creates a per-collection item topic manager.
+func NewItemTopicManager(collectionID string, logger *slog.Logger) *ItemTopicManager {
 	if logger == nil {
 		logger = slog.Default()
 	}
-	return &MemberTopicManager{
+	return &ItemTopicManager{
 		collectionID: collectionID,
 		logger: logger.With(
-			"component", "collection-member",
+			"component", "collection-item",
 			"collectionId", collectionID,
 		),
 	}
 }
 
 // CollectionID returns the collection this manager admits for.
-func (tm *MemberTopicManager) CollectionID() string {
+func (tm *ItemTopicManager) CollectionID() string {
 	return tm.collectionID
 }
 
 // IdentifyAdmissibleOutputs admits matching collectionItem mints with SIGMA.
-func (tm *MemberTopicManager) IdentifyAdmissibleOutputs(ctx context.Context, beef *transaction.Beef, txid *chainhash.Hash, previousCoins []uint32) (admit overlay.AdmittanceInstructions, err error) {
+func (tm *ItemTopicManager) IdentifyAdmissibleOutputs(ctx context.Context, beef *transaction.Beef, txid *chainhash.Hash, previousCoins []uint32) (admit overlay.AdmittanceInstructions, err error) {
 	tx := beef.FindTransactionForSigningByHash(txid)
 	if tx == nil {
 		return admit, engine.ErrInvalidBeef
@@ -74,17 +74,17 @@ func (tm *MemberTopicManager) IdentifyAdmissibleOutputs(ctx context.Context, bee
 	return admit, nil
 }
 
-// IdentifyNeededInputs returns nil — member mint admission is self-contained.
-func (tm *MemberTopicManager) IdentifyNeededInputs(ctx context.Context, beef *transaction.Beef, txid *chainhash.Hash) ([]*transaction.Outpoint, error) {
+// IdentifyNeededInputs returns nil — item mint admission is self-contained.
+func (tm *ItemTopicManager) IdentifyNeededInputs(ctx context.Context, beef *transaction.Beef, txid *chainhash.Hash) ([]*transaction.Outpoint, error) {
 	return nil, nil
 }
 
 // GetDocumentation returns documentation for this topic manager.
-func (tm *MemberTopicManager) GetDocumentation() string {
-	return "1Sat collection members — admits collectionItem mints for a collectionId (MAP + SIGMA)"
+func (tm *ItemTopicManager) GetDocumentation() string {
+	return "1Sat collection items — admits collectionItem mints for a collectionId (MAP + SIGMA)"
 }
 
 // GetMetaData returns metadata for this topic manager.
-func (tm *MemberTopicManager) GetMetaData() *overlay.MetaData {
-	return &overlay.MetaData{Name: "1Sat Collection Members"}
+func (tm *ItemTopicManager) GetMetaData() *overlay.MetaData {
+	return &overlay.MetaData{Name: "1Sat Collection Items"}
 }

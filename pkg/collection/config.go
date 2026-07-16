@@ -24,7 +24,7 @@ type Config struct {
 	Mode     string       `mapstructure:"mode"`
 	LogLevel string       `mapstructure:"log_level"`
 	Routes   RoutesConfig `mapstructure:"routes"`
-	// CollectionIDs optionally pre-registers per-collection member topics
+	// CollectionIDs optionally pre-registers per-collection item topics
 	// at Initialize time. Additional collections can be registered via
 	// Services.RegisterCollection.
 	CollectionIDs []string `mapstructure:"collection_ids"`
@@ -57,7 +57,7 @@ type Services struct {
 	OverlayRoutes    *overlay.Routes
 	logger           *slog.Logger
 
-	members sync.Map // collectionId -> *MemberTopicManager
+	items sync.Map // collectionId -> *ItemTopicManager
 }
 
 // Initialize creates collection services from configuration.
@@ -92,7 +92,7 @@ func (c *Config) Initialize(
 			if id == "" {
 				continue
 			}
-			managers[MemberTopic(id)] = NewMemberTopicManager(id, logger)
+			managers[ItemTopic(id)] = NewItemTopicManager(id, logger)
 		}
 
 		eng := overlay.NewModuleEngine(deps,
@@ -112,7 +112,7 @@ func (c *Config) Initialize(
 			if id == "" {
 				continue
 			}
-			svc.members.Store(id, managers[MemberTopic(id)])
+			svc.items.Store(id, managers[ItemTopic(id)])
 		}
 
 		if c.Routes.Enabled {
@@ -129,7 +129,7 @@ func (c *Config) Initialize(
 	}
 }
 
-// RegisterCollection registers a per-collection member topic on the engine.
+// RegisterCollection registers a per-collection item topic on the engine.
 // Safe to call multiple times for the same id (no-op if already registered).
 func (s *Services) RegisterCollection(collectionID string) error {
 	if s == nil || s.Engine == nil {
@@ -138,13 +138,13 @@ func (s *Services) RegisterCollection(collectionID string) error {
 	if collectionID == "" {
 		return fmt.Errorf("collectionId is required")
 	}
-	if _, ok := s.members.Load(collectionID); ok {
+	if _, ok := s.items.Load(collectionID); ok {
 		return nil
 	}
-	tm := NewMemberTopicManager(collectionID, s.logger)
-	s.members.Store(collectionID, tm)
-	s.Engine.RegisterTopicManager(MemberTopic(collectionID), tm)
-	s.logger.Info("registered collection topic", "collectionId", collectionID, "topic", MemberTopic(collectionID))
+	tm := NewItemTopicManager(collectionID, s.logger)
+	s.items.Store(collectionID, tm)
+	s.Engine.RegisterTopicManager(ItemTopic(collectionID), tm)
+	s.logger.Info("registered collection item topic", "collectionId", collectionID, "topic", ItemTopic(collectionID))
 	return nil
 }
 

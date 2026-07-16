@@ -80,8 +80,10 @@ EventBridge pattern-matches these; collection meaning lives in topic managers / 
 
 Co-locate topic + lookup in the module (not a shared `pkg/lookup` home for new work).
 
-- **Discovery topic DB:** root outpoint, useful MAP fields, SIGMA signer address, score/height.
-- **Per-collection topic DB:** member outpoint, collectionId, mintNumber/rank if present, SIGMA signer, content-type / tokenId hint if useful, score.
+One shared `collection_entries` schema in each topic DB (no `kind` column — role is the topic):
+
+- **Discovery (`tm_1sat_collection`):** collections — outpoint (= collectionId), name, SIGMA signer, content type, map blob, score.
+- **Item topic (`tm_col_{id}`):** items — outpoint, collectionId, name, SIGMA signer, content type, mintNumber/rank if present, map blob, score.
 
 No current-owner / transfer tables in v1.
 
