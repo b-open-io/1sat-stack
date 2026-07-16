@@ -44,6 +44,8 @@ Decide which outputs to admit to a topic:
 |-------|---------|--------|
 | `tm_bsv21` | `Bsv21DiscoveryTopicManager` | All BSV21 deploy operations |
 | `tm_{tokenId}` | `Bsv21ValidatedTopicManager` | Valid transfers for specific token |
+| `tm_1sat_collection` | `DiscoveryTopicManager` (collection) | Collection mints (MAP + SIGMA) |
+| `tm_col_{collectionId}` | `ItemTopicManager` (collection) | Collection item mints for one collection |
 | `tm_1sat` | `OneSatTopicManager` | All outputs (catch-all) |
 | `tm_bap` | `TopicManager` (BAP) | Structurally valid BAP+AIP outputs |
 | `tm_bsocial` | `TopicManager` (BSocial) | BSocial protocol outputs |

@@ -93,7 +93,8 @@ Each parser emits events that the event bridge routes:
 | BSV21 | `pkg/parse/bsv21.go` | `bsv21:{tokenId}` |
 | OrdLock | `pkg/parse/ordlock.go` | `ordlock` |
 | BAP | `pkg/parse/bitcom.go` | `bap:{type}` |
-| MAP | `pkg/parse/bitcom.go` | `map:type:{type}` |
+| MAP | `pkg/parse/bitcom.go` | `map:type:{type}`, `map:subType:{subType}` |
+| Collection | `pkg/parse/collection.go` | `map:collectionId:{id}` from `subTypeData` (after MAP; `_N` normalized) |
 | OPNS | `pkg/parse/opns.go` | `opns:mine` |
 
 Spend events are generated automatically by `SaveTransaction()` as `spend:{event}` for each event on a spent output.

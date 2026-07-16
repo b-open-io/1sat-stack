@@ -57,6 +57,13 @@ func ParseB(ctx *ParseContext) (*ParseResult, error) {
 
 // ParseMAP parses MAP protocol data from previously parsed bitcom.
 // Requires ParseBitcom to have been called first.
+//
+// Emits generic MAP field events only:
+//   - map:type:{type}
+//   - map:subType:{subType}
+//
+// Collection protocol interpretation of subTypeData (e.g. collectionId) is
+// handled by ParseCollection, which must run after MAP.
 func ParseMAP(ctx *ParseContext) (*ParseResult, error) {
 	bc := GetData[bitcom.Bitcom](ctx, TagBitcom)
 	if bc == nil {
@@ -71,8 +78,11 @@ func ParseMAP(ctx *ParseContext) (*ParseResult, error) {
 					Data:   m,
 					Events: []string{},
 				}
-				if t, ok := m.Data["type"]; ok {
+				if t, ok := m.Data["type"]; ok && t != "" {
 					result.Events = append(result.Events, "map:type:"+t)
+				}
+				if subType, ok := m.Data["subType"]; ok && subType != "" {
+					result.Events = append(result.Events, "map:subType:"+subType)
 				}
 				return result, nil
 			}
