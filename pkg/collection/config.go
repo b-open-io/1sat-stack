@@ -98,7 +98,7 @@ func (c *Config) Initialize(
 		eng := overlay.NewModuleEngine(deps,
 			managers,
 			map[string]engine.LookupService{
-				LookupServiceName: lookupSvc,
+				LookupName: lookupSvc,
 			},
 		)
 

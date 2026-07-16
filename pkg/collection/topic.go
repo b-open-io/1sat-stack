@@ -6,8 +6,8 @@ const (
 	// DiscoveryTopic is the global topic for collection root mints.
 	DiscoveryTopic = "tm_1sat_collection"
 
-	// LookupServiceName is the engine lookup service key for this module.
-	LookupServiceName = "collection"
+	// LookupName is the engine lookup service key for this module.
+	LookupName = "collection"
 
 	// memberTopicPrefix prefixes per-collection member topics.
 	memberTopicPrefix = "tm_col_"
