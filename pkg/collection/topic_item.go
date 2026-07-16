@@ -11,9 +11,9 @@ import (
 )
 
 // ItemTopicManager admits collection item mints for a single collectionId.
-// Requires MAP subType=collectionItem, matching normalized collectionId, and
-// a valid SIGMA signature. Does not match signer against collection authority at
-// ingest (BAP key rotation can race). Mint-only: no transfer tracking.
+// Requires a 1-sat inscription, MAP subType=collectionItem, matching normalized
+// collectionId, and valid SIGMA. Does not match signer against collection
+// authority at ingest (BAP key rotation can race). Mint-only: no transfer tracking.
 type ItemTopicManager struct {
 	collectionID string
 	logger       *slog.Logger
@@ -46,7 +46,7 @@ func (tm *ItemTopicManager) IdentifyAdmissibleOutputs(ctx context.Context, beef 
 	}
 
 	for vout, output := range tx.Outputs {
-		if output == nil {
+		if !IsCollectionMintOutput(output) {
 			continue
 		}
 		fields := DecodeMapFields(output.LockingScript)
@@ -81,7 +81,7 @@ func (tm *ItemTopicManager) IdentifyNeededInputs(ctx context.Context, beef *tran
 
 // GetDocumentation returns documentation for this topic manager.
 func (tm *ItemTopicManager) GetDocumentation() string {
-	return "1Sat collection items — admits collectionItem mints for a collectionId (MAP + SIGMA)"
+	return "1Sat collection items — admits 1-sat collectionItem inscriptions for a collectionId (MAP + SIGMA)"
 }
 
 // GetMetaData returns metadata for this topic manager.

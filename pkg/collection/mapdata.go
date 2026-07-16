@@ -52,9 +52,8 @@ func DecodeMapFields(lockingScript *script.Script) *MapFields {
 			SubTypeData: m.Data["subTypeData"],
 			Raw:         m.Data,
 		}
-		if id, ok := m.Data["collectionId"]; ok && id != "" {
-			fields.CollectionID = id
-		} else if fields.SubTypeData != "" {
+		// collectionId / mintNumber / rank live in subTypeData JSON (collectionItem subtype).
+		if fields.SubTypeData != "" {
 			var sub struct {
 				CollectionID string `json:"collectionId"`
 				MintNumber   *int   `json:"mintNumber"`
@@ -69,6 +68,15 @@ func DecodeMapFields(lockingScript *script.Script) *MapFields {
 		return fields
 	}
 	return nil
+}
+
+// IsCollectionMintOutput reports whether an output can be a collection or item mint:
+// exactly 1 satoshi and an inscription envelope (1Sat ordinal).
+func IsCollectionMintOutput(output *transaction.TransactionOutput) bool {
+	if output == nil || output.Satoshis != 1 || output.LockingScript == nil {
+		return false
+	}
+	return inscription.Decode(output.LockingScript) != nil
 }
 
 // NormalizeCollectionID expands same-tx "_N" references using the given outpoint.

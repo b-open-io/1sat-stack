@@ -11,7 +11,7 @@ import (
 )
 
 // DiscoveryTopicManager admits collection mints to tm_1sat_collection.
-// Requires MAP subType=collection and a valid SIGMA signature on the output.
+// Requires a 1-sat inscription, MAP subType=collection, and valid SIGMA.
 // Mint-only: no transfer tracking.
 type DiscoveryTopicManager struct {
 	logger *slog.Logger
@@ -33,7 +33,7 @@ func (tm *DiscoveryTopicManager) IdentifyAdmissibleOutputs(ctx context.Context, 
 	}
 
 	for vout, output := range tx.Outputs {
-		if output == nil {
+		if !IsCollectionMintOutput(output) {
 			continue
 		}
 		fields := DecodeMapFields(output.LockingScript)
@@ -64,7 +64,7 @@ func (tm *DiscoveryTopicManager) IdentifyNeededInputs(ctx context.Context, beef 
 
 // GetDocumentation returns documentation for this topic manager.
 func (tm *DiscoveryTopicManager) GetDocumentation() string {
-	return "1Sat collection discovery — admits collection mints (MAP subType=collection + SIGMA)"
+	return "1Sat collection discovery — admits 1-sat collection inscriptions (MAP subType=collection + SIGMA)"
 }
 
 // GetMetaData returns metadata for this topic manager.

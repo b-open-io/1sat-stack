@@ -66,7 +66,7 @@ func ParseB(ctx *ParseContext) (*ParseResult, error) {
 // Emits generic routing/index events:
 //   - map:type:{type}
 //   - map:subType:{subType}
-//   - map:collectionId:{id}  (from top-level collectionId or subTypeData JSON;
+//   - map:collectionId:{id}  (from subTypeData.collectionId only;
 //     same-tx "_N" references are normalized to an absolute outpoint)
 func ParseMAP(ctx *ParseContext) (*ParseResult, error) {
 	bc := GetData[bitcom.Bitcom](ctx, TagBitcom)
@@ -88,7 +88,7 @@ func ParseMAP(ctx *ParseContext) (*ParseResult, error) {
 				if subType, ok := m.Data["subType"]; ok && subType != "" {
 					result.Events = append(result.Events, "map:subType:"+subType)
 				}
-				if collectionID := mapCollectionID(m.Data); collectionID != "" {
+				if collectionID := collectionIDFromSubTypeData(m.Data); collectionID != "" {
 					collectionID = NormalizeCollectionID(collectionID, ctx.Outpoint)
 					if collectionID != "" {
 						result.Events = append(result.Events, "map:collectionId:"+collectionID)
@@ -101,14 +101,11 @@ func ParseMAP(ctx *ParseContext) (*ParseResult, error) {
 	return nil, nil
 }
 
-// mapCollectionID returns a collectionId from MAP fields: top-level key first,
-// then subTypeData JSON. Empty when absent.
-func mapCollectionID(data map[string]string) string {
+// collectionIDFromSubTypeData reads collectionId from MAP subTypeData JSON.
+// That is the collectionItem subtype field; it is not a top-level MAP key.
+func collectionIDFromSubTypeData(data map[string]string) string {
 	if data == nil {
 		return ""
-	}
-	if id, ok := data["collectionId"]; ok && id != "" {
-		return id
 	}
 	raw, ok := data["subTypeData"]
 	if !ok || raw == "" {
