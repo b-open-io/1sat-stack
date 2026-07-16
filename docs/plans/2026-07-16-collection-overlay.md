@@ -5,8 +5,8 @@ Status: **in progress** (decisions locked 2026-07-16)
 ### Progress
 
 - [x] MAP parse events (`map:subType`, `map:collectionId`, `_N` normalize)
-- [x] `pkg/collection` topic managers + lookup + routes (library; not wired into monolith `cmd/server`)
-- [ ] `collection-overlay` stand-alone server
+- [x] `pkg/collection` topic managers + lookup + routes (library; not wired into monolith `cmd/server`) — [1sat-stack#9](https://github.com/b-open-io/1sat-stack/pull/9)
+- [x] `collection-overlay` stand-alone server scaffold — https://github.com/b-open-io/collection-overlay
 
 Linear:
 
