@@ -1,8 +1,13 @@
 package parse
 
 import (
+	"encoding/json"
+	"strconv"
+	"strings"
+
 	"github.com/b-open-io/1sat-stack/pkg/template/bitcom"
 	"github.com/bsv-blockchain/go-sdk/script"
+	"github.com/bsv-blockchain/go-sdk/transaction"
 )
 
 const TagBitcom = "bitcom"
@@ -57,6 +62,12 @@ func ParseB(ctx *ParseContext) (*ParseResult, error) {
 
 // ParseMAP parses MAP protocol data from previously parsed bitcom.
 // Requires ParseBitcom to have been called first.
+//
+// Emits generic routing/index events:
+//   - map:type:{type}
+//   - map:subType:{subType}
+//   - map:collectionId:{id}  (from top-level collectionId or subTypeData JSON;
+//     same-tx "_N" references are normalized to an absolute outpoint)
 func ParseMAP(ctx *ParseContext) (*ParseResult, error) {
 	bc := GetData[bitcom.Bitcom](ctx, TagBitcom)
 	if bc == nil {
@@ -71,14 +82,62 @@ func ParseMAP(ctx *ParseContext) (*ParseResult, error) {
 					Data:   m,
 					Events: []string{},
 				}
-				if t, ok := m.Data["type"]; ok {
+				if t, ok := m.Data["type"]; ok && t != "" {
 					result.Events = append(result.Events, "map:type:"+t)
+				}
+				if subType, ok := m.Data["subType"]; ok && subType != "" {
+					result.Events = append(result.Events, "map:subType:"+subType)
+				}
+				if collectionID := mapCollectionID(m.Data); collectionID != "" {
+					collectionID = NormalizeCollectionID(collectionID, ctx.Outpoint)
+					if collectionID != "" {
+						result.Events = append(result.Events, "map:collectionId:"+collectionID)
+					}
 				}
 				return result, nil
 			}
 		}
 	}
 	return nil, nil
+}
+
+// mapCollectionID returns a collectionId from MAP fields: top-level key first,
+// then subTypeData JSON. Empty when absent.
+func mapCollectionID(data map[string]string) string {
+	if data == nil {
+		return ""
+	}
+	if id, ok := data["collectionId"]; ok && id != "" {
+		return id
+	}
+	raw, ok := data["subTypeData"]
+	if !ok || raw == "" {
+		return ""
+	}
+	var sub struct {
+		CollectionID string `json:"collectionId"`
+	}
+	if err := json.Unmarshal([]byte(raw), &sub); err != nil {
+		return ""
+	}
+	return sub.CollectionID
+}
+
+// NormalizeCollectionID expands same-transaction relative collection IDs of the
+// form "_N" to "{txid}_N" using the output being parsed. Absolute outpoints and
+// other values are returned unchanged.
+func NormalizeCollectionID(collectionID string, outpoint *transaction.Outpoint) string {
+	if outpoint == nil || !strings.HasPrefix(collectionID, "_") {
+		return collectionID
+	}
+	index, err := strconv.ParseUint(strings.TrimPrefix(collectionID, "_"), 10, 32)
+	if err != nil {
+		return collectionID
+	}
+	return (&transaction.Outpoint{
+		Txid:  outpoint.Txid,
+		Index: uint32(index),
+	}).OrdinalString()
 }
 
 // ParseAIP parses AIP signatures from previously parsed bitcom.
