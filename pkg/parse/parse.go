@@ -47,6 +47,7 @@ var Parsers = map[string]ParserFunc{
 	TagBitcom:      ParseBitcom,
 	TagB:           ParseB,
 	TagMAP:         ParseMAP,
+	TagCollection:  ParseCollection, // after MAP: collectionItem subTypeData
 	TagAIP:         ParseAIP,
 	TagBAP:         ParseBAP,
 	TagSigma:       ParseSigma,
@@ -67,6 +68,7 @@ var DefaultTags = []string{
 	TagBitcom,      // Base bitcom parser (must come before B, MAP, etc.)
 	TagB,           // B:// protocol
 	TagMAP,         // MAP protocol
+	TagCollection,  // collectionItem subTypeData (must come after MAP)
 	TagAIP,         // AIP signatures
 	TagBAP,         // BAP identity
 	TagSigma,       // SIGMA signatures
