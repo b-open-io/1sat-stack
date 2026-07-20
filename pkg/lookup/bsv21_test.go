@@ -7,7 +7,11 @@ import (
 
 	storage "github.com/b-open-io/1sat-stack/pkg/overlay/storage"
 	"github.com/b-open-io/1sat-stack/pkg/store"
+	"github.com/b-open-io/1sat-stack/pkg/template/inscription"
+	"github.com/b-open-io/1sat-stack/pkg/template/p2pkh"
+	"github.com/bsv-blockchain/go-overlay-services/pkg/core/engine"
 	"github.com/bsv-blockchain/go-sdk/chainhash"
+	"github.com/bsv-blockchain/go-sdk/script"
 	"github.com/bsv-blockchain/go-sdk/transaction"
 )
 
@@ -324,4 +328,99 @@ func TestLargeUint64Amount(t *testing.T) {
 			t.Errorf("unexpected amount: %s", amt)
 		}
 	}
+}
+
+// admitDeploy builds a deploy+mint tx with the given script layout and runs it
+// through OutputAdmittedByTopic on the tm_bsv21 topic.
+func admitDeploy(t *testing.T, lookup *BSV21Lookup, prefix, suffix []byte) *transaction.Outpoint {
+	t.Helper()
+	scr, err := (&inscription.Inscription{
+		File: inscription.File{
+			Content: []byte(`{"p":"bsv-20","op":"deploy+mint","sym":"TEST","amt":"1000"}`),
+			Type:    "application/bsv-20",
+		},
+		ScriptPrefix: prefix,
+		ScriptSuffix: suffix,
+	}).Lock()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	tx := transaction.NewTransaction()
+	tx.AddOutput(&transaction.TransactionOutput{LockingScript: scr, Satoshis: 1})
+	beef, err := tx.AtomicBEEF(true)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	err = lookup.OutputAdmittedByTopic(context.Background(), &engine.OutputAdmittedByTopic{
+		Topic:       "tm_bsv21",
+		OutputIndex: 0,
+		AtomicBEEF:  beef,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return &transaction.Outpoint{Txid: *tx.TxID(), Index: 0}
+}
+
+func TestOutputAdmittedByTopicLockLayouts(t *testing.T) {
+	addr, err := script.NewAddressFromPublicKeyHash(make([]byte, 20), true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	lock, err := p2pkh.Lock(addr)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	t.Run("p2pkh before envelope", func(t *testing.T) {
+		lookup := newTestLookup(t)
+		outpoint := admitDeploy(t, lookup, *lock, nil)
+
+		token, err := lookup.GetToken(context.Background(), outpoint)
+		if err != nil {
+			t.Fatalf("expected token to be indexed, got %v", err)
+		}
+		if token.Id != outpoint.OrdinalString() {
+			t.Errorf("expected token id %s, got %s", outpoint.OrdinalString(), token.Id)
+		}
+
+		ts, err := lookup.db("tm_bsv21")
+		if err != nil {
+			t.Fatal(err)
+		}
+		var lockType, address string
+		if err := ts.DB().QueryRow(
+			`SELECT lock_type, address FROM token_outputs WHERE outpoint = ?`, outpoint.Bytes(),
+		).Scan(&lockType, &address); err != nil {
+			t.Fatal(err)
+		}
+		if lockType != "" || address != "" {
+			t.Errorf("expected empty lock_type/address, got %q/%q", lockType, address)
+		}
+	})
+
+	t.Run("p2pkh after envelope", func(t *testing.T) {
+		lookup := newTestLookup(t)
+		outpoint := admitDeploy(t, lookup, nil, *lock)
+
+		if _, err := lookup.GetToken(context.Background(), outpoint); err != nil {
+			t.Fatalf("expected token to be indexed, got %v", err)
+		}
+
+		ts, err := lookup.db("tm_bsv21")
+		if err != nil {
+			t.Fatal(err)
+		}
+		var lockType, address string
+		if err := ts.DB().QueryRow(
+			`SELECT lock_type, address FROM token_outputs WHERE outpoint = ?`, outpoint.Bytes(),
+		).Scan(&lockType, &address); err != nil {
+			t.Fatal(err)
+		}
+		if lockType != "p2pkh" || address != addr.AddressString {
+			t.Errorf("expected p2pkh/%s, got %q/%q", addr.AddressString, lockType, address)
+		}
+	})
 }

@@ -71,6 +71,11 @@ func (l *BSV21Lookup) db(topic string) (overlaystorage.TopicStorage, error) {
 	return ts, nil
 }
 
+// TopicDB exposes the schema-ensured topic storage for maintenance tooling.
+func (l *BSV21Lookup) TopicDB(topic string) (overlaystorage.TopicStorage, error) {
+	return l.db(topic)
+}
+
 // tokenDB is a convenience for resolving a per-token topic database.
 func (l *BSV21Lookup) tokenDB(tokenId string) (overlaystorage.TopicStorage, error) {
 	return l.db("tm_" + tokenId)
@@ -111,8 +116,6 @@ func (l *BSV21Lookup) OutputAdmittedByTopic(ctx context.Context, payload *engine
 	} else if c := cosign.Decode(suffix); c != nil {
 		lockType = "cos"
 		address = c.Address
-	} else {
-		return nil
 	}
 
 	ts, err := l.db(payload.Topic)
