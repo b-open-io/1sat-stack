@@ -3,6 +3,7 @@ package indexer
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"log/slog"
 	"strings"
@@ -44,8 +45,10 @@ func (c *capturePubSub) Unsubscribe(topics []string) error { return nil }
 func (c *capturePubSub) Stop() error                       { return nil }
 func (c *capturePubSub) Close() error                      { return nil }
 
-// notFoundBeef reports every tx as having no proof available, driving the
-// auditor's stale-rollback path.
+// notFoundBeef surfaces a miss as beef.ErrNotFound. This exercises the
+// auditor's rollback+publish logic in isolation, but note the production
+// aggregator (beef.Storage.UpdateMerklePath) never returns ErrNotFound — see
+// fetchErrorBeef for the production-semantics case.
 type notFoundBeef struct{}
 
 func (notFoundBeef) LoadTx(ctx context.Context, txid *chainhash.Hash) (*transaction.Transaction, error) {
@@ -57,6 +60,23 @@ func (notFoundBeef) UpdateMerklePath(ctx context.Context, txid *chainhash.Hash, 
 }
 
 func (notFoundBeef) SaveBeef(ctx context.Context, txid *chainhash.Hash, b *transaction.Beef) error {
+	return nil
+}
+
+// fetchErrorBeef mirrors the production aggregator: a genuine miss surfaces as
+// a plain error, not beef.ErrNotFound. processUnconfirmed classifies this as a
+// transient error and retries, so the rollback branch is not reached.
+type fetchErrorBeef struct{}
+
+func (fetchErrorBeef) LoadTx(ctx context.Context, txid *chainhash.Hash) (*transaction.Transaction, error) {
+	return nil, errors.New("not found")
+}
+
+func (fetchErrorBeef) UpdateMerklePath(ctx context.Context, txid *chainhash.Hash, ct chaintracker.ChainTracker) ([]byte, error) {
+	return nil, errors.New("unable to fetch updated merkle proof for " + txid.String())
+}
+
+func (fetchErrorBeef) SaveBeef(ctx context.Context, txid *chainhash.Hash, b *transaction.Beef) error {
 	return nil
 }
 
@@ -111,5 +131,37 @@ func TestProcessUnconfirmedPublishesStaleRollback(t *testing.T) {
 	}
 	if !strings.Contains(evt.ExtraInfo, "stale") {
 		t.Fatalf("evt.ExtraInfo = %q, want to contain 'stale'", evt.ExtraInfo)
+	}
+}
+
+// TestProcessUnconfirmedFetchErrorDoesNotRollback documents current production
+// behavior: because beef.Storage.UpdateMerklePath returns a plain error (not
+// beef.ErrNotFound) on a genuine miss, the stale-rollback branch is never
+// reached and no arc event is published. When the miss-classification is fixed
+// upstream, this test should flip to expect a rollback.
+func TestProcessUnconfirmedFetchErrorDoesNotRollback(t *testing.T) {
+	st := newAuditorTestStore(t)
+	outputStore := txo.NewOutputStore(st, nil, beef.NewStorageFromProviders(nil, nil))
+	ps := &capturePubSub{}
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+
+	a := NewPendingAuditor(outputStore, fetchErrorBeef{}, nil, nil, nil, ps, logger)
+
+	txid := chainhash.HashH([]byte("stale-tx"))
+	staleScore := float64(time.Now().Add(-4*time.Hour).UnixNano()) / 1e9
+	members := []store.ScoredMember{{Member: txid[:], Score: staleScore}}
+
+	_, rolledBack, stillPending := a.processUnconfirmed(context.Background(), members)
+	if rolledBack != 0 {
+		t.Fatalf("rolledBack = %d, want 0 (branch is unreachable under production error semantics)", rolledBack)
+	}
+	if stillPending != 1 {
+		t.Fatalf("stillPending = %d, want 1", stillPending)
+	}
+
+	ps.mu.Lock()
+	defer ps.mu.Unlock()
+	if len(ps.publishes) != 0 {
+		t.Fatalf("publishes = %d, want 0 (no rollback event should fire in production)", len(ps.publishes))
 	}
 }
