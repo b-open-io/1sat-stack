@@ -127,6 +127,14 @@ split — I'm continuing M4/M5 and leaving this for you.
   no txo pieces). `mode: opns` builds no txo/indexer/auditor; `mode: all` full pipeline intact.
 - Gate (implementer-reported): auditor test green; full suite green; `mode: all` capabilities diff
   empty; `mode: index` and `mode: opns` boot with correct surfaces.
-- Under review — priority: independent confirmation of the dead-branch finding + split-work soundness.
+- Review verdict: split work (Task 3.2) **sound** — overlays carry no txo, adapter unwired,
+  gating correct, parity intact, StatusHandler nil-safe for overlay-only processes. Task 3.1
+  publish is correct + consumed by `handleRejected`, but **confirmed dead in production** (the ⚠
+  finding). Added `TestProcessUnconfirmedFetchErrorDoesNotRollback` (commit `test: document…`) so
+  the suite states the truth: under production error semantics no rollback/publish fires. That test
+  should flip to expect a rollback once the classification bug is fixed.
+- **M3 COMPLETE** with the caveat that R5 (stale→arc REJECTED→overlay rollback) is implemented but
+  inert until the dead-branch bug is addressed (tracked as a task chip + the ⚠ finding; David
+  acknowledged it needs tracking).
 ### M4 — Remote providers — not started
 ### M5 — Gateway + per-service admin — not started
