@@ -179,5 +179,27 @@ split — I'm continuing M4/M5 and leaving this for you.
   admin UI path verified responding at its unchanged path via `X-Api-Key`.
 - Caveats reported: R1 — Swagger fragments NOT regenerated, so new admin endpoints are undocumented
   in OpenAPI until `build-docs.sh` runs (cosmetic); R5 — carries M3's dead-branch caveat.
-- Under FINAL review (M5 in depth + whole-branch pass) — priority: every relocated admin route is
-  still behind the admin auth guard (security), gateway route coverage, mode:all integrity.
+- **FINAL REVIEW COMPLETE — verdict: mergeable for the mode:all/standalone path (the only prod
+  path today); branch is behaviorally master-equivalent.**
+  - Admin auth: CONFIRMED preserved on every relocated route (byte-identical guard + paths);
+    reviewer REFUTED any unauthenticated reachability.
+  - mode:all integrity: met — adapter IngestTx nil in all modes, `OutputStore.IngestTx` wired only
+    inside the index block, queue threaded through all subscribers/bridges, bsv21 has no
+    indexer/owner imports, Close order correct (queue before store, StatusHandler.Stop called).
+  - R1✅ R2✅ R3✅ R4✅ R5⚠️(dead branch, tracked) R6✅ R7✅ R8✅ R9⚠️ R10✅.
+
+**Open item needing your decision (non-blocking; gateway is multi-process-only, not in prod):**
+- **R9 — gateway over-advertises `/chaintracks` + `/sweep`.** The proxy `routeTable`
+  (`pkg/gateway/gateway.go:22`) omits both, but merged `/1sat/capabilities` still lists them (pulled
+  from backends). So behind a gateway they'd 404 while being advertised. My plan's Task 5.1 path map
+  also omitted them (spec-level, not a code miss). Options: (a) add `/chaintracks`→index and decide
+  a `/sweep` host, adding both to routeTable; (b) exclude them from merged capabilities so the
+  advertised surface stays honest until chaintracks-as-substrate and sweep-UI placement are settled.
+  My lean: (a) for chaintracks (index is its natural host), (b) for sweep (UI placement is deferred).
+
+**Deferred minors (non-blocking, mostly pre-existing):**
+- Data race in the `OpnsCrawlTrigger` closure (`pkg/node/wiring.go:475`) — two concurrent admin
+  crawl POSTs could launch duplicate crawls; admin-gated, rare, mirrors master's trigger.
+- `ConfigStore` never `Close()`d on shutdown — pre-existing, master-identical.
+- New admin endpoints absent from served OpenAPI until `build-docs.sh` runs — cosmetic.
+- Deferred remote-path hardening from M4 (owner-sync idle timeout; spends batch fan-out).
