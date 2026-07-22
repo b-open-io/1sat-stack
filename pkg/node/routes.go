@@ -11,10 +11,12 @@ import (
 	beefdocs "github.com/b-open-io/1sat-stack/pkg/beef/docs"
 	broadcastdocs "github.com/b-open-io/1sat-stack/pkg/broadcast/docs"
 	bsocialdocs "github.com/b-open-io/1sat-stack/pkg/bsocial/docs"
+	"github.com/b-open-io/1sat-stack/pkg/bsv21"
 	bsv21docs "github.com/b-open-io/1sat-stack/pkg/bsv21/docs"
 	chaintracksdocs "github.com/b-open-io/1sat-stack/pkg/chaintracks/docs"
 	"github.com/b-open-io/1sat-stack/pkg/gateway"
 	"github.com/b-open-io/1sat-stack/pkg/httputil"
+	"github.com/b-open-io/1sat-stack/pkg/opns"
 	opnsdocs "github.com/b-open-io/1sat-stack/pkg/opns/docs"
 	ordfsdocs "github.com/b-open-io/1sat-stack/pkg/ordfs/docs"
 	ordlockdocs "github.com/b-open-io/1sat-stack/pkg/ordlock/docs"
@@ -23,6 +25,7 @@ import (
 	paymaildocs "github.com/b-open-io/1sat-stack/pkg/paymail/docs"
 	pubsubdocs "github.com/b-open-io/1sat-stack/pkg/pubsub/docs"
 	"github.com/b-open-io/1sat-stack/pkg/registrar"
+	"github.com/b-open-io/1sat-stack/pkg/txo"
 	txodocs "github.com/b-open-io/1sat-stack/pkg/txo/docs"
 	"github.com/bsv-blockchain/go-chaintracks/chaintracks"
 	"github.com/gofiber/fiber/v2"
@@ -180,6 +183,12 @@ func (c *Config) RegisterRoutes(app *fiber.App, svc *Services) {
 		}}})
 	}
 
+	// Per-service admin routes (data browser, whitelist/blacklist, workers,
+	// opns crawl, topic/lookup listing) mount at the same public /admin/api/*
+	// paths the UI already calls. Registered before the admin UI so their
+	// specific routes win over the admin SPA catch-all.
+	c.mountServiceAdminRoutes(reg, svc)
+
 	// Admin: static UI files are public, API endpoints are guarded. Setup
 	// routes (status, setup) need identity but not AdminGuard. API routes
 	// mount under {prefix}/api/ with AdminGuard; static UI mounts at
@@ -246,6 +255,42 @@ func (c *Config) RegisterRoutes(app *fiber.App, svc *Services) {
 	}
 
 	reg.Finalize()
+}
+
+// mountServiceAdminRoutes mounts each running service's admin-guarded routes
+// at the same public /admin/api/* paths the admin UI already calls, so the UI
+// needs no change in mode:all. It only mounts when the admin UI and auth are
+// present (the same condition under which the admin UI is served), and only
+// for services that run in this process.
+func (c *Config) mountServiceAdminRoutes(reg *registrar.Registrar, svc *Services) {
+	if svc.Admin == nil || svc.Admin.Routes == nil || svc.AuthMiddleware == nil {
+		return
+	}
+	logger := slog.Default()
+	reg.Add(registrar.Registration{Mounts: []registrar.Mount{{
+		Prefix:      prefixOr(c.Admin.Routes.Prefix, "/admin"),
+		Middlewares: []fiber.Handler{httputil.PrivateNoStoreMiddleware()},
+		Register: func(g fiber.Router) {
+			guarded := g.Group("/api",
+				svc.AuthMiddleware.Handler(),
+				auth.AdminGuard(svc.ConfigStore, c.Auth.AllowUnauthenticated, logger),
+			)
+			// Mount every group whenever the admin control-plane runs, matching
+			// the previous unconditional admin surface: the handlers degrade
+			// gracefully when their service is not running in this process
+			// (empty lists, or 503/500), so mode:all is unchanged.
+			if svc.Store != nil {
+				txo.NewAdminRoutes(svc.Store.Store, logger).Register(guarded.Group("/data"))
+			}
+			var bsv21Sync *bsv21.SyncServices
+			if svc.BSV21 != nil {
+				bsv21Sync = svc.BSV21.Sync
+			}
+			bsv21.NewAdminRoutes(svc.ConfigStore, bsv21Sync, logger).Register(guarded)
+			opns.NewAdminRoutes(svc.OpnsCrawlTrigger, logger).Register(guarded)
+			overlay.NewAdminRoutes(svc.overlayEngines(), svc.Overlay, logger).Register(guarded)
+		},
+	}}})
 }
 
 func prefixOr(prefix, fallback string) string {

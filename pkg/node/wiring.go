@@ -73,10 +73,13 @@ type Services struct {
 	// and this stays nil.
 	StatusHandler *indexer.StatusHandler
 	Admin         *admin.Services
-	Sweep         *sweep.Services
-	Landing       *landing.Services
-	Wallet        *wallet.Services
-	Paymail       *paymail.Services
+	// OpnsCrawlTrigger starts the OpNS genesis crawl; set when opns + beef +
+	// overlay are available. Consumed by the opns admin route.
+	OpnsCrawlTrigger opns.CrawlTrigger
+	Sweep            *sweep.Services
+	Landing          *landing.Services
+	Wallet           *wallet.Services
+	Paymail          *paymail.Services
 
 	// ConfigStore for admin data (users, progress, settings)
 	ConfigStore configpkg.Store
@@ -465,6 +468,29 @@ func (c *Config) Initialize(ctx context.Context, logger *slog.Logger) (*Services
 			svc.OPNS.Crawl = opns.NewGenesisCrawl(c.OPNS.Crawl, svc.Beef.Storage, svc.OPNS.Engine, opnsLogger)
 		}
 
+		// Trigger for the admin-guarded OpNS crawl endpoint, mounted by the
+		// composition layer on the opns service. Runs on the server context so
+		// it outlives the triggering request.
+		if svc.Beef != nil && svc.Overlay != nil {
+			svc.OpnsCrawlTrigger = func(context.Context) error {
+				if svc.OPNS.Crawl != nil {
+					return fmt.Errorf("crawl already running")
+				}
+				crawlCfg := c.OPNS.Crawl
+				crawlCfg.Enabled = true
+				crawlCfg.JungleBusURL = c.JungleBus.URL
+				triggerLogger := logging.NewComponentLogger(logger, "opns", c.OPNS.LogLevel)
+				svc.OPNS.Crawl = opns.NewGenesisCrawl(crawlCfg, svc.Beef.Storage, svc.OPNS.Engine, triggerLogger)
+				go func() {
+					if err := svc.OPNS.Crawl.Start(ctx); err != nil {
+						triggerLogger.Error("OpNS crawl error", "error", err)
+					}
+					svc.OPNS.Crawl = nil
+				}()
+				return nil
+			}
+		}
+
 		if svc.Beef != nil {
 			opnsSyncCfg := c.OPNS.Sync
 			if opnsSyncCfg == nil {
@@ -640,57 +666,15 @@ func (c *Config) Initialize(ctx context.Context, logger *slog.Logger) (*Services
 		logger.Debug("own service not initialized", "mode", c.Owner.Mode, "txoNil", svc.TXO == nil, "indexerNil", svc.Indexer == nil)
 	}
 
-	// Initialize admin UI
+	// Initialize admin UI. Admin is the control-plane frontend (config, auth,
+	// logs, restart); cross-service admin routes are mounted separately by
+	// RegisterRoutes from their owning services.
 	if c.Admin.Mode != admin.ModeDisabled && svc.Store != nil {
 		start = time.Now()
-		// Build engines map for admin topic/lookup listing
-		engines := make(map[string]*engine.Engine)
-		if svc.BAP != nil {
-			engines["bap"] = svc.BAP.Engine
-		}
-		if svc.BSocial != nil {
-			engines["bsocial"] = svc.BSocial.Engine
-		}
-		if svc.OPNS != nil {
-			engines["opns"] = svc.OPNS.Engine
-		}
-		if svc.OrdLock != nil {
-			engines["ordlock"] = svc.OrdLock.Engine
-		}
-		if svc.BSV21 != nil {
-			engines["bsv21"] = svc.BSV21.Engine
-		}
-
 		adminDeps := &admin.InitializeDeps{
-			Overlay:        svc.Overlay,
-			Engines:        engines,
-			Store:          svc.Store.Store,
 			ConfigStore:    svc.ConfigStore,
 			RequestRestart: c.RequestRestart,
 			LogStore:       c.LogStore,
-		}
-		if svc.BSV21 != nil {
-			adminDeps.BSV21Sync = svc.BSV21.Sync
-		}
-		// Wire OpNS crawl trigger if dependencies are available
-		if svc.OPNS != nil && svc.Beef != nil && svc.Overlay != nil {
-			adminDeps.TriggerOpnsCrawl = func(triggerCtx context.Context) error {
-				if svc.OPNS.Crawl != nil {
-					return fmt.Errorf("crawl already running")
-				}
-				crawlCfg := c.OPNS.Crawl
-				crawlCfg.Enabled = true
-				crawlCfg.JungleBusURL = c.JungleBus.URL
-				opnsLogger := logging.NewComponentLogger(logger, "opns", c.OPNS.LogLevel)
-				svc.OPNS.Crawl = opns.NewGenesisCrawl(crawlCfg, svc.Beef.Storage, svc.OPNS.Engine, opnsLogger)
-				go func() {
-					if err := svc.OPNS.Crawl.Start(ctx); err != nil {
-						opnsLogger.Error("OpNS crawl error", "error", err)
-					}
-					svc.OPNS.Crawl = nil
-				}()
-				return nil
-			}
 		}
 		adminSvc, err := c.Admin.Initialize(ctx, logging.NewComponentLogger(logger, "admin", ""), adminDeps)
 		if err != nil {
@@ -989,6 +973,29 @@ func (svc *Services) Close() error {
 		return fmt.Errorf("close errors: %v", errs)
 	}
 	return nil
+}
+
+// overlayEngines builds the module→engine map used by the overlay admin
+// routes to list active topics and lookup providers, covering whichever
+// overlay modules run in this process.
+func (svc *Services) overlayEngines() map[string]*engine.Engine {
+	engines := make(map[string]*engine.Engine)
+	if svc.BAP != nil {
+		engines["bap"] = svc.BAP.Engine
+	}
+	if svc.BSocial != nil {
+		engines["bsocial"] = svc.BSocial.Engine
+	}
+	if svc.OPNS != nil {
+		engines["opns"] = svc.OPNS.Engine
+	}
+	if svc.OrdLock != nil {
+		engines["ordlock"] = svc.OrdLock.Engine
+	}
+	if svc.BSV21 != nil {
+		engines["bsv21"] = svc.BSV21.Engine
+	}
+	return engines
 }
 
 // overlayLookupServices builds the topic→lookup service map for arc status

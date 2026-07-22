@@ -4,12 +4,8 @@ import (
 	"context"
 	"log/slog"
 
-	"github.com/b-open-io/1sat-stack/pkg/bsv21"
 	"github.com/b-open-io/1sat-stack/pkg/config"
 	"github.com/b-open-io/1sat-stack/pkg/logging"
-	"github.com/b-open-io/1sat-stack/pkg/overlay"
-	"github.com/b-open-io/1sat-stack/pkg/store"
-	"github.com/bsv-blockchain/go-overlay-services/pkg/core/engine"
 	"github.com/spf13/viper"
 )
 
@@ -37,20 +33,14 @@ type Services struct {
 	Routes *Routes
 }
 
-// OpnsCrawlFunc is a callback to trigger the OpNS genesis crawl.
-// Returns nil if already running or started successfully.
-type OpnsCrawlFunc func(ctx context.Context) error
-
-// InitializeDeps holds dependencies for admin initialization
+// InitializeDeps holds dependencies for admin initialization. Admin is the
+// control-plane frontend: it owns the config store, auth admin, log viewer,
+// and restart. Cross-service capabilities (data browser, whitelist, crawl,
+// topic/lookup listing) live on their owning services' admin routes.
 type InitializeDeps struct {
-	Overlay          *overlay.Services
-	Engines          map[string]*engine.Engine // module name -> engine (for topic/lookup listing)
-	Store            store.Store
-	ConfigStore      config.Store
-	BSV21Sync        *bsv21.SyncServices
-	TriggerOpnsCrawl OpnsCrawlFunc
-	RequestRestart   func()
-	LogStore         *logging.SQLiteHandler
+	ConfigStore    config.Store
+	RequestRestart func()
+	LogStore       *logging.SQLiteHandler
 }
 
 // SetDefaults sets default configuration values
@@ -74,7 +64,7 @@ func (c *Config) Initialize(ctx context.Context, logger *slog.Logger, deps *Init
 
 	// Create routes if enabled
 	if c.Routes.Enabled && deps.ConfigStore != nil {
-		svc.Routes = NewRoutes(deps.Overlay, deps.Engines, deps.Store, deps.ConfigStore, deps.BSV21Sync, deps.TriggerOpnsCrawl, deps.RequestRestart, &c.Routes, logger, deps.LogStore)
+		svc.Routes = NewRoutes(deps.ConfigStore, deps.RequestRestart, &c.Routes, logger, deps.LogStore)
 	}
 
 	logger.Info("admin service initialized", "mode", c.Mode)
