@@ -4,6 +4,42 @@ Branch: `microservice-split` (from `master` @ `ab77548`). Running the plan in
 `microservice-split-implementation.md` milestone by milestone: implement → review → fix-loop →
 next. This log is the morning-review summary; newest status at the bottom of each milestone.
 
+## ⏸ STOPPED at the M2/M3 boundary — needs your decision before continuing
+
+**Done overnight: M1 + M2, both fully implemented, independently reviewed (verdict sound), and
+committed on `microservice-split`. `mode: all` parity with master verified at both milestones.**
+
+I stopped rather than start M3 because M3 ("event-driven tx lifecycle") turns on a semantic
+decision my own decision 9 left ambiguous, and I found the plan's Task 3.2 step gets it wrong in a
+way that would introduce a double-ingest bug. This is production-indexer correctness — your call,
+not a subagent's.
+
+**The finding:** In the overlay engine's `Submit`, a live (non-historical) tx triggers BOTH
+`Broadcaster.Broadcast` (engine.go:572) AND `Storage.InsertOutputs` → adapter → `IngestTx`
+(engine.go:605). On master the adapter `IngestTx` is dead (nil, from the init-ordering quirk I
+fixed for parity in M1), so overlay submissions are ingested only via the broadcast→arcade-SSE
+lifecycle — and that works in production today. The plan's M3 Task 3.2 Step 1 says to wire
+`IngestTx` whenever index runs; in `mode: all` that would ingest each overlay-submitted tx twice
+(once immediately via the adapter, once when the arc SSE returns), and because
+`SaveTransaction` re-publishes events (`pkg/txo/output_store.go:258`), the duplicate fans out to
+every overlay queue. Wasteful churn, not corruption — but wrong.
+
+**My recommendation for M3 (needs your ✓):** resolve decision 9 the master-consistent way — the
+adapter `IngestTx` stays unwired; ingestion is driven by the broadcast→arc lifecycle in all
+profiles. Overlay-only processes get their `Broadcaster` pointed at the index service's `/tx`
+endpoint plus a `StatusHandler` consuming arc events for rollback. That makes M3 mostly additive
+(Task 3.1 auditor-publishes-rollback + the overlay-only status loop) and drops the risky
+"wire IngestTx when index runs" step entirely. If instead you want overlay submissions ingested
+immediately (adapter path) with the broadcast path suppressed, that's a different design and we
+should talk it through.
+
+Also still needs your input (from M1 review, non-blocking): **legal mode-combination rules** —
+`mode: paymail` alone can't boot (hard-requires opns/ordfs/index deps); should the composer error
+clearly, auto-pull required co-services, or just document co-location? I didn't invent a rule.
+
+Related: the stale-rollback hole fix is already on your task chips ("Fix stale-rollback hole");
+M3 Task 3.1 is the same fix, so decide whether to do it there or standalone.
+
 ## Decisions I made autonomously (review these first)
 
 1. **M1 parity correction (commit `d1d6111`).** The plan's Task 1.3 specified a call-time
@@ -71,6 +107,11 @@ next. This log is the morning-review summary; newest status at the bottom of eac
 - Deviations to confirm: indexer sync/config migrated (not in task list); GASP `GetInitialResponse`
   dropped `MinExclusive` (inclusive `From` in Queue model); dedicated queue store defaults to a
   `queue` badger path to avoid colliding with the main store dir.
-### M3 — Event-driven lifecycle — not started
+### M3 — Event-driven lifecycle — BLOCKED on decision (see top of doc)
+- Not started. The plan's Task 3.2 Step 1 ("wire IngestTx when index runs") would double-ingest
+  in `mode: all` — see the STOPPED section. Needs the decision-9 resolution before implementing.
+- When unblocked, Task 3.1 (auditor publishes rollback events) is safe/additive; Task 3.2 needs
+  rewriting to the master-consistent model (adapter IngestTx stays unwired; overlay-only processes
+  broadcast to the index `/tx` + consume arc events).
 ### M4 — Remote providers — not started
 ### M5 — Gateway + per-service admin — not started

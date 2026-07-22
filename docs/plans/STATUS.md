@@ -9,7 +9,7 @@
 | [Landing Page](../superpowers/plans/2026-03-17-landing-page.md) | **In Progress** | OPL-1404 — Terminal-aesthetic landing page at `/1sat/` |
 | BSV21 TopicWorker → OverlaySync | **In Progress** | OPL-1468 — Unify BSV21 token workers with OverlaySync, add OnProcessed, delete TopicWorker |
 | [Microservice Split](./microservice-split.md) | **In Progress** | Discovery & decisions: arcade-style mode pattern, service inventory, Queue abstraction, canonical wiring |
-| [Microservice Split Implementation](./microservice-split-implementation.md) | **Not Started** | 5 milestones on branch `microservice-split`: pkg/node+modes, Queue, event lifecycle, remote providers, gateway+admin |
+| [Microservice Split Implementation](./microservice-split-implementation.md) | **In Progress** | M1 (pkg/node+modes) + M2 (Queue) done, reviewed, parity-verified on branch `microservice-split`. Paused at M3 — see [progress log](./microservice-split-progress.md), needs a decision-9 signoff (double-ingest) |
 | [Docker Compose Service Split](./docker-compose-service-split.md) | **On Hold** | Superseded by Microservice Split; compose generation design reused for configurator phase |
 | [Persistent Logging](./2026-03-26-persistent-logging.md) | **Not Started** | SQLite log persistence, multi-handler, module tagging, admin log viewer |
 | [External Arcade Migration](./external-arcade-migration.md) | **In Progress** | Migrate to arcade.gorillapool.io via new `/1sat/tx` route, always-on SSE consumer with event broker, custom overlay broadcaster |
