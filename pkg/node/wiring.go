@@ -260,16 +260,11 @@ func (c *Config) Initialize(ctx context.Context, logger *slog.Logger) (*Services
 	// Initialize overlay engine FIRST (BSV21 needs it for topic/lookup registration)
 	if c.Overlay.Mode != overlay.ModeDisabled && svc.TXO != nil {
 		start = time.Now()
-		outputStore := svc.TXO.OutputStore
 		overlayDeps := &overlay.InitializeDeps{
-			// OutputStore.IngestTx is wired by indexer init after overlay
-			// init, so resolve it at call time.
-			IngestTx: func(ctx context.Context, tx *transaction.Transaction) error {
-				if fn := outputStore.IngestTx; fn != nil {
-					return fn(ctx, tx)
-				}
-				return nil
-			},
+			// Overlay adapter ingest is wired deliberately in Milestone 3
+			// (see docs/plans/microservice-split.md, decision 9). Left unset
+			// in this milestone to preserve mode:all runtime parity.
+			IngestTx:     nil,
 			ChainTracker: svc.Chaintracks,
 		}
 		// Add optional dependencies if available
