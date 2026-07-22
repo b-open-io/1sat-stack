@@ -100,7 +100,7 @@ func (r *processorRemote) RequestNode(ctx context.Context, graphID, outpoint *tr
 
 	node := &gasp.Node{
 		GraphID:     graphID,
-		RawTx:       fmt.Sprintf("%x", rawTx),
+		RawTx:       rawTx,
 		OutputIndex: outpoint.Index,
 	}
 
@@ -110,8 +110,7 @@ func (r *processorRemote) RequestNode(ctx context.Context, graphID, outpoint *tr
 		return nil, fmt.Errorf("failed to load proof %s: %w", outpoint.Txid.String(), err)
 	}
 	if len(proof) > 0 {
-		proofHex := fmt.Sprintf("%x", proof)
-		node.Proof = &proofHex
+		node.Proof = proof
 	}
 
 	return node, nil
