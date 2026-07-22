@@ -67,11 +67,16 @@ type Services struct {
 	Spends  *spends.Services
 	ORDFS   *ordfs.Services
 	Own     *owner.Services
-	Admin   *admin.Services
-	Sweep   *sweep.Services
-	Landing *landing.Services
-	Wallet  *wallet.Services
-	Paymail *paymail.Services
+
+	// StatusHandler is the arc status feedback loop for overlay-only
+	// processes (no index). When index runs, its own StatusHandler is used
+	// and this stays nil.
+	StatusHandler *indexer.StatusHandler
+	Admin         *admin.Services
+	Sweep         *sweep.Services
+	Landing       *landing.Services
+	Wallet        *wallet.Services
+	Paymail       *paymail.Services
 
 	// ConfigStore for admin data (users, progress, settings)
 	ConfigStore configpkg.Store
@@ -265,8 +270,9 @@ func (c *Config) Initialize(ctx context.Context, logger *slog.Logger) (*Services
 			"url", runtimeCfg.ArcadeURL, "wait_timeout", waitTimeout, "duration", time.Since(start).Round(time.Millisecond))
 	}
 
-	// Initialize TXO storage with shared dependencies
-	if c.TXO.Mode != txo.ModeDisabled {
+	// Initialize TXO storage with shared dependencies. txo is the index
+	// service's storage domain; overlay-only processes never build it.
+	if c.runsService("index") && c.TXO.Mode != txo.ModeDisabled {
 		start = time.Now()
 		txoSvc, err := c.TXO.Initialize(ctx, logging.NewComponentLogger(logger, "txo", ""), storeSvc, pubsubSvc, beefSvc)
 		if err != nil {
@@ -276,13 +282,13 @@ func (c *Config) Initialize(ctx context.Context, logger *slog.Logger) (*Services
 		logger.Info("txo initialized", "duration", time.Since(start).Round(time.Millisecond))
 	}
 
-	// Initialize overlay engine FIRST (BSV21 needs it for topic/lookup registration)
-	if c.Overlay.Mode != overlay.ModeDisabled && svc.TXO != nil {
+	// Initialize overlay engine FIRST (BSV21 needs it for topic/lookup registration).
+	// The overlay engine carries no txo: overlay-submitted txs are ingested via
+	// the broadcast→arcade→arc-status feedback loop, not the adapter, so the
+	// adapter IngestTx stays nil in every mode (decision 9).
+	if c.Overlay.Mode != overlay.ModeDisabled && c.Overlay.Mode != "" {
 		start = time.Now()
 		overlayDeps := &overlay.InitializeDeps{
-			// Overlay adapter ingest is wired deliberately in Milestone 3
-			// (see docs/plans/microservice-split.md, decision 9). Left unset
-			// in this milestone to preserve mode:all runtime parity.
 			IngestTx:     nil,
 			ChainTracker: svc.Chaintracks,
 			Queue:        svc.Queue,
@@ -512,25 +518,7 @@ func (c *Config) Initialize(ctx context.Context, logger *slog.Logger) (*Services
 				statusDeps.OverlayStorage = svc.Overlay.NewStorageAdapter()
 				statusDeps.TopicIndex = svc.Overlay.TxTopicIndex()
 			}
-			// Build topic→lookup service map for block height routing
-			lookups := make(map[string]engine.LookupService)
-			if svc.BAP != nil {
-				lookups["tm_bap"] = svc.BAP.Lookup
-			}
-			if svc.BSocial != nil {
-				lookups["tm_bsocial"] = svc.BSocial.Lookup
-			}
-			if svc.OPNS != nil {
-				lookups["tm_opns"] = svc.OPNS.Lookup
-			}
-			if svc.OrdLock != nil {
-				lookups[ordlockpkg.TopicName] = svc.OrdLock.Lookup
-			}
-			if svc.BSV21 != nil {
-				lookups["bsv21"] = svc.BSV21.Lookup
-				lookups["tm_bsv21"] = svc.BSV21.Lookup
-			}
-			statusDeps.LookupServices = lookups
+			statusDeps.LookupServices = svc.overlayLookupServices()
 			svc.Indexer.SetupStatusHandler(statusDeps)
 		}
 
@@ -556,6 +544,30 @@ func (c *Config) Initialize(ctx context.Context, logger *slog.Logger) (*Services
 			logger.Debug("wired indexer.IngestTx to OutputStore for overlay flow")
 		}
 		logger.Info("indexer initialized", "mode", c.Indexer.Mode, "duration", time.Since(start).Round(time.Millisecond))
+	}
+
+	// Overlay-only processes (no index) still consume arc status events to roll
+	// back their overlay topic storage on rejected/stale txs. Wire a StatusHandler
+	// with the overlay storage, topic index, and running modules' lookups, but no
+	// txo-dependent pieces (no indexer, no ingest).
+	if !c.runsService("index") && svc.Overlay != nil && svc.PubSub != nil && svc.Beef != nil {
+		var processStore store.Store
+		if svc.Store != nil {
+			processStore = svc.Store.Store
+		}
+		svc.StatusHandler = indexer.NewStatusHandler(
+			svc.PubSub.PubSub,
+			processStore,
+			svc.Beef.Storage,
+			svc.Overlay.NewStorageAdapter(),
+			svc.Overlay.TxTopicIndex(),
+			svc.overlayLookupServices(),
+			svc.Chaintracks,
+			nil,
+			&indexer.StatusHandlerConfig{IngestEnabled: false},
+			logging.NewComponentLogger(logger, "status", ""),
+		)
+		logger.Info("overlay status handler initialized (no index)")
 	}
 
 	// Initialize owner services (depends on TXO, Beef, Indexer)
@@ -825,6 +837,10 @@ func (svc *Services) Close() error {
 		}
 	}
 
+	if svc.StatusHandler != nil {
+		svc.StatusHandler.Stop()
+	}
+
 	if svc.ORDFS != nil {
 		if err := svc.ORDFS.Close(); err != nil {
 			errs = append(errs, fmt.Errorf("ordfs close: %w", err))
@@ -922,6 +938,29 @@ func (svc *Services) Close() error {
 		return fmt.Errorf("close errors: %v", errs)
 	}
 	return nil
+}
+
+// overlayLookupServices builds the topic→lookup service map for arc status
+// block-height routing and rollback, covering whichever overlay modules run.
+func (svc *Services) overlayLookupServices() map[string]engine.LookupService {
+	lookups := make(map[string]engine.LookupService)
+	if svc.BAP != nil {
+		lookups["tm_bap"] = svc.BAP.Lookup
+	}
+	if svc.BSocial != nil {
+		lookups["tm_bsocial"] = svc.BSocial.Lookup
+	}
+	if svc.OPNS != nil {
+		lookups["tm_opns"] = svc.OPNS.Lookup
+	}
+	if svc.OrdLock != nil {
+		lookups[ordlockpkg.TopicName] = svc.OrdLock.Lookup
+	}
+	if svc.BSV21 != nil {
+		lookups["bsv21"] = svc.BSV21.Lookup
+		lookups["tm_bsv21"] = svc.BSV21.Lookup
+	}
+	return lookups
 }
 
 // createOverlayP2PBus creates the overlay P2P bus from configuration.

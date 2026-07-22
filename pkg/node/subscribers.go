@@ -186,6 +186,15 @@ func (svc *Services) StartSubscribers(ctx context.Context, logger *slog.Logger) 
 		}
 	}
 
+	// Overlay-only processes start their standalone status handler here.
+	if svc.Indexer == nil && svc.StatusHandler != nil {
+		if err := svc.StatusHandler.Start(ctx); err != nil {
+			logger.Error("failed to start overlay status handler", "error", err)
+		} else {
+			logger.Info("started overlay status handler")
+		}
+	}
+
 	// Start JungleBus sync (if configured)
 	if svc.Indexer != nil && svc.Indexer.Sync != nil {
 		go func() {
