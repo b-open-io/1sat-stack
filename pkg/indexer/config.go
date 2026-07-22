@@ -10,6 +10,7 @@ import (
 	"github.com/b-open-io/1sat-stack/pkg/logging"
 	"github.com/b-open-io/1sat-stack/pkg/ordfs"
 	"github.com/b-open-io/1sat-stack/pkg/pubsub"
+	"github.com/b-open-io/1sat-stack/pkg/queue"
 	"github.com/b-open-io/1sat-stack/pkg/store"
 	"github.com/b-open-io/1sat-stack/pkg/txo"
 	"github.com/bsv-blockchain/go-chaintracks/chaintracks"
@@ -113,6 +114,7 @@ type Services struct {
 // InitializeDeps holds dependencies for indexer service initialization.
 type InitializeDeps struct {
 	Store       store.Store
+	Queue       queue.Queue
 	BeefStorage *beef.Storage
 	OutputStore *txo.OutputStore
 	Ordfs       *ordfs.Ordfs
@@ -165,7 +167,7 @@ func (c *Config) Initialize(
 	if c.Sync.Enabled {
 		svc.Sync = NewIngestSync(
 			&c.Sync,
-			deps.Store,
+			deps.Queue,
 			svc.Indexer,
 			indexerLogger,
 		)
@@ -199,6 +201,7 @@ func (s *Services) SetupStatusHandler(deps *StatusHandlerDeps) {
 type PendingAuditorDeps struct {
 	Chaintracks  chaintracks.Chaintracks
 	ArcadeClient *arcadeclient.Client // may be nil
+	PubSub       pubsub.PubSub        // may be nil; used to publish stale-rollback events
 }
 
 // SetupPendingAuditor initializes the pending transaction auditor.
@@ -215,6 +218,7 @@ func (s *Services) SetupPendingAuditor(deps *PendingAuditorDeps) {
 		s.Indexer,
 		deps.Chaintracks,
 		deps.ArcadeClient,
+		deps.PubSub,
 		s.logger,
 	)
 }

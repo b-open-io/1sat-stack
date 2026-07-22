@@ -3,6 +3,7 @@ package indexer
 import (
 	"context"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"log/slog"
 	"sync"
@@ -11,13 +12,22 @@ import (
 
 	"github.com/b-open-io/1sat-stack/pkg/arcadeclient"
 	"github.com/b-open-io/1sat-stack/pkg/beef"
+	"github.com/b-open-io/1sat-stack/pkg/pubsub"
 	"github.com/b-open-io/1sat-stack/pkg/store"
 	"github.com/b-open-io/1sat-stack/pkg/txo"
 	"github.com/b-open-io/1sat-stack/pkg/types"
 	"github.com/bsv-blockchain/go-chaintracks/chaintracks"
 	"github.com/bsv-blockchain/go-sdk/chainhash"
 	"github.com/bsv-blockchain/go-sdk/transaction"
+	"github.com/bsv-blockchain/go-sdk/transaction/chaintracker"
 )
+
+// beefProofStore is the subset of beef.Storage the pending auditor depends on.
+type beefProofStore interface {
+	LoadTx(ctx context.Context, txid *chainhash.Hash) (*transaction.Transaction, error)
+	UpdateMerklePath(ctx context.Context, txid *chainhash.Hash, ct chaintracker.ChainTracker) ([]byte, error)
+	SaveBeef(ctx context.Context, txid *chainhash.Hash, beef *transaction.Beef) error
+}
 
 const (
 	// confirmedBoundary separates confirmed scores (block height ~850k) from
@@ -39,10 +49,11 @@ const (
 // stale unconfirmed transactions that have no proof after rollbackAge.
 type PendingAuditor struct {
 	outputStore  *txo.OutputStore
-	beefStorage  *beef.Storage
+	beefStorage  beefProofStore
 	indexer      *IngestCtx
 	chaintracks  chaintracks.Chaintracks
 	arcadeClient *arcadeclient.Client // may be nil
+	pubsub       pubsub.PubSub        // may be nil
 	logger       *slog.Logger
 	auditing     atomic.Bool
 
@@ -54,10 +65,11 @@ type PendingAuditor struct {
 // NewPendingAuditor creates a new PendingAuditor.
 func NewPendingAuditor(
 	outputStore *txo.OutputStore,
-	beefStorage *beef.Storage,
+	beefStorage beefProofStore,
 	indexer *IngestCtx,
 	ct chaintracks.Chaintracks,
 	arcadeClient *arcadeclient.Client,
+	ps pubsub.PubSub,
 	logger *slog.Logger,
 ) *PendingAuditor {
 	if logger == nil {
@@ -69,6 +81,7 @@ func NewPendingAuditor(
 		indexer:      indexer,
 		chaintracks:  ct,
 		arcadeClient: arcadeClient,
+		pubsub:       ps,
 		logger:       logger.With("component", "pending-auditor"),
 	}
 }
@@ -320,7 +333,11 @@ func (a *PendingAuditor) processUnconfirmed(ctx context.Context, members []store
 				return
 			}
 
-			// No proof found — check rollback threshold
+			// No proof found — check rollback threshold.
+			// NOTE: automatic stale-rollback is intentionally dormant. A genuine
+			// miss classifies as a transient error above and returns, so this
+			// block is not reached today; enabling rollback of stale unconfirmed
+			// txs is a deliberate future decision, not an oversight.
 			if score <= rollbackCutoff {
 				a.logger.Info("rolling back stale unconfirmed tx", "txid", txidHex)
 				if err := a.outputStore.Rollback(ctx, txid); err != nil {
@@ -336,6 +353,20 @@ func (a *PendingAuditor) processUnconfirmed(ctx context.Context, members []store
 					Member: txid[:],
 					Score:  types.HeightScore(0, 0),
 				})
+
+				// Publish a synthetic REJECTED event so status consumers
+				// (StatusHandler.handleRejected) also roll back overlay topic storage.
+				if a.pubsub != nil {
+					evt, _ := json.Marshal(ArcEvent{
+						TxID:      txidHex,
+						Status:    "REJECTED",
+						ExtraInfo: "stale: no proof before rollback threshold",
+					})
+					if err := a.pubsub.Publish(ctx, "arc", string(evt)); err != nil {
+						a.logger.Error("failed to publish stale rollback", "txid", txidHex, "error", err)
+					}
+				}
+
 				mu.Lock()
 				rolledBack++
 				mu.Unlock()

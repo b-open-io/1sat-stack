@@ -10,7 +10,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/b-open-io/1sat-stack/pkg/store"
+	"github.com/b-open-io/1sat-stack/pkg/queue"
 	"github.com/bsv-blockchain/go-sdk/transaction"
 )
 
@@ -23,8 +23,8 @@ type SSEListenerConfig struct {
 	TopicName string
 	// QueueKey is the key for the local queue to write incoming items
 	QueueKey []byte
-	// Store is the store for queue operations
-	Store store.Store
+	// Queue is the queue for enqueue operations
+	Queue queue.Queue
 	// HTTPClient is the HTTP client to use (optional, defaults to http.DefaultClient)
 	HTTPClient *http.Client
 	// Logger is the logger to use
@@ -166,7 +166,7 @@ func (l *SSEListener) handleEvent(ctx context.Context, eventType, data string) e
 
 	// Queue the outpoint for processing
 	// Use current time as score (will be processed in order received)
-	if err := l.config.Store.ZAdd(ctx, l.config.QueueKey, store.ScoredMember{
+	if err := l.config.Queue.Enqueue(ctx, l.config.QueueKey, queue.ScoredItem{
 		Member: outpoint.Bytes(),
 		Score:  float64(time.Now().Unix()),
 	}); err != nil {

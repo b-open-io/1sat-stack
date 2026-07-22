@@ -12,7 +12,7 @@ import (
 	"github.com/b-open-io/1sat-stack/pkg/config"
 	lookuppkg "github.com/b-open-io/1sat-stack/pkg/lookup"
 	"github.com/b-open-io/1sat-stack/pkg/overlay"
-	"github.com/b-open-io/1sat-stack/pkg/store"
+	"github.com/b-open-io/1sat-stack/pkg/queue"
 	"github.com/b-open-io/1sat-stack/pkg/txo"
 	"github.com/bsv-blockchain/go-chaintracks/chaintracks"
 	"github.com/bsv-blockchain/go-overlay-services/pkg/core/engine"
@@ -26,15 +26,19 @@ type OwnerSyncer interface {
 	Sync(ctx context.Context, owner string) error
 }
 
+// BalanceLookup returns unspent satoshis for an address.
+type BalanceLookup func(ctx context.Context, address string) (int64, error)
+
 // TokenManager manages per-token processor workers
 type TokenManager struct {
-	store             store.Store
+	queue             queue.Queue
 	configStore       config.Store
 	beefStorage       *beef.Storage
 	outputStore       *txo.OutputStore
 	overlay           *engine.Engine
 	lookup            *lookuppkg.BSV21Lookup
 	ownerSync         OwnerSyncer
+	balance           BalanceLookup
 	chainTracker      chaintracks.Chaintracks
 	concurrency       int
 	feePerOutput      int64
@@ -50,13 +54,14 @@ type TokenManager struct {
 
 // NewTokenManager creates a new token manager
 func NewTokenManager(
-	s store.Store,
+	q queue.Queue,
 	cs config.Store,
 	beefStorage *beef.Storage,
 	outputStore *txo.OutputStore,
 	overlaySvc *engine.Engine,
 	lookup *lookuppkg.BSV21Lookup,
 	ownerSync OwnerSyncer,
+	balance BalanceLookup,
 	ct chaintracks.Chaintracks,
 	concurrency int,
 	feePerOutput int64,
@@ -67,13 +72,14 @@ func NewTokenManager(
 		lifecycleInterval = 5 * time.Minute
 	}
 	return &TokenManager{
-		store:             s,
+		queue:             q,
 		configStore:       cs,
 		beefStorage:       beefStorage,
 		outputStore:       outputStore,
 		overlay:           overlaySvc,
 		lookup:            lookup,
 		ownerSync:         ownerSync,
+		balance:           balance,
 		chainTracker:      ct,
 		concurrency:       concurrency,
 		feePerOutput:      feePerOutput,
@@ -149,7 +155,7 @@ func (m *TokenManager) createWorker(ctx context.Context, status *TokenStatus) er
 			},
 		},
 		topicName,
-		m.store,
+		m.queue,
 		m.beefStorage,
 		m.overlay,
 		m.logger.With("tokenId", tokenId),
@@ -416,6 +422,9 @@ func (m *TokenManager) ListTokenStatuses(ctx context.Context, includeAll bool) [
 
 // getTokenMetadata fetches token metadata from the output store for topic manager registration
 func (m *TokenManager) getTokenMetadata(ctx context.Context, outpoint *transaction.Outpoint) *sdkoverlay.MetaData {
+	if m.outputStore == nil {
+		return nil
+	}
 	cfg := &txo.OutputSearchCfg{
 		IncludeTags: []string{"bsv21"},
 	}

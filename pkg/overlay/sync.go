@@ -11,7 +11,7 @@ import (
 	"github.com/b-open-io/1sat-stack/pkg/beef"
 	gaspqueue "github.com/b-open-io/1sat-stack/pkg/gasp"
 	"github.com/b-open-io/1sat-stack/pkg/jbsync"
-	"github.com/b-open-io/1sat-stack/pkg/store"
+	"github.com/b-open-io/1sat-stack/pkg/queue"
 	"github.com/b-open-io/1sat-stack/pkg/worker"
 	"github.com/bsv-blockchain/go-overlay-services/pkg/core/engine"
 	"github.com/bsv-blockchain/go-overlay-services/pkg/core/gasp"
@@ -72,7 +72,7 @@ func (c *OverlaySyncConfig) SubscriberConfig() *jbsync.SubscriberConfig {
 type OverlaySync struct {
 	config      *OverlaySyncConfig
 	topicName   string
-	store       store.Store
+	queue       queue.Queue
 	beefStorage *beef.Storage
 	engine      *engine.Engine
 	logger      *slog.Logger
@@ -85,7 +85,7 @@ type OverlaySync struct {
 func NewOverlaySync(
 	cfg *OverlaySyncConfig,
 	topicName string,
-	s store.Store,
+	q queue.Queue,
 	beefStorage *beef.Storage,
 	eng *engine.Engine,
 	logger *slog.Logger,
@@ -106,7 +106,7 @@ func NewOverlaySync(
 	return &OverlaySync{
 		config:      cfg,
 		topicName:   topicName,
-		store:       s,
+		queue:       q,
 		beefStorage: beefStorage,
 		engine:      eng,
 		logger:      logger.With("component", "overlay-sync", "topic", topicName),
@@ -131,7 +131,7 @@ func (s *OverlaySync) Start(ctx context.Context) error {
 	}
 
 	s.worker = worker.New(&worker.Config{
-		Store:   s.store,
+		Queue:   s.queue,
 		Key:     jbsync.QueueKey(s.config.QueueName),
 		Limiter: limiter,
 		Handler: handler,
@@ -153,7 +153,7 @@ func (s *OverlaySync) Start(ctx context.Context) error {
 		gaspStorage.Logger = gaspLogger
 		s.gasp = gasp.NewGASP(gasp.Params{
 			Storage:        gaspStorage,
-			Remote:         gaspqueue.NewBeefRemote(s.beefStorage, s.store, ""),
+			Remote:         gaspqueue.NewBeefRemote(s.beefStorage, s.queue, ""),
 			Unidirectional: true,
 			Topic:          s.topicName,
 			Concurrency:    s.config.Concurrency,

@@ -12,6 +12,7 @@ import (
 	"github.com/b-open-io/1sat-stack/pkg/beef"
 	"github.com/b-open-io/1sat-stack/pkg/gasp"
 	overlaystorage "github.com/b-open-io/1sat-stack/pkg/overlay/storage"
+	"github.com/b-open-io/1sat-stack/pkg/queue"
 	"github.com/b-open-io/1sat-stack/pkg/store"
 	"github.com/bsv-blockchain/go-overlay-services/pkg/core/engine"
 	gasplib "github.com/bsv-blockchain/go-overlay-services/pkg/core/gasp"
@@ -39,6 +40,7 @@ type RemoteConfig struct {
 // Services holds shared overlay infrastructure. Each module creates its own engine via NewModuleEngine.
 type Services struct {
 	Store  store.Store // For DB remote config lookup
+	Queue  queue.Queue // For topic queue operations
 	P2P    *P2PBus
 	logger *slog.Logger
 
@@ -151,7 +153,7 @@ func (s *Services) ActivateTopic(ctx context.Context, eng *engine.Engine, topic 
 				OnProcessed: topic.OnProcessed,
 			},
 			topic.Name,
-			s.Store,
+			s.Queue,
 			s.beefStorage,
 			eng,
 			s.logger,
@@ -267,7 +269,7 @@ func (s *Services) createRemoteFromConfig(topicName string, cfg RemoteConfig) ga
 			return nil
 		}
 		s.logger.Debug("creating beef remote", "topic", topicName)
-		return gasp.NewBeefRemote(s.beefStorage, s.Store, "")
+		return gasp.NewBeefRemote(s.beefStorage, s.Queue, "")
 
 	case "http":
 		if cfg.URL == "" {
@@ -296,7 +298,7 @@ func (s *Services) createListenersFromConfig(topicName string, configs []RemoteC
 				PeerURL:   cfg.URL,
 				TopicName: topicName,
 				QueueKey:  []byte("q:" + topicName),
-				Store:     s.Store,
+				Queue:     s.Queue,
 				Logger:    s.logger,
 			})
 			listeners = append(listeners, listener)

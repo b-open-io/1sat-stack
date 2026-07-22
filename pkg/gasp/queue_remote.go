@@ -6,7 +6,7 @@ import (
 	"fmt"
 
 	"github.com/b-open-io/1sat-stack/pkg/beef"
-	"github.com/b-open-io/1sat-stack/pkg/store"
+	"github.com/b-open-io/1sat-stack/pkg/queue"
 	"github.com/bsv-blockchain/go-overlay-services/pkg/core/gasp"
 	"github.com/bsv-blockchain/go-sdk/chainhash"
 	"github.com/bsv-blockchain/go-sdk/transaction"
@@ -15,16 +15,16 @@ import (
 // QueueGASPRemote implements gasp.Remote by reading from a sorted set queue and BEEF storage
 // instead of fetching from a remote HTTP peer. This enables local queue-based GASP sync.
 type QueueGASPRemote struct {
-	queueKey    []byte        // Store key for the queue (e.g., "q:tok:{tokenId}")
-	store       store.Store   // Store for queue operations
+	queueKey    []byte        // Queue key (e.g., "q:tok:{tokenId}")
+	queue       queue.Queue   // Queue for read operations
 	beefStorage *beef.Storage // BEEF transaction storage
 }
 
 // NewQueueGASPRemote creates a new QueueGASPRemote for the given queue key.
-func NewQueueGASPRemote(queueKey string, s store.Store, beefStorage *beef.Storage) *QueueGASPRemote {
+func NewQueueGASPRemote(queueKey string, q queue.Queue, beefStorage *beef.Storage) *QueueGASPRemote {
 	return &QueueGASPRemote{
 		queueKey:    []byte(queueKey),
-		store:       s,
+		queue:       q,
 		beefStorage: beefStorage,
 	}
 }
@@ -32,16 +32,13 @@ func NewQueueGASPRemote(queueKey string, s store.Store, beefStorage *beef.Storag
 // GetInitialResponse returns UTXOs from the queue as a GASP initial response.
 // The queue members are txids scored by block height; we convert them to Output structs.
 func (r *QueueGASPRemote) GetInitialResponse(ctx context.Context, request *gasp.InitialRequest) (*gasp.InitialResponse, error) {
-	// Query the queue for members with score > since
-	scoreRange := store.ScoreRange{
-		Min:          &request.Since,
-		MinExclusive: true, // Exclude the 'since' value itself
-	}
+	// Query the queue for members with score >= since
+	cfg := queue.ReadCfg{From: &request.Since}
 	if request.Limit > 0 {
-		scoreRange.Count = int64(request.Limit)
+		cfg.Limit = int(request.Limit)
 	}
 
-	members, err := r.store.ZRange(ctx, r.queueKey, scoreRange)
+	members, err := r.queue.Read(ctx, r.queueKey, cfg)
 	if err != nil {
 		return nil, fmt.Errorf("failed to query queue: %w", err)
 	}

@@ -7,7 +7,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/b-open-io/1sat-stack/pkg/store"
+	"github.com/b-open-io/1sat-stack/pkg/queue"
 	"github.com/b-open-io/1sat-stack/pkg/types"
 )
 
@@ -17,9 +17,9 @@ type Handler func(ctx context.Context, id string, score float64) error
 // ErrorHandler is called when processing fails.
 type ErrorHandler func(ctx context.Context, id string, score float64, err error)
 
-// Worker processes items from a sorted set queue with configurable concurrency.
+// Worker processes items from a queue with configurable concurrency.
 type Worker struct {
-	store        store.Store
+	queue        queue.Queue
 	key          string
 	limiter      chan struct{}
 	handler      Handler
@@ -37,8 +37,8 @@ type Worker struct {
 
 // Config holds worker configuration.
 type Config struct {
-	Store        store.Store
-	Key          string        // Sorted set key to consume from
+	Queue        queue.Queue
+	Key          string        // Queue key to consume from
 	Limiter      chan struct{} // Controls concurrency - required
 	Handler      Handler       // Called for each item
 	OnError      ErrorHandler  // Called on handler error (optional)
@@ -70,7 +70,7 @@ func New(cfg *Config) *Worker {
 	logger := cfg.Logger.With("component", "worker", "queue", cfg.Key)
 
 	return &Worker{
-		store:        cfg.Store,
+		queue:        cfg.Queue,
 		key:          cfg.Key,
 		limiter:      cfg.Limiter,
 		handler:      cfg.Handler,
@@ -100,7 +100,7 @@ func (w *Worker) Start(ctx context.Context) error {
 	processedCount := 0
 	statusTime := time.Now()
 	var lastScore float64
-	var pending []store.ScoredMember
+	var pending []queue.ScoredItem
 
 	for {
 		select {
@@ -145,13 +145,12 @@ func (w *Worker) Start(ctx context.Context) error {
 		default:
 			if len(pending) == 0 {
 				to := types.HeightScore(0, 0)
-				items, err := w.store.Search(ctx, &store.SearchCfg{
-					Keys:  [][]byte{[]byte(w.key)},
-					Limit: w.pageSize,
+				items, err := w.queue.Read(ctx, []byte(w.key), queue.ReadCfg{
+					Limit: int(w.pageSize),
 					To:    &to,
 				})
 				if err != nil {
-					w.logger.Error("search error", "key", w.key, "error", err)
+					w.logger.Error("read error", "key", w.key, "error", err)
 					time.Sleep(w.pollDelay)
 					continue
 				}
@@ -200,7 +199,7 @@ func (w *Worker) Start(ctx context.Context) error {
 				if err := w.handler(ctx, id, score); err != nil {
 					// Re-score 30s in the future so other items process immediately
 					retryScore := float64(time.Now().Add(30*time.Second).UnixNano()) / 1e9
-					if rerr := w.store.ZAdd(ctx, []byte(w.key), store.ScoredMember{
+					if rerr := w.queue.Requeue(ctx, []byte(w.key), queue.ScoredItem{
 						Member: []byte(id),
 						Score:  retryScore,
 					}); rerr != nil {
@@ -210,7 +209,7 @@ func (w *Worker) Start(ctx context.Context) error {
 					return
 				}
 
-				if err := w.store.ZRem(ctx, []byte(w.key), []byte(id)); err != nil {
+				if err := w.queue.Ack(ctx, []byte(w.key), []byte(id)); err != nil {
 					w.logger.Error("failed to remove from queue", "key", w.key, "id", id, "error", err)
 				}
 			}(id, item.Score)
@@ -239,9 +238,8 @@ func (w *Worker) ProcessOnce(ctx context.Context) error {
 
 	for {
 		to := types.HeightScore(0, 0)
-		items, err := w.store.Search(ctx, &store.SearchCfg{
-			Keys:  [][]byte{[]byte(w.key)},
-			Limit: w.pageSize,
+		items, err := w.queue.Read(ctx, []byte(w.key), queue.ReadCfg{
+			Limit: int(w.pageSize),
 			To:    &to,
 		})
 		if err != nil {

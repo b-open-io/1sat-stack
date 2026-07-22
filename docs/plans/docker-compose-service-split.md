@@ -1,6 +1,7 @@
 # Docker Compose Service Split — Plan
 
-Status: **Not Started**
+Status: **On Hold** — superseded by [microservice-split.md](./microservice-split.md); the compose
+generation design (Phases 3–5) remains relevant for the configurator phase.
 
 ## Problem
 

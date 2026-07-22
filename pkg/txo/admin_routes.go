@@ -1,4 +1,4 @@
-package admin
+package txo
 
 import (
 	"encoding/hex"
@@ -11,39 +11,39 @@ import (
 	"github.com/gofiber/fiber/v2"
 )
 
-// DataRoutes handles generic data query routes
-type DataRoutes struct {
+// AdminRoutes exposes the generic store data-browser endpoints. The index
+// service owns the store, so these admin-guarded handlers live here and are
+// mounted by the composition layer at the same public paths the admin UI
+// already calls. Store access is unrestricted by design — the AdminGuard
+// middleware in front of these routes is the access control.
+type AdminRoutes struct {
 	store  store.Store
 	logger *slog.Logger
 }
 
-// NewDataRoutes creates a new DataRoutes instance
-func NewDataRoutes(s store.Store, logger *slog.Logger) *DataRoutes {
-	return &DataRoutes{
-		store:  s,
-		logger: logger,
+// NewAdminRoutes creates an AdminRoutes over the given store.
+func NewAdminRoutes(s store.Store, logger *slog.Logger) *AdminRoutes {
+	if logger == nil {
+		logger = slog.Default()
 	}
+	return &AdminRoutes{store: s, logger: logger}
 }
 
-// Register registers data routes on a Fiber app group
-func (r *DataRoutes) Register(group fiber.Router) {
-	// KV operations
+// Register registers the data-browser routes on a Fiber group.
+func (r *AdminRoutes) Register(group fiber.Router) {
 	kv := group.Group("/kv")
 	kv.Get("/get/:key", r.handleKVGet)
 
-	// Set operations
 	set := group.Group("/set")
 	set.Get("/members/:key", r.handleSetMembers)
 	set.Get("/ismember/:key/:member", r.handleSetIsMember)
 
-	// Hash operations
 	hash := group.Group("/hash")
 	hash.Get("/getall/:key", r.handleHashGetAll)
 	hash.Get("/get/:key/:field", r.handleHashGet)
 	hash.Post("/mget/:key", r.handleHashMGet)
 	hash.Post("/del/:key", r.handleHashDel)
 
-	// ZSet operations
 	zset := group.Group("/zset")
 	zset.Get("/keys/:prefix", r.handleZSetKeys)
 	zset.Get("/range/:key", r.handleZSetRange)
@@ -53,43 +53,36 @@ func (r *DataRoutes) Register(group fiber.Router) {
 	zset.Get("/sum/:key", r.handleZSetSum)
 	zset.Delete("/rem/:key/:member", r.handleZSetRem)
 
-	// Key operations
 	group.Delete("/key/*", r.handleDeleteKey)
-
-	// Search
 	group.Post("/search", r.handleSearch)
 
-	r.logger.Debug("registered data routes")
+	r.logger.Debug("registered store data-browser routes")
 }
 
-// renderValue converts a byte slice to a human-readable string
-func renderValue(b []byte) string {
+// renderStoreValue converts a byte slice to a human-readable string.
+func renderStoreValue(b []byte) string {
 	switch len(b) {
 	case 32:
-		// chainhash.Hash
 		hash, err := chainhash.NewHash(b)
 		if err == nil {
 			return hash.String()
 		}
 		return hex.EncodeToString(b)
 	case 36:
-		// transaction.Outpoint
 		op := transaction.NewOutpointFromBytes(b)
 		if op != nil {
 			return op.String()
 		}
 		return hex.EncodeToString(b)
 	default:
-		// Try as string first, fall back to hex
-		if isPrintable(b) {
+		if isPrintableBytes(b) {
 			return string(b)
 		}
 		return hex.EncodeToString(b)
 	}
 }
 
-// isPrintable checks if a byte slice is printable ASCII
-func isPrintable(b []byte) bool {
+func isPrintableBytes(b []byte) bool {
 	for _, c := range b {
 		if c < 32 || c > 126 {
 			return false
@@ -97,8 +90,6 @@ func isPrintable(b []byte) bool {
 	}
 	return len(b) > 0
 }
-
-// Key handlers
 
 // handleDeleteKey deletes a storage key, draining sorted-set members first.
 // @Summary Delete key
@@ -111,17 +102,13 @@ func isPrintable(b []byte) bool {
 // @Failure 500 {object} map[string]string "Internal server error"
 // @Security BearerAuth
 // @Router /api/data/key/{key} [delete]
-func (r *DataRoutes) handleDeleteKey(c *fiber.Ctx) error {
+func (r *AdminRoutes) handleDeleteKey(c *fiber.Ctx) error {
 	key := c.Params("*")
 	if key == "" {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
-			"error": "key is required",
-		})
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "key is required"})
 	}
 
 	keyBytes := []byte(key)
-
-	// Try deleting as a sorted set first (drain all members)
 	removed := int64(0)
 	for {
 		members, err := r.store.ZRange(c.Context(), keyBytes, store.ScoreRange{Count: 500})
@@ -134,25 +121,16 @@ func (r *DataRoutes) handleDeleteKey(c *fiber.Ctx) error {
 		}
 		if err := r.store.ZRem(c.Context(), keyBytes, batch...); err != nil {
 			r.logger.Error("failed to remove zset members", "key", key, "error", err)
-			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
-				"error": "failed to remove members",
-			})
+			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to remove members"})
 		}
 		removed += int64(len(batch))
 	}
 
-	// Also delete the KV key in case it's a simple key
 	r.store.Del(c.Context(), keyBytes)
 
 	r.logger.Info("deleted key", "key", key, "removed", removed)
-	return c.JSON(fiber.Map{
-		"key":     key,
-		"removed": removed,
-		"deleted": true,
-	})
+	return c.JSON(fiber.Map{"key": key, "removed": removed, "deleted": true})
 }
-
-// KV handlers
 
 // handleKVGet returns the value stored at a KV key.
 // @Summary Get KV value
@@ -166,35 +144,24 @@ func (r *DataRoutes) handleDeleteKey(c *fiber.Ctx) error {
 // @Failure 500 {object} map[string]string "Internal server error"
 // @Security BearerAuth
 // @Router /api/data/kv/get/{key} [get]
-func (r *DataRoutes) handleKVGet(c *fiber.Ctx) error {
+func (r *AdminRoutes) handleKVGet(c *fiber.Ctx) error {
 	key := c.Params("key")
 	if key == "" {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
-			"error": "key is required",
-		})
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "key is required"})
 	}
 
 	value, err := r.store.Get(c.Context(), []byte(key))
 	if err != nil {
 		r.logger.Error("failed to get kv", "key", key, "error", err)
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
-			"error": "failed to get value",
-		})
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to get value"})
 	}
 
 	if value == nil {
-		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{
-			"error": "key not found",
-		})
+		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "key not found"})
 	}
 
-	return c.JSON(fiber.Map{
-		"key":   key,
-		"value": renderValue(value),
-	})
+	return c.JSON(fiber.Map{"key": key, "value": renderStoreValue(value)})
 }
-
-// Set handlers
 
 // handleSetMembers returns all members of a set.
 // @Summary Get set members
@@ -207,32 +174,24 @@ func (r *DataRoutes) handleKVGet(c *fiber.Ctx) error {
 // @Failure 500 {object} map[string]string "Internal server error"
 // @Security BearerAuth
 // @Router /api/data/set/members/{key} [get]
-func (r *DataRoutes) handleSetMembers(c *fiber.Ctx) error {
+func (r *AdminRoutes) handleSetMembers(c *fiber.Ctx) error {
 	key := c.Params("key")
 	if key == "" {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
-			"error": "key is required",
-		})
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "key is required"})
 	}
 
 	members, err := r.store.SMembers(c.Context(), []byte(key))
 	if err != nil {
 		r.logger.Error("failed to get set members", "key", key, "error", err)
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
-			"error": "failed to get members",
-		})
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to get members"})
 	}
 
 	rendered := make([]string, len(members))
 	for i, m := range members {
-		rendered[i] = renderValue(m)
+		rendered[i] = renderStoreValue(m)
 	}
 
-	return c.JSON(fiber.Map{
-		"key":     key,
-		"count":   len(rendered),
-		"members": rendered,
-	})
+	return c.JSON(fiber.Map{"key": key, "count": len(rendered), "members": rendered})
 }
 
 // handleSetIsMember checks set membership.
@@ -247,32 +206,22 @@ func (r *DataRoutes) handleSetMembers(c *fiber.Ctx) error {
 // @Failure 500 {object} map[string]string "Internal server error"
 // @Security BearerAuth
 // @Router /api/data/set/ismember/{key}/{member} [get]
-func (r *DataRoutes) handleSetIsMember(c *fiber.Ctx) error {
+func (r *AdminRoutes) handleSetIsMember(c *fiber.Ctx) error {
 	key := c.Params("key")
 	member := c.Params("member")
 	if key == "" || member == "" {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
-			"error": "key and member are required",
-		})
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "key and member are required"})
 	}
 
 	memberBytes := []byte(member)
 	isMember, err := r.store.SIsMember(c.Context(), []byte(key), memberBytes)
 	if err != nil {
 		r.logger.Error("failed to check set membership", "key", key, "member", member, "error", err)
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
-			"error": "failed to check membership",
-		})
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to check membership"})
 	}
 
-	return c.JSON(fiber.Map{
-		"key":       key,
-		"member":    renderValue(memberBytes),
-		"is_member": isMember,
-	})
+	return c.JSON(fiber.Map{"key": key, "member": renderStoreValue(memberBytes), "is_member": isMember})
 }
-
-// Hash handlers
 
 // handleHashGetAll returns all fields of a hash.
 // @Summary Get all hash fields
@@ -285,32 +234,24 @@ func (r *DataRoutes) handleSetIsMember(c *fiber.Ctx) error {
 // @Failure 500 {object} map[string]string "Internal server error"
 // @Security BearerAuth
 // @Router /api/data/hash/getall/{key} [get]
-func (r *DataRoutes) handleHashGetAll(c *fiber.Ctx) error {
+func (r *AdminRoutes) handleHashGetAll(c *fiber.Ctx) error {
 	key := c.Params("key")
 	if key == "" {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
-			"error": "key is required",
-		})
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "key is required"})
 	}
 
 	fields, err := r.store.HGetAll(c.Context(), []byte(key))
 	if err != nil {
 		r.logger.Error("failed to get hash fields", "key", key, "error", err)
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
-			"error": "failed to get fields",
-		})
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to get fields"})
 	}
 
 	rendered := make(map[string]string)
 	for field, value := range fields {
-		rendered[field] = renderValue(value)
+		rendered[field] = renderStoreValue(value)
 	}
 
-	return c.JSON(fiber.Map{
-		"key":    key,
-		"count":  len(rendered),
-		"fields": rendered,
-	})
+	return c.JSON(fiber.Map{"key": key, "count": len(rendered), "fields": rendered})
 }
 
 // handleHashGet returns a single hash field.
@@ -326,34 +267,24 @@ func (r *DataRoutes) handleHashGetAll(c *fiber.Ctx) error {
 // @Failure 500 {object} map[string]string "Internal server error"
 // @Security BearerAuth
 // @Router /api/data/hash/get/{key}/{field} [get]
-func (r *DataRoutes) handleHashGet(c *fiber.Ctx) error {
+func (r *AdminRoutes) handleHashGet(c *fiber.Ctx) error {
 	key := c.Params("key")
 	field := c.Params("field")
 	if key == "" || field == "" {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
-			"error": "key and field are required",
-		})
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "key and field are required"})
 	}
 
 	value, err := r.store.HGet(c.Context(), []byte(key), []byte(field))
 	if err != nil {
 		r.logger.Error("failed to get hash field", "key", key, "field", field, "error", err)
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
-			"error": "failed to get field",
-		})
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to get field"})
 	}
 
 	if value == nil {
-		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{
-			"error": "field not found",
-		})
+		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "field not found"})
 	}
 
-	return c.JSON(fiber.Map{
-		"key":   key,
-		"field": field,
-		"value": renderValue(value),
-	})
+	return c.JSON(fiber.Map{"key": key, "field": field, "value": renderStoreValue(value)})
 }
 
 // handleHashMGet returns multiple hash fields.
@@ -369,25 +300,19 @@ func (r *DataRoutes) handleHashGet(c *fiber.Ctx) error {
 // @Failure 500 {object} map[string]string "Internal server error"
 // @Security BearerAuth
 // @Router /api/data/hash/mget/{key} [post]
-func (r *DataRoutes) handleHashMGet(c *fiber.Ctx) error {
+func (r *AdminRoutes) handleHashMGet(c *fiber.Ctx) error {
 	key := c.Params("key")
 	if key == "" {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
-			"error": "key is required",
-		})
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "key is required"})
 	}
 
 	var fields []string
 	if err := c.BodyParser(&fields); err != nil {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
-			"error": "invalid request body, expected array of field names",
-		})
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid request body, expected array of field names"})
 	}
 
 	if len(fields) == 0 {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
-			"error": "at least one field is required",
-		})
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "at least one field is required"})
 	}
 
 	fieldBytes := make([][]byte, len(fields))
@@ -398,29 +323,21 @@ func (r *DataRoutes) handleHashMGet(c *fiber.Ctx) error {
 	values, err := r.store.HMGet(c.Context(), []byte(key), fieldBytes...)
 	if err != nil {
 		r.logger.Error("failed to get hash fields", "key", key, "error", err)
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
-			"error": "failed to get fields",
-		})
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to get fields"})
 	}
 
 	rendered := make(map[string]string)
 	for i, value := range values {
 		if value != nil {
-			rendered[fields[i]] = renderValue(value)
+			rendered[fields[i]] = renderStoreValue(value)
 		}
 	}
 
-	return c.JSON(fiber.Map{
-		"key":    key,
-		"count":  len(rendered),
-		"fields": rendered,
-	})
+	return c.JSON(fiber.Map{"key": key, "count": len(rendered), "fields": rendered})
 }
 
-// handleHashDel deletes one or more fields from a hash. Fields must be
-// supplied as a JSON array of hex-encoded byte sequences; this lets callers
-// delete fields whose underlying bytes are binary (e.g. outpoint bytes in the
-// "spnd" hash) without URL-encoding pitfalls.
+// handleHashDel deletes one or more fields from a hash. Fields are supplied as
+// hex-encoded byte sequences so binary fields can be deleted safely.
 // @Summary Delete hash fields
 // @Description Deletes one or more hash fields; fields are supplied as hex-encoded byte sequences
 // @Tags admin
@@ -433,51 +350,36 @@ func (r *DataRoutes) handleHashMGet(c *fiber.Ctx) error {
 // @Failure 500 {object} map[string]string "Internal server error"
 // @Security BearerAuth
 // @Router /api/data/hash/del/{key} [post]
-func (r *DataRoutes) handleHashDel(c *fiber.Ctx) error {
+func (r *AdminRoutes) handleHashDel(c *fiber.Ctx) error {
 	key := c.Params("key")
 	if key == "" {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
-			"error": "key is required",
-		})
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "key is required"})
 	}
 
 	var fields []string
 	if err := c.BodyParser(&fields); err != nil {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
-			"error": "invalid request body, expected JSON array of hex-encoded field bytes",
-		})
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid request body, expected JSON array of hex-encoded field bytes"})
 	}
 	if len(fields) == 0 {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
-			"error": "at least one field is required",
-		})
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "at least one field is required"})
 	}
 
 	fieldBytes := make([][]byte, len(fields))
 	for i, f := range fields {
 		b, err := hex.DecodeString(f)
 		if err != nil {
-			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
-				"error": "invalid hex in field at index " + strconv.Itoa(i),
-			})
+			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid hex in field at index " + strconv.Itoa(i)})
 		}
 		fieldBytes[i] = b
 	}
 
 	if err := r.store.HDel(c.Context(), []byte(key), fieldBytes...); err != nil {
 		r.logger.Error("failed to delete hash fields", "key", key, "count", len(fields), "error", err)
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
-			"error": "failed to delete fields",
-		})
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to delete fields"})
 	}
 
-	return c.JSON(fiber.Map{
-		"key":     key,
-		"deleted": len(fieldBytes),
-	})
+	return c.JSON(fiber.Map{"key": key, "deleted": len(fieldBytes)})
 }
-
-// ZSet handlers
 
 // handleZSetRange returns sorted-set members in ascending score order.
 // @Summary Get sorted set range
@@ -494,12 +396,10 @@ func (r *DataRoutes) handleHashDel(c *fiber.Ctx) error {
 // @Failure 500 {object} map[string]string "Internal server error"
 // @Security BearerAuth
 // @Router /api/data/zset/range/{key} [get]
-func (r *DataRoutes) handleZSetRange(c *fiber.Ctx) error {
+func (r *AdminRoutes) handleZSetRange(c *fiber.Ctx) error {
 	key := c.Params("key")
 	if key == "" {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
-			"error": "key is required",
-		})
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "key is required"})
 	}
 
 	scoreRange := r.parseScoreRange(c)
@@ -507,26 +407,17 @@ func (r *DataRoutes) handleZSetRange(c *fiber.Ctx) error {
 	members, err := r.store.ZRange(c.Context(), []byte(key), scoreRange)
 	if err != nil {
 		r.logger.Error("failed to get zset range", "key", key, "error", err)
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
-			"error": "failed to get range",
-		})
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to get range"})
 	}
 
 	count, _ := r.store.ZCard(c.Context(), []byte(key))
 
 	items := make([]fiber.Map, len(members))
 	for i, m := range members {
-		items[i] = fiber.Map{
-			"value": renderValue(m.Member),
-			"score": m.Score,
-		}
+		items[i] = fiber.Map{"value": renderStoreValue(m.Member), "score": m.Score}
 	}
 
-	return c.JSON(fiber.Map{
-		"key":   key,
-		"count": count,
-		"items": items,
-	})
+	return c.JSON(fiber.Map{"key": key, "count": count, "items": items})
 }
 
 // handleZSetRevRange returns sorted-set members in descending score order.
@@ -544,12 +435,10 @@ func (r *DataRoutes) handleZSetRange(c *fiber.Ctx) error {
 // @Failure 500 {object} map[string]string "Internal server error"
 // @Security BearerAuth
 // @Router /api/data/zset/revrange/{key} [get]
-func (r *DataRoutes) handleZSetRevRange(c *fiber.Ctx) error {
+func (r *AdminRoutes) handleZSetRevRange(c *fiber.Ctx) error {
 	key := c.Params("key")
 	if key == "" {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
-			"error": "key is required",
-		})
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "key is required"})
 	}
 
 	scoreRange := r.parseScoreRange(c)
@@ -557,26 +446,17 @@ func (r *DataRoutes) handleZSetRevRange(c *fiber.Ctx) error {
 	members, err := r.store.ZRevRange(c.Context(), []byte(key), scoreRange)
 	if err != nil {
 		r.logger.Error("failed to get zset revrange", "key", key, "error", err)
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
-			"error": "failed to get range",
-		})
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to get range"})
 	}
 
 	count, _ := r.store.ZCard(c.Context(), []byte(key))
 
 	items := make([]fiber.Map, len(members))
 	for i, m := range members {
-		items[i] = fiber.Map{
-			"value": renderValue(m.Member),
-			"score": m.Score,
-		}
+		items[i] = fiber.Map{"value": renderStoreValue(m.Member), "score": m.Score}
 	}
 
-	return c.JSON(fiber.Map{
-		"key":   key,
-		"count": count,
-		"items": items,
-	})
+	return c.JSON(fiber.Map{"key": key, "count": count, "items": items})
 }
 
 // handleZSetScore returns the score of a sorted-set member.
@@ -590,32 +470,20 @@ func (r *DataRoutes) handleZSetRevRange(c *fiber.Ctx) error {
 // @Failure 400 {object} map[string]string "Bad request"
 // @Security BearerAuth
 // @Router /api/data/zset/score/{key}/{member} [get]
-func (r *DataRoutes) handleZSetScore(c *fiber.Ctx) error {
+func (r *AdminRoutes) handleZSetScore(c *fiber.Ctx) error {
 	key := c.Params("key")
 	member := c.Params("member")
 	if key == "" || member == "" {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
-			"error": "key and member are required",
-		})
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "key and member are required"})
 	}
 
 	memberBytes := []byte(member)
 	score, err := r.store.ZScore(c.Context(), []byte(key), memberBytes)
 	if err != nil {
-		// ZScore returns error if member doesn't exist
-		return c.JSON(fiber.Map{
-			"key":    key,
-			"member": renderValue(memberBytes),
-			"exists": false,
-		})
+		return c.JSON(fiber.Map{"key": key, "member": renderStoreValue(memberBytes), "exists": false})
 	}
 
-	return c.JSON(fiber.Map{
-		"key":    key,
-		"member": renderValue(memberBytes),
-		"score":  score,
-		"exists": true,
-	})
+	return c.JSON(fiber.Map{"key": key, "member": renderStoreValue(memberBytes), "score": score, "exists": true})
 }
 
 // handleZSetRem removes a member from a sorted set.
@@ -630,16 +498,13 @@ func (r *DataRoutes) handleZSetScore(c *fiber.Ctx) error {
 // @Failure 500 {object} map[string]string "Internal server error"
 // @Security BearerAuth
 // @Router /api/data/zset/rem/{key}/{member} [delete]
-func (r *DataRoutes) handleZSetRem(c *fiber.Ctx) error {
+func (r *AdminRoutes) handleZSetRem(c *fiber.Ctx) error {
 	key := c.Params("key")
 	member := c.Params("member")
 	if key == "" || member == "" {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
-			"error": "key and member are required",
-		})
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "key and member are required"})
 	}
 
-	// Try as txid (64-char hex, byte-reversed) first, then raw hex, then string
 	var memberBytes []byte
 	if len(member) == 64 {
 		if h, err := chainhash.NewHashFromHex(member); err == nil {
@@ -656,16 +521,10 @@ func (r *DataRoutes) handleZSetRem(c *fiber.Ctx) error {
 
 	if err := r.store.ZRem(c.Context(), []byte(key), memberBytes); err != nil {
 		r.logger.Error("failed to remove member", "key", key, "member", member, "error", err)
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
-			"error": "failed to remove member",
-		})
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to remove member"})
 	}
 
-	return c.JSON(fiber.Map{
-		"key":     key,
-		"member":  renderValue(memberBytes),
-		"removed": true,
-	})
+	return c.JSON(fiber.Map{"key": key, "member": renderStoreValue(memberBytes), "removed": true})
 }
 
 // handleZSetCard returns the member count of a sorted set.
@@ -679,26 +538,19 @@ func (r *DataRoutes) handleZSetRem(c *fiber.Ctx) error {
 // @Failure 500 {object} map[string]string "Internal server error"
 // @Security BearerAuth
 // @Router /api/data/zset/card/{key} [get]
-func (r *DataRoutes) handleZSetCard(c *fiber.Ctx) error {
+func (r *AdminRoutes) handleZSetCard(c *fiber.Ctx) error {
 	key := c.Params("key")
 	if key == "" {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
-			"error": "key is required",
-		})
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "key is required"})
 	}
 
 	count, err := r.store.ZCard(c.Context(), []byte(key))
 	if err != nil {
 		r.logger.Error("failed to get zset card", "key", key, "error", err)
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
-			"error": "failed to get count",
-		})
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to get count"})
 	}
 
-	return c.JSON(fiber.Map{
-		"key":   key,
-		"count": count,
-	})
+	return c.JSON(fiber.Map{"key": key, "count": count})
 }
 
 // handleZSetSum returns the sum of scores in a sorted set.
@@ -712,26 +564,19 @@ func (r *DataRoutes) handleZSetCard(c *fiber.Ctx) error {
 // @Failure 500 {object} map[string]string "Internal server error"
 // @Security BearerAuth
 // @Router /api/data/zset/sum/{key} [get]
-func (r *DataRoutes) handleZSetSum(c *fiber.Ctx) error {
+func (r *AdminRoutes) handleZSetSum(c *fiber.Ctx) error {
 	key := c.Params("key")
 	if key == "" {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
-			"error": "key is required",
-		})
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "key is required"})
 	}
 
 	sum, err := r.store.ZSum(c.Context(), []byte(key))
 	if err != nil {
 		r.logger.Error("failed to get zset sum", "key", key, "error", err)
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
-			"error": "failed to get sum",
-		})
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to get sum"})
 	}
 
-	return c.JSON(fiber.Map{
-		"key": key,
-		"sum": sum,
-	})
+	return c.JSON(fiber.Map{"key": key, "sum": sum})
 }
 
 // handleZSetKeys lists sorted-set keys matching a prefix.
@@ -744,29 +589,21 @@ func (r *DataRoutes) handleZSetSum(c *fiber.Ctx) error {
 // @Failure 500 {object} map[string]string "Internal server error"
 // @Security BearerAuth
 // @Router /api/data/zset/keys/{prefix} [get]
-func (r *DataRoutes) handleZSetKeys(c *fiber.Ctx) error {
+func (r *AdminRoutes) handleZSetKeys(c *fiber.Ctx) error {
 	prefix := c.Params("prefix")
 
 	keys, err := r.store.ZKeys(c.Context(), []byte(prefix))
 	if err != nil {
 		r.logger.Error("failed to get zset keys", "prefix", prefix, "error", err)
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
-			"error": "failed to get keys",
-		})
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to get keys"})
 	}
 
 	if keys == nil {
 		keys = []string{}
 	}
 
-	return c.JSON(fiber.Map{
-		"prefix": prefix,
-		"count":  len(keys),
-		"keys":   keys,
-	})
+	return c.JSON(fiber.Map{"prefix": prefix, "count": len(keys), "keys": keys})
 }
-
-// Search handler
 
 // handleSearch queries members across multiple sorted-set keys.
 // @Summary Search sorted sets
@@ -780,7 +617,7 @@ func (r *DataRoutes) handleZSetKeys(c *fiber.Ctx) error {
 // @Failure 500 {object} map[string]string "Internal server error"
 // @Security BearerAuth
 // @Router /api/data/search [post]
-func (r *DataRoutes) handleSearch(c *fiber.Ctx) error {
+func (r *AdminRoutes) handleSearch(c *fiber.Ctx) error {
 	var req struct {
 		Keys    []string `json:"keys"`
 		From    *float64 `json:"from"`
@@ -791,24 +628,18 @@ func (r *DataRoutes) handleSearch(c *fiber.Ctx) error {
 	}
 
 	if err := c.BodyParser(&req); err != nil {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
-			"error": "invalid request body",
-		})
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid request body"})
 	}
 
 	if len(req.Keys) == 0 {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
-			"error": "at least one key is required",
-		})
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "at least one key is required"})
 	}
 
-	// Convert keys to bytes
 	keyBytes := make([][]byte, len(req.Keys))
 	for i, k := range req.Keys {
 		keyBytes[i] = []byte(k)
 	}
 
-	// Parse join type
 	joinType := store.JoinUnion
 	switch req.Join {
 	case "union", "":
@@ -818,12 +649,9 @@ func (r *DataRoutes) handleSearch(c *fiber.Ctx) error {
 	case "difference":
 		joinType = store.JoinDifference
 	default:
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
-			"error": "invalid join type, must be union, intersect, or difference",
-		})
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid join type, must be union, intersect, or difference"})
 	}
 
-	// Default limit
 	if req.Limit == 0 {
 		req.Limit = 25
 	}
@@ -840,41 +668,30 @@ func (r *DataRoutes) handleSearch(c *fiber.Ctx) error {
 	members, err := r.store.Search(c.Context(), cfg)
 	if err != nil {
 		r.logger.Error("failed to search", "error", err)
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
-			"error": "failed to search",
-		})
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to search"})
 	}
 
 	results := make([]fiber.Map, len(members))
 	for i, m := range members {
-		results[i] = fiber.Map{
-			"value": renderValue(m.Member),
-			"score": m.Score,
-			"key":   string(m.Key),
-		}
+		results[i] = fiber.Map{"value": renderStoreValue(m.Member), "score": m.Score, "key": string(m.Key)}
 	}
 
-	return c.JSON(fiber.Map{
-		"count":   len(results),
-		"results": results,
-	})
+	return c.JSON(fiber.Map{"count": len(results), "results": results})
 }
 
-// parseScoreRange parses ScoreRange from query params
-func (r *DataRoutes) parseScoreRange(c *fiber.Ctx) store.ScoreRange {
-	sr := store.ScoreRange{
-		Count: 25, // default
-	}
+// parseScoreRange parses ScoreRange from query params.
+func (r *AdminRoutes) parseScoreRange(c *fiber.Ctx) store.ScoreRange {
+	sr := store.ScoreRange{Count: 25}
 
 	if minStr := c.Query("min"); minStr != "" {
-		if min, err := strconv.ParseFloat(minStr, 64); err == nil {
-			sr.Min = &min
+		if minVal, err := strconv.ParseFloat(minStr, 64); err == nil {
+			sr.Min = &minVal
 		}
 	}
 
 	if maxStr := c.Query("max"); maxStr != "" {
-		if max, err := strconv.ParseFloat(maxStr, 64); err == nil {
-			sr.Max = &max
+		if maxVal, err := strconv.ParseFloat(maxStr, 64); err == nil {
+			sr.Max = &maxVal
 		}
 	}
 

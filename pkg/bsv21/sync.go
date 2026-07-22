@@ -9,12 +9,10 @@ import (
 
 	"github.com/b-open-io/1sat-stack/pkg/beef"
 	"github.com/b-open-io/1sat-stack/pkg/config"
-	"github.com/b-open-io/1sat-stack/pkg/indexer"
 	"github.com/b-open-io/1sat-stack/pkg/jbsync"
 	"github.com/b-open-io/1sat-stack/pkg/logging"
 	lookuppkg "github.com/b-open-io/1sat-stack/pkg/lookup"
-	"github.com/b-open-io/1sat-stack/pkg/owner"
-	"github.com/b-open-io/1sat-stack/pkg/store"
+	"github.com/b-open-io/1sat-stack/pkg/queue"
 	"github.com/b-open-io/1sat-stack/pkg/template/bsv21"
 	"github.com/b-open-io/1sat-stack/pkg/txo"
 	"github.com/b-open-io/1sat-stack/pkg/worker"
@@ -56,7 +54,7 @@ func (c *SyncConfig) SubscriberConfig() *jbsync.SubscriberConfig {
 // SyncServices manages BSV21 sync pipeline
 type SyncServices struct {
 	config       *SyncConfig
-	store        store.Store
+	queue        queue.Queue
 	configStore  config.Store
 	beefStorage  *beef.Storage
 	outputStore  *txo.OutputStore
@@ -72,12 +70,14 @@ type SyncServices struct {
 // NewSyncServices creates a new BSV21 sync service
 func NewSyncServices(
 	cfg *SyncConfig,
-	s store.Store,
+	q queue.Queue,
 	cs config.Store,
 	beefStorage *beef.Storage,
 	outputStore *txo.OutputStore,
 	overlaySvc *engine.Engine,
 	lookup *lookuppkg.BSV21Lookup,
+	ownerSync OwnerSyncer,
+	balance BalanceLookup,
 	ct chaintracks.Chaintracks,
 	jbClient *junglebus.Client,
 	logger *slog.Logger,
@@ -106,28 +106,18 @@ func NewSyncServices(
 	// Create logger with optional level override
 	syncLogger := logging.NewComponentLogger(logger, "bsv21-sync", cfg.LogLevel)
 
-	// Create indexer for owner sync
-	idx := indexer.NewIngestCtx(outputStore, beefStorage, logger)
-
-	// Create owner sync for fee address syncing
-	ownerSync := owner.NewOwnerSync(
-		jbClient,
-		beefStorage,
-		idx,
-		outputStore,
-		cs,
-		logger,
-	)
-
-	// Create token manager upfront so it's available for status queries
+	// Create token manager upfront so it's available for status queries.
+	// Owner sync and balance lookup are injected by the caller so bsv21 does
+	// not depend on the indexer/owner packages directly.
 	manager := NewTokenManager(
-		s,
+		q,
 		cs,
 		beefStorage,
 		outputStore,
 		overlaySvc,
 		lookup,
 		ownerSync,
+		balance,
 		ct,
 		cfg.TokenWorkers,
 		cfg.FeePerOutput,
@@ -137,7 +127,7 @@ func NewSyncServices(
 
 	return &SyncServices{
 		config:       cfg,
-		store:        s,
+		queue:        q,
 		configStore:  cs,
 		beefStorage:  beefStorage,
 		outputStore:  outputStore,
@@ -161,7 +151,7 @@ func (s *SyncServices) Start(ctx context.Context) error {
 	// Start dispatcher - reads from q:bsv21 and routes to per-token queues
 	dispatchLimiter := make(chan struct{}, s.config.DispatchWorkers)
 	s.dispatcher = worker.New(&worker.Config{
-		Store:   s.store,
+		Queue:   s.queue,
 		Key:     jbsync.QueueKey("bsv21"),
 		Limiter: dispatchLimiter,
 		Handler: s.dispatch,
@@ -244,7 +234,7 @@ func (s *SyncServices) dispatch(ctx context.Context, member string, score float6
 
 		// Add outpoint to topic queue (q:tm_{tokenId})
 		topicQueueKey := []byte("q:tm_" + tokenId)
-		if err := s.store.ZAdd(ctx, topicQueueKey, store.ScoredMember{
+		if err := s.queue.Enqueue(ctx, topicQueueKey, queue.ScoredItem{
 			Member: outpoint.Bytes(),
 			Score:  score,
 		}); err != nil {

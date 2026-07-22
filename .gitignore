@@ -15,3 +15,9 @@ sweep/ui/.vite/
 cmd/server/*.db
 cmd/server/*.db-shm
 cmd/server/*.db-wal
+pkg/node/*.db
+pkg/node/*.db-shm
+pkg/node/*.db-wal
+
+# Runtime Badger store written to cwd when DataDir path is unresolved
+/store/

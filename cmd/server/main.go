@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/b-open-io/1sat-stack/pkg/logging"
+	"github.com/b-open-io/1sat-stack/pkg/node"
 	"github.com/b-open-io/1sat-stack/pkg/wallet"
 
 	"github.com/b-open-io/1sat-stack/pkg/registrar"
@@ -22,11 +23,7 @@ import (
 	"github.com/joho/godotenv"
 )
 
-var (
-	Version   = "dev"
-	startTime = time.Now()
-	restartCh = make(chan struct{}, 1)
-)
+var restartCh = make(chan struct{}, 1)
 
 // RequestRestart signals the server to re-exec itself.
 func RequestRestart() {
@@ -59,7 +56,7 @@ func main() {
 	}
 
 	// Load configuration first (with basic logger for errors)
-	cfg, err := LoadConfig(*configPath)
+	cfg, err := node.LoadConfig(*configPath)
 	if err != nil {
 		slog.Error("failed to load config", "error", err)
 		os.Exit(1)
@@ -98,6 +95,7 @@ func main() {
 
 	// Store LogStore for admin API
 	cfg.LogStore = logResult.LogStore
+	cfg.RequestRestart = RequestRestart
 
 	// Resolve server private key if not yet configured
 	if cfg.Wallet.ServerPrivateKey == "" {
@@ -140,7 +138,7 @@ func main() {
 	svc.StartSubscribers(ctx, log)
 
 	// Create Fiber app
-	bodyLimit := ParseBodyLimit(cfg.Server.BodyLimit)
+	bodyLimit := node.ParseBodyLimit(cfg.Server.BodyLimit)
 	log.Info("configuring body limit", "limit", cfg.Server.BodyLimit, "bytes", bodyLimit)
 	app := fiber.New(fiber.Config{
 		AppName:               "1sat-stack",
