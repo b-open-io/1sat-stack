@@ -536,10 +536,14 @@ func (c *Config) Initialize(ctx context.Context, logger *slog.Logger) (*Services
 
 		// Setup pending auditor to verify proofs on each new block
 		if svc.Chaintracks != nil {
-			svc.Indexer.SetupPendingAuditor(&indexer.PendingAuditorDeps{
+			auditorDeps := &indexer.PendingAuditorDeps{
 				Chaintracks:  svc.Chaintracks,
 				ArcadeClient: svc.ArcadeClient,
-			})
+			}
+			if svc.PubSub != nil {
+				auditorDeps.PubSub = svc.PubSub.PubSub
+			}
+			svc.Indexer.SetupPendingAuditor(auditorDeps)
 		}
 
 		// Wire indexer to TXO for overlay flow integration
