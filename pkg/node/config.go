@@ -27,6 +27,7 @@ import (
 	"github.com/b-open-io/1sat-stack/pkg/owner"
 	"github.com/b-open-io/1sat-stack/pkg/paymail"
 	"github.com/b-open-io/1sat-stack/pkg/pubsub"
+	"github.com/b-open-io/1sat-stack/pkg/queue"
 	"github.com/b-open-io/1sat-stack/pkg/spends"
 	"github.com/b-open-io/1sat-stack/pkg/store"
 	"github.com/b-open-io/1sat-stack/pkg/txo"
@@ -70,6 +71,7 @@ type Config struct {
 
 	// Core services - these are the shared dependencies
 	Store  store.Config  `mapstructure:"store"`
+	Queue  queue.Config  `mapstructure:"queue"`
 	PubSub pubsub.Config `mapstructure:"pubsub"`
 	Beef   beef.Config   `mapstructure:"beef"`
 	TXO    txo.Config    `mapstructure:"txo"`
@@ -240,6 +242,7 @@ func (c *Config) SetDefaults(v *viper.Viper) {
 
 	// Cascade to package configs
 	c.Store.SetDefaults(v, "store")
+	c.Queue.SetDefaults(v, "queue")
 	c.PubSub.SetDefaults(v, "pubsub")
 	c.Beef.SetDefaults(v, "beef")
 	c.TXO.SetDefaults(v, "txo")
@@ -313,6 +316,7 @@ func (c *Config) resolvePath(p string) string {
 // (whether from Viper defaults or config store) are resolved in one place.
 func (c *Config) resolveAllPaths() {
 	c.Store.Badger.Path = c.resolvePath(c.Store.Badger.Path)
+	c.Queue.Store.Badger.Path = c.resolvePath(c.Queue.Store.Badger.Path)
 	c.Auth.SessionPath = c.resolvePath(c.Auth.SessionPath)
 	c.Chaintracks.StoragePath = c.resolvePath(c.Chaintracks.StoragePath)
 	c.Overlay.StoragePath = c.resolvePath(c.Overlay.StoragePath)

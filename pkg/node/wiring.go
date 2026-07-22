@@ -31,6 +31,7 @@ import (
 	"github.com/b-open-io/1sat-stack/pkg/owner"
 	"github.com/b-open-io/1sat-stack/pkg/paymail"
 	"github.com/b-open-io/1sat-stack/pkg/pubsub"
+	"github.com/b-open-io/1sat-stack/pkg/queue"
 	"github.com/b-open-io/1sat-stack/pkg/spends"
 	"github.com/b-open-io/1sat-stack/pkg/store"
 	"github.com/b-open-io/1sat-stack/pkg/txo"
@@ -52,6 +53,7 @@ import (
 // Services holds all initialized services
 type Services struct {
 	Store   *store.Services
+	Queue   queue.Queue
 	PubSub  *pubsub.Services
 	Beef    *beef.Services
 	TXO     *txo.Services
@@ -151,6 +153,23 @@ func (c *Config) Initialize(ctx context.Context, logger *slog.Logger) (*Services
 	c.applyRuntimeConfig(runtimeCfg)
 	c.applyModes()
 	c.resolveAllPaths()
+
+	// Initialize the work queue. Default provider "inherit" wraps the main
+	// store (same q:* keys); provider "store" opens a dedicated backend.
+	// With no main store (disabled) and no dedicated backend, there is no queue.
+	var mainStore store.Store
+	if storeSvc != nil {
+		mainStore = storeSvc.Store
+	}
+	if mainStore != nil || c.Queue.Provider == queue.ProviderStore {
+		start = time.Now()
+		queueSvc, err := c.Queue.Initialize(ctx, logging.NewComponentLogger(logger, "queue", ""), mainStore)
+		if err != nil {
+			return nil, fmt.Errorf("failed to initialize queue: %w", err)
+		}
+		svc.Queue = queueSvc
+		logger.Info("queue initialized", "provider", c.Queue.Provider, "duration", time.Since(start).Round(time.Millisecond))
+	}
 
 	// Initialize pubsub
 	start = time.Now()
@@ -266,6 +285,7 @@ func (c *Config) Initialize(ctx context.Context, logger *slog.Logger) (*Services
 			// in this milestone to preserve mode:all runtime parity.
 			IngestTx:     nil,
 			ChainTracker: svc.Chaintracks,
+			Queue:        svc.Queue,
 		}
 		// Add optional dependencies if available
 		if svc.Store != nil {
@@ -280,7 +300,7 @@ func (c *Config) Initialize(ctx context.Context, logger *slog.Logger) (*Services
 		overlayLogger := logging.NewComponentLogger(logger, "overlay", "")
 		// Create overlay P2P bus if enabled
 		if c.Overlay.P2P.Enabled && svc.Store != nil {
-			p2pBus, err := createOverlayP2PBus(c.Overlay.P2P, c.Wallet.ServerPrivateKey, svc.Store.Store, overlayLogger)
+			p2pBus, err := createOverlayP2PBus(c.Overlay.P2P, c.Wallet.ServerPrivateKey, svc.Queue, overlayLogger)
 			if err != nil {
 				return nil, fmt.Errorf("failed to create overlay P2P bus: %w", err)
 			}
@@ -304,7 +324,7 @@ func (c *Config) Initialize(ctx context.Context, logger *slog.Logger) (*Services
 	// Initialize BSV21
 	if c.runsService("bsv21") && c.BSV21.Mode != bsv21.ModeDisabled && svc.TXO != nil && moduleDeps != nil {
 		start = time.Now()
-		bsv21Svc, err := c.BSV21.Initialize(ctx, logging.NewComponentLogger(logger, "bsv21", c.BSV21.LogLevel), svc.TXO.OutputStore, moduleDeps, svc.ConfigStore, svc.Chaintracks, svc.Beef.Storage, svc.JungleBus)
+		bsv21Svc, err := c.BSV21.Initialize(ctx, logging.NewComponentLogger(logger, "bsv21", c.BSV21.LogLevel), svc.TXO.OutputStore, moduleDeps, svc.ConfigStore, svc.Chaintracks, svc.Beef.Storage, svc.JungleBus, svc.Queue)
 		if err != nil {
 			return nil, fmt.Errorf("failed to initialize bsv21: %w", err)
 		}
@@ -344,7 +364,7 @@ func (c *Config) Initialize(ctx context.Context, logger *slog.Logger) (*Services
 			if syncCfg.QueueName == "" {
 				syncCfg.QueueName = "bap"
 			}
-			svc.BAP.Sync = overlay.NewOverlaySync(syncCfg, "tm_bap", svc.Store.Store, svc.Beef.Storage, svc.BAP.Engine, bapLogger)
+			svc.BAP.Sync = overlay.NewOverlaySync(syncCfg, "tm_bap", svc.Queue, svc.Beef.Storage, svc.BAP.Engine, bapLogger)
 		}
 		logger.Info("bap initialized", "duration", time.Since(start).Round(time.Millisecond))
 	}
@@ -368,7 +388,7 @@ func (c *Config) Initialize(ctx context.Context, logger *slog.Logger) (*Services
 			if syncCfg.QueueName == "" {
 				syncCfg.QueueName = "bsocial"
 			}
-			svc.BSocial.Sync = overlay.NewOverlaySync(syncCfg, "tm_bsocial", svc.Store.Store, svc.Beef.Storage, svc.BSocial.Engine, bsocialLogger)
+			svc.BSocial.Sync = overlay.NewOverlaySync(syncCfg, "tm_bsocial", svc.Queue, svc.Beef.Storage, svc.BSocial.Engine, bsocialLogger)
 		}
 		logger.Info("bsocial initialized", "duration", time.Since(start).Round(time.Millisecond))
 	}
@@ -394,7 +414,7 @@ func (c *Config) Initialize(ctx context.Context, logger *slog.Logger) (*Services
 				opnsSyncCfg = &overlay.OverlaySyncConfig{}
 			}
 			opnsSyncCfg.QueueName = "opns"
-			svc.OPNS.Sync = overlay.NewOverlaySync(opnsSyncCfg, "tm_opns", svc.Store.Store, svc.Beef.Storage, svc.OPNS.Engine, opnsLogger)
+			svc.OPNS.Sync = overlay.NewOverlaySync(opnsSyncCfg, "tm_opns", svc.Queue, svc.Beef.Storage, svc.OPNS.Engine, opnsLogger)
 		}
 		logger.Info("opns initialized", "duration", time.Since(start).Round(time.Millisecond))
 	}
@@ -417,7 +437,7 @@ func (c *Config) Initialize(ctx context.Context, logger *slog.Logger) (*Services
 			if syncCfg.QueueName == "" {
 				syncCfg.QueueName = ordlockpkg.QueueName
 			}
-			svc.OrdLock.Sync = overlay.NewOverlaySync(syncCfg, ordlockpkg.TopicName, svc.Store.Store, svc.Beef.Storage, svc.OrdLock.Engine, ordlockLogger)
+			svc.OrdLock.Sync = overlay.NewOverlaySync(syncCfg, ordlockpkg.TopicName, svc.Queue, svc.Beef.Storage, svc.OrdLock.Engine, ordlockLogger)
 		}
 		logger.Info("ordlock initialized", "duration", time.Since(start).Round(time.Millisecond))
 	}
@@ -469,6 +489,7 @@ func (c *Config) Initialize(ctx context.Context, logger *slog.Logger) (*Services
 		start = time.Now()
 		indexerDeps := &indexer.InitializeDeps{
 			Store:       svc.Store.Store,
+			Queue:       svc.Queue,
 			BeefStorage: svc.Beef.Storage,
 			OutputStore: svc.TXO.OutputStore,
 		}
@@ -697,7 +718,7 @@ func (c *Config) Initialize(ctx context.Context, logger *slog.Logger) (*Services
 		// BSV21 subscriber (if subscription_id configured)
 		if svc.BSV21 != nil && svc.BSV21.Sync != nil && c.BSV21.Sync != nil && c.BSV21.Sync.SubscriptionID != "" {
 			subCfg := c.BSV21.Sync.SubscriberConfig()
-			sub, err := jbsync.NewSubscriber(subCfg, svc.Store.Store, svc.ConfigStore, svc.Chaintracks, svc.JungleBus, logger)
+			sub, err := jbsync.NewSubscriber(subCfg, svc.Queue, svc.ConfigStore, svc.Chaintracks, svc.JungleBus, logger)
 			if err != nil {
 				return nil, fmt.Errorf("failed to create bsv21 subscriber: %w", err)
 			}
@@ -708,7 +729,7 @@ func (c *Config) Initialize(ctx context.Context, logger *slog.Logger) (*Services
 		// BAP subscriber (if subscription_id configured)
 		if svc.BAP != nil && c.BAP.Sync != nil && c.BAP.Sync.SubscriptionID != "" {
 			subCfg := c.BAP.Sync.SubscriberConfig()
-			sub, err := jbsync.NewSubscriber(subCfg, svc.Store.Store, svc.ConfigStore, svc.Chaintracks, svc.JungleBus, logger)
+			sub, err := jbsync.NewSubscriber(subCfg, svc.Queue, svc.ConfigStore, svc.Chaintracks, svc.JungleBus, logger)
 			if err != nil {
 				return nil, fmt.Errorf("failed to create bap subscriber: %w", err)
 			}
@@ -719,7 +740,7 @@ func (c *Config) Initialize(ctx context.Context, logger *slog.Logger) (*Services
 		// BSocial subscriber (if subscription_id configured)
 		if svc.BSocial != nil && c.BSocial.Sync != nil && c.BSocial.Sync.SubscriptionID != "" {
 			subCfg := c.BSocial.Sync.SubscriberConfig()
-			sub, err := jbsync.NewSubscriber(subCfg, svc.Store.Store, svc.ConfigStore, svc.Chaintracks, svc.JungleBus, logger)
+			sub, err := jbsync.NewSubscriber(subCfg, svc.Queue, svc.ConfigStore, svc.Chaintracks, svc.JungleBus, logger)
 			if err != nil {
 				return nil, fmt.Errorf("failed to create bsocial subscriber: %w", err)
 			}
@@ -730,7 +751,7 @@ func (c *Config) Initialize(ctx context.Context, logger *slog.Logger) (*Services
 		// OrdLock subscriber (if subscription_id configured)
 		if svc.OrdLock != nil && c.OrdLock.Sync != nil && c.OrdLock.Sync.SubscriptionID != "" {
 			subCfg := c.OrdLock.Sync.SubscriberConfig()
-			sub, err := jbsync.NewSubscriber(subCfg, svc.Store.Store, svc.ConfigStore, svc.Chaintracks, svc.JungleBus, logger)
+			sub, err := jbsync.NewSubscriber(subCfg, svc.Queue, svc.ConfigStore, svc.Chaintracks, svc.JungleBus, logger)
 			if err != nil {
 				return nil, fmt.Errorf("failed to create ordlock subscriber: %w", err)
 			}
@@ -753,7 +774,7 @@ func (c *Config) Initialize(ctx context.Context, logger *slog.Logger) (*Services
 					ReorgDepth:     c.Indexer.Sync.ReorgDepth,
 					EnableMempool:  c.Indexer.Sync.EnableMempool,
 				}
-				sub, err := jbsync.NewSubscriber(subCfg, svc.Store.Store, svc.ConfigStore, svc.Chaintracks, svc.JungleBus, logger)
+				sub, err := jbsync.NewSubscriber(subCfg, svc.Queue, svc.ConfigStore, svc.Chaintracks, svc.JungleBus, logger)
 				if err != nil {
 					return nil, fmt.Errorf("failed to create ingest subscriber %s: %w", subID, err)
 				}
@@ -879,6 +900,14 @@ func (svc *Services) Close() error {
 		}
 	}
 
+	// Close the queue before the main store. For provider "inherit" this is a
+	// no-op; for a dedicated backend it closes the queue's own store.
+	if svc.Queue != nil {
+		if err := svc.Queue.Close(); err != nil {
+			errs = append(errs, fmt.Errorf("queue close: %w", err))
+		}
+	}
+
 	if svc.Store != nil {
 		if err := svc.Store.Close(); err != nil {
 			errs = append(errs, fmt.Errorf("store close: %w", err))
@@ -895,7 +924,7 @@ func (svc *Services) Close() error {
 // If walletKeyHex is provided, it's used as the libp2p identity (secp256k1).
 // This makes the peer ID encode the BRC-100 wallet's public key, enabling
 // BRC-42 payment derivation directly from peer IDs.
-func createOverlayP2PBus(cfg overlay.P2PConfig, walletKeyHex string, s store.Store, logger *slog.Logger) (*overlay.P2PBus, error) {
+func createOverlayP2PBus(cfg overlay.P2PConfig, walletKeyHex string, q queue.Queue, logger *slog.Logger) (*overlay.P2PBus, error) {
 	var privKey crypto.PrivKey
 	var err error
 
@@ -932,7 +961,7 @@ func createOverlayP2PBus(cfg overlay.P2PConfig, walletKeyHex string, s store.Sto
 		"peer_id", client.GetID(),
 	)
 
-	return overlay.NewP2PBus(client, s, logger), nil
+	return overlay.NewP2PBus(client, q, logger), nil
 }
 
 // secp256k1KeyFromHex converts a hex-encoded secp256k1 private key to a libp2p crypto.PrivKey.

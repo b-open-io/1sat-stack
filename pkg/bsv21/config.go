@@ -9,6 +9,7 @@ import (
 	"github.com/b-open-io/1sat-stack/pkg/config"
 	lookuppkg "github.com/b-open-io/1sat-stack/pkg/lookup"
 	"github.com/b-open-io/1sat-stack/pkg/overlay"
+	"github.com/b-open-io/1sat-stack/pkg/queue"
 	"github.com/b-open-io/1sat-stack/pkg/txo"
 	"github.com/b-open-io/go-junglebus"
 	"github.com/bsv-blockchain/go-chaintracks/chaintracks"
@@ -88,6 +89,7 @@ func (c *Config) Initialize(
 	chaintracker chaintracks.Chaintracks,
 	beefStorage *beef.Storage,
 	jbClient *junglebus.Client,
+	q queue.Queue,
 ) (*Services, error) {
 	if c.Mode == ModeDisabled {
 		return nil, nil
@@ -123,7 +125,7 @@ func (c *Config) Initialize(
 		if c.Sync != nil && c.Sync.Enabled {
 			syncSvc, err := NewSyncServices(
 				c.Sync,
-				txoStorage.Store,
+				q,
 				configStore,
 				beefStorage,
 				txoStorage,

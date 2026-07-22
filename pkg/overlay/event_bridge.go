@@ -9,7 +9,7 @@ import (
 
 	"github.com/b-open-io/1sat-stack/pkg/beef"
 	"github.com/b-open-io/1sat-stack/pkg/pubsub"
-	"github.com/b-open-io/1sat-stack/pkg/store"
+	"github.com/b-open-io/1sat-stack/pkg/queue"
 	"github.com/b-open-io/1sat-stack/pkg/types"
 	"github.com/bsv-blockchain/go-overlay-services/pkg/core/engine"
 	"github.com/bsv-blockchain/go-sdk/chainhash"
@@ -19,7 +19,7 @@ import (
 
 type EventBridgeConfig struct {
 	PubSub    pubsub.PubSub
-	Store     store.Store
+	Queue     queue.Queue
 	Patterns  []string
 	QueueFunc func(pubsub.Event) string
 	Logger    *slog.Logger
@@ -96,7 +96,7 @@ func (eb *EventBridge) run(ctx context.Context, ch <-chan pubsub.Event) {
 					"queue", queueKey, "member", ev.Member, "error", err)
 				continue
 			}
-			if err := eb.config.Store.ZAdd(ctx, []byte(queueKey), store.ScoredMember{
+			if err := eb.config.Queue.Enqueue(ctx, []byte(queueKey), queue.ScoredItem{
 				Member: member,
 				Score:  types.HeightScore(0, 0),
 			}); err != nil {

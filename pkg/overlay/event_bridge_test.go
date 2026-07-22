@@ -6,36 +6,47 @@ import (
 	"time"
 
 	"github.com/b-open-io/1sat-stack/pkg/pubsub"
-	"github.com/b-open-io/1sat-stack/pkg/store"
+	"github.com/b-open-io/1sat-stack/pkg/queue"
 	"github.com/bsv-blockchain/go-sdk/chainhash"
 )
 
-type mockStore struct {
-	store.Store
-	added map[string][]store.ScoredMember
+type mockQueue struct {
+	added map[string][]queue.ScoredItem
 }
 
-func newMockStore() *mockStore {
-	return &mockStore{added: make(map[string][]store.ScoredMember)}
+func newMockQueue() *mockQueue {
+	return &mockQueue{added: make(map[string][]queue.ScoredItem)}
 }
 
-func (m *mockStore) ZAdd(ctx context.Context, key []byte, members ...store.ScoredMember) error {
+func (m *mockQueue) Enqueue(ctx context.Context, key []byte, items ...queue.ScoredItem) error {
 	k := string(key)
-	m.added[k] = append(m.added[k], members...)
+	m.added[k] = append(m.added[k], items...)
 	return nil
 }
+
+func (m *mockQueue) Read(ctx context.Context, key []byte, cfg queue.ReadCfg) ([]queue.ScoredItem, error) {
+	return nil, nil
+}
+
+func (m *mockQueue) Ack(ctx context.Context, key []byte, members ...[]byte) error { return nil }
+
+func (m *mockQueue) Requeue(ctx context.Context, key []byte, item queue.ScoredItem) error { return nil }
+
+func (m *mockQueue) Depth(ctx context.Context, key []byte) (uint64, error) { return 0, nil }
+
+func (m *mockQueue) Close() error { return nil }
 
 func TestEventBridge_RoutesToQueue(t *testing.T) {
 	ps := pubsub.NewChannelPubSub(nil)
 	defer ps.Close()
-	ms := newMockStore()
+	ms := newMockQueue()
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
 	bridge := NewEventBridge(&EventBridgeConfig{
 		PubSub:   ps,
-		Store:    ms,
+		Queue:    ms,
 		Patterns: []string{"ordlock", "spend:ordlock"},
 		QueueFunc: func(ev pubsub.Event) string {
 			return "q:ordlock"
@@ -69,14 +80,14 @@ func TestEventBridge_RoutesToQueue(t *testing.T) {
 func TestEventBridge_SkipsOnEmptyQueueKey(t *testing.T) {
 	ps := pubsub.NewChannelPubSub(nil)
 	defer ps.Close()
-	ms := newMockStore()
+	ms := newMockQueue()
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
 	bridge := NewEventBridge(&EventBridgeConfig{
 		PubSub:   ps,
-		Store:    ms,
+		Queue:    ms,
 		Patterns: []string{"map:type:post"},
 		QueueFunc: func(ev pubsub.Event) string {
 			return ""

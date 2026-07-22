@@ -31,7 +31,7 @@ func (svc *Services) StartSubscribers(ctx context.Context, logger *slog.Logger) 
 		if svc.BAP != nil && svc.BAP.Sync != nil {
 			bridge := overlay.NewEventBridge(&overlay.EventBridgeConfig{
 				PubSub:   svc.PubSub.PubSub,
-				Store:    svc.Store.Store,
+				Queue:    svc.Queue,
 				Patterns: []string{"bap:*"},
 				QueueFunc: func(ev pubsub.Event) string {
 					return string(txo.KeyQueue("bap"))
@@ -48,7 +48,7 @@ func (svc *Services) StartSubscribers(ctx context.Context, logger *slog.Logger) 
 		if svc.BSocial != nil && svc.BSocial.Sync != nil {
 			bridge := overlay.NewEventBridge(&overlay.EventBridgeConfig{
 				PubSub:   svc.PubSub.PubSub,
-				Store:    svc.Store.Store,
+				Queue:    svc.Queue,
 				Patterns: []string{"map:type:*"},
 				QueueFunc: func(ev pubsub.Event) string {
 					return string(txo.KeyQueue("bsocial"))
@@ -65,7 +65,7 @@ func (svc *Services) StartSubscribers(ctx context.Context, logger *slog.Logger) 
 		if svc.OPNS != nil && svc.OPNS.Sync != nil {
 			bridge := overlay.NewEventBridge(&overlay.EventBridgeConfig{
 				PubSub:   svc.PubSub.PubSub,
-				Store:    svc.Store.Store,
+				Queue:    svc.Queue,
 				Patterns: []string{"opns:mine"},
 				QueueFunc: func(ev pubsub.Event) string {
 					return string(txo.KeyQueue("opns"))
@@ -82,7 +82,7 @@ func (svc *Services) StartSubscribers(ctx context.Context, logger *slog.Logger) 
 		if svc.OrdLock != nil && svc.OrdLock.Sync != nil {
 			bridge := overlay.NewEventBridge(&overlay.EventBridgeConfig{
 				PubSub:   svc.PubSub.PubSub,
-				Store:    svc.Store.Store,
+				Queue:    svc.Queue,
 				Patterns: []string{"ordlock", "spend:ordlock"},
 				QueueFunc: func(ev pubsub.Event) string {
 					return string(txo.KeyQueue(ordlockpkg.QueueName))
@@ -99,7 +99,7 @@ func (svc *Services) StartSubscribers(ctx context.Context, logger *slog.Logger) 
 		if svc.BSV21 != nil && svc.BSV21.Sync != nil {
 			bridge := overlay.NewEventBridge(&overlay.EventBridgeConfig{
 				PubSub:   svc.PubSub.PubSub,
-				Store:    svc.Store.Store,
+				Queue:    svc.Queue,
 				Patterns: []string{"bsv21:*"},
 				QueueFunc: func(ev pubsub.Event) string {
 					tokenId := strings.TrimPrefix(ev.Topic, "bsv21:")

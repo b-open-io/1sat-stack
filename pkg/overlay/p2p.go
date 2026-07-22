@@ -7,7 +7,7 @@ import (
 	"time"
 
 	"github.com/b-open-io/1sat-stack/pkg/p2p"
-	"github.com/b-open-io/1sat-stack/pkg/store"
+	"github.com/b-open-io/1sat-stack/pkg/queue"
 	msgbus "github.com/bsv-blockchain/go-p2p-message-bus"
 	"github.com/bsv-blockchain/go-sdk/chainhash"
 	"github.com/bsv-blockchain/go-sdk/overlay"
@@ -25,15 +25,15 @@ type P2PConfig struct {
 // P2PBus wraps a msgbus.Client for overlay topic pub/sub.
 type P2PBus struct {
 	client msgbus.Client
-	store  store.Store
+	queue  queue.Queue
 	logger *slog.Logger
 }
 
 // NewP2PBus creates a P2PBus from a msgbus.Client.
-func NewP2PBus(client msgbus.Client, s store.Store, logger *slog.Logger) *P2PBus {
+func NewP2PBus(client msgbus.Client, q queue.Queue, logger *slog.Logger) *P2PBus {
 	return &P2PBus{
 		client: client,
-		store:  s,
+		queue:  q,
 		logger: logger,
 	}
 }
@@ -106,7 +106,7 @@ func (b *P2PBus) Subscribe(ctx context.Context, topicName string) context.Cancel
 				queueKey := []byte("q:" + topicName)
 				for _, vout := range steakMsg.Instructions.OutputsToAdmit {
 					outpoint := fmt.Sprintf("%s_%d", steakMsg.Txid, vout)
-					if err := b.store.ZAdd(ctx, queueKey, store.ScoredMember{
+					if err := b.queue.Enqueue(ctx, queueKey, queue.ScoredItem{
 						Member: []byte(outpoint),
 						Score:  float64(time.Now().Unix()),
 					}); err != nil {

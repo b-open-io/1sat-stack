@@ -4,7 +4,7 @@ import (
 	"context"
 	"sync/atomic"
 
-	"github.com/b-open-io/1sat-stack/pkg/store"
+	"github.com/b-open-io/1sat-stack/pkg/queue"
 	"github.com/bsv-blockchain/go-overlay-services/pkg/core/engine"
 	gasplib "github.com/bsv-blockchain/go-overlay-services/pkg/core/gasp"
 )
@@ -49,6 +49,6 @@ func (t *Topic) QueueKey() string {
 }
 
 // QueueDepth returns the number of items in the topic's queue.
-func (t *Topic) QueueDepth(ctx context.Context, s store.Store) (int64, error) {
-	return s.ZCard(ctx, []byte(t.QueueKey()))
+func (t *Topic) QueueDepth(ctx context.Context, q queue.Queue) (uint64, error) {
+	return q.Depth(ctx, []byte(t.QueueKey()))
 }
