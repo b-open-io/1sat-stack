@@ -21,14 +21,30 @@ next. This log is the morning-review summary; newest status at the bottom of eac
 
 ## Milestone status
 
-### M1 — pkg/node + mode selection
+### M1 — pkg/node + mode selection — COMPLETE
 - Implemented (commits `cd8ad77`, `ae709f2`, `7f59561`) + parity fix (`d1d6111`).
 - Gate: `go test ./...` green; `mode: all` capabilities diff vs master baseline **empty**
   (re-verified after the parity fix on port 18080); `mode: opns` boots with only its surface.
-- Plan deviations noted by implementer: docs endpoint is `/1sat/api-spec/swagger.json` (not the
-  plan's path); paymail uses `Mode` not `Enabled`; `convertSpendsChain` moved alongside
-  `convertBeefChain`. All benign.
-- Status: **under review** (M1 diff vs master). Proceeding to M2 only after review clears.
+- Review verdict: **sound**. Function-body diffs of Initialize/Close/RegisterRoutes/
+  StartSubscribers/applyRuntimeConfig/SetDefaults/LoadConfig confirmed byte-identical to master
+  except intended additive changes. Parity fix independently confirmed correct (the plan's
+  originally-suggested lazy closure would have broken parity by double-triggering ingest).
+- Plan deviations (benign): docs endpoint is `/1sat/api-spec/swagger.json`; paymail uses `Mode`
+  not `Enabled`; `convertSpendsChain` moved alongside `convertBeefChain`.
+
+**Findings deferred for your signoff / later milestones (none block M1 parity):**
+1. **Legal mode combinations need defining (design decision — your call).** `mode: paymail` alone
+   can't boot: `paymail.Initialize` hard-requires OpnsLookup/Ordfs/BroadcastHandler, which are nil
+   unless index+opns+ordfs also run. Today it fails with a dep error, not a clear config error.
+   Options: composer validates mode sets and errors clearly / auto-pulls required co-services /
+   documents co-location rules. Decision 2 never enumerated inter-service mode deps. I did not
+   invent a rule — needs your direction. Relevant to M5 (gateway/deployment).
+2. **`mode: all` implicitly assumes index enabled.** Broadcast `/tx` and spends are now
+   `runsService("index")`-gated (intended, decision 2). A `mode: all` config with txo+indexer
+   *disabled* would drop `/tx`+spends vs master — an edge the capabilities gate can't see (baseline
+   has index on). Realistic configs default txo embedded, so parity holds. Informational.
+3. **admin/sweep/landing ungated** → subset modes (e.g. `mode: opns`) also serve the admin UI.
+   Consistent with decision 2 (admin deferred to M5); M5's per-service admin work resolves it.
 
 ### M2 — Queue interface — not started
 ### M3 — Event-driven lifecycle — not started
