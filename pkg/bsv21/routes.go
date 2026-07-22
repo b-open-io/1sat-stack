@@ -114,6 +114,9 @@ var errInvalidTokenID = fmt.Errorf("invalid token ID format")
 // @Success 200 {array} TokenStatus
 // @Router /tokens [get]
 func (r *Routes) ListTokens(c *fiber.Ctx) error {
+	if r.manager == nil {
+		return c.JSON([]*TokenStatus{})
+	}
 	includeAll := c.Query("all") == "true"
 	return c.JSON(r.manager.ListTokenStatuses(c.Context(), includeAll))
 }
