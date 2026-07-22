@@ -197,6 +197,9 @@ as its own process pointing at shared providers.
 | 11 | `overlay.InitializeDeps` takes `IngestTxFunc` instead of `*txo.OutputStore` | One-field change; removes the txo import from `pkg/overlay` (import hygiene) |
 | 12 | Per-service admin routes + admin UI as API client | Endpoint inventory during implementation (decision 10) |
 
+Delivered on branch `microservice-split` (M1–M5): gaps 1, 2, 3, 4, 5, 6, 9, 10, 11, 12.
+Out of scope / separate effort: gap 7 (opns-overlay, separate repo), gap 8 (configurator).
+
 ## Parked / out of scope
 
 - **bsv21 metering split** (separate commercial service registering/deregistering tokens with a
