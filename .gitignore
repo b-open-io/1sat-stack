@@ -18,3 +18,6 @@ cmd/server/*.db-wal
 pkg/node/*.db
 pkg/node/*.db-shm
 pkg/node/*.db-wal
+
+# Runtime Badger store written to cwd when DataDir path is unresolved
+/store/

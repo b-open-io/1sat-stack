@@ -18,6 +18,7 @@ import (
 	"github.com/b-open-io/1sat-stack/pkg/bsocial"
 	"github.com/b-open-io/1sat-stack/pkg/bsv21"
 	configpkg "github.com/b-open-io/1sat-stack/pkg/config"
+	"github.com/b-open-io/1sat-stack/pkg/gateway"
 	"github.com/b-open-io/1sat-stack/pkg/indexer"
 	"github.com/b-open-io/1sat-stack/pkg/logging"
 	"github.com/b-open-io/1sat-stack/pkg/opns"
@@ -112,6 +113,9 @@ type Config struct {
 
 	// Owner services
 	Owner owner.Config `mapstructure:"owner"`
+
+	// Gateway reverse proxy (multi-process deployments only)
+	Gateway gateway.Config `mapstructure:"gateway"`
 
 	// Admin UI
 	Admin admin.Config `mapstructure:"admin"`
@@ -285,6 +289,7 @@ func (c *Config) SetDefaults(v *viper.Viper) {
 	c.Spends.SetDefaults(v, "spends")
 	c.ORDFS.SetDefaults(v, "ordfs")
 	c.Owner.SetDefaults(v, "owner")
+	c.Gateway.SetDefaults(v, "gateway")
 	c.Admin.SetDefaults(v, "admin")
 	c.Sweep.SetDefaults(v, "sweep")
 	c.Landing.SetDefaults(v, "landing")

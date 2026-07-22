@@ -131,6 +131,17 @@ func (c *Config) Initialize(ctx context.Context, logger *slog.Logger) (*Services
 	initStart := time.Now()
 	svc := &Services{}
 
+	// Gateway is a standalone reverse proxy: it runs alone and builds none of
+	// the service substrate. Reject combining it with other services, and
+	// short-circuit before any store/chaintracks/overlay initialization.
+	if c.gatewayCombined() {
+		return nil, fmt.Errorf("gateway mode cannot be combined with other services in one process; run gateway alone")
+	}
+	if c.runsService("gateway") {
+		logger.Info("gateway mode: reverse proxy only, skipping service substrate")
+		return svc, nil
+	}
+
 	// Initialize store (foundational - other services may depend on it)
 	start := time.Now()
 	storeSvc, err := c.Store.Initialize(ctx, logging.NewComponentLogger(logger, "store", ""))

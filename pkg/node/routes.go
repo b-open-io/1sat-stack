@@ -13,6 +13,7 @@ import (
 	bsocialdocs "github.com/b-open-io/1sat-stack/pkg/bsocial/docs"
 	bsv21docs "github.com/b-open-io/1sat-stack/pkg/bsv21/docs"
 	chaintracksdocs "github.com/b-open-io/1sat-stack/pkg/chaintracks/docs"
+	"github.com/b-open-io/1sat-stack/pkg/gateway"
 	"github.com/b-open-io/1sat-stack/pkg/httputil"
 	opnsdocs "github.com/b-open-io/1sat-stack/pkg/opns/docs"
 	ordfsdocs "github.com/b-open-io/1sat-stack/pkg/ordfs/docs"
@@ -35,6 +36,13 @@ var (
 
 // RegisterRoutes registers all HTTP routes on the Fiber app
 func (c *Config) RegisterRoutes(app *fiber.App, svc *Services) {
+	// Gateway runs alone: mount the reverse proxy for the public surface
+	// instead of any local service routes.
+	if c.runsService("gateway") {
+		gateway.New(c.Server.BasePath, c.Gateway.Backends, slog.Default()).Register(app)
+		return
+	}
+
 	// Octet-stream body limit for overlay /submit endpoints. Same source as
 	// the outer Fiber BodyLimit so the two stay in sync.
 	overlayBodyLimit := int64(ParseBodyLimit(c.Server.BodyLimit))

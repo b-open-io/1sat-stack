@@ -86,6 +86,17 @@ func (c *Config) applyModes() {
 	}
 }
 
+// gatewayCombined reports whether an explicit mode list names the gateway
+// alongside other services. The gateway is a standalone reverse proxy and must
+// run in its own process, so this combination is rejected at startup.
+func (c *Config) gatewayCombined() bool {
+	set := c.modeSet()
+	if !set["gateway"] {
+		return false
+	}
+	return len(set) > 1
+}
+
 // runsService reports whether the named service runs in this process:
 // mode=all defers to the service's own enabled flag; an explicit mode list
 // is authoritative membership.
