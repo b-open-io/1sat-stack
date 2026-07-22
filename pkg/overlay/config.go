@@ -11,7 +11,6 @@ import (
 	"github.com/b-open-io/1sat-stack/pkg/beef"
 	overlaystorage "github.com/b-open-io/1sat-stack/pkg/overlay/storage"
 	"github.com/b-open-io/1sat-stack/pkg/store"
-	"github.com/b-open-io/1sat-stack/pkg/txo"
 	"github.com/bsv-blockchain/go-overlay-services/pkg/core/engine"
 	"github.com/bsv-blockchain/go-sdk/transaction"
 	"github.com/bsv-blockchain/go-sdk/transaction/chaintracker"
@@ -59,7 +58,7 @@ func (c *Config) SetDefaults(v *viper.Viper, prefix string) {
 
 // InitializeDeps holds dependencies required for overlay initialization
 type InitializeDeps struct {
-	OutputStore  *txo.OutputStore
+	IngestTx     overlaystorage.IngestTxFunc
 	ChainTracker chaintracker.ChainTracker
 	Store        store.Store             // For remote config and queue operations
 	BeefStorage  *beef.Storage           // For BEEF remote creation
@@ -145,14 +144,6 @@ func (c *Config) Initialize(ctx context.Context, logger *slog.Logger, deps *Init
 		txTopicIndex = sqliteFactory.TxTopicIndex()
 	}
 
-	var ingestTx overlaystorage.IngestTxFunc
-	if deps.OutputStore != nil && deps.OutputStore.IngestTx != nil {
-		ingestFn := deps.OutputStore.IngestTx
-		ingestTx = func(ctx context.Context, tx *transaction.Transaction) error {
-			return ingestFn(ctx, tx)
-		}
-	}
-
 	svc := &Services{
 		logger:       logger,
 		Store:        deps.Store,
@@ -165,7 +156,7 @@ func (c *Config) Initialize(ctx context.Context, logger *slog.Logger, deps *Init
 			BeefStorage:  deps.BeefStorage,
 			ChainTracker: deps.ChainTracker,
 			Store:        deps.Store,
-			IngestTx:     ingestTx,
+			IngestTx:     deps.IngestTx,
 			RoutesConfig: &c.Routes,
 			P2PBus:       deps.P2PBus,
 			Broadcaster:  deps.Broadcaster,

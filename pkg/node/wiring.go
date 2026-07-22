@@ -260,8 +260,16 @@ func (c *Config) Initialize(ctx context.Context, logger *slog.Logger) (*Services
 	// Initialize overlay engine FIRST (BSV21 needs it for topic/lookup registration)
 	if c.Overlay.Mode != overlay.ModeDisabled && svc.TXO != nil {
 		start = time.Now()
+		outputStore := svc.TXO.OutputStore
 		overlayDeps := &overlay.InitializeDeps{
-			OutputStore:  svc.TXO.OutputStore,
+			// OutputStore.IngestTx is wired by indexer init after overlay
+			// init, so resolve it at call time.
+			IngestTx: func(ctx context.Context, tx *transaction.Transaction) error {
+				if fn := outputStore.IngestTx; fn != nil {
+					return fn(ctx, tx)
+				}
+				return nil
+			},
 			ChainTracker: svc.Chaintracks,
 		}
 		// Add optional dependencies if available
