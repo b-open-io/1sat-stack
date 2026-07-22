@@ -20,6 +20,7 @@ const (
 	ProviderLRU       = "lru"
 	ProviderStore     = "store"
 	ProviderJungleBus = "junglebus"
+	ProviderHTTP      = "http"
 )
 
 type Config struct {
@@ -28,12 +29,19 @@ type Config struct {
 }
 
 type ChainConfig struct {
-	Provider string    `mapstructure:"provider"`
-	LRU      LRUConfig `mapstructure:"lru"`
+	Provider string     `mapstructure:"provider"`
+	LRU      LRUConfig  `mapstructure:"lru"`
+	HTTP     HTTPConfig `mapstructure:"http"`
 }
 
 type LRUConfig struct {
 	Size string `mapstructure:"size"`
+}
+
+// HTTPConfig configures the remote spend resolver tier. URL points at a remote
+// index service's txo mount, e.g. https://api.1sat.app/1sat/txo.
+type HTTPConfig struct {
+	URL string `mapstructure:"url"`
 }
 
 type Services struct {
@@ -136,6 +144,12 @@ func createStorageFromConfig(
 			return nil, nil
 		}
 		return NewJunglebusSpendStorage(jbClient), nil
+
+	case ProviderHTTP:
+		if cfg.HTTP.URL == "" {
+			return nil, fmt.Errorf("http provider requires a url")
+		}
+		return NewHTTPSpendStorage(cfg.HTTP.URL, nil), nil
 
 	default:
 		return nil, fmt.Errorf("unknown spends provider: %s", cfg.Provider)

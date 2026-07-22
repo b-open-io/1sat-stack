@@ -726,6 +726,8 @@ func convertSpendsChain(jsonStr string) ([]spends.ChainConfig, error) {
 		switch provider {
 		case "lru":
 			cc.LRU.Size = item["size"]
+		case "http":
+			cc.HTTP.URL = item["url"]
 		case "store", "junglebus":
 			// No additional config needed
 		}
