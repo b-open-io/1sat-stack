@@ -46,9 +46,20 @@ next. This log is the morning-review summary; newest status at the bottom of eac
 3. **admin/sweep/landing ungated** → subset modes (e.g. `mode: opns`) also serve the admin UI.
    Consistent with decision 2 (admin deferred to M5); M5's per-service admin work resolves it.
 
-### M2 — Queue interface — implemented, under review
+### M2 — Queue interface — COMPLETE
 - Commits `30ed013` (interface + StoreQueue + Config), `3349791` (migrate all `q:*`
   producers/consumers), `ff4d894` (marker).
+- Review verdict: **sound**, no Critical/Important findings. Semantic fidelity of
+  Read/Ack/Requeue/Depth vs master's worker loop confirmed byte-equivalent; GASP `MinExclusive`
+  drop confirmed inert (keyed remote is dead code; live `BeefRemote` sites pass empty keys on
+  master too); `q:*` fully migrated; `tx:*` logs correctly left on the store; Close ordering
+  correct (inherit = no-op, dedicated closes its own store once).
+- **Known interface gap (deferred, tied to out-of-scope gap 7):** `queue.ReadCfg.From` is
+  inclusive-only and cannot express the `> since` cursor a keyed GASP remote needs. Does NOT go
+  live in M1–M5 (the keyed `BeefRemote`/`QueueGASPRemote` is dead code here; the SSE+GASP feed is
+  the opns-overlay RemoteConfig work, gap 7, separate repo). Whoever wires that path must add an
+  exclusive-`From` option to `ReadCfg` first, else `>= since` re-emits every txid at the max
+  block-height score each round (wasted re-traversal, not corruption). Left additive-on-demand.
 - `pkg/queue`: `Queue` (Enqueue/Read/Ack/Requeue/Depth/Close), `StoreQueue` over the main store's
   `q:*` keys, `Config` (`provider: inherit|store`). Migrated worker, jbsync, indexer sync,
   overlay (p2p/event_bridge/sync/topic/services), gasp remotes, bsv21. `pkg/node` builds
