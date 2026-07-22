@@ -4,6 +4,32 @@ Branch: `microservice-split` (from `master` @ `ab77548`). Running the plan in
 `microservice-split-implementation.md` milestone by milestone: implement → review → fix-loop →
 next. This log is the morning-review summary; newest status at the bottom of each milestone.
 
+## ⚠ Finding needing your decision (NOT blocking — M4/M5 are independent)
+
+**The stale-rollback branch is dead code in production — stale unconfirmed txs are NEVER rolled
+back (from txo *or* overlay).** Verified: `beef.Storage.UpdateMerklePath`
+(`pkg/beef/beef.go:358`) returns a plain `errors.New("unable to fetch…")` on a genuine miss —
+never `beef.ErrNotFound`, never `(nil,nil)`. In `pkg/indexer/pending_auditor.go`
+`processUnconfirmed`, that classifies as `isError` → "retry next block" → the
+`score <= rollbackCutoff` rollback branch is unreachable. So a tx that's broadcast + admitted to an
+overlay but never confirms (dropped / double-spent / underfunded) and never gets an explicit
+arcade REJECTED stays in `tx:pending` forever, and its outputs persist in both txo and overlay
+storage indefinitely. This is the actual root of the phantom-output/`davidt` problem — larger than
+my original findings doc claimed (I wrote "auditor rolls back txo but not overlay"; in fact it
+rolls back neither).
+
+**Impact on M3:** the Task 3.1 fix (auditor publishes a rollback event → overlay also cleans up)
+is correct and unit-tested, but **inert in production** until the classification bug is fixed.
+The M3 *split* deliverables (overlays carry no txo, adapter ingest unwired) are unaffected and sound.
+
+**Why I did NOT fix it autonomously:** the fix — make `UpdateMerklePath` signal genuine-not-found
+distinctly (return `beef.ErrNotFound`), or reclassify that specific error in `processUnconfirmed` —
+*enables rollback of transactions that currently never roll back*. That is a destructive-direction,
+timing-sensitive behavior change (a legitimately-slow tx wrongly rolled back would delete live
+outputs), gated by `rollbackAge`, in exactly the area you care most about. Needs your call on
+whether/how to enable it and whether `rollbackAge` is safe. Pre-existing bug, orthogonal to the
+split — I'm continuing M4/M5 and leaving this for you.
+
 ## Resolved decisions (discussed and settled)
 
 - **Decision 9 / overlay ingest (RESOLVED with David).** Overlay modes carry NO txo/indexer/
@@ -88,12 +114,19 @@ next. This log is the morning-review summary; newest status at the bottom of eac
 - Deviations to confirm: indexer sync/config migrated (not in task list); GASP `GetInitialResponse`
   dropped `MinExclusive` (inclusive `From` in Queue model); dedicated queue store defaults to a
   `queue` badger path to avoid colliding with the main store dir.
-### M3 — Event-driven lifecycle — IN PROGRESS
-- Unblocked (decision 9 resolved above; plan Task 3.2 corrected). Implementer running.
-- Task 3.1: auditor publishes a synthetic "arc" REJECTED on stale rollback so overlay storage
-  also rolls back (closes the phantom-output hole). Intentional `mode: all` runtime change (not a
-  parity violation — capabilities surface unchanged).
-- Task 3.2: gate txo/indexer/auditor on `runsService("index")`; adapter IngestTx stays nil in all
-  modes; overlay-only processes wire the status loop (arc bridge + StatusHandler, no txo pieces).
+### M3 — Event-driven lifecycle — implemented, under review
+- Commits `b545ba4` (auditor publishes stale rollbacks), `7676de2` (overlay modes run without
+  txo), `7e9df2d` (marker).
+- Task 3.1: auditor publishes a synthetic "arc" REJECTED on stale rollback → overlay storage
+  rolls back via `handleRejected`. Correct + unit-tested (`TestProcessUnconfirmedPublishesStale
+  Rollback`) — but see the ⚠ finding above: the rollback branch is dead in production, so this is
+  inert until the separate classification bug is fixed. The implementer also extracted a minimal
+  `beefProofStore` interface for the auditor (backward-compatible; `*beef.Storage` satisfies it).
+- Task 3.2: txo/indexer/auditor gated on `runsService("index")`; adapter IngestTx stays nil in all
+  modes; overlay-only processes wire the status loop (arc bridge + StatusHandler, `ingest:false`,
+  no txo pieces). `mode: opns` builds no txo/indexer/auditor; `mode: all` full pipeline intact.
+- Gate (implementer-reported): auditor test green; full suite green; `mode: all` capabilities diff
+  empty; `mode: index` and `mode: opns` boot with correct surfaces.
+- Under review — priority: independent confirmation of the dead-branch finding + split-work soundness.
 ### M4 — Remote providers — not started
 ### M5 — Gateway + per-service admin — not started
