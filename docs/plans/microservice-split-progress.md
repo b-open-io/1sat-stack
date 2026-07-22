@@ -188,14 +188,15 @@ split — I'm continuing M4/M5 and leaving this for you.
     indexer/owner imports, Close order correct (queue before store, StatusHandler.Stop called).
   - R1✅ R2✅ R3✅ R4✅ R5⚠️(dead branch, tracked) R6✅ R7✅ R8✅ R9⚠️ R10✅.
 
-**Open item needing your decision (non-blocking; gateway is multi-process-only, not in prod):**
-- **R9 — gateway over-advertises `/chaintracks` + `/sweep`.** The proxy `routeTable`
-  (`pkg/gateway/gateway.go:22`) omits both, but merged `/1sat/capabilities` still lists them (pulled
-  from backends). So behind a gateway they'd 404 while being advertised. My plan's Task 5.1 path map
-  also omitted them (spec-level, not a code miss). Options: (a) add `/chaintracks`→index and decide
-  a `/sweep` host, adding both to routeTable; (b) exclude them from merged capabilities so the
-  advertised surface stays honest until chaintracks-as-substrate and sweep-UI placement are settled.
-  My lean: (a) for chaintracks (index is its natural host), (b) for sweep (UI placement is deferred).
+**R9 — gateway `/chaintracks` + `/sweep` routing → deferred to the configurator (RESOLVED as
+not-a-now-fix).** The proxy `routeTable` (`pkg/gateway/gateway.go:22`) omits both while merged
+`/1sat/capabilities` still lists them, so behind a gateway they'd 404 while advertised. But this
+isn't a hardcodable mapping: chaintracks is **substrate, not a mode** — embedded into whichever
+services need it (index) and also runnable as a separate remote via the external go-chaintracks
+server — so "which backend serves `/chaintracks`" is a per-deployment topology question. `/sweep` is
+a UI whose placement is the deferred admin/UI question. The gateway's backend map should be
+*generated* from topology by the configurator (parked, gap 8), which is where this belongs. The
+hardcoded routeTable is a first-pass for the clean-cut service modes; leave the gateway as-is.
 
 **Deferred minors (non-blocking, mostly pre-existing):**
 - Data race in the `OpnsCrawlTrigger` closure (`pkg/node/wiring.go:475`) — two concurrent admin
