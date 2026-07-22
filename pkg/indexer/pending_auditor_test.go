@@ -134,11 +134,11 @@ func TestProcessUnconfirmedPublishesStaleRollback(t *testing.T) {
 	}
 }
 
-// TestProcessUnconfirmedFetchErrorDoesNotRollback documents current production
-// behavior: because beef.Storage.UpdateMerklePath returns a plain error (not
-// beef.ErrNotFound) on a genuine miss, the stale-rollback branch is never
-// reached and no arc event is published. When the miss-classification is fixed
-// upstream, this test should flip to expect a rollback.
+// TestProcessUnconfirmedFetchErrorDoesNotRollback pins the intentionally-dormant
+// behavior: because beef.Storage.UpdateMerklePath returns a plain error on a
+// genuine miss, the stale-rollback branch is not reached and no arc event is
+// published. If automatic stale-rollback is later enabled, this test should
+// flip to expect a rollback.
 func TestProcessUnconfirmedFetchErrorDoesNotRollback(t *testing.T) {
 	st := newAuditorTestStore(t)
 	outputStore := txo.NewOutputStore(st, nil, beef.NewStorageFromProviders(nil, nil))

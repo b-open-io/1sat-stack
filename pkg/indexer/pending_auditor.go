@@ -333,7 +333,11 @@ func (a *PendingAuditor) processUnconfirmed(ctx context.Context, members []store
 				return
 			}
 
-			// No proof found — check rollback threshold
+			// No proof found — check rollback threshold.
+			// NOTE: automatic stale-rollback is intentionally dormant. A genuine
+			// miss classifies as a transient error above and returns, so this
+			// block is not reached today; enabling rollback of stale unconfirmed
+			// txs is a deliberate future decision, not an oversight.
 			if score <= rollbackCutoff {
 				a.logger.Info("rolling back stale unconfirmed tx", "txid", txidHex)
 				if err := a.outputStore.Rollback(ctx, txid); err != nil {
