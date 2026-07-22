@@ -24,6 +24,19 @@ const (
 	ModeRemote   = "remote"
 )
 
+// Owner mode constants select where fee-address sync and balance lookups
+// resolve: embedded requires an in-process index; remote uses HTTP.
+const (
+	OwnerModeEmbedded = "embedded"
+	OwnerModeRemote   = "remote"
+)
+
+// OwnerConfig selects how bsv21 syncs fee addresses and reads their balance.
+type OwnerConfig struct {
+	Mode string `mapstructure:"mode"` // embedded (default) | remote
+	URL  string `mapstructure:"url"`  // index owner mount when mode=remote, e.g. https://api.1sat.app/1sat/owner
+}
+
 // Config holds BSV21 configuration
 type Config struct {
 	Mode     string `mapstructure:"mode"`      // disabled, embedded, remote
@@ -36,6 +49,9 @@ type Config struct {
 
 	// Sync settings
 	Sync *SyncConfig `mapstructure:"sync"` // JungleBus sync configuration
+
+	// Owner sync/balance resolution (embedded in-process index or remote HTTP)
+	Owner OwnerConfig `mapstructure:"owner"`
 
 	// Routes settings
 	Routes RoutesConfig `mapstructure:"routes"`
@@ -58,6 +74,8 @@ func (c *Config) SetDefaults(v *viper.Viper, prefix string) {
 	v.SetDefault(p+"whitelist_tokens", []string{})
 	v.SetDefault(p+"blacklist_tokens", []string{})
 	v.SetDefault(p+"network", "mainnet")
+	v.SetDefault(p+"owner.mode", OwnerModeEmbedded)
+	v.SetDefault(p+"owner.url", "")
 	v.SetDefault(p+"sync.enabled", false)
 	v.SetDefault(p+"sync.subscription_id", "")
 	v.SetDefault(p+"sync.from_block", 783968)
@@ -90,6 +108,8 @@ func (c *Config) Initialize(
 	beefStorage *beef.Storage,
 	jbClient *junglebus.Client,
 	q queue.Queue,
+	ownerSync OwnerSyncer,
+	balance BalanceLookup,
 ) (*Services, error) {
 	if c.Mode == ModeDisabled {
 		return nil, nil
@@ -131,6 +151,8 @@ func (c *Config) Initialize(
 				txoStorage,
 				eng,
 				bsv21Lookup,
+				ownerSync,
+				balance,
 				chaintracker,
 				jbClient,
 				logger,
@@ -141,8 +163,10 @@ func (c *Config) Initialize(
 			svc.Sync = syncSvc
 		}
 
-		// Create routes if enabled
-		if c.Routes.Enabled && txoStorage != nil {
+		// Create routes if enabled. txoStorage is optional: only GetTransaction's
+		// BEEF passthrough uses it, and it nil-guards. This lets bsv21 serve its
+		// API in a standalone process with no in-process index (remote owner).
+		if c.Routes.Enabled {
 			routesDeps := &RoutesDeps{
 				Storage: txoStorage,
 				Lookup:  bsv21Lookup,

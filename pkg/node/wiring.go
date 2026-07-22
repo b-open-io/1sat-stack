@@ -327,10 +327,50 @@ func (c *Config) Initialize(ctx context.Context, logger *slog.Logger) (*Services
 		moduleDeps = svc.Overlay.ModuleDeps
 	}
 
-	// Initialize BSV21
-	if c.runsService("bsv21") && c.BSV21.Mode != bsv21.ModeDisabled && svc.TXO != nil && moduleDeps != nil {
+	// Initialize BSV21. Fee-address sync and balance resolve either against the
+	// in-process index (embedded) or a remote index service over HTTP (remote),
+	// so bsv21 can run standalone with no co-located txo/indexer.
+	if c.runsService("bsv21") && c.BSV21.Mode != bsv21.ModeDisabled && moduleDeps != nil {
 		start = time.Now()
-		bsv21Svc, err := c.BSV21.Initialize(ctx, logging.NewComponentLogger(logger, "bsv21", c.BSV21.LogLevel), svc.TXO.OutputStore, moduleDeps, svc.ConfigStore, svc.Chaintracks, svc.Beef.Storage, svc.JungleBus, svc.Queue)
+
+		var txoStore *txo.OutputStore
+		if svc.TXO != nil {
+			txoStore = svc.TXO.OutputStore
+		}
+
+		var ownerSync bsv21.OwnerSyncer
+		var balance bsv21.BalanceLookup
+		if c.BSV21.Sync != nil && c.BSV21.Sync.Enabled {
+			switch c.BSV21.Owner.Mode {
+			case bsv21.OwnerModeRemote:
+				if c.BSV21.Owner.URL == "" {
+					return nil, fmt.Errorf("bsv21 owner.mode=remote requires bsv21.owner.url")
+				}
+				ownerClient := bsv21.NewHTTPOwnerClient(c.BSV21.Owner.URL, nil)
+				ownerSync = ownerClient
+				balance = ownerClient.Balance
+				logger.Info("bsv21 owner resolution: remote", "url", c.BSV21.Owner.URL)
+			case bsv21.OwnerModeEmbedded, "":
+				if !c.runsService("index") || svc.TXO == nil {
+					return nil, fmt.Errorf("bsv21 owner.mode=embedded requires the index service in-process; set bsv21.owner.mode=remote and bsv21.owner.url to point at an index service")
+				}
+				ownerLogger := logging.NewComponentLogger(logger, "owner", "")
+				idx := indexer.NewIngestCtx(svc.TXO.OutputStore, svc.Beef.Storage, ownerLogger)
+				ownerSync = owner.NewOwnerSync(svc.JungleBus, svc.Beef.Storage, idx, svc.TXO.OutputStore, svc.ConfigStore, ownerLogger)
+				outputStore := svc.TXO.OutputStore
+				balance = func(ctx context.Context, address string) (int64, error) {
+					bal, _, err := outputStore.SearchBalance(ctx, &txo.OutputSearchCfg{
+						SearchCfg: store.SearchCfg{Keys: [][]byte{[]byte("own:" + address)}},
+					})
+					return int64(bal), err
+				}
+				logger.Info("bsv21 owner resolution: embedded")
+			default:
+				return nil, fmt.Errorf("unknown bsv21 owner.mode: %s", c.BSV21.Owner.Mode)
+			}
+		}
+
+		bsv21Svc, err := c.BSV21.Initialize(ctx, logging.NewComponentLogger(logger, "bsv21", c.BSV21.LogLevel), txoStore, moduleDeps, svc.ConfigStore, svc.Chaintracks, svc.Beef.Storage, svc.JungleBus, svc.Queue, ownerSync, balance)
 		if err != nil {
 			return nil, fmt.Errorf("failed to initialize bsv21: %w", err)
 		}

@@ -9,11 +9,9 @@ import (
 
 	"github.com/b-open-io/1sat-stack/pkg/beef"
 	"github.com/b-open-io/1sat-stack/pkg/config"
-	"github.com/b-open-io/1sat-stack/pkg/indexer"
 	"github.com/b-open-io/1sat-stack/pkg/jbsync"
 	"github.com/b-open-io/1sat-stack/pkg/logging"
 	lookuppkg "github.com/b-open-io/1sat-stack/pkg/lookup"
-	"github.com/b-open-io/1sat-stack/pkg/owner"
 	"github.com/b-open-io/1sat-stack/pkg/queue"
 	"github.com/b-open-io/1sat-stack/pkg/template/bsv21"
 	"github.com/b-open-io/1sat-stack/pkg/txo"
@@ -78,6 +76,8 @@ func NewSyncServices(
 	outputStore *txo.OutputStore,
 	overlaySvc *engine.Engine,
 	lookup *lookuppkg.BSV21Lookup,
+	ownerSync OwnerSyncer,
+	balance BalanceLookup,
 	ct chaintracks.Chaintracks,
 	jbClient *junglebus.Client,
 	logger *slog.Logger,
@@ -106,20 +106,9 @@ func NewSyncServices(
 	// Create logger with optional level override
 	syncLogger := logging.NewComponentLogger(logger, "bsv21-sync", cfg.LogLevel)
 
-	// Create indexer for owner sync
-	idx := indexer.NewIngestCtx(outputStore, beefStorage, logger)
-
-	// Create owner sync for fee address syncing
-	ownerSync := owner.NewOwnerSync(
-		jbClient,
-		beefStorage,
-		idx,
-		outputStore,
-		cs,
-		logger,
-	)
-
-	// Create token manager upfront so it's available for status queries
+	// Create token manager upfront so it's available for status queries.
+	// Owner sync and balance lookup are injected by the caller so bsv21 does
+	// not depend on the indexer/owner packages directly.
 	manager := NewTokenManager(
 		q,
 		cs,
@@ -128,6 +117,7 @@ func NewSyncServices(
 		overlaySvc,
 		lookup,
 		ownerSync,
+		balance,
 		ct,
 		cfg.TokenWorkers,
 		cfg.FeePerOutput,

@@ -26,6 +26,9 @@ type OwnerSyncer interface {
 	Sync(ctx context.Context, owner string) error
 }
 
+// BalanceLookup returns unspent satoshis for an address.
+type BalanceLookup func(ctx context.Context, address string) (int64, error)
+
 // TokenManager manages per-token processor workers
 type TokenManager struct {
 	queue             queue.Queue
@@ -35,6 +38,7 @@ type TokenManager struct {
 	overlay           *engine.Engine
 	lookup            *lookuppkg.BSV21Lookup
 	ownerSync         OwnerSyncer
+	balance           BalanceLookup
 	chainTracker      chaintracks.Chaintracks
 	concurrency       int
 	feePerOutput      int64
@@ -57,6 +61,7 @@ func NewTokenManager(
 	overlaySvc *engine.Engine,
 	lookup *lookuppkg.BSV21Lookup,
 	ownerSync OwnerSyncer,
+	balance BalanceLookup,
 	ct chaintracks.Chaintracks,
 	concurrency int,
 	feePerOutput int64,
@@ -74,6 +79,7 @@ func NewTokenManager(
 		overlay:           overlaySvc,
 		lookup:            lookup,
 		ownerSync:         ownerSync,
+		balance:           balance,
 		chainTracker:      ct,
 		concurrency:       concurrency,
 		feePerOutput:      feePerOutput,
@@ -416,6 +422,9 @@ func (m *TokenManager) ListTokenStatuses(ctx context.Context, includeAll bool) [
 
 // getTokenMetadata fetches token metadata from the output store for topic manager registration
 func (m *TokenManager) getTokenMetadata(ctx context.Context, outpoint *transaction.Outpoint) *sdkoverlay.MetaData {
+	if m.outputStore == nil {
+		return nil
+	}
 	cfg := &txo.OutputSearchCfg{
 		IncludeTags: []string{"bsv21"},
 	}

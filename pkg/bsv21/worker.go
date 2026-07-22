@@ -6,8 +6,6 @@ import (
 	"time"
 
 	"github.com/b-open-io/1sat-stack/pkg/jbsync"
-	"github.com/b-open-io/1sat-stack/pkg/store"
-	"github.com/b-open-io/1sat-stack/pkg/txo"
 	"github.com/b-open-io/1sat-stack/pkg/worker"
 	"github.com/bsv-blockchain/go-sdk/transaction"
 )
@@ -102,16 +100,17 @@ func (m *TokenManager) GetTokenStatus(ctx context.Context, tokenId string) (*Tok
 		return NewTokenStatus(tokenId, feeAddress, 0, outputCount, 0, false, true), nil
 	}
 
-	// Credits: unspent satoshis at fee address
-	cfg := &txo.OutputSearchCfg{
-		SearchCfg: store.SearchCfg{
-			Keys: [][]byte{[]byte("own:" + feeAddress)},
-		},
-		FilterSpent: true,
-	}
-	credits, _, err := m.outputStore.SearchBalance(ctx, cfg)
-	if err != nil {
-		return nil, fmt.Errorf("failed to query balance: %w", err)
+	// Credits: unspent satoshis at fee address, resolved via the injected
+	// balance lookup (in-process txo in embedded mode, HTTP in remote mode).
+	var credits uint64
+	if m.balance != nil {
+		sats, err := m.balance(ctx, feeAddress)
+		if err != nil {
+			return nil, fmt.Errorf("failed to query balance: %w", err)
+		}
+		if sats > 0 {
+			credits = uint64(sats)
+		}
 	}
 
 	return NewTokenStatus(tokenId, feeAddress, credits, outputCount, m.feePerOutput, false, false), nil
