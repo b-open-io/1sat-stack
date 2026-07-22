@@ -164,4 +164,20 @@ split — I'm continuing M4/M5 and leaving this for you.
   on master (`config.go:834` init vs `:857` resolve) and branch. Co-located multi-process deploys
   must run from distinct working dirs. Migration-sensitive (production data may live at CWD/store),
   so NOT fixed here — flag for the configurator/deployment work.
-### M5 — Gateway + per-service admin — not started
+### M5 — Gateway + per-service admin — implemented, under final review
+- Commits `0955fe3` (gateway mode), `63e0eb2` (admin capabilities move to owning services),
+  `ddf55fd` (marker + docs/STATUS/R1–R10 checklist).
+- Gateway: reverse-proxy mode fronting `/1sat/*`, path→backend map derived from RegisterRoutes
+  prefixes, merged/deduped `/1sat/capabilities` (unreachable backends omitted), `mode: gateway`
+  combined with other modes rejected at startup, mounts proxy routes instead of local ones.
+- Admin: data-browser moved to `pkg/txo/admin_routes.go`; bsv21 whitelist/blacklist/token-status,
+  opns crawl, overlay topic-remotes/active-topics/lookups moved to their owning services; admin now
+  holds ZERO cross-service handles (removed Store/Engines/BSV21Sync/OpnsCrawl **and Overlay** —
+  one more than the brief listed, required for R10). All mounted at unchanged public paths.
+- Gate (implementer-reported): tests green; parity empty; **3-process smoke passes** (gateway :18080
+  → index :18081 + opns :18082, merged caps, unconfigured prefix 404, gateway+index rejected); every
+  admin UI path verified responding at its unchanged path via `X-Api-Key`.
+- Caveats reported: R1 — Swagger fragments NOT regenerated, so new admin endpoints are undocumented
+  in OpenAPI until `build-docs.sh` runs (cosmetic); R5 — carries M3's dead-branch caveat.
+- Under FINAL review (M5 in depth + whole-branch pass) — priority: every relocated admin route is
+  still behind the admin auth guard (security), gateway route coverage, mode:all integrity.
