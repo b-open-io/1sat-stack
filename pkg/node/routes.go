@@ -67,7 +67,7 @@ func (c *Config) RegisterRoutes(app *fiber.App, svc *Services) {
 	}
 
 	// TXO responses are mutable — spend status changes
-	if svc.TXO != nil && svc.TXO.Routes != nil {
+	if c.runsService("index") && svc.TXO != nil && svc.TXO.Routes != nil {
 		reg.Add(registrar.Registration{Capability: "txo", Spec: txodocs.Spec, Mounts: []registrar.Mount{
 			{Prefix: "/txo", Middlewares: noStore(), Register: svc.TXO.Routes.Register},
 		}})

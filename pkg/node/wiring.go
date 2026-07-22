@@ -149,6 +149,7 @@ func (c *Config) Initialize(ctx context.Context, logger *slog.Logger) (*Services
 		return nil, fmt.Errorf("failed to load runtime config: %w", err)
 	}
 	c.applyRuntimeConfig(runtimeCfg)
+	c.applyModes()
 	c.resolveAllPaths()
 
 	// Initialize pubsub
@@ -211,7 +212,7 @@ func (c *Config) Initialize(ctx context.Context, logger *slog.Logger) (*Services
 		return nil, fmt.Errorf("failed to initialize beef: %w", err)
 	}
 	svc.Beef = beefSvc
-	if c.Beef.Routes.Enabled && svc.Chaintracks != nil {
+	if c.runsService("beef") && c.Beef.Routes.Enabled && svc.Chaintracks != nil {
 		svc.Beef.Routes = beef.NewRoutes(beefSvc.Storage, svc.Chaintracks.GetHeight)
 	}
 	logger.Info("beef initialized", "duration", time.Since(start).Round(time.Millisecond))
@@ -228,8 +229,10 @@ func (c *Config) Initialize(ctx context.Context, logger *slog.Logger) (*Services
 		if d, perr := time.ParseDuration(runtimeCfg.ArcadeWaitTimeout); perr == nil && d > 0 {
 			waitTimeout = d
 		}
-		svc.BroadcastHandler = broadcast.NewHandler(svc.ArcadeBroker, svc.Beef.Storage, waitTimeout, arcadeLogger)
-		svc.BroadcastRoutes = broadcast.NewRoutes(svc.BroadcastHandler, svc.ArcadeClient, arcadeLogger)
+		if c.runsService("index") {
+			svc.BroadcastHandler = broadcast.NewHandler(svc.ArcadeBroker, svc.Beef.Storage, waitTimeout, arcadeLogger)
+			svc.BroadcastRoutes = broadcast.NewRoutes(svc.BroadcastHandler, svc.ArcadeClient, arcadeLogger)
+		}
 
 		// Bridge arcade SSE events to the local "arc" pubsub topic so the
 		// existing StatusHandler (and any other arc-pubsub consumer) keeps
@@ -296,7 +299,7 @@ func (c *Config) Initialize(ctx context.Context, logger *slog.Logger) (*Services
 	}
 
 	// Initialize BSV21
-	if c.BSV21.Mode != bsv21.ModeDisabled && svc.TXO != nil && moduleDeps != nil {
+	if c.runsService("bsv21") && c.BSV21.Mode != bsv21.ModeDisabled && svc.TXO != nil && moduleDeps != nil {
 		start = time.Now()
 		bsv21Svc, err := c.BSV21.Initialize(ctx, logging.NewComponentLogger(logger, "bsv21", c.BSV21.LogLevel), svc.TXO.OutputStore, moduleDeps, svc.ConfigStore, svc.Chaintracks, svc.Beef.Storage, svc.JungleBus)
 		if err != nil {
@@ -307,7 +310,7 @@ func (c *Config) Initialize(ctx context.Context, logger *slog.Logger) (*Services
 	}
 
 	// Initialize MongoDB (used by BSocial)
-	if c.MongoDB.URL != "" && c.BSocial.Mode != bsocial.ModeDisabled {
+	if c.MongoDB.URL != "" && c.runsService("bsocial") && c.BSocial.Mode != bsocial.ModeDisabled {
 		start = time.Now()
 		mongoClient, err := mongo.Connect(mongooptions.Client().ApplyURI(c.MongoDB.URL))
 		if err != nil {
@@ -321,7 +324,7 @@ func (c *Config) Initialize(ctx context.Context, logger *slog.Logger) (*Services
 	}
 
 	// Initialize BAP
-	if c.BAP.Mode != bap.ModeDisabled && moduleDeps != nil {
+	if c.runsService("bap") && c.BAP.Mode != bap.ModeDisabled && moduleDeps != nil {
 		start = time.Now()
 		bapLogger := logging.NewComponentLogger(logger, "bap", c.BAP.LogLevel)
 		bapSvc, err := c.BAP.Initialize(ctx, bapLogger, moduleDeps)
@@ -344,7 +347,7 @@ func (c *Config) Initialize(ctx context.Context, logger *slog.Logger) (*Services
 	}
 
 	// Initialize BSocial
-	if c.BSocial.Mode != bsocial.ModeDisabled && svc.MongoDB != nil {
+	if c.runsService("bsocial") && c.BSocial.Mode != bsocial.ModeDisabled && svc.MongoDB != nil {
 		start = time.Now()
 		bsocialDB := svc.MongoDB.Database("bsocial")
 		bsocialLogger := logging.NewComponentLogger(logger, "bsocial", c.BSocial.LogLevel)
@@ -368,7 +371,7 @@ func (c *Config) Initialize(ctx context.Context, logger *slog.Logger) (*Services
 	}
 
 	// Initialize OPNS
-	if c.OPNS.Mode != opns.ModeDisabled && moduleDeps != nil {
+	if c.runsService("opns") && c.OPNS.Mode != opns.ModeDisabled && moduleDeps != nil {
 		start = time.Now()
 		opnsLogger := logging.NewComponentLogger(logger, "opns", c.OPNS.LogLevel)
 		opnsSvc, err := c.OPNS.Initialize(ctx, opnsLogger, moduleDeps)
@@ -394,7 +397,7 @@ func (c *Config) Initialize(ctx context.Context, logger *slog.Logger) (*Services
 	}
 
 	// Initialize OrdLock
-	if c.OrdLock.Mode != ordlockpkg.ModeDisabled && moduleDeps != nil {
+	if c.runsService("ordlock") && c.OrdLock.Mode != ordlockpkg.ModeDisabled && moduleDeps != nil {
 		start = time.Now()
 		ordlockLogger := logging.NewComponentLogger(logger, "ordlock", c.OrdLock.LogLevel)
 		ordlockSvc, err := c.OrdLock.Initialize(ctx, ordlockLogger, moduleDeps)
@@ -417,7 +420,7 @@ func (c *Config) Initialize(ctx context.Context, logger *slog.Logger) (*Services
 	}
 
 	// Initialize Spends
-	if c.Spends.Mode != spends.ModeDisabled && c.Spends.Mode != "" && svc.Store != nil {
+	if c.runsService("index") && c.Spends.Mode != spends.ModeDisabled && c.Spends.Mode != "" && svc.Store != nil {
 		start = time.Now()
 		spendsSvc, err := c.Spends.Initialize(ctx, logging.NewComponentLogger(logger, "spends", ""), svc.Store.Store, svc.JungleBus)
 		if err != nil {
@@ -434,7 +437,7 @@ func (c *Config) Initialize(ctx context.Context, logger *slog.Logger) (*Services
 	}
 
 	// Initialize ORDFS content serving
-	if c.ORDFS.Enabled {
+	if c.runsService("ordfs") && c.ORDFS.Enabled {
 		start = time.Now()
 		var spendsStorage *spends.Storage
 		if svc.Spends != nil {
@@ -459,7 +462,7 @@ func (c *Config) Initialize(ctx context.Context, logger *slog.Logger) (*Services
 	}
 
 	// Initialize indexer services (shared IngestCtx used by owner sync and ingest sync)
-	if c.Indexer.Mode != indexer.ModeDisabled && svc.TXO != nil && svc.Beef != nil {
+	if c.runsService("index") && c.Indexer.Mode != indexer.ModeDisabled && svc.TXO != nil && svc.Beef != nil {
 		start = time.Now()
 		indexerDeps := &indexer.InitializeDeps{
 			Store:       svc.Store.Store,
@@ -528,7 +531,7 @@ func (c *Config) Initialize(ctx context.Context, logger *slog.Logger) (*Services
 	}
 
 	// Initialize owner services (depends on TXO, Beef, Indexer)
-	if c.Owner.Mode != owner.ModeDisabled && svc.TXO != nil && svc.Beef != nil && svc.Indexer != nil {
+	if c.runsService("index") && c.Owner.Mode != owner.ModeDisabled && svc.TXO != nil && svc.Beef != nil && svc.Indexer != nil {
 		start = time.Now()
 		ownSvc, err := c.Owner.Initialize(ctx, logger, &owner.InitializeDeps{
 			JungleBus:   svc.JungleBus,
@@ -660,7 +663,7 @@ func (c *Config) Initialize(ctx context.Context, logger *slog.Logger) (*Services
 	}
 
 	// Initialize Paymail service (requires OpNS + ORDFS + BroadcastHandler, optionally remote MessageBox)
-	if c.Paymail.Mode != paymail.ModeDisabled && c.Paymail.Mode != "" {
+	if c.runsService("paymail") && c.Paymail.Mode != paymail.ModeDisabled && c.Paymail.Mode != "" {
 		paymailDeps := &paymail.InitializeDeps{}
 		if svc.OPNS != nil && svc.OPNS.Lookup != nil {
 			paymailDeps.OpnsLookup = svc.OPNS.Lookup
@@ -733,25 +736,27 @@ func (c *Config) Initialize(ctx context.Context, logger *slog.Logger) (*Services
 		}
 
 		// Ingest subscribers (multiple subscription_ids filling q:ingest)
-		for _, subID := range c.Indexer.Sync.SubscriptionIDs {
-			if subID == "" {
-				continue
+		if c.runsService("index") {
+			for _, subID := range c.Indexer.Sync.SubscriptionIDs {
+				if subID == "" {
+					continue
+				}
+				subCfg := &jbsync.SubscriberConfig{
+					AutoStart:      true,
+					SubscriptionID: subID,
+					QueueName:      c.Indexer.Sync.QueueName,
+					FromBlock:      c.Indexer.Sync.FromBlock,
+					BatchSize:      c.Indexer.Sync.BatchSize,
+					ReorgDepth:     c.Indexer.Sync.ReorgDepth,
+					EnableMempool:  c.Indexer.Sync.EnableMempool,
+				}
+				sub, err := jbsync.NewSubscriber(subCfg, svc.Store.Store, svc.ConfigStore, svc.Chaintracks, svc.JungleBus, logger)
+				if err != nil {
+					return nil, fmt.Errorf("failed to create ingest subscriber %s: %w", subID, err)
+				}
+				svc.JBSubscribers = append(svc.JBSubscribers, sub)
+				logger.Info("Ingest JungleBus subscriber initialized", "subscription_id", subID, "from_block", c.Indexer.Sync.FromBlock)
 			}
-			subCfg := &jbsync.SubscriberConfig{
-				AutoStart:      true,
-				SubscriptionID: subID,
-				QueueName:      c.Indexer.Sync.QueueName,
-				FromBlock:      c.Indexer.Sync.FromBlock,
-				BatchSize:      c.Indexer.Sync.BatchSize,
-				ReorgDepth:     c.Indexer.Sync.ReorgDepth,
-				EnableMempool:  c.Indexer.Sync.EnableMempool,
-			}
-			sub, err := jbsync.NewSubscriber(subCfg, svc.Store.Store, svc.ConfigStore, svc.Chaintracks, svc.JungleBus, logger)
-			if err != nil {
-				return nil, fmt.Errorf("failed to create ingest subscriber %s: %w", subID, err)
-			}
-			svc.JBSubscribers = append(svc.JBSubscribers, sub)
-			logger.Info("Ingest JungleBus subscriber initialized", "subscription_id", subID, "from_block", c.Indexer.Sync.FromBlock)
 		}
 
 		if len(svc.JBSubscribers) > 0 {

@@ -51,6 +51,11 @@ type Config struct {
 	// signal the process to re-exec itself.
 	RequestRestart func() `mapstructure:"-"`
 
+	// Mode selects which services this process runs: "all" (default) runs
+	// every enabled service; a comma-separated list (e.g. "index,opns")
+	// runs exactly the named services.
+	Mode string `mapstructure:"mode"`
+
 	// Network: "main" or "test"
 	Network string `mapstructure:"network"`
 
@@ -207,6 +212,9 @@ func (c *Config) CreateLogger(logLevelOverride string) *slog.Logger {
 
 // SetDefaults configures viper defaults for all settings
 func (c *Config) SetDefaults(v *viper.Viper) {
+	// Mode default
+	v.SetDefault("mode", "all")
+
 	// Network default
 	v.SetDefault("network", "main")
 
