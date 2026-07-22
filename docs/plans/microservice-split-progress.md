@@ -148,8 +148,17 @@ split — I'm continuing M4/M5 and leaving this for you.
   empty; **two-process smoke passed** — standalone `mode:bsv21` (owner.mode=remote) talking to a
   separate `mode:index` process; bsv21 has no txo/owner routes, index serves the balance endpoint
   in the exact shape bsv21's client decodes.
-- Under review — priority: nil-txo deref safety in bsv21 (it now tolerates a nil txo store) + HTTP
-  client encoding fidelity vs the real routes.
+- Review verdict: **sound**, no Critical. All four HTTP encodings match the real routes; nil-txo
+  deref trace clean; embedded owner-sync reconstructs master's behavior verbatim (parity). Fixed
+  the one Important finding: nil-manager guard in bsv21 `ListTokens` (commit `fix(bsv21): guard nil
+  manager…`) — M4 widened its reachability by allowing standalone bsv21, and the default config
+  (routes on, sync off) would have nil-derefed `GET /bsv21/tokens`.
+- Deferred hardening (Minor, remote path only, not blocking): (a) the remote owner-sync client has
+  no idle timeout, so a hung index `/sync` SSE stream could wedge a token's sync goroutine holding
+  its lock — needs an idle timeout, not a blunt total timeout (would truncate long syncs); (b) the
+  spends HTTP tier issues N× `GET /:outpoint/spend` for a batch instead of one `POST /spends`
+  (chain-level fan-out) — perf only. Both touch only the not-yet-in-production remote path.
+- **M4 COMPLETE.**
 - **Known pre-existing quirk (confirmed, not introduced by this work):** the store's badger path
   opens CWD-relative because `Store.Initialize` runs before `resolveAllPaths` — identical ordering
   on master (`config.go:834` init vs `:857` resolve) and branch. Co-located multi-process deploys
