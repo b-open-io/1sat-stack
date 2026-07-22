@@ -46,7 +46,20 @@ next. This log is the morning-review summary; newest status at the bottom of eac
 3. **admin/sweep/landing ungated** → subset modes (e.g. `mode: opns`) also serve the admin UI.
    Consistent with decision 2 (admin deferred to M5); M5's per-service admin work resolves it.
 
-### M2 — Queue interface — not started
+### M2 — Queue interface — implemented, under review
+- Commits `30ed013` (interface + StoreQueue + Config), `3349791` (migrate all `q:*`
+  producers/consumers), `ff4d894` (marker).
+- `pkg/queue`: `Queue` (Enqueue/Read/Ack/Requeue/Depth/Close), `StoreQueue` over the main store's
+  `q:*` keys, `Config` (`provider: inherit|store`). Migrated worker, jbsync, indexer sync,
+  overlay (p2p/event_bridge/sync/topic/services), gasp remotes, bsv21. `pkg/node` builds
+  `svc.Queue` after the store, threads it through, closes it before the store.
+- Gate (implementer-reported): `go test ./...` green; parity diff empty; `mode: opns` boots;
+  dedicated-backend smoke passes (item lands in dedicated badger path, absent from main store).
+- Under review — focus: semantic fidelity of Read/Ack/Requeue vs master's worker loop, and the
+  flagged GASP `MinExclusive` drop (implementer claims inert; being independently verified).
+- Deviations to confirm: indexer sync/config migrated (not in task list); GASP `GetInitialResponse`
+  dropped `MinExclusive` (inclusive `From` in Queue model); dedicated queue store defaults to a
+  `queue` badger path to avoid colliding with the main store dir.
 ### M3 — Event-driven lifecycle — not started
 ### M4 — Remote providers — not started
 ### M5 — Gateway + per-service admin — not started
