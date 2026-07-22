@@ -136,5 +136,23 @@ split — I'm continuing M4/M5 and leaving this for you.
 - **M3 COMPLETE** with the caveat that R5 (stale→arc REJECTED→overlay rollback) is implemented but
   inert until the dead-branch bug is addressed (tracked as a task chip + the ⚠ finding; David
   acknowledged it needs tracking).
-### M4 — Remote providers — not started
+### M4 — Remote providers — implemented, under review
+- Commits `c5d5ae6` (spends http provider), `9ed337d` (bsv21 owner sync/balance behind injected
+  interfaces), `ec25679` (marker).
+- spends: new `http` chain tier (`spends.chain[].http.url`) querying a remote index's `/txo` spend
+  routes; read-only (Put/Delete no-ops). bsv21: dropped `pkg/indexer`+`pkg/owner` imports
+  (`grep` empty), now takes injected `OwnerSyncer` + new `BalanceLookup`; embedded owner-sync moved
+  to node wiring; remote mode (`bsv21.owner.mode=remote`+`url`) via new `pkg/bsv21/ownerclient.go`
+  hitting `/owner/sync` + `/owner/:owner/balance`; embedded-without-index → clear startup error.
+- Gate (implementer-reported): tests green; parity empty; `grep pkg/indexer|pkg/owner in pkg/bsv21`
+  empty; **two-process smoke passed** — standalone `mode:bsv21` (owner.mode=remote) talking to a
+  separate `mode:index` process; bsv21 has no txo/owner routes, index serves the balance endpoint
+  in the exact shape bsv21's client decodes.
+- Under review — priority: nil-txo deref safety in bsv21 (it now tolerates a nil txo store) + HTTP
+  client encoding fidelity vs the real routes.
+- **Known pre-existing quirk (confirmed, not introduced by this work):** the store's badger path
+  opens CWD-relative because `Store.Initialize` runs before `resolveAllPaths` — identical ordering
+  on master (`config.go:834` init vs `:857` resolve) and branch. Co-located multi-process deploys
+  must run from distinct working dirs. Migration-sensitive (production data may live at CWD/store),
+  so NOT fixed here — flag for the configurator/deployment work.
 ### M5 — Gateway + per-service admin — not started
