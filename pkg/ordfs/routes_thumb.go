@@ -54,30 +54,63 @@ func (r *Routes) HandleThumb(c *fiber.Ctx) error {
 
 	width := SnapThumbWidth(c.QueryInt("w", DefaultThumbWidth))
 	quality := SnapThumbQuality(c.QueryInt("q", DefaultThumbQuality))
-
-	// Serve from cache before touching the chain. Skipped for latest-sequence
-	// lookups, whose target can move.
+	// Only an explicit latest-sequence request is mutable; the chain can advance
+	// under it. This governs the response header, not whether we may cache the
+	// render — see below.
 	isLatest := pp.Seq != nil && *pp.Seq == -1
-	cache := r.ordfs.Cache()
-	cacheKey := thumbCacheKey(outpoint.String(), width, quality)
-	if cache != nil && !isLatest {
-		if entry, err := cache.Get(c.Context(), cacheKey); err == nil && len(entry) > 0 {
-			if format, payload, ok := decodeThumbEntry(entry); ok {
-				return r.sendThumb(c, payload, format, outpoint.String(), isLatest)
-			}
-		}
-	}
 
-	var req *Request
-	if isTxid {
-		req = &Request{Txid: &outpoint.Txid, Seq: pp.Seq, Content: true}
-	} else {
-		req = &Request{Outpoint: outpoint, Seq: pp.Seq, Content: true}
+	newRequest := func(withContent bool) *Request {
+		if isTxid {
+			return &Request{Txid: &outpoint.Txid, Seq: pp.Seq, Content: withContent}
+		}
+		return &Request{Outpoint: outpoint, Seq: pp.Seq, Content: withContent}
 	}
 
 	loadCtx, loadCancel := context.WithTimeout(c.Context(), ResolveTimeout)
 	defer loadCancel()
-	resp, err := r.ordfs.Load(loadCtx, req)
+
+	// Resolve first, without pulling content bytes. parseOutput fills in the
+	// content type either way, so this is enough to reject non-images and to
+	// learn which concrete outpoint the pointer landed on. Resolution is already
+	// memoized by the parsed:/OriginStore layers, so this is cheap on repeat.
+	head, err := r.ordfs.Load(loadCtx, newRequest(false))
+	if err != nil {
+		r.logger.Debug("failed to resolve thumbnail pointer", "path", path, "error", err)
+		if errors.Is(err, ErrNotFound) {
+			return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "inscription not found"})
+		}
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": err.Error()})
+	}
+
+	if !IsThumbnailable(head.ContentType) {
+		return c.Status(fiber.StatusUnsupportedMediaType).JSON(fiber.Map{
+			"error":       fmt.Sprintf("cannot thumbnail content type %q", head.ContentType),
+			"contentType": head.ContentType,
+		})
+	}
+
+	// Key on the outpoint the pointer resolved to, never on the pointer itself.
+	// The requested form carries a seq that selects different content from the
+	// same outpoint, so keying on it would let /thumb/x_0:0 and /thumb/x_0:5
+	// collide. Resolved outpoints are content addressed and immutable, which is
+	// the same basis the parsed:/merged: caches use, and it means every pointer
+	// that lands on one revision shares a single rendered thumbnail.
+	resolved := outpoint.String()
+	if head.Outpoint != nil {
+		resolved = head.Outpoint.String()
+	}
+
+	cache := r.ordfs.Cache()
+	cacheKey := thumbCacheKey(resolved, width, quality)
+	if cache != nil {
+		if entry, err := cache.Get(c.Context(), cacheKey); err == nil && len(entry) > 0 {
+			if format, payload, ok := decodeThumbEntry(entry); ok {
+				return r.sendThumb(c, payload, format, resolved, isLatest)
+			}
+		}
+	}
+
+	full, err := r.ordfs.Load(loadCtx, newRequest(true))
 	if err != nil {
 		r.logger.Debug("failed to load content for thumbnail", "path", path, "error", err)
 		if errors.Is(err, ErrNotFound) {
@@ -86,33 +119,25 @@ func (r *Routes) HandleThumb(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": err.Error()})
 	}
 
-	if !IsThumbnailable(resp.ContentType) {
-		return c.Status(fiber.StatusUnsupportedMediaType).JSON(fiber.Map{
-			"error":       fmt.Sprintf("cannot thumbnail content type %q", resp.ContentType),
-			"contentType": resp.ContentType,
-		})
-	}
-
-	payload, format, err := renderThumbnail(resp.Content, resp.ContentType, width, quality)
+	payload, format, err := renderThumbnail(full.Content, full.ContentType, width, quality)
 	if err != nil {
 		if errors.Is(err, ErrNotThumbnailable) {
 			return c.Status(fiber.StatusUnsupportedMediaType).JSON(fiber.Map{"error": err.Error()})
 		}
-		r.logger.Warn("thumbnail render failed", "path", path, "contentType", resp.ContentType, "error", err)
+		r.logger.Warn("thumbnail render failed", "path", path, "contentType", full.ContentType, "error", err)
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to render thumbnail"})
 	}
 
-	// A failed cache write costs a re-render, not a wrong response.
-	if cache != nil && !isLatest {
+	// Cached even for seq=-1: the entry is keyed by the resolved outpoint, which
+	// is immutable. Only the HTTP response must stay uncacheable, because a later
+	// request for the latest may resolve somewhere else entirely.
+	// A failed write costs a re-render, not a wrong answer.
+	if cache != nil {
 		if err := cache.Set(c.Context(), cacheKey, encodeThumbEntry(format, payload)); err != nil {
 			r.logger.Debug("failed to cache thumbnail", "key", cacheKey, "error", err)
 		}
 	}
 
-	resolved := outpoint.String()
-	if resp.Outpoint != nil {
-		resolved = resp.Outpoint.String()
-	}
 	return r.sendThumb(c, payload, format, resolved, isLatest)
 }
 

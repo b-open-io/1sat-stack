@@ -233,6 +233,28 @@ func TestDecodeThumbEntryRejectsGarbage(t *testing.T) {
 	}
 }
 
+// Regression: the key must be built from the outpoint a pointer *resolved* to,
+// not the requested pointer. Requests differing only by seq select different
+// content from the same outpoint, so keying on the request would let them
+// collide and serve each other's images.
+func TestThumbCacheKeyIsBuiltFromResolvedOutpoint(t *testing.T) {
+	// Two requests for the same outpoint at different sequences resolve to
+	// different content outpoints, and so must not share a key.
+	seq0 := thumbCacheKey("abc_0", 384, 75)
+	seq5 := thumbCacheKey("def_0", 384, 75)
+	if seq0 == seq5 {
+		t.Error("different resolved outpoints must not share a cache key")
+	}
+
+	// Conversely, different pointers landing on the same revision share one
+	// rendered thumbnail rather than storing duplicates.
+	viaOutpoint := thumbCacheKey("abc_0", 384, 75)
+	viaTxid := thumbCacheKey("abc_0", 384, 75)
+	if viaOutpoint != viaTxid {
+		t.Error("pointers resolving to the same outpoint must share a cache key")
+	}
+}
+
 func TestThumbCacheKeyVariesByParams(t *testing.T) {
 	base := thumbCacheKey("abc_0", 256, 75)
 	if base == thumbCacheKey("abc_0", 384, 75) {

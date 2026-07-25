@@ -231,8 +231,16 @@ Behavior notes:
   alpha is not flattened; everything else becomes JPEG.
 - Images narrower than the requested width are re-encoded at their original
   size, never upscaled.
-- Results are cached by outpoint, so the decode happens once across all
-  consumers rather than once per page view.
+- Results are cached under the outpoint the pointer **resolved to**, matching how
+  `parsed:` and `merged:` key their entries. Resolved outpoints are content
+  addressed, so entries never need invalidating, requests differing only by
+  `seq` cannot collide, and every pointer landing on one revision shares a
+  single render.
+- Resolution runs before content bytes are loaded, so a cache hit never pulls a
+  multi-megabyte payload, and non-images are rejected before any byte loading.
+- `seq=-1` still populates the render cache — the entry is keyed by an immutable
+  resolved outpoint. Only the HTTP response is marked `no-store`, since a later
+  request for the latest may resolve elsewhere.
 - Decoding is bounded to 32 MB encoded and 100 megapixels decoded, guarding
   against decompression bombs inscribed on chain.
 
