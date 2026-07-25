@@ -1572,9 +1572,12 @@ func (c *Config) RegisterRoutes(app *fiber.App, svc *Services) {
 			Mounts: []registrar.Mount{
 				{Prefix: prefixOr(c.ORDFS.Routes.Prefix, "/ordfs"), Register: svc.ORDFS.Routes.Register},
 			},
-			// Content at root level for compatibility with the ordfs protocol
+			// Content at root level for compatibility with the ordfs protocol.
+			// Thumbnails sit alongside it so a client can derive one URL from
+			// the other by swapping the prefix.
 			RootMounts: []registrar.Mount{
 				{Prefix: "/content", Register: svc.ORDFS.Routes.RegisterContent},
+				{Prefix: "/thumb", Register: svc.ORDFS.Routes.RegisterThumb},
 			},
 		})
 	}

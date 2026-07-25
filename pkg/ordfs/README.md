@@ -200,7 +200,41 @@ All content responses include:
 ### Caching
 
 - **Specific sequence** (seq >= 0, seq == -2): `Cache-Control: public, max-age=31536000, immutable`
-- **Latest** (seq == -1): `Cache-Control: no-cache, no-store, must-revalidate`
+- **Latest** (seq == -1): `Cache-Control: no-store`
+
+## Thumbnails
+
+Inscriptions are stored at their original size, commonly several megabytes for a
+single image, which makes a grid of them expensive to render. `/thumb` returns a
+resized copy:
+
+```bash
+curl "https://api.1sat.app/thumb/{txid}_{vout}?w=384"
+```
+
+| Param | Default | Behavior |
+|-------|---------|----------|
+| `w`   | 384     | Target width. Snaps **up** to the nearest supported width. |
+| `q`   | 75      | JPEG quality, 1-100. Rounded to the nearest 5. |
+
+Supported widths: 16, 32, 48, 64, 96, 128, 192, 256, 384, 512, 640, 828, 1080,
+1200, 1920. Snapping both params bounds the cache key space regardless of what
+clients request.
+
+Behavior notes:
+
+- Only `image/jpeg`, `image/png`, `image/gif`, and `image/webp` are rendered.
+  Anything else returns **415**; fetch it from `/content` instead.
+- `image/svg+xml` is deliberately excluded — it already scales losslessly and is
+  small, so rasterizing it would be a regression.
+- Formats that can carry transparency (PNG, GIF, WebP) are re-encoded as PNG so
+  alpha is not flattened; everything else becomes JPEG.
+- Images narrower than the requested width are re-encoded at their original
+  size, never upscaled.
+- Results are cached by outpoint, so the decode happens once across all
+  consumers rather than once per page view.
+- Decoding is bounded to 32 MB encoded and 100 megapixels decoded, guarding
+  against decompression bombs inscribed on chain.
 
 ## See Also
 

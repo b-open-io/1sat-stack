@@ -28,6 +28,7 @@ require (
 	github.com/testcontainers/testcontainers-go v0.42.0
 	github.com/testcontainers/testcontainers-go/modules/postgres v0.42.0
 	go.mongodb.org/mongo-driver/v2 v2.5.0
+	golang.org/x/image v0.25.0
 	golang.org/x/sync v0.22.0
 	modernc.org/sqlite v1.50.0
 )

@@ -38,6 +38,12 @@ type Ordfs struct {
 	logger      *slog.Logger
 }
 
+// Cache exposes the shared content cache so route handlers can memoize derived
+// artifacts such as thumbnails. Returns nil when no cache is configured.
+func (o *Ordfs) Cache() Cache {
+	return o.cache
+}
+
 // New creates a new Ordfs service
 func New(spendsStorage *spends.Storage, beefStorage *beef.Storage, origins OriginStore, cache Cache, coordinator CrawlCoordinator, logger *slog.Logger) *Ordfs {
 	if logger == nil {
