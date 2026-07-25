@@ -202,35 +202,71 @@ All content responses include:
 - **Specific sequence** (seq >= 0, seq == -2): `Cache-Control: public, max-age=31536000, immutable`
 - **Latest** (seq == -1): `Cache-Control: no-store`
 
-## Thumbnails
+## Image transforms
 
 Inscriptions are stored at their original size, commonly several megabytes for a
-single image, which makes a grid of them expensive to render. `/thumb` returns a
-resized copy:
+single image, which makes a grid of them expensive to render. `/image` returns a
+transformed copy:
 
 ```bash
-curl "https://api.1sat.app/thumb/{txid}_{vout}?w=384"
+curl "https://api.1sat.app/image/{txid}_{vout}?w=384"
+curl "https://api.1sat.app/image/{txid}_{vout}?w=256&h=256&fit=fill&g=north"
 ```
 
 | Param | Default | Behavior |
 |-------|---------|----------|
 | `w`   | 384     | Target width. Snaps **up** to the nearest supported width. |
-| `q`   | 75      | JPEG quality, 1-100. Rounded to the nearest 5. |
+| `h`   | —       | Target height. Snaps up the same way. |
+| `fit` | `limit` | How the source maps onto the box. See below. |
+| `g`   | `center`| Gravity for `fill` and `pad`. |
+| `f`   | `auto`  | `auto`, `jpeg`, `png`, `webp`, `avif`. |
+| `q`   | 75      | Quality 1-100. Rounded to the nearest 5. |
 
-Supported widths: 16, 32, 48, 64, 96, 128, 192, 256, 384, 512, 640, 828, 1080,
-1200, 1920. Snapping both params bounds the cache key space regardless of what
-clients request.
+### Fit modes
 
-Behavior notes:
+The vocabulary follows Cloudinary's, which is the most widely understood in this
+space. The endpoint is named for the resource, not for one use case — resizing a
+hero image and cropping an avatar are the same operation with different modes.
 
-- Only `image/jpeg`, `image/png`, `image/gif`, and `image/webp` are rendered.
+| Mode | Behavior |
+|------|----------|
+| `limit` | Fit inside the box, preserve aspect ratio, **never upscale**. The default. |
+| `fit` | Fit inside the box, preserve aspect ratio, upscale if the source is smaller. |
+| `fill` | Cover the box exactly, cropping the overflow at the gravity. |
+| `pad` | Fit inside the box and pad the remainder out to the exact size. |
+| `scale` | Stretch to the exact box, ignoring aspect ratio. |
+
+`fill`, `pad`, and `scale` need both `w` and `h` to mean anything; given only
+one, they degrade to `limit` rather than producing a surprising crop.
+
+Supported dimensions: 16, 32, 48, 64, 96, 128, 192, 256, 384, 512, 640, 828,
+1080, 1200, 1920. Snapping bounds the cache key space regardless of what clients
+request — every derived image is permanently cacheable, so an unbounded key
+space would be an unbounded storage commitment.
+
+### Format negotiation
+
+`f=auto` picks the smallest encoding the client accepts, preferring AVIF, then
+WebP, then PNG for transparent sources and JPEG otherwise. Negotiated responses
+carry `Vary: Accept`. Measured on a 2,596,285 byte PNG inscription at `w=384`:
+
+| Format | Bytes | % of source | Encode |
+|--------|-------|-------------|--------|
+| avif | 11,078 | 0.43% | 100ms |
+| webp | 16,972 | 0.65% | 62ms |
+| jpeg | 20,523 | 0.79% | 65ms |
+| png | 250,016 | 9.63% | 410ms |
+
+WebP and AVIF encode through WebAssembly, so no cgo is required. The runtimes
+cost roughly a second to compile on first use; `WarmImageEncoders` does that at
+startup so no request absorbs it.
+
+### Behavior notes
+
+- Only `image/jpeg`, `image/png`, `image/gif`, and `image/webp` are transformed.
   Anything else returns **415**; fetch it from `/content` instead.
 - `image/svg+xml` is deliberately excluded — it already scales losslessly and is
   small, so rasterizing it would be a regression.
-- Formats that can carry transparency (PNG, GIF, WebP) are re-encoded as PNG so
-  alpha is not flattened; everything else becomes JPEG.
-- Images narrower than the requested width are re-encoded at their original
-  size, never upscaled.
 - Results are cached under the outpoint the pointer **resolved to**, matching how
   `parsed:` and `merged:` key their entries. Resolved outpoints are content
   addressed, so entries never need invalidating, requests differing only by
