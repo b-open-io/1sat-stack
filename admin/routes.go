@@ -27,7 +27,7 @@ import (
 	"github.com/gofiber/fiber/v2/middleware/filesystem"
 )
 
-//go:embed ui/dist/*
+//go:embed all:ui/dist
 var uiFS embed.FS
 
 // Routes handles admin HTTP routes

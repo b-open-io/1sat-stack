@@ -9,8 +9,10 @@ config.yaml
 bin/
 .worktrees/
 node_modules/
-admin/ui/dist/
-sweep/ui/dist/
+admin/ui/dist/*
+!admin/ui/dist/.gitkeep
+sweep/ui/dist/*
+!sweep/ui/dist/.gitkeep
 sweep/ui/.vite/
 cmd/server/*.db
 cmd/server/*.db-shm
