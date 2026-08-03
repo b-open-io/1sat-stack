@@ -207,7 +207,11 @@ All content responses include:
 Inscriptions are stored at their original size, commonly several megabytes for a
 single image, which makes a grid of them expensive to render. `/ordfs/image`
 returns a transformed copy (under the ordfs API prefix, not at app root — root
-`/content` stays reserved for the ordfs content protocol):
+`/content` stays reserved for the ordfs content protocol).
+
+**Concrete outpoint only.** This endpoint does not accept `:seq` or directory
+paths. Resolve ordinality via metadata or content first, then pass the outpoint
+that holds the inscription bytes.
 
 ```bash
 curl "https://api.1sat.app/1sat/ordfs/image/{txid}_{vout}?w=384"
@@ -264,22 +268,21 @@ startup so no request absorbs it.
 ### Caching
 
 Derived bodies are **not** stored in the ordfs `parsed:`/`merged:` cache pool —
-that pool is for small structural metadata. Caching is CDN/edge via headers:
+that pool is for small structural metadata. Every successful response is
+content-addressed (concrete outpoint) and sent with:
 
-- Fixed outpoint / seq: `Cache-Control: public, max-age=31536000, immutable`
-- Latest (`seq=-1`): `Cache-Control: no-store` (target can move)
-- `f=auto`: responses also send `Vary: Accept`
+- `Cache-Control: public, max-age=31536000, immutable`
+- `Vary: Accept` when `f=auto` negotiated the format
 
 ### Behavior notes
 
-- Only `image/jpeg`, `image/png`, `image/gif`, and `image/webp` are transformed.
-  Anything else returns **415**; fetch it from `/content` instead.
-- `image/svg+xml` is deliberately excluded — it already scales losslessly and is
-  small, so rasterizing it would be a regression.
-- Resolution runs before content bytes are loaded, so non-images are rejected
-  before any multi-megabyte payload is pulled.
-- Decoding is bounded to 32 MB encoded and 100 megapixels decoded, guarding
-  against decompression bombs inscribed on chain.
+- Path is a concrete outpoint (or bare txid). `:seq` and directory paths return
+  **400** — resolve via metadata/content first.
+- `image/jpeg`, `image/png`, `image/gif`, and `image/webp` are transformed.
+- `image/svg+xml` is passed through unchanged (already scales; no rasterize).
+- Anything else returns **415**.
+- Type is checked before content bytes are loaded when the parse cache can
+  answer, so non-images are rejected without pulling a multi-megabyte payload.
 
 ## See Also
 

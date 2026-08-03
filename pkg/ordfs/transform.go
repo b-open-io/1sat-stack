@@ -105,9 +105,6 @@ const (
 	// avifQualityScale maps the requested quality onto AVIF's scale, where a
 	// given number is visually stronger than the same number in JPEG.
 	avifQualityScale = 0.72
-
-	maxSourceBytes  = 32 << 20
-	maxSourcePixels = 100 << 20
 )
 
 // ErrNotTransformable indicates the content is not a raster image.
@@ -123,9 +120,13 @@ type TransformParams struct {
 	Quality int
 }
 
+// IsSVG reports whether content should be passed through without rasterizing.
+func IsSVG(contentType string) bool {
+	return baseContentType(contentType) == "image/svg+xml"
+}
+
 // IsTransformable reports whether a content type can be decoded as a raster
-// image. SVG is excluded deliberately: it already scales losslessly and is
-// small, so rasterizing it would be a regression.
+// image. SVG is not transformable — callers pass it through unchanged.
 func IsTransformable(contentType string) bool {
 	switch baseContentType(contentType) {
 	case "image/jpeg", "image/jpg", "image/png", "image/gif", "image/webp":
@@ -358,24 +359,13 @@ func Transform(src []byte, contentType string, p TransformParams, accept string)
 	if !IsTransformable(contentType) {
 		return nil, "", ErrNotTransformable
 	}
-	if len(src) > maxSourceBytes {
-		return nil, "", fmt.Errorf("source image is %d bytes, over the %d byte limit", len(src), maxSourceBytes)
-	}
-
-	cfg, _, err := image.DecodeConfig(bytes.NewReader(src))
-	if err != nil {
-		return nil, "", fmt.Errorf("decode config: %w", err)
-	}
-	if cfg.Width <= 0 || cfg.Height <= 0 {
-		return nil, "", errors.New("image has no dimensions")
-	}
-	if int64(cfg.Width)*int64(cfg.Height) > maxSourcePixels {
-		return nil, "", fmt.Errorf("image is %dx%d, over the pixel limit", cfg.Width, cfg.Height)
-	}
 
 	srcImg, _, err := image.Decode(bytes.NewReader(src))
 	if err != nil {
 		return nil, "", fmt.Errorf("decode: %w", err)
+	}
+	if srcImg.Bounds().Empty() {
+		return nil, "", errors.New("image has no dimensions")
 	}
 
 	bounds := srcImg.Bounds()

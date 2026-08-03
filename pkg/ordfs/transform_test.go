@@ -82,12 +82,21 @@ func TestIsTransformable(t *testing.T) {
 			t.Errorf("IsTransformable(%q) = false, want true", ct)
 		}
 	}
-	// SVG scales losslessly and is already small; rasterizing it would regress.
+	// SVG is passthrough at the route layer, not a raster transform target.
 	no := []string{"image/svg+xml", "text/html", "application/json", "ord-fs/json", "video/mp4", ""}
 	for _, ct := range no {
 		if IsTransformable(ct) {
 			t.Errorf("IsTransformable(%q) = true, want false", ct)
 		}
+	}
+}
+
+func TestIsSVG(t *testing.T) {
+	if !IsSVG("image/svg+xml") || !IsSVG("image/svg+xml; charset=utf-8") {
+		t.Error("expected SVG content types to match")
+	}
+	if IsSVG("image/png") || IsSVG("text/html") {
+		t.Error("non-SVG must not match")
 	}
 }
 
@@ -339,10 +348,11 @@ func TestTransformNegotiatesFromAccept(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// Gating and cache keys
+// Gating
 // ---------------------------------------------------------------------------
 
 func TestTransformRejectsNonRaster(t *testing.T) {
+	// SVG is handled as passthrough by the route, not by Transform.
 	if _, _, err := Transform([]byte("<svg/>"), "image/svg+xml", TransformParams{Width: 256}, ""); err == nil {
 		t.Fatal("expected an error for svg")
 	}

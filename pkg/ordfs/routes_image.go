@@ -24,22 +24,24 @@ func WarmImageEncoders(logger *slog.Logger) {
 	}
 }
 
-// HandleImage serves a transformed copy of an image inscription
+// HandleImage serves a transformed copy of an image inscription at a concrete
+// outpoint. Callers resolve ordinality via metadata/content first; this endpoint
+// does not accept :seq. SVG is passed through unchanged; other non-rasters 415.
 // @Summary Transform inscription content
-// @Description Render an image inscription at a bounded size. Dimensions snap up to supported widths. Caching is via Cache-Control for CDN/edge; the origin does not store derived bodies. Non-raster content is rejected; SVG is served unchanged by /content since it already scales.
+// @Description Render a raster inscription at a bounded size, or pass SVG through. Path is a concrete outpoint (or bare txid) only — no :seq. Caching is CDN via immutable Cache-Control.
 // @Tags ordfs
-// @Produce image/jpeg,image/png,image/webp,image/avif
-// @Param path path string true "Outpoint (txid_vout) or txid, optionally with :seq"
+// @Produce image/jpeg,image/png,image/webp,image/avif,image/svg+xml
+// @Param path path string true "Outpoint (txid_vout) or bare txid — no :seq"
 // @Param w query int false "Target width, snaps up to the nearest supported width"
 // @Param h query int false "Target height, snaps up to the nearest supported width"
 // @Param fit query string false "How the source maps onto the box" Enums(limit, fit, fill, pad, scale)
 // @Param g query string false "Gravity for fill and pad" Enums(center, north, south, east, west, northeast, northwest, southeast, southwest)
 // @Param f query string false "Output format; auto negotiates from Accept" Enums(auto, jpeg, png, webp, avif)
 // @Param q query int false "Quality 1-100, rounded to the nearest 5"
-// @Success 200 {file} binary "Transformed image"
+// @Success 200 {file} binary "Transformed image or passthrough SVG"
 // @Failure 400 {object} map[string]string "Bad request"
 // @Failure 404 {object} map[string]string "Not found"
-// @Failure 415 {object} map[string]string "Content is not a raster image"
+// @Failure 415 {object} map[string]string "Content is not an image"
 // @Router /image/{path} [get]
 func (r *Routes) HandleImage(c *fiber.Ctx) error {
 	path := c.Params("*")
@@ -50,6 +52,11 @@ func (r *Routes) HandleImage(c *fiber.Ctx) error {
 	pp, err := parsePointerPath(path)
 	if err != nil {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": err.Error()})
+	}
+	if pp.Seq != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": "image transforms require a concrete outpoint; resolve :seq via metadata or content first",
+		})
 	}
 	if pp.FilePath != "" {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
@@ -69,24 +76,17 @@ func (r *Routes) HandleImage(c *fiber.Ctx) error {
 	accept := c.Get("Accept")
 	negotiated := params.Format == FormatAuto
 
-	// Only an explicit latest-sequence request is mutable; the chain can advance
-	// under it. Fixed outpoints are immutable and get long-lived CDN headers.
-	isLatest := pp.Seq != nil && *pp.Seq == -1
-
 	newRequest := func(withContent bool) *Request {
 		if isTxid {
-			return &Request{Txid: &outpoint.Txid, Seq: pp.Seq, Content: withContent}
+			return &Request{Txid: &outpoint.Txid, Content: withContent}
 		}
-		return &Request{Outpoint: outpoint, Seq: pp.Seq, Content: withContent}
+		return &Request{Outpoint: outpoint, Content: withContent}
 	}
 
 	loadCtx, loadCancel := context.WithTimeout(c.Context(), ResolveTimeout)
 	defer loadCancel()
 
-	// Resolve first, without pulling content bytes. parseOutput fills in the
-	// content type either way, so this is enough to reject non-images before
-	// loading a multi-megabyte payload. Resolution is already memoized by the
-	// parsed:/OriginStore layers, so this is cheap on repeat.
+	// Type check without pulling content bytes when the parse cache can answer.
 	head, err := r.ordfs.Load(loadCtx, newRequest(false))
 	if err != nil {
 		r.logger.Debug("failed to resolve image pointer", "path", path, "error", err)
@@ -96,16 +96,28 @@ func (r *Routes) HandleImage(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": err.Error()})
 	}
 
+	xOut := outpoint.String()
+	if head.Outpoint != nil {
+		xOut = head.Outpoint.String()
+	}
+
+	if IsSVG(head.ContentType) {
+		full, err := r.ordfs.Load(loadCtx, newRequest(true))
+		if err != nil {
+			r.logger.Debug("failed to load svg content", "path", path, "error", err)
+			if errors.Is(err, ErrNotFound) {
+				return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "inscription not found"})
+			}
+			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": err.Error()})
+		}
+		return r.sendRawImage(c, full.Content, "image/svg+xml", xOut, false)
+	}
+
 	if !IsTransformable(head.ContentType) {
 		return c.Status(fiber.StatusUnsupportedMediaType).JSON(fiber.Map{
 			"error":       fmt.Sprintf("cannot transform content type %q", head.ContentType),
 			"contentType": head.ContentType,
 		})
-	}
-
-	resolved := outpoint.String()
-	if head.Outpoint != nil {
-		resolved = head.Outpoint.String()
 	}
 
 	full, err := r.ordfs.Load(loadCtx, newRequest(true))
@@ -126,20 +138,16 @@ func (r *Routes) HandleImage(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to transform image"})
 	}
 
-	return r.sendImage(c, payload, format, resolved, isLatest, negotiated)
+	return r.sendRawImage(c, payload, format.ContentType(), xOut, negotiated)
 }
 
-func (r *Routes) sendImage(c *fiber.Ctx, payload []byte, format OutputFormat, outpoint string, isLatest, negotiated bool) error {
-	c.Set("Content-Type", format.ContentType())
+func (r *Routes) sendRawImage(c *fiber.Ctx, payload []byte, contentType, outpoint string, negotiated bool) error {
+	c.Set("Content-Type", contentType)
 	c.Set("X-Outpoint", outpoint)
 	if negotiated {
-		// The body depends on Accept, so shared caches must key on it too.
 		c.Set("Vary", "Accept")
 	}
-	if isLatest {
-		httputil.SetNoStore(c)
-	} else {
-		httputil.SetImmutable(c)
-	}
+	// Concrete outpoint only — body is content-addressed and permanently cacheable.
+	httputil.SetImmutable(c)
 	return c.Send(payload)
 }
