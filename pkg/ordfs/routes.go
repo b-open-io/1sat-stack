@@ -54,6 +54,9 @@ func (r *Routes) Register(router fiber.Router) {
 
 	// Stream endpoint
 	router.Get("/stream/:outpoint", r.HandleStream)
+
+	// Image transforms (under /ordfs, not root — not part of the ordfs content protocol)
+	router.Get("/image/*", r.HandleImage)
 }
 
 // RegisterContent registers the wildcard content endpoint.

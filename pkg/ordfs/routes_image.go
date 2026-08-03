@@ -11,13 +11,6 @@ import (
 	"github.com/gofiber/fiber/v2"
 )
 
-// RegisterImage registers the wildcard image-transform endpoint.
-// Mounted separately from Register for the same reason as RegisterContent:
-// wildcard routes must come last.
-func (r *Routes) RegisterImage(router fiber.Router) {
-	router.Get("/*", r.HandleImage)
-}
-
 // WarmImageEncoders performs a throwaway encode so the WebAssembly runtimes
 // backing WebP and AVIF are compiled before the first real request. Without it,
 // whichever request arrives first absorbs roughly a second of one-time
@@ -33,7 +26,7 @@ func WarmImageEncoders(logger *slog.Logger) {
 
 // HandleImage serves a transformed copy of an image inscription
 // @Summary Transform inscription content
-// @Description Render an image inscription at a bounded size. Dimensions snap up to supported widths and results are cached by resolved outpoint. Non-raster content is rejected; SVG is served unchanged by /content since it already scales.
+// @Description Render an image inscription at a bounded size. Dimensions snap up to supported widths. Caching is via Cache-Control for CDN/edge; the origin does not store derived bodies. Non-raster content is rejected; SVG is served unchanged by /content since it already scales.
 // @Tags ordfs
 // @Produce image/jpeg,image/png,image/webp,image/avif
 // @Param path path string true "Outpoint (txid_vout) or txid, optionally with :seq"
@@ -77,8 +70,7 @@ func (r *Routes) HandleImage(c *fiber.Ctx) error {
 	negotiated := params.Format == FormatAuto
 
 	// Only an explicit latest-sequence request is mutable; the chain can advance
-	// under it. This governs the response header, not whether we may cache the
-	// render — see below.
+	// under it. Fixed outpoints are immutable and get long-lived CDN headers.
 	isLatest := pp.Seq != nil && *pp.Seq == -1
 
 	newRequest := func(withContent bool) *Request {
@@ -92,9 +84,9 @@ func (r *Routes) HandleImage(c *fiber.Ctx) error {
 	defer loadCancel()
 
 	// Resolve first, without pulling content bytes. parseOutput fills in the
-	// content type either way, so this is enough to reject non-images and to
-	// learn which concrete outpoint the pointer landed on. Resolution is already
-	// memoized by the parsed:/OriginStore layers, so this is cheap on repeat.
+	// content type either way, so this is enough to reject non-images before
+	// loading a multi-megabyte payload. Resolution is already memoized by the
+	// parsed:/OriginStore layers, so this is cheap on repeat.
 	head, err := r.ordfs.Load(loadCtx, newRequest(false))
 	if err != nil {
 		r.logger.Debug("failed to resolve image pointer", "path", path, "error", err)
@@ -111,29 +103,9 @@ func (r *Routes) HandleImage(c *fiber.Ctx) error {
 		})
 	}
 
-	// Key on the outpoint the pointer resolved to, never on the pointer itself.
-	// The requested form carries a seq that selects different content from the
-	// same outpoint, so keying on it would let /image/x_0:0 and /image/x_0:5
-	// collide. Resolved outpoints are content addressed and immutable, which is
-	// the same basis the parsed:/merged: caches use, and it means every pointer
-	// that lands on one revision shares a single rendered result.
 	resolved := outpoint.String()
 	if head.Outpoint != nil {
 		resolved = head.Outpoint.String()
-	}
-
-	// Negotiation happens before the lookup so the key names the encoding
-	// actually served. Alpha is unknown until decode, so assume none here; a
-	// transparent source under f=auto resolves to PNG on the render path and is
-	// cached and re-served under that key.
-	lookup := params
-	lookup.Format = NegotiateFormat(params.Format, accept, false)
-
-	cache := r.ordfs.Cache()
-	if cache != nil {
-		if payload, err := cache.Get(c.Context(), imageCacheKey(resolved, lookup)); err == nil && len(payload) > 0 {
-			return r.sendImage(c, payload, lookup.Format, resolved, isLatest, negotiated)
-		}
 	}
 
 	full, err := r.ordfs.Load(loadCtx, newRequest(true))
@@ -152,18 +124,6 @@ func (r *Routes) HandleImage(c *fiber.Ctx) error {
 		}
 		r.logger.Warn("image transform failed", "path", path, "contentType", full.ContentType, "error", err)
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to transform image"})
-	}
-
-	// Cached even for seq=-1: the entry is keyed by the resolved outpoint, which
-	// is immutable. Only the HTTP response must stay uncacheable, because a later
-	// request for the latest may resolve somewhere else entirely.
-	// A failed write costs a re-render, not a wrong answer.
-	if cache != nil {
-		stored := params
-		stored.Format = format
-		if err := cache.Set(c.Context(), imageCacheKey(resolved, stored), payload); err != nil {
-			r.logger.Debug("failed to cache image", "outpoint", resolved, "error", err)
-		}
 	}
 
 	return r.sendImage(c, payload, format, resolved, isLatest, negotiated)

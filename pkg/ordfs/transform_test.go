@@ -353,34 +353,3 @@ func TestTransformRejectsNonRaster(t *testing.T) {
 		t.Fatal("expected a decode error")
 	}
 }
-
-// Regression: the key must be built from the outpoint a pointer *resolved* to,
-// and must vary with every transform parameter. Keying on the request would let
-// /image/x_0:0 and /image/x_0:5 collide and serve each other's image.
-func TestImageCacheKeyVariesByEveryParam(t *testing.T) {
-	base := TransformParams{Width: 256, Height: 256, Fit: FitFill, Gravity: GravityCenter, Format: FormatWebP, Quality: 75}
-	key := imageCacheKey("abc_0", base)
-
-	variants := map[string]TransformParams{}
-	for name, mutate := range map[string]func(TransformParams) TransformParams{
-		"width":   func(p TransformParams) TransformParams { p.Width = 384; return p },
-		"height":  func(p TransformParams) TransformParams { p.Height = 384; return p },
-		"fit":     func(p TransformParams) TransformParams { p.Fit = FitPad; return p },
-		"gravity": func(p TransformParams) TransformParams { p.Gravity = GravityNorth; return p },
-		"format":  func(p TransformParams) TransformParams { p.Format = FormatAVIF; return p },
-		"quality": func(p TransformParams) TransformParams { p.Quality = 90; return p },
-	} {
-		variants[name] = mutate(base)
-	}
-	for name, v := range variants {
-		if imageCacheKey("abc_0", v) == key {
-			t.Errorf("key must vary by %s", name)
-		}
-	}
-	if imageCacheKey("def_0", base) == key {
-		t.Error("key must vary by resolved outpoint")
-	}
-	if imageCacheKey("abc_0", base) != key {
-		t.Error("identical inputs must produce identical keys")
-	}
-}

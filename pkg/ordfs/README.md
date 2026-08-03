@@ -205,12 +205,13 @@ All content responses include:
 ## Image transforms
 
 Inscriptions are stored at their original size, commonly several megabytes for a
-single image, which makes a grid of them expensive to render. `/image` returns a
-transformed copy:
+single image, which makes a grid of them expensive to render. `/ordfs/image`
+returns a transformed copy (under the ordfs API prefix, not at app root — root
+`/content` stays reserved for the ordfs content protocol):
 
 ```bash
-curl "https://api.1sat.app/image/{txid}_{vout}?w=384"
-curl "https://api.1sat.app/image/{txid}_{vout}?w=256&h=256&fit=fill&g=north"
+curl "https://api.1sat.app/1sat/ordfs/image/{txid}_{vout}?w=384"
+curl "https://api.1sat.app/1sat/ordfs/image/{txid}_{vout}?w=256&h=256&fit=fill&g=north"
 ```
 
 | Param | Default | Behavior |
@@ -240,9 +241,8 @@ hero image and cropping an avatar are the same operation with different modes.
 one, they degrade to `limit` rather than producing a surprising crop.
 
 Supported dimensions: 16, 32, 48, 64, 96, 128, 192, 256, 384, 512, 640, 828,
-1080, 1200, 1920. Snapping bounds the cache key space regardless of what clients
-request — every derived image is permanently cacheable, so an unbounded key
-space would be an unbounded storage commitment.
+1080, 1200, 1920. Snapping bounds the CDN cache key space regardless of what
+clients request.
 
 ### Format negotiation
 
@@ -261,22 +261,23 @@ WebP and AVIF encode through WebAssembly, so no cgo is required. The runtimes
 cost roughly a second to compile on first use; `WarmImageEncoders` does that at
 startup so no request absorbs it.
 
+### Caching
+
+Derived bodies are **not** stored in the ordfs `parsed:`/`merged:` cache pool —
+that pool is for small structural metadata. Caching is CDN/edge via headers:
+
+- Fixed outpoint / seq: `Cache-Control: public, max-age=31536000, immutable`
+- Latest (`seq=-1`): `Cache-Control: no-store` (target can move)
+- `f=auto`: responses also send `Vary: Accept`
+
 ### Behavior notes
 
 - Only `image/jpeg`, `image/png`, `image/gif`, and `image/webp` are transformed.
   Anything else returns **415**; fetch it from `/content` instead.
 - `image/svg+xml` is deliberately excluded — it already scales losslessly and is
   small, so rasterizing it would be a regression.
-- Results are cached under the outpoint the pointer **resolved to**, matching how
-  `parsed:` and `merged:` key their entries. Resolved outpoints are content
-  addressed, so entries never need invalidating, requests differing only by
-  `seq` cannot collide, and every pointer landing on one revision shares a
-  single render.
-- Resolution runs before content bytes are loaded, so a cache hit never pulls a
-  multi-megabyte payload, and non-images are rejected before any byte loading.
-- `seq=-1` still populates the render cache — the entry is keyed by an immutable
-  resolved outpoint. Only the HTTP response is marked `no-store`, since a later
-  request for the latest may resolve elsewhere.
+- Resolution runs before content bytes are loaded, so non-images are rejected
+  before any multi-megabyte payload is pulled.
 - Decoding is bounded to 32 MB encoded and 100 megapixels decoded, guarding
   against decompression bombs inscribed on chain.
 

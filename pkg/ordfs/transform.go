@@ -123,13 +123,6 @@ type TransformParams struct {
 	Quality int
 }
 
-// CacheSuffix renders the params into a stable cache key fragment. Format is
-// included because negotiation can pick different encodings for the same
-// request depending on what the client accepts.
-func (p TransformParams) CacheSuffix() string {
-	return fmt.Sprintf("%d:%d:%s:%s:%s:%d", p.Width, p.Height, p.Fit, p.Gravity, p.Format, p.Quality)
-}
-
 // IsTransformable reports whether a content type can be decoded as a raster
 // image. SVG is excluded deliberately: it already scales losslessly and is
 // small, so rasterizing it would be a regression.
@@ -450,10 +443,4 @@ func hasTransparency(img *image.RGBA) bool {
 		}
 	}
 	return false
-}
-
-// imageCacheKey identifies a derived image. The outpoint is the one a pointer
-// resolved to, which is content addressed, so entries never need invalidating.
-func imageCacheKey(outpoint string, p TransformParams) string {
-	return fmt.Sprintf("img:%s:%s", outpoint, p.CacheSuffix())
 }
