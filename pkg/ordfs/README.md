@@ -200,7 +200,89 @@ All content responses include:
 ### Caching
 
 - **Specific sequence** (seq >= 0, seq == -2): `Cache-Control: public, max-age=31536000, immutable`
-- **Latest** (seq == -1): `Cache-Control: no-cache, no-store, must-revalidate`
+- **Latest** (seq == -1): `Cache-Control: no-store`
+
+## Image transforms
+
+Inscriptions are stored at their original size, commonly several megabytes for a
+single image, which makes a grid of them expensive to render. `/ordfs/image`
+returns a transformed copy (under the ordfs API prefix, not at app root — root
+`/content` stays reserved for the ordfs content protocol).
+
+**Concrete outpoint only.** This endpoint does not accept `:seq` or directory
+paths. Resolve ordinality via metadata or content first, then pass the outpoint
+that holds the inscription bytes.
+
+```bash
+curl "https://api.1sat.app/1sat/ordfs/image/{txid}_{vout}?w=384"
+curl "https://api.1sat.app/1sat/ordfs/image/{txid}_{vout}?w=256&h=256&fit=fill&g=north"
+```
+
+| Param | Default | Behavior |
+|-------|---------|----------|
+| `w`   | 384     | Target width. Snaps **up** to the nearest supported width. |
+| `h`   | —       | Target height. Snaps up the same way. |
+| `fit` | `limit` | How the source maps onto the box. See below. |
+| `g`   | `center`| Gravity for `fill` and `pad`. |
+| `f`   | `auto`  | `auto`, `jpeg`, `png`, `webp`, `avif`. |
+| `q`   | 75      | Quality 1-100. Rounded to the nearest 5. |
+
+### Fit modes
+
+The vocabulary follows Cloudinary's, which is the most widely understood in this
+space. The endpoint is named for the resource, not for one use case — resizing a
+hero image and cropping an avatar are the same operation with different modes.
+
+| Mode | Behavior |
+|------|----------|
+| `limit` | Fit inside the box, preserve aspect ratio, **never upscale**. The default. |
+| `fit` | Fit inside the box, preserve aspect ratio, upscale if the source is smaller. |
+| `fill` | Cover the box exactly, cropping the overflow at the gravity. |
+| `pad` | Fit inside the box and pad the remainder out to the exact size. |
+| `scale` | Stretch to the exact box, ignoring aspect ratio. |
+
+`fill`, `pad`, and `scale` need both `w` and `h` to mean anything; given only
+one, they degrade to `limit` rather than producing a surprising crop.
+
+Supported dimensions: 16, 32, 48, 64, 96, 128, 192, 256, 384, 512, 640, 828,
+1080, 1200, 1920. Snapping bounds the CDN cache key space regardless of what
+clients request.
+
+### Format negotiation
+
+`f=auto` picks the smallest encoding the client accepts, preferring AVIF, then
+WebP, then PNG for transparent sources and JPEG otherwise. Negotiated responses
+carry `Vary: Accept`. Measured on a 2,596,285 byte PNG inscription at `w=384`:
+
+| Format | Bytes | % of source | Encode |
+|--------|-------|-------------|--------|
+| avif | 11,078 | 0.43% | 100ms |
+| webp | 16,972 | 0.65% | 62ms |
+| jpeg | 20,523 | 0.79% | 65ms |
+| png | 250,016 | 9.63% | 410ms |
+
+WebP and AVIF encode through WebAssembly, so no cgo is required. The runtimes
+cost roughly a second to compile on first use; `WarmImageEncoders` does that at
+startup so no request absorbs it.
+
+### Caching
+
+Derived bodies are **not** stored in the ordfs `parsed:`/`merged:` cache pool —
+that pool is for small structural metadata. Every successful response is
+content-addressed (concrete outpoint) and sent with:
+
+- `Cache-Control: public, max-age=31536000, immutable`
+- `Vary: Accept` when `f=auto` negotiated the format
+
+### Behavior notes
+
+- Path is a concrete outpoint (or bare txid). `:seq` and directory paths return
+  **400** — resolve via metadata/content first.
+- `image/jpeg`, `image/png`, `image/gif`, and `image/webp` are transformed.
+- `image/svg+xml` is passed through unchanged (already scales; no rasterize).
+- Anything else returns **415**.
+- Type is checked before content bytes are loaded when the parse cache can
+  answer, so non-images are rejected without pulling a multi-megabyte payload.
 
 ## See Also
 

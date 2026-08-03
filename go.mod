@@ -17,6 +17,8 @@ require (
 	github.com/bsv-blockchain/go-wallet-toolbox v0.183.8
 	github.com/dgraph-io/badger/v4 v4.9.1
 	github.com/fxamacker/cbor/v2 v2.9.2
+	github.com/gen2brain/avif v0.6.0
+	github.com/gen2brain/webp v0.6.4
 	github.com/gofiber/fiber/v2 v2.52.14
 	github.com/jackc/pgx/v5 v5.9.2
 	github.com/joho/godotenv v1.6.0-pre.2
@@ -28,6 +30,7 @@ require (
 	github.com/testcontainers/testcontainers-go v0.42.0
 	github.com/testcontainers/testcontainers-go/modules/postgres v0.42.0
 	go.mongodb.org/mongo-driver/v2 v2.5.0
+	golang.org/x/image v0.25.0
 	golang.org/x/sync v0.22.0
 	modernc.org/sqlite v1.50.0
 )
@@ -103,7 +106,7 @@ require (
 	github.com/dolthub/swiss v0.2.1 // indirect
 	github.com/dunglas/httpsfv v1.1.0 // indirect
 	github.com/dustin/go-humanize v1.0.1 // indirect
-	github.com/ebitengine/purego v0.10.0 // indirect
+	github.com/ebitengine/purego v0.10.1 // indirect
 	github.com/emicklei/go-restful/v3 v3.13.0 // indirect
 	github.com/felixge/httpsnoop v1.0.4 // indirect
 	github.com/filecoin-project/go-clock v0.1.0 // indirect
@@ -263,6 +266,7 @@ require (
 	github.com/spf13/pflag v1.0.10 // indirect
 	github.com/stretchr/objx v0.5.3 // indirect
 	github.com/subosito/gotenv v1.6.0 // indirect
+	github.com/tetratelabs/wazero v1.12.0 // indirect
 	github.com/tinylib/msgp v1.6.4 // indirect
 	github.com/tklauser/go-sysconf v0.3.16 // indirect
 	github.com/tklauser/numcpus v0.11.0 // indirect

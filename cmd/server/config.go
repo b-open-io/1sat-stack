@@ -1566,13 +1566,17 @@ func (c *Config) RegisterRoutes(app *fiber.App, svc *Services) {
 	}
 
 	if svc.ORDFS != nil && svc.ORDFS.Routes != nil {
+		// The WebP and AVIF runtimes take about a second to compile on first
+		// use. Do it now so no request pays for it.
+		go ordfs.WarmImageEncoders(slog.Default())
+
 		reg.Add(registrar.Registration{
 			Capability: "ordfs",
 			Spec:       ordfsdocs.Spec,
 			Mounts: []registrar.Mount{
 				{Prefix: prefixOr(c.ORDFS.Routes.Prefix, "/ordfs"), Register: svc.ORDFS.Routes.Register},
 			},
-			// Content at root level for compatibility with the ordfs protocol
+			// Content at root level for compatibility with the ordfs protocol.
 			RootMounts: []registrar.Mount{
 				{Prefix: "/content", Register: svc.ORDFS.Routes.RegisterContent},
 			},
