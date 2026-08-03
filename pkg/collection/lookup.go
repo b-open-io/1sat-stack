@@ -8,6 +8,7 @@ import (
 	"sync"
 
 	overlaystorage "github.com/b-open-io/1sat-stack/pkg/overlay/storage"
+	"github.com/b-open-io/1sat-stack/pkg/parse"
 	"github.com/b-open-io/1sat-stack/pkg/types"
 	"github.com/bsv-blockchain/go-overlay-services/pkg/core/engine"
 	"github.com/bsv-blockchain/go-sdk/chainhash"
@@ -95,7 +96,7 @@ func (l *LookupService) OutputAdmittedByTopic(ctx context.Context, payload *engi
 		// Collection identity is its own outpoint.
 		collectionID = outpoint.OrdinalString()
 	case IsItemTopic(payload.Topic) && fields.SubType == SubTypeCollectionItem:
-		collectionID = NormalizeCollectionID(fields.CollectionID, outpoint)
+		collectionID = parse.NormalizeRelativeOutpoint(fields.CollectionID, outpoint)
 		if expected := CollectionIDFromTopic(payload.Topic); expected != "" && collectionID != expected {
 			return nil
 		}

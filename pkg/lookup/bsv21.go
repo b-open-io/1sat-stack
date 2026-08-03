@@ -104,6 +104,10 @@ func (l *BSV21Lookup) OutputAdmittedByTopic(ctx context.Context, payload *engine
 
 	if b.Op == string(bsv21.OpDeployMint) || b.Op == string(bsv21.OpDeployAuth) {
 		b.Id = outpoint.OrdinalString()
+		if b.Icon != nil {
+			icon := parse.NormalizeRelativeOutpoint(*b.Icon, outpoint)
+			b.Icon = &icon
+		}
 	}
 
 	score := types.ScoreFromTx(tx, txid)
@@ -230,7 +234,11 @@ func (l *BSV21Lookup) ListTokens(ctx context.Context) ([]*TokenInfo, error) {
 			t.Decimals = &d
 		}
 		if icon.Valid {
-			t.Icon = &icon.String
+			iconStr := icon.String
+			if op, err := transaction.OutpointFromString(id); err == nil {
+				iconStr = parse.NormalizeRelativeOutpoint(iconStr, op)
+			}
+			t.Icon = &iconStr
 		}
 		tokens = append(tokens, t)
 	}
@@ -399,7 +407,8 @@ func (l *BSV21Lookup) GetToken(ctx context.Context, outpoint *transaction.Outpoi
 		token.Decimals = &d
 	}
 	if icon.Valid {
-		token.Icon = &icon.String
+		iconStr := parse.NormalizeRelativeOutpoint(icon.String, outpoint)
+		token.Icon = &iconStr
 	}
 
 	l.mintCache.Store(tokenId, token)

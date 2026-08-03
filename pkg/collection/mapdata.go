@@ -3,7 +3,6 @@ package collection
 import (
 	"encoding/json"
 
-	"github.com/b-open-io/1sat-stack/pkg/parse"
 	"github.com/b-open-io/1sat-stack/pkg/template/bitcom"
 	"github.com/b-open-io/1sat-stack/pkg/template/inscription"
 	"github.com/bsv-blockchain/go-sdk/script"
@@ -77,11 +76,6 @@ func IsCollectionMintOutput(output *transaction.TransactionOutput) bool {
 		return false
 	}
 	return inscription.Decode(output.LockingScript) != nil
-}
-
-// NormalizeCollectionID expands same-tx "_N" references using the given outpoint.
-func NormalizeCollectionID(collectionID string, outpoint *transaction.Outpoint) string {
-	return parse.NormalizeCollectionID(collectionID, outpoint)
 }
 
 // FirstValidSigma returns the first SIGMA signature that verifies against the

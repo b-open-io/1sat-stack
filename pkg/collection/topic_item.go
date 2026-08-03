@@ -4,6 +4,7 @@ import (
 	"context"
 	"log/slog"
 
+	"github.com/b-open-io/1sat-stack/pkg/parse"
 	"github.com/bsv-blockchain/go-overlay-services/pkg/core/engine"
 	"github.com/bsv-blockchain/go-sdk/chainhash"
 	"github.com/bsv-blockchain/go-sdk/overlay"
@@ -54,7 +55,7 @@ func (tm *ItemTopicManager) IdentifyAdmissibleOutputs(ctx context.Context, beef 
 			continue
 		}
 		outpoint := &transaction.Outpoint{Txid: *txid, Index: uint32(vout)}
-		collectionID := NormalizeCollectionID(fields.CollectionID, outpoint)
+		collectionID := parse.NormalizeRelativeOutpoint(fields.CollectionID, outpoint)
 		if collectionID == "" || collectionID != tm.collectionID {
 			continue
 		}

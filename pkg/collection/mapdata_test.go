@@ -79,16 +79,6 @@ func TestItemTopicHelpers(t *testing.T) {
 	}
 }
 
-func TestNormalizeCollectionIDViaPackage(t *testing.T) {
-	txid, _ := chainhash.NewHashFromHex("0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef")
-	op := &transaction.Outpoint{Txid: *txid, Index: 2}
-	got := NormalizeCollectionID("_1", op)
-	want := txid.String() + "_1"
-	if got != want {
-		t.Fatalf("got %q want %q", got, want)
-	}
-}
-
 func TestDiscoveryRejectsWithoutSigma(t *testing.T) {
 	txid, _ := chainhash.NewHashFromHex("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa")
 	tx := transaction.NewTransaction()

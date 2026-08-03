@@ -209,6 +209,45 @@ func TestGetToken(t *testing.T) {
 	}
 }
 
+func TestGetTokenResolvesRelativeIcon(t *testing.T) {
+	lookup := newTestLookup(t)
+	ctx := context.Background()
+
+	txid := &chainhash.Hash{}
+	txid[0] = 0x02
+	op := &transaction.Outpoint{Txid: *txid, Index: 1}
+	tokenId := op.OrdinalString()
+
+	ts, err := lookup.db("tm_bsv21")
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = ts.DB().Exec(
+		`INSERT INTO token_outputs (outpoint, token_id, op, lock_type, address, amount, sym, dec, icon, score) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		op.Bytes(), tokenId, "deploy+mint", "p2pkh", "1test", "1000", "REL", 0, "_0", 1.0,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	token, err := lookup.GetToken(ctx, op)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := txid.String() + "_0"
+	if token.Icon == nil || *token.Icon != want {
+		t.Errorf("icon = %v, want %q", token.Icon, want)
+	}
+
+	tokens, err := lookup.ListTokens(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(tokens) != 1 || tokens[0].Icon == nil || *tokens[0].Icon != want {
+		t.Errorf("ListTokens icon = %v, want %q", tokens, want)
+	}
+}
+
 func TestLoadOutputs(t *testing.T) {
 	lookup := newTestLookup(t)
 	ctx := context.Background()
@@ -334,9 +373,14 @@ func TestLargeUint64Amount(t *testing.T) {
 // through OutputAdmittedByTopic on the tm_bsv21 topic.
 func admitDeploy(t *testing.T, lookup *BSV21Lookup, prefix, suffix []byte) *transaction.Outpoint {
 	t.Helper()
+	return admitDeployJSON(t, lookup, `{"p":"bsv-20","op":"deploy+mint","sym":"TEST","amt":"1000"}`, prefix, suffix)
+}
+
+func admitDeployJSON(t *testing.T, lookup *BSV21Lookup, content string, prefix, suffix []byte) *transaction.Outpoint {
+	t.Helper()
 	scr, err := (&inscription.Inscription{
 		File: inscription.File{
-			Content: []byte(`{"p":"bsv-20","op":"deploy+mint","sym":"TEST","amt":"1000"}`),
+			Content: []byte(content),
 			Type:    "application/bsv-20",
 		},
 		ScriptPrefix: prefix,
@@ -423,4 +467,21 @@ func TestOutputAdmittedByTopicLockLayouts(t *testing.T) {
 			t.Errorf("expected p2pkh/%s, got %q/%q", addr.AddressString, lockType, address)
 		}
 	})
+}
+
+func TestOutputAdmittedByTopicResolvesRelativeIcon(t *testing.T) {
+	lookup := newTestLookup(t)
+	outpoint := admitDeployJSON(t, lookup,
+		`{"p":"bsv-20","op":"deploy+mint","sym":"TEST","amt":"1000","icon":"_0"}`,
+		nil, nil,
+	)
+
+	token, err := lookup.GetToken(context.Background(), outpoint)
+	if err != nil {
+		t.Fatalf("GetToken: %v", err)
+	}
+	want := outpoint.Txid.String() + "_0"
+	if token.Icon == nil || *token.Icon != want {
+		t.Errorf("icon = %v, want %q", token.Icon, want)
+	}
 }

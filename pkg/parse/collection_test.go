@@ -132,24 +132,24 @@ func TestParseCollectionIgnoresTopLevelCollectionID(t *testing.T) {
 	}
 }
 
-func TestNormalizeCollectionID(t *testing.T) {
+func TestNormalizeRelativeOutpoint(t *testing.T) {
 	txid, err := chainhash.NewHashFromHex("ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff")
 	if err != nil {
 		t.Fatal(err)
 	}
 	op := &transaction.Outpoint{Txid: *txid, Index: 5}
 
-	if got := NormalizeCollectionID("_2", op); got != txid.String()+"_2" {
+	if got := NormalizeRelativeOutpoint("_2", op); got != txid.String()+"_2" {
 		t.Errorf("relative: got %q", got)
 	}
 	abs := "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef_0"
-	if got := NormalizeCollectionID(abs, op); got != abs {
+	if got := NormalizeRelativeOutpoint(abs, op); got != abs {
 		t.Errorf("absolute: got %q", got)
 	}
-	if got := NormalizeCollectionID("_2", nil); got != "_2" {
+	if got := NormalizeRelativeOutpoint("_2", nil); got != "_2" {
 		t.Errorf("nil outpoint: got %q", got)
 	}
-	if got := NormalizeCollectionID("_x", op); got != "_x" {
+	if got := NormalizeRelativeOutpoint("_x", op); got != "_x" {
 		t.Errorf("invalid relative: got %q", got)
 	}
 }

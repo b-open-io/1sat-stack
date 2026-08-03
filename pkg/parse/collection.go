@@ -2,11 +2,8 @@ package parse
 
 import (
 	"encoding/json"
-	"strconv"
-	"strings"
 
 	"github.com/b-open-io/1sat-stack/pkg/template/bitcom"
-	"github.com/bsv-blockchain/go-sdk/transaction"
 )
 
 // TagCollection is the parser tag for 1Sat collection MAP interpretation.
@@ -31,7 +28,7 @@ func ParseCollection(ctx *ParseContext) (*ParseResult, error) {
 	if collectionID == "" {
 		return nil, nil
 	}
-	collectionID = NormalizeCollectionID(collectionID, ctx.Outpoint)
+	collectionID = NormalizeRelativeOutpoint(collectionID, ctx.Outpoint)
 	if collectionID == "" {
 		return nil, nil
 	}
@@ -61,19 +58,4 @@ func collectionIDFromSubTypeData(data map[string]string) string {
 	return sub.CollectionID
 }
 
-// NormalizeCollectionID expands same-transaction relative collection IDs of the
-// form "_N" to "{txid}_N" using the output being parsed. Absolute outpoints and
-// other values are returned unchanged.
-func NormalizeCollectionID(collectionID string, outpoint *transaction.Outpoint) string {
-	if outpoint == nil || !strings.HasPrefix(collectionID, "_") {
-		return collectionID
-	}
-	index, err := strconv.ParseUint(strings.TrimPrefix(collectionID, "_"), 10, 32)
-	if err != nil {
-		return collectionID
-	}
-	return (&transaction.Outpoint{
-		Txid:  outpoint.Txid,
-		Index: uint32(index),
-	}).OrdinalString()
-}
+
