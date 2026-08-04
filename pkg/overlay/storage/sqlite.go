@@ -54,6 +54,11 @@ type SQLiteStorage struct {
 	reader *sql.DB
 }
 
+// idleConnTimeout bounds how long an unused connection is kept open. Each live
+// SQLite connection carries its own page cache allocated outside the Go heap,
+// so across thousands of per-topic databases idle connections dominate RSS.
+const idleConnTimeout = 30 * time.Second
+
 // NewSQLiteStorage opens (or creates) a SQLite database at path with WAL mode
 // and separate read/write connections.
 func NewSQLiteStorage(path string) (*SQLiteStorage, error) {
@@ -62,6 +67,7 @@ func NewSQLiteStorage(path string) (*SQLiteStorage, error) {
 		return nil, fmt.Errorf("open writer %s: %w", path, err)
 	}
 	writer.SetMaxOpenConns(1)
+	writer.SetConnMaxIdleTime(idleConnTimeout)
 
 	if _, err := writer.Exec(schema); err != nil {
 		writer.Close()
@@ -74,6 +80,7 @@ func NewSQLiteStorage(path string) (*SQLiteStorage, error) {
 		return nil, fmt.Errorf("open reader %s: %w", path, err)
 	}
 	reader.SetMaxOpenConns(4)
+	reader.SetConnMaxIdleTime(idleConnTimeout)
 
 	return &SQLiteStorage{writer: writer, reader: reader}, nil
 }
