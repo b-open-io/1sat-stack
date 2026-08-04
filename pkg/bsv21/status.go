@@ -23,13 +23,13 @@ type TokenStatus struct {
 
 	// Funding metrics (from DB on creation/recalc)
 	Credits      uint64 `json:"credits"`
-	OutputCount  int64  `json:"output_count"`
 	FeePerOutput int64  `json:"fee_per_output"`
-	Debits       int64  `json:"debits"`
 
-	// Live tracking (not serialized directly)
-	balance atomic.Int64
-	syncing atomic.Bool
+	// Live tracking (not serialized directly). outputCount is atomic because
+	// workers record indexed outputs concurrently.
+	outputCount atomic.Int64
+	balance     atomic.Int64
+	syncing     atomic.Bool
 }
 
 // NewTokenStatus creates a TokenStatus and initializes the atomic balance
@@ -40,17 +40,31 @@ func NewTokenStatus(tokenId, feeAddress string, credits uint64, outputCount, fee
 		IsWhitelisted: isWhitelisted,
 		IsBlacklisted: isBlacklisted,
 		Credits:       credits,
-		OutputCount:   outputCount,
 		FeePerOutput:  feePerOutput,
-		Debits:        outputCount * feePerOutput,
 	}
-	ts.balance.Store(int64(credits) - ts.Debits)
+	ts.outputCount.Store(outputCount)
+	ts.balance.Store(int64(credits) - ts.Debits())
 	return ts
 }
 
 // Balance returns the current live balance
 func (ts *TokenStatus) Balance() int64 {
 	return ts.balance.Load()
+}
+
+// OutputCount returns the number of outputs indexed for this token.
+func (ts *TokenStatus) OutputCount() int64 {
+	return ts.outputCount.Load()
+}
+
+// SetOutputCount replaces the count after a recalculation from the database.
+func (ts *TokenStatus) SetOutputCount(n int64) {
+	ts.outputCount.Store(n)
+}
+
+// Debits returns the total fees charged for the outputs indexed so far.
+func (ts *TokenStatus) Debits() int64 {
+	return ts.outputCount.Load() * ts.FeePerOutput
 }
 
 // IsActive returns whether the token should be processing
@@ -64,8 +78,11 @@ func (ts *TokenStatus) IsActive() bool {
 	return ts.balance.Load() > 0
 }
 
-// Deduct atomically decrements balance by feePerOutput, returns new balance
-func (ts *TokenStatus) Deduct() int64 {
+// RecordOutput accounts for a single indexed output: it increments the output
+// count and charges feePerOutput against the balance, returning the new balance.
+// One queue member is one outpoint, so this is called once per output.
+func (ts *TokenStatus) RecordOutput() int64 {
+	ts.outputCount.Add(1)
 	return ts.balance.Add(-ts.FeePerOutput)
 }
 
@@ -84,16 +101,20 @@ func (ts *TokenStatus) EndSync() {
 	ts.syncing.Store(false)
 }
 
-// MarshalJSON includes computed Balance and IsActive fields
+// MarshalJSON includes the fields computed from atomics rather than stored
 func (ts *TokenStatus) MarshalJSON() ([]byte, error) {
 	type Alias TokenStatus
 	return json.Marshal(&struct {
-		Balance  int64 `json:"balance"`
-		IsActive bool  `json:"is_active"`
+		OutputCount int64 `json:"output_count"`
+		Debits      int64 `json:"debits"`
+		Balance     int64 `json:"balance"`
+		IsActive    bool  `json:"is_active"`
 		*Alias
 	}{
-		Balance:  ts.balance.Load(),
-		IsActive: ts.IsActive(),
-		Alias:    (*Alias)(ts),
+		OutputCount: ts.OutputCount(),
+		Debits:      ts.Debits(),
+		Balance:     ts.balance.Load(),
+		IsActive:    ts.IsActive(),
+		Alias:       (*Alias)(ts),
 	})
 }

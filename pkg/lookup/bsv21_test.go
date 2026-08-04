@@ -305,7 +305,8 @@ func TestCountOutputs(t *testing.T) {
 	spentOp := insertTokenOutput(t, lookup, topic, tokenId, "transfer", "p2pkh", "addr2", 200, 2.0)
 	insertTokenOutput(t, lookup, topic, tokenId, "transfer", "p2pkh", "addr3", 300, 3.0)
 
-	// Mark one as spent
+	// Spending an output must not reduce the count - the fee for indexing it
+	// was already charged and is not refunded.
 	ts, _ := lookup.db(topic)
 	spendTxid := &chainhash.Hash{}
 	spendTxid[0] = 0xFF
@@ -315,8 +316,8 @@ func TestCountOutputs(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if count != 2 {
-		t.Errorf("expected 2 unspent outputs, got %d", count)
+	if count != 3 {
+		t.Errorf("expected 3 outputs, got %d", count)
 	}
 }
 

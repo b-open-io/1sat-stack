@@ -3,6 +3,7 @@ package bsv21
 import (
 	"context"
 	"fmt"
+	"strconv"
 	"time"
 
 	"github.com/b-open-io/1sat-stack/pkg/jbsync"
@@ -68,6 +69,48 @@ func (m *TokenManager) ListWorkers(ctx context.Context) []WorkerStatus {
 	return workers
 }
 
+// outputCountKey is the config store key holding a token's persisted output count.
+func outputCountKey(tokenId string) string {
+	return "bsv21.outputcount:" + tokenId
+}
+
+// resolveOutputCount reports how many outputs a token has indexed, avoiding its
+// topic database wherever possible. A running worker's in-memory count is
+// authoritative and exact, since RecordOutput increments it per output. Failing
+// that the persisted value is used. Only a token that has never been counted
+// falls through to querying its database. Authoritative counts are written back
+// so subsequent lifecycle passes stay off the per-topic databases entirely.
+func (m *TokenManager) resolveOutputCount(ctx context.Context, tokenId string) (int64, error) {
+	if v, ok := m.statuses.Load(tokenId); ok {
+		count := v.(*TokenStatus).OutputCount()
+		m.persistOutputCount(ctx, tokenId, count)
+		return count, nil
+	}
+
+	if v, err := m.configStore.Get(ctx, outputCountKey(tokenId)); err == nil {
+		if count, err := strconv.ParseInt(v, 10, 64); err == nil {
+			return count, nil
+		}
+	}
+
+	count, err := m.lookup.CountOutputs(ctx, "tm_"+tokenId)
+	if err != nil {
+		return 0, fmt.Errorf("failed to count outputs: %w", err)
+	}
+	m.persistOutputCount(ctx, tokenId, count)
+	return count, nil
+}
+
+// persistOutputCount stores a count that came from a live worker or a real
+// query. A stored value can only lag behind the truth, never exceed it, which
+// makes a token look better funded than it is - corrected by the exact count
+// the worker carries once it spins up.
+func (m *TokenManager) persistOutputCount(ctx context.Context, tokenId string, count int64) {
+	if err := m.configStore.Set(ctx, outputCountKey(tokenId), strconv.FormatInt(count, 10)); err != nil {
+		m.logger.Warn("failed to persist output count", "tokenId", tokenId, "error", err)
+	}
+}
+
 // GetTokenStatus returns the status for a specific token
 func (m *TokenManager) GetTokenStatus(ctx context.Context, tokenId string) (*TokenStatus, error) {
 	// Parse outpoint from tokenId
@@ -88,10 +131,9 @@ func (m *TokenManager) GetTokenStatus(ctx context.Context, tokenId string) (*Tok
 	_, blErr := m.configStore.Get(ctx, "bsv21.blacklist:"+tokenId)
 	isBlacklisted := blErr == nil
 
-	// Output count in topic - always calculate for reporting
-	outputCount, err := m.lookup.CountOutputs(ctx, "tm_"+tokenId)
+	outputCount, err := m.resolveOutputCount(ctx, tokenId)
 	if err != nil {
-		return nil, fmt.Errorf("failed to count outputs: %w", err)
+		return nil, err
 	}
 
 	// Whitelisted/blacklisted tokens don't need balance calculation - use 0 fee so debits = 0

@@ -3,6 +3,7 @@ package bsv21
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
 	"strings"
 	"sync"
@@ -134,6 +135,22 @@ func (m *TokenManager) createWorker(ctx context.Context, status *TokenStatus) er
 	tokenId := status.TokenID
 	topicName := "tm_" + tokenId
 
+	// The evaluation that got us here may have used a persisted count that lags
+	// what the token actually indexed, which understates debits. Settle it against
+	// the database before committing a worker - the topic is being opened anyway.
+	count, err := m.lookup.CountOutputs(ctx, topicName)
+	if err != nil {
+		return fmt.Errorf("failed to count outputs for %s: %w", tokenId, err)
+	}
+	status.SetOutputCount(count)
+	status.UpdateBalance(int64(status.Credits) - status.Debits())
+	m.persistOutputCount(ctx, tokenId, count)
+
+	if !status.IsActive() {
+		m.logger.Debug("token underfunded once counted", "tokenId", tokenId, "outputCount", count)
+		return nil
+	}
+
 	// Create cancellable context for this worker
 	workerCtx, cancel := context.WithCancel(ctx)
 
@@ -198,8 +215,8 @@ func (m *TokenManager) onTokenItemProcessed(tokenId string) {
 		return
 	}
 
-	// Atomically decrement balance
-	newBalance := status.Deduct()
+	// Atomically record the indexed output and charge for it
+	newBalance := status.RecordOutput()
 
 	if newBalance <= 0 {
 		// Balance exhausted - try to sync (only one goroutine will succeed)
@@ -229,8 +246,7 @@ func (m *TokenManager) onTokenItemProcessed(tokenId string) {
 
 			// Update live balance from fresh calculation
 			status.Credits = newStatus.Credits
-			status.OutputCount = newStatus.OutputCount
-			status.Debits = newStatus.Debits
+			status.SetOutputCount(newStatus.OutputCount())
 			status.UpdateBalance(newStatus.Balance())
 
 			// If still underfunded, cancel the worker
