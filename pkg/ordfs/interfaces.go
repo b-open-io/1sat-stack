@@ -10,14 +10,14 @@ import (
 //
 // Key layout (Badger):
 //
-//	org: + [36B outpoint] → [36B origin]
+//	org: + [36B outpoint] → [36B origin] + [4B seq]
 //	seq: + [36B origin] + [4B seq] → [36B outpoint]
 //	rev: + [36B origin] + [4B seq] → [36B outpoint] + [4B contentLength] + [contentType string]
 //	map: + [36B origin] + [4B seq] → [36B outpoint]
 //	par: + [36B origin] + [4B seq] → [36B outpoint]
 type OriginStore interface {
-	// GetOrigin returns the origin outpoint for any outpoint in a chain.
-	GetOrigin(ctx context.Context, outpoint *transaction.Outpoint) (*transaction.Outpoint, error)
+	// GetOrigin returns origin + sequence for any indexed outpoint. Nil if unknown.
+	GetOrigin(ctx context.Context, outpoint *transaction.Outpoint) (*OriginInfo, error)
 
 	// GetSeqAt returns the outpoint at a specific sequence for an origin.
 	GetSeqAt(ctx context.Context, origin *transaction.Outpoint, seq uint32) (*transaction.Outpoint, error)
@@ -49,6 +49,12 @@ type OriginStore interface {
 	Close() error
 }
 
+// OriginInfo is the origin mapping for an indexed chain outpoint.
+type OriginInfo struct {
+	Origin *transaction.Outpoint
+	Seq    uint32
+}
+
 // RevEntry holds a content revision outpoint with its metadata.
 type RevEntry struct {
 	Outpoint      *transaction.Outpoint
@@ -67,12 +73,11 @@ type OriginEntry struct {
 	ContentLength uint32 // populated when HasRev
 }
 
-// OriginBatch represents an atomic batch of entries plus origin mappings.
+// OriginBatch represents an atomic batch of chain entries.
+// Each entry writes org: (origin+seq) and seq: (and optional rev/map/par).
 type OriginBatch struct {
 	Origin  *transaction.Outpoint
 	Entries []OriginEntry
-	// Origins lists every outpoint in the batch that should map to Origin.
-	Origins []*transaction.Outpoint
 }
 
 // Cache is a generic key-value cache with pluggable providers.

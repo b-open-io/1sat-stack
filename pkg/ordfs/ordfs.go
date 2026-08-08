@@ -442,17 +442,17 @@ func (o *Ordfs) backwardCrawl(ctx context.Context, requestedOutpoint *transactio
 		}
 
 		// Check if origin is already known
-		origin, err := o.origins.GetOrigin(ctx, currentOutpoint)
+		info, err := o.origins.GetOrigin(ctx, currentOutpoint)
 		if err != nil {
 			return nil, fmt.Errorf("failed to check origin: %w", err)
 		}
-		if origin != nil {
-			if err := o.migrateToOrigin(ctx, requestedOutpoint, origin, chain); err != nil {
+		if info != nil {
+			if err := o.migrateToOrigin(ctx, info.Origin, chain, int(info.Seq)); err != nil {
 				o.coordinator.PublishFailure(lockedOutpoints)
 				return nil, fmt.Errorf("migration failed: %w", err)
 			}
-			o.coordinator.PublishComplete(lockedOutpoints, origin.String())
-			return origin, nil
+			o.coordinator.PublishComplete(lockedOutpoints, info.Origin.String())
+			return info.Origin, nil
 		}
 
 		// Try to acquire lock
@@ -465,17 +465,17 @@ func (o *Ordfs) backwardCrawl(ctx context.Context, requestedOutpoint *transactio
 				return nil, err
 			}
 
-			origin, err = o.origins.GetOrigin(ctx, currentOutpoint)
+			info, err = o.origins.GetOrigin(ctx, currentOutpoint)
 			if err != nil {
 				return nil, fmt.Errorf("failed to check origin after wait: %w", err)
 			}
-			if origin != nil {
-				if err := o.migrateToOrigin(ctx, requestedOutpoint, origin, chain); err != nil {
+			if info != nil {
+				if err := o.migrateToOrigin(ctx, info.Origin, chain, int(info.Seq)); err != nil {
 					o.coordinator.PublishFailure(lockedOutpoints)
 					return nil, fmt.Errorf("migration failed: %w", err)
 				}
-				o.coordinator.PublishComplete(lockedOutpoints, origin.String())
-				return origin, nil
+				o.coordinator.PublishComplete(lockedOutpoints, info.Origin.String())
+				return info.Origin, nil
 			}
 
 			acquired, err = o.coordinator.AcquireLock(ctx, currentOutpoint)
@@ -525,7 +525,8 @@ func (o *Ordfs) backwardCrawl(ctx context.Context, requestedOutpoint *transactio
 		}
 
 		if prevOutpoint == nil {
-			if err := o.migrateToOrigin(ctx, requestedOutpoint, currentOutpoint, chain); err != nil {
+			// Full crawl: last chain entry is the origin at seq 0 (priorSeq = -1).
+			if err := o.migrateToOrigin(ctx, currentOutpoint, chain, -1); err != nil {
 				o.coordinator.PublishFailure(lockedOutpoints)
 				return nil, fmt.Errorf("migration failed: %w", err)
 			}
@@ -538,22 +539,25 @@ func (o *Ordfs) backwardCrawl(ctx context.Context, requestedOutpoint *transactio
 	}
 }
 
-// migrateToOrigin migrates chain entries to use the discovered origin
-func (o *Ordfs) migrateToOrigin(ctx context.Context, _ *transaction.Outpoint, origin *transaction.Outpoint, chain []ChainEntry) error {
+// migrateToOrigin writes chain entries under origin.
+// priorSeq is the absolute sequence of the known outpoint immediately before
+// chain[last] (toward the origin). New entries are numbered priorSeq+1 …
+// Use priorSeq = -1 when chain includes the origin as its last entry.
+func (o *Ordfs) migrateToOrigin(ctx context.Context, origin *transaction.Outpoint, chain []ChainEntry, priorSeq int) error {
 	if len(chain) == 0 {
 		return nil
 	}
 
-	offset := -chain[len(chain)-1].RelativeSeq
+	lastRel := chain[len(chain)-1].RelativeSeq
+	base := priorSeq + 1 // absolute seq for chain[last]
 
 	batch := &OriginBatch{
 		Origin:  origin,
 		Entries: make([]OriginEntry, len(chain)),
-		Origins: make([]*transaction.Outpoint, len(chain)),
 	}
 
 	for i, entry := range chain {
-		absoluteSeq := uint32(entry.RelativeSeq + offset)
+		absoluteSeq := uint32(entry.RelativeSeq - lastRel + base)
 		batch.Entries[i] = OriginEntry{
 			Outpoint:      entry.Outpoint,
 			Seq:           absoluteSeq,
@@ -563,7 +567,6 @@ func (o *Ordfs) migrateToOrigin(ctx context.Context, _ *transaction.Outpoint, or
 			ContentType:   entry.ContentType,
 			ContentLength: uint32(entry.ContentLength),
 		}
-		batch.Origins[i] = entry.Outpoint
 	}
 
 	return o.origins.WriteBatch(ctx, batch)
@@ -635,11 +638,14 @@ func (o *Ordfs) forwardCrawl(ctx context.Context, origin, startOutpoint *transac
 
 // Resolve resolves an outpoint to a specific sequence in the ordinal chain
 func (o *Ordfs) Resolve(ctx context.Context, requestedOutpoint *transaction.Outpoint, seq int) (*Resolution, error) {
-	origin, err := o.origins.GetOrigin(ctx, requestedOutpoint)
+	info, err := o.origins.GetOrigin(ctx, requestedOutpoint)
 	if err != nil {
 		return nil, fmt.Errorf("failed to check origin: %w", err)
 	}
-	if origin == nil {
+	var origin *transaction.Outpoint
+	if info != nil {
+		origin = info.Origin
+	} else {
 		origin, err = o.backwardCrawl(ctx, requestedOutpoint)
 		if err != nil {
 			return nil, fmt.Errorf("backward crawl failed: %w", err)
@@ -798,12 +804,14 @@ func (o *Ordfs) loadMergedMap(ctx context.Context, origin, mapOutpoint *transact
 
 // StreamContent streams content from an ordinal chain
 func (o *Ordfs) StreamContent(ctx context.Context, outpoint *transaction.Outpoint, rangeStart, rangeEnd *int64, writer io.Writer) (*StreamResponse, error) {
-	origin, err := o.origins.GetOrigin(ctx, outpoint)
+	info, err := o.origins.GetOrigin(ctx, outpoint)
 	if err != nil {
 		return nil, fmt.Errorf("failed to check origin: %w", err)
 	}
-	if origin == nil {
-		var err error
+	var origin *transaction.Outpoint
+	if info != nil {
+		origin = info.Origin
+	} else {
 		origin, err = o.backwardCrawl(ctx, outpoint)
 		if err != nil {
 			return nil, fmt.Errorf("backward crawl failed: %w", err)
