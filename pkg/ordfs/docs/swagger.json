@@ -4,6 +4,63 @@
         "contact": {}
     },
     "paths": {
+        "/brc150/{path}": {
+            "get": {
+                "description": "Binary Outpoint BEEF for the tip: path tip→origin plus each hop’s input source txs up to the ordinal carrier input. Headers: X-Origin, X-Content-Type (origin inscription MIME when known). No path header.",
+                "produces": [
+                    "application/octet-stream"
+                ],
+                "tags": [
+                    "ordfs"
+                ],
+                "summary": "BRC-150 provenance (Outpoint BEEF)",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Tip outpoint (txid_vout)",
+                        "name": "path",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Outpoint BEEF (BRC-158) bytes",
+                        "schema": {
+                            "type": "file"
+                        },
+                        "headers": {
+                            "X-Content-Type": {
+                                "type": "string",
+                                "description": "Origin inscription MIME (BRC-150 contentType), if known"
+                            },
+                            "X-Origin": {
+                                "type": "string",
+                                "description": "Proven origin outpoint (txid_vout)"
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Bad request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Not found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
         "/content/{path}": {
             "get": {
                 "description": "Serve the content of an inscription by outpoint or txid, with directory and SPA support",
@@ -41,6 +98,127 @@
                     },
                     "404": {
                         "description": "Not found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/image/{path}": {
+            "get": {
+                "description": "Render a raster inscription at a bounded size, or pass SVG through. Path is a concrete outpoint (or bare txid) only — no :seq. Caching is CDN via immutable Cache-Control.",
+                "produces": [
+                    "image/jpeg",
+                    "image/png",
+                    "image/webp",
+                    "image/avif",
+                    "image/svg+xml"
+                ],
+                "tags": [
+                    "ordfs"
+                ],
+                "summary": "Transform inscription content",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Outpoint (txid_vout) or bare txid — no :seq",
+                        "name": "path",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Target width, snaps up to the nearest supported width",
+                        "name": "w",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Target height, snaps up to the nearest supported width",
+                        "name": "h",
+                        "in": "query"
+                    },
+                    {
+                        "enum": [
+                            "limit",
+                            "fit",
+                            "fill",
+                            "pad",
+                            "scale"
+                        ],
+                        "type": "string",
+                        "description": "How the source maps onto the box",
+                        "name": "fit",
+                        "in": "query"
+                    },
+                    {
+                        "enum": [
+                            "center",
+                            "north",
+                            "south",
+                            "east",
+                            "west",
+                            "northeast",
+                            "northwest",
+                            "southeast",
+                            "southwest"
+                        ],
+                        "type": "string",
+                        "description": "Gravity for fill and pad",
+                        "name": "g",
+                        "in": "query"
+                    },
+                    {
+                        "enum": [
+                            "auto",
+                            "jpeg",
+                            "png",
+                            "webp",
+                            "avif"
+                        ],
+                        "type": "string",
+                        "description": "Output format; auto negotiates from Accept",
+                        "name": "f",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Quality 1-100, rounded to the nearest 5",
+                        "name": "q",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Transformed image or passthrough SVG",
+                        "schema": {
+                            "type": "file"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Not found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "415": {
+                        "description": "Content is not an image",
                         "schema": {
                             "type": "object",
                             "additionalProperties": {

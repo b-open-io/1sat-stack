@@ -77,7 +77,7 @@ Directory behavior:
 3. For every hop, merge source txs for inputs **0..carrier** only (carrier = spend of path parent, or origin funding input) so a verifier can re-run 1Sat assignment without pulling post-carrier noise inputs
 4. Serialize `0x16a7beef || tip_outpoint(36) || BEEF`
 
-`X-Origin` names the resolved origin. Body is raw bytes (`application/octet-stream`), not base64.
+Headers: `X-Origin` (proven origin), `X-Content-Type` (origin inscription MIME when known). No path header — tip is the request outpoint; body is Outpoint BEEF only (`application/octet-stream`).
 
 ### Streaming
 

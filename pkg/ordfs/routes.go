@@ -604,11 +604,13 @@ func (r *Routes) HandleStream(c *fiber.Ctx) error {
 
 // HandleBRC150 returns Outpoint BEEF (BRC-158) provenance for a 1-sat tip (BRC-150).
 // @Summary BRC-150 provenance (Outpoint BEEF)
-// @Description Binary Outpoint BEEF for the tip: path tip→origin plus each hop’s input source txs up to the ordinal carrier input.
+// @Description Binary Outpoint BEEF for the tip: path tip→origin plus each hop’s input source txs up to the ordinal carrier input. Headers: X-Origin, X-Content-Type (origin inscription MIME when known). No path header.
 // @Tags ordfs
 // @Produce application/octet-stream
 // @Param path path string true "Tip outpoint (txid_vout)"
 // @Success 200 {file} binary "Outpoint BEEF (BRC-158) bytes"
+// @Header 200 {string} X-Origin "Proven origin outpoint (txid_vout)"
+// @Header 200 {string} X-Content-Type "Origin inscription MIME (BRC-150 contentType), if known"
 // @Failure 400 {object} map[string]string "Bad request"
 // @Failure 404 {object} map[string]string "Not found"
 // @Router /brc150/{path} [get]
@@ -654,6 +656,9 @@ func (r *Routes) HandleBRC150(c *fiber.Ctx) error {
 
 	c.Set("Content-Type", "application/octet-stream")
 	c.Set("X-Origin", prov.Origin.String())
+	if prov.ContentType != "" {
+		c.Set("X-Content-Type", prov.ContentType)
+	}
 	httputil.SetNoStore(c)
 	return c.Send(prov.Beef)
 }

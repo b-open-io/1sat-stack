@@ -16,10 +16,12 @@ const OUTPOINT_BEEF = uint32(0x16a7beef)
 type Provenance struct {
 	Origin *transaction.Outpoint
 	Tip    *transaction.Outpoint
-	// Path is ordered tip → … → origin (inclusive).
+	// Path is ordered tip → … → origin (inclusive). Internal; not returned on the wire.
 	Path []*transaction.Outpoint
 	// Beef is Outpoint BEEF (BRC-158) for the tip outpoint.
 	Beef []byte
+	// ContentType is the origin inscription MIME (BRC-150 contentType hint), if known.
+	ContentType string
 }
 
 // BuildProvenance assembles a BRC-150 provenance package for a 1-sat tip outpoint.
@@ -48,12 +50,36 @@ func (o *Ordfs) BuildProvenance(ctx context.Context, tip *transaction.Outpoint) 
 		return nil, err
 	}
 
+	// path tip→origin: tip seq is len(path)-1 when fully indexed from 0.
+	tipSeq := uint32(0)
+	if len(path) > 0 {
+		tipSeq = uint32(len(path) - 1)
+	}
+
 	return &Provenance{
-		Origin: origin,
-		Tip:    tip,
-		Path:   path,
-		Beef:   beefBytes,
+		Origin:      origin,
+		Tip:         tip,
+		Path:        path,
+		Beef:        beefBytes,
+		ContentType: o.originContentType(ctx, origin, tipSeq),
 	}, nil
+}
+
+// originContentType returns the origin ord envelope MIME (BRC-150 contentType).
+// Prefers rev index; falls back to parsing the origin output.
+func (o *Ordfs) originContentType(ctx context.Context, origin *transaction.Outpoint, tipSeq uint32) string {
+	if origin == nil {
+		return ""
+	}
+	rev, err := o.origins.GetLatestRevBefore(ctx, origin, tipSeq)
+	if err == nil && rev != nil && rev.ContentType != "" {
+		return rev.ContentType
+	}
+	out, err := o.loadOutput(ctx, origin)
+	if err != nil {
+		return ""
+	}
+	return o.parseOutput(ctx, origin, out, false).ContentType
 }
 
 // provenancePath returns outpoints tip→origin inclusive and the origin.
