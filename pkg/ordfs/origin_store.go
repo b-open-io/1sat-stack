@@ -11,16 +11,22 @@ import (
 )
 
 var (
-	prefixOrg = []byte("org:")
-	prefixSeq = []byte("seq:")
-	prefixRev = []byte("rev:")
-	prefixMap = []byte("map:")
-	prefixPar = []byte("par:")
+	prefixOrg  = []byte("org:")
+	prefixSeq  = []byte("seq:")
+	prefixRev  = []byte("rev:")
+	prefixMap  = []byte("map:")
+	prefixPar  = []byte("par:")
+	metaSchema = []byte("meta:schema")
 )
 
 const (
 	outpointSize = 36
 	orgValueSize = outpointSize + 4 // origin + seq
+
+	// originStoreSchemaVersion is the Badger layout version.
+	// v0: org: → origin only (36B). v1: org: → origin||seq (40B).
+	// Bump and add a step in ensureSchema when the on-disk layout changes again.
+	originStoreSchemaVersion uint32 = 1
 )
 
 type BadgerOriginStore struct {
@@ -58,7 +64,101 @@ func NewBadgerOriginStore(path string) (*BadgerOriginStore, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to open origin store: %w", err)
 	}
-	return &BadgerOriginStore{db: db}, nil
+	s := &BadgerOriginStore{db: db}
+	if err := s.ensureSchema(); err != nil {
+		_ = db.Close()
+		return nil, fmt.Errorf("origin store schema: %w", err)
+	}
+	return s, nil
+}
+
+func (s *BadgerOriginStore) schemaVersion() (uint32, error) {
+	var ver uint32
+	err := s.db.View(func(txn *badger.Txn) error {
+		item, err := txn.Get(metaSchema)
+		if err == badger.ErrKeyNotFound {
+			return nil
+		}
+		if err != nil {
+			return err
+		}
+		return item.Value(func(val []byte) error {
+			if len(val) < 4 {
+				return fmt.Errorf("invalid meta:schema value length %d", len(val))
+			}
+			ver = binary.BigEndian.Uint32(val)
+			return nil
+		})
+	})
+	return ver, err
+}
+
+func (s *BadgerOriginStore) setSchemaVersion(ver uint32) error {
+	buf := make([]byte, 4)
+	binary.BigEndian.PutUint32(buf, ver)
+	return s.db.Update(func(txn *badger.Txn) error {
+		return txn.Set(metaSchema, buf)
+	})
+}
+
+// ensureSchema runs pending local migrations once, gated by meta:schema.
+func (s *BadgerOriginStore) ensureSchema() error {
+	ver, err := s.schemaVersion()
+	if err != nil {
+		return err
+	}
+	if ver < 1 {
+		if err := s.migrateOrgValuesV1(); err != nil {
+			return fmt.Errorf("v1 org values: %w", err)
+		}
+		if err := s.setSchemaVersion(1); err != nil {
+			return err
+		}
+		ver = 1
+	}
+	if ver > originStoreSchemaVersion {
+		return fmt.Errorf("origin store schema v%d newer than supported v%d", ver, originStoreSchemaVersion)
+	}
+	return nil
+}
+
+// migrateOrgValuesV1 rebuilds org: from seq: (origin+seq in key, outpoint in value).
+// Local only — no network, no re-crawl. Safe to re-run.
+func (s *BadgerOriginStore) migrateOrgValuesV1() error {
+	wb := s.db.NewWriteBatch()
+	defer wb.Cancel()
+
+	err := s.db.View(func(txn *badger.Txn) error {
+		opts := badger.DefaultIteratorOptions
+		opts.Prefix = prefixSeq
+		it := txn.NewIterator(opts)
+		defer it.Close()
+
+		wantKeyLen := len(prefixSeq) + outpointSize + 4
+		for it.Rewind(); it.Valid(); it.Next() {
+			item := it.Item()
+			k := item.Key()
+			if len(k) != wantKeyLen {
+				continue
+			}
+			origin := transaction.NewOutpointFromBytes(k[len(prefixSeq) : len(prefixSeq)+outpointSize])
+			seq := binary.BigEndian.Uint32(k[len(prefixSeq)+outpointSize:])
+			if err := item.Value(func(val []byte) error {
+				if len(val) < outpointSize {
+					return fmt.Errorf("seq value too short (%d)", len(val))
+				}
+				outpoint := transaction.NewOutpointFromBytes(val[:outpointSize])
+				return wb.Set(orgKey(outpoint), encodeOrgValue(origin, seq))
+			}); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		return err
+	}
+	return wb.Flush()
 }
 
 func seqKey(prefix []byte, origin *transaction.Outpoint, seq uint32) []byte {

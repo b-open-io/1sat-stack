@@ -7,6 +7,7 @@ import (
 
 	"github.com/bsv-blockchain/go-sdk/chainhash"
 	"github.com/bsv-blockchain/go-sdk/transaction"
+	"github.com/dgraph-io/badger/v4"
 )
 
 func testOutpoint(t *testing.T, n byte, vout uint32) *transaction.Outpoint {
@@ -16,6 +17,95 @@ func testOutpoint(t *testing.T, n byte, vout uint32) *transaction.Outpoint {
 		h[i] = n
 	}
 	return &transaction.Outpoint{Txid: h, Index: vout}
+}
+
+// TestMigrateOrgValuesV1 seeds a pre-#15 store (org: = origin only) plus seq:
+// rows, then opens via NewBadgerOriginStore and checks org: is widened in place.
+func TestMigrateOrgValuesV1(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "origins")
+	origin := testOutpoint(t, 1, 0)
+	mid := testOutpoint(t, 2, 0)
+	tip := testOutpoint(t, 3, 0)
+
+	opts := badger.DefaultOptions(path)
+	opts.Logger = nil
+	db, err := badger.Open(opts)
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = db.Update(func(txn *badger.Txn) error {
+		// Legacy org: origin-only (36B)
+		for _, op := range []*transaction.Outpoint{origin, mid, tip} {
+			if err := txn.Set(orgKey(op), origin.Bytes()); err != nil {
+				return err
+			}
+		}
+		// seq: is authoritative for rebuild
+		entries := []struct {
+			op  *transaction.Outpoint
+			seq uint32
+		}{
+			{origin, 0}, {mid, 1}, {tip, 2},
+		}
+		for _, e := range entries {
+			if err := txn.Set(seqKey(prefixSeq, origin, e.seq), e.op.Bytes()); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		db.Close()
+		t.Fatal(err)
+	}
+	if err := db.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	store, err := NewBadgerOriginStore(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+
+	ver, err := store.schemaVersion()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ver != 1 {
+		t.Fatalf("schema version=%d want 1", ver)
+	}
+
+	ctx := context.Background()
+	for _, tc := range []struct {
+		op  *transaction.Outpoint
+		seq uint32
+	}{
+		{origin, 0}, {mid, 1}, {tip, 2},
+	} {
+		info, err := store.GetOrigin(ctx, tc.op)
+		if err != nil {
+			t.Fatalf("GetOrigin(%s): %v", tc.op.String(), err)
+		}
+		if info == nil || info.Seq != tc.seq {
+			t.Fatalf("GetOrigin(%s)=%v want seq %d", tc.op.String(), info, tc.seq)
+		}
+		if !info.Origin.Txid.Equal(origin.Txid) {
+			t.Fatalf("origin mismatch for %s", tc.op.String())
+		}
+	}
+
+	// Re-open is a no-op (still v1)
+	store.Close()
+	store2, err := NewBadgerOriginStore(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store2.Close()
+	info, err := store2.GetOrigin(ctx, tip)
+	if err != nil || info == nil || info.Seq != 2 {
+		t.Fatalf("after reopen tip=%v err=%v", info, err)
+	}
 }
 
 func TestOrgValueRoundTrip(t *testing.T) {

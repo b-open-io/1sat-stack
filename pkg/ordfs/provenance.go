@@ -2,11 +2,15 @@ package ordfs
 
 import (
 	"context"
+	"encoding/binary"
 	"fmt"
 
 	"github.com/bsv-blockchain/go-sdk/chainhash"
 	"github.com/bsv-blockchain/go-sdk/transaction"
 )
+
+// OUTPOINT_BEEF is the BRC-158 envelope prefix (little-endian on the wire).
+const OUTPOINT_BEEF = uint32(0x16a7beef)
 
 // Provenance holds a BRC-150 tip→origin package (binary BEEF + path metadata).
 type Provenance struct {
@@ -14,13 +18,13 @@ type Provenance struct {
 	Tip    *transaction.Outpoint
 	// Path is ordered tip → … → origin (inclusive).
 	Path []*transaction.Outpoint
-	// Beef is AtomicBEEF rooted at the tip txid (BRC-95), covering path transactions.
+	// Beef is Outpoint BEEF (BRC-158) for the tip outpoint.
 	Beef []byte
 }
 
 // BuildProvenance assembles a BRC-150 provenance package for a 1-sat tip outpoint.
 // It resolves the ordinal chain (crawling if needed), loads each path transaction
-// from beef storage, and returns AtomicBEEF rooted at the tip.
+// from beef storage, and returns Outpoint BEEF (BRC-158) for the tip.
 func (o *Ordfs) BuildProvenance(ctx context.Context, tip *transaction.Outpoint) (*Provenance, error) {
 	if tip == nil {
 		return nil, fmt.Errorf("tip outpoint is required")
@@ -94,10 +98,10 @@ func (o *Ordfs) provenancePath(ctx context.Context, tip *transaction.Outpoint) (
 	return path, info.Origin, nil
 }
 
-// assemblePathBeef merges BEEF for every path hop and, for each hop, every
-// input’s source transaction. Source txs are required so a verifier can re-run
-// 1Sat ordinal assignment (path “spends parent” alone is not enough on multi-in
-// transfers). Returns AtomicBEEF rooted at the tip.
+// assemblePathBeef merges BEEF for every path hop and, for each hop, source
+// txs for inputs[0..carrier] only. Later inputs are irrelevant to 1Sat ordinal
+// assignment and would explode proof size on fat multi-in transfers.
+// Returns Outpoint BEEF (BRC-158) for the tip outpoint.
 func (o *Ordfs) assemblePathBeef(ctx context.Context, tip *transaction.Outpoint, path []*transaction.Outpoint) ([]byte, error) {
 	var merged *transaction.Beef
 	seen := make(map[chainhash.Hash]struct{}, len(path)*2)
@@ -124,7 +128,7 @@ func (o *Ordfs) assemblePathBeef(ctx context.Context, tip *transaction.Outpoint,
 		return nil
 	}
 
-	for _, op := range path {
+	for i, op := range path {
 		if err := mergeTxid(&op.Txid); err != nil {
 			return nil, err
 		}
@@ -132,13 +136,18 @@ func (o *Ordfs) assemblePathBeef(ctx context.Context, tip *transaction.Outpoint,
 		if tx == nil {
 			return nil, fmt.Errorf("transaction %s missing after merge", op.Txid.String())
 		}
-		// Always attach input source txs (even when hop is mined) for ordinal math.
-		for _, input := range tx.Inputs {
-			if input.SourceTXID == nil {
+
+		carrier, err := o.carrierInputIndex(ctx, tx, op, pathParent(path, i))
+		if err != nil {
+			return nil, fmt.Errorf("carrier input for %s: %w", op.String(), err)
+		}
+		for j := 0; j <= carrier; j++ {
+			in := tx.Inputs[j]
+			if in.SourceTXID == nil {
 				continue
 			}
-			if err := mergeTxid(input.SourceTXID); err != nil {
-				return nil, fmt.Errorf("input of %s: %w", op.Txid.String(), err)
+			if err := mergeTxid(in.SourceTXID); err != nil {
+				return nil, fmt.Errorf("input %d of %s: %w", j, op.Txid.String(), err)
 			}
 		}
 	}
@@ -147,9 +156,85 @@ func (o *Ordfs) assemblePathBeef(ctx context.Context, tip *transaction.Outpoint,
 		return nil, fmt.Errorf("no transactions on path: %w", ErrNotFound)
 	}
 
-	beefBytes, err := merged.AtomicBytes(&tip.Txid)
+	beefBytes, err := outpointBeefBytes(merged, tip)
 	if err != nil {
-		return nil, fmt.Errorf("failed to serialize atomic beef: %w", err)
+		return nil, fmt.Errorf("failed to serialize outpoint beef: %w", err)
 	}
 	return beefBytes, nil
+}
+
+// outpointBeefBytes encodes BRC-158: 0x16a7beef || outpoint(36) || BEEF.
+func outpointBeefBytes(b *transaction.Beef, subject *transaction.Outpoint) ([]byte, error) {
+	if b == nil || subject == nil {
+		return nil, fmt.Errorf("beef and subject outpoint are required")
+	}
+	body, err := b.Bytes()
+	if err != nil {
+		return nil, err
+	}
+	op := subject.Bytes()
+	out := make([]byte, 4+len(op)+len(body))
+	binary.LittleEndian.PutUint32(out[0:4], OUTPOINT_BEEF)
+	copy(out[4:4+len(op)], op)
+	copy(out[4+len(op):], body)
+	return out, nil
+}
+
+// pathParent is the next hop toward origin (path is tip→origin), or nil at origin.
+func pathParent(path []*transaction.Outpoint, i int) *transaction.Outpoint {
+	if i+1 >= len(path) {
+		return nil
+	}
+	return path[i+1]
+}
+
+// carrierInputIndex is the input that supplies the ordinal for hopOut.
+// When parent is known (transfer hop), match that spend; otherwise use 1Sat
+// offset math (origin hop).
+func (o *Ordfs) carrierInputIndex(ctx context.Context, tx *transaction.Transaction, hopOut, parent *transaction.Outpoint) (int, error) {
+	if hopOut == nil || int(hopOut.Index) >= len(tx.Outputs) {
+		return -1, fmt.Errorf("invalid hop outpoint")
+	}
+	if tx.Outputs[hopOut.Index].Satoshis != 1 {
+		return -1, fmt.Errorf("hop output is not 1-sat")
+	}
+
+	if parent != nil {
+		for j, in := range tx.Inputs {
+			if in.SourceTXID != nil && in.SourceTXID.Equal(parent.Txid) && in.SourceTxOutIndex == parent.Index {
+				return j, nil
+			}
+		}
+		return -1, fmt.Errorf("parent %s not spent by %s", parent.String(), hopOut.Txid.String())
+	}
+
+	var ordinalOffset uint64
+	for i := 0; i < int(hopOut.Index); i++ {
+		if tx.Outputs[i].Satoshis > 0 {
+			ordinalOffset += tx.Outputs[i].Satoshis
+		}
+	}
+
+	var cumulative uint64
+	for j, in := range tx.Inputs {
+		if in.SourceTXID == nil {
+			return -1, fmt.Errorf("input %d missing source txid", j)
+		}
+		prevOut, err := o.loadOutput(ctx, &transaction.Outpoint{
+			Txid:  *in.SourceTXID,
+			Index: in.SourceTxOutIndex,
+		})
+		if err != nil {
+			return -1, fmt.Errorf("load input %d: %w", j, err)
+		}
+		if cumulative == ordinalOffset {
+			return j, nil
+		}
+		cumulative += prevOut.Satoshis
+		if cumulative > ordinalOffset {
+			// Ordinal carved from mid multi-sat input — that input is still the carrier.
+			return j, nil
+		}
+	}
+	return -1, fmt.Errorf("no carrier input for %s", hopOut.String())
 }
