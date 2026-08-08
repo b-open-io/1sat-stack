@@ -3,6 +3,7 @@ package ordfs
 import (
 	"testing"
 
+	"github.com/alicebob/miniredis/v2"
 	"github.com/bsv-blockchain/go-sdk/transaction"
 )
 
@@ -22,7 +23,18 @@ func contractStores(t *testing.T) map[string]OriginStore {
 		}
 	})
 
-	stores := map[string]OriginStore{"badger": badgerStore}
+	mr := miniredis.RunT(t)
+	redisStore, err := NewRedisOriginStore(t.Context(), "redis://"+mr.Addr())
+	if err != nil {
+		t.Fatalf("failed to create redis store: %v", err)
+	}
+	t.Cleanup(func() {
+		if err := redisStore.Close(); err != nil {
+			t.Errorf("failed to close redis store: %v", err)
+		}
+	})
+
+	stores := map[string]OriginStore{"badger": badgerStore, "redis": redisStore}
 
 	// Fixture chain: revisions at seq 0 and 3, map entries at 1 and 3, parent at 2.
 	origin := testOutpoint(t, 1, 0)
@@ -123,6 +135,50 @@ func TestOriginStoreLatestBeforeContract(t *testing.T) {
 					})
 				}
 			})
+		})
+	}
+}
+
+// TestOriginStoreGetOriginContract pins that every implementation returns the
+// origin AND the sequence the outpoint holds, so callers never need a second
+// lookup to number a chain.
+func TestOriginStoreGetOriginContract(t *testing.T) {
+	for name, store := range contractStores(t) {
+		t.Run(name, func(t *testing.T) {
+			tests := []struct {
+				name     string
+				outpoint *transaction.Outpoint
+				wantSeq  uint32
+				wantNil  bool
+			}{
+				{name: "origin maps to itself at seq 0", outpoint: testOutpoint(t, 1, 0), wantSeq: 0},
+				{name: "mid chain carries its seq", outpoint: testOutpoint(t, 3, 0), wantSeq: 2},
+				{name: "tip carries its seq", outpoint: testOutpoint(t, 5, 0), wantSeq: 4},
+				{name: "unknown outpoint returns nil", outpoint: testOutpoint(t, 9, 9), wantNil: true},
+			}
+			for _, tt := range tests {
+				t.Run(tt.name, func(t *testing.T) {
+					info, err := store.GetOrigin(t.Context(), tt.outpoint)
+					if err != nil {
+						t.Fatalf("unexpected error: %v", err)
+					}
+					if tt.wantNil {
+						if info != nil {
+							t.Fatalf("expected nil, got %+v", info)
+						}
+						return
+					}
+					if info == nil {
+						t.Fatal("expected origin info, got nil")
+					}
+					if !info.Origin.Equal(testOutpoint(t, 1, 0)) {
+						t.Errorf("expected origin %s, got %s", testOutpoint(t, 1, 0).OrdinalString(), info.Origin.OrdinalString())
+					}
+					if info.Seq != tt.wantSeq {
+						t.Errorf("expected seq %d, got %d", tt.wantSeq, info.Seq)
+					}
+				})
+			}
 		})
 	}
 }

@@ -5,6 +5,7 @@ go 1.26.3
 replace github.com/bsv-blockchain/go-messagebox-server => github.com/b-open-io/go-messagebox-server v0.0.0-20260406134028-ee4a55ff0f6e
 
 require (
+	github.com/alicebob/miniredis/v2 v2.38.0
 	github.com/b-open-io/go-junglebus v0.3.5
 	github.com/bitcoinschema/go-bmap v0.2.4
 	github.com/bitcoinschema/go-sigma v0.1.2

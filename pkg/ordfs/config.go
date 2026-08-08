@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"net/url"
 	"path/filepath"
 
 	"github.com/b-open-io/1sat-stack/pkg/beef"
@@ -11,12 +12,24 @@ import (
 	"github.com/spf13/viper"
 )
 
+// Origin store provider constants
+const (
+	OriginStoreProviderBadger = "badger"
+	OriginStoreProviderRedis  = "redis"
+)
+
 // Config holds ORDFS configuration
 type Config struct {
 	Enabled bool `mapstructure:"enabled"`
 
+	// Origin store backend: badger or redis
+	OriginStoreProvider string `mapstructure:"origin_store_provider"`
+
 	// Origin store path (Badger data directory)
 	OriginStorePath string `mapstructure:"origin_store_path"`
+
+	// Origin store Redis URL (redis provider only)
+	OriginStoreRedisURL string `mapstructure:"origin_store_redis_url"`
 
 	// Cache configuration
 	Cache CacheConfig `mapstructure:"cache"`
@@ -46,10 +59,52 @@ func (c *Config) SetDefaults(v *viper.Viper, prefix string) {
 	}
 
 	v.SetDefault(p+"enabled", true)
+	v.SetDefault(p+"origin_store_provider", OriginStoreProviderBadger)
 	v.SetDefault(p+"origin_store_path", "")
+	v.SetDefault(p+"origin_store_redis_url", "")
 	v.SetDefault(p+"cache.lru_size", 10000)
 	v.SetDefault(p+"routes.enabled", true)
 	v.SetDefault(p+"routes.prefix", "/ordfs")
+}
+
+// redactRedisURL strips credentials from a Redis URL for logging.
+func redactRedisURL(raw string) string {
+	u, err := url.Parse(raw)
+	if err != nil {
+		return "invalid"
+	}
+	return u.Redacted()
+}
+
+// newOriginStore creates the origin store selected by origin_store_provider.
+func (c *Config) newOriginStore(ctx context.Context, logger *slog.Logger, dataDir string) (OriginStore, error) {
+	switch c.OriginStoreProvider {
+	case OriginStoreProviderBadger:
+		storePath := c.OriginStorePath
+		if storePath == "" {
+			storePath = filepath.Join(dataDir, "ordfs")
+		}
+		store, err := NewBadgerOriginStore(storePath)
+		if err != nil {
+			return nil, fmt.Errorf("failed to open badger origin store at %s: %w", storePath, err)
+		}
+		logger.Info("ordfs origin store opened", "provider", OriginStoreProviderBadger, "path", storePath)
+		return store, nil
+
+	case OriginStoreProviderRedis:
+		if c.OriginStoreRedisURL == "" {
+			return nil, fmt.Errorf("ordfs origin_store_redis_url is required when origin_store_provider is %s", OriginStoreProviderRedis)
+		}
+		store, err := NewRedisOriginStore(ctx, c.OriginStoreRedisURL)
+		if err != nil {
+			return nil, fmt.Errorf("failed to open redis origin store: %w", err)
+		}
+		logger.Info("ordfs origin store opened", "provider", OriginStoreProviderRedis, "url", redactRedisURL(c.OriginStoreRedisURL))
+		return store, nil
+
+	default:
+		return nil, fmt.Errorf("unknown ordfs origin_store_provider %q: must be %s or %s", c.OriginStoreProvider, OriginStoreProviderBadger, OriginStoreProviderRedis)
+	}
 }
 
 // Services holds initialized ORDFS services
@@ -84,16 +139,10 @@ func (c *Config) Initialize(
 		return nil, fmt.Errorf("spends storage is required for ordfs")
 	}
 
-	// Origin store
-	storePath := c.OriginStorePath
-	if storePath == "" {
-		storePath = filepath.Join(dataDir, "ordfs")
-	}
-	originStore, err := NewBadgerOriginStore(storePath)
+	originStore, err := c.newOriginStore(ctx, logger, dataDir)
 	if err != nil {
-		return nil, fmt.Errorf("failed to open origin store: %w", err)
+		return nil, err
 	}
-	logger.Info("ordfs origin store opened", "path", storePath)
 
 	// Cache chain: LRU → optional Redis
 	lruSize := c.Cache.LRUSize
@@ -102,12 +151,12 @@ func (c *Config) Initialize(
 	}
 	var cache Cache
 	if c.Cache.RedisURL != "" {
-		redisCache, err := NewRedisCache(c.Cache.RedisURL, c.Cache.RedisTTL)
+		redisCache, err := NewRedisCache(ctx, c.Cache.RedisURL, c.Cache.RedisTTL)
 		if err != nil {
 			return nil, fmt.Errorf("failed to create redis cache: %w", err)
 		}
 		cache = NewCacheChain(NewLRUCache(lruSize), redisCache)
-		logger.Info("ordfs cache: LRU + Redis", "lru_size", lruSize, "redis", c.Cache.RedisURL)
+		logger.Info("ordfs cache: LRU + Redis", "lru_size", lruSize, "redis", redactRedisURL(c.Cache.RedisURL))
 	} else {
 		cache = NewLRUCache(lruSize)
 		logger.Info("ordfs cache: LRU only", "lru_size", lruSize)
