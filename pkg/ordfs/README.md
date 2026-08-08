@@ -65,18 +65,14 @@ Directory behavior:
 
 ### BRC-150 provenance
 
-`GET /ordfs/brc150/{txid_vout}` returns **binary AtomicBEEF** (BRC-95) for a 1-sat tip outpoint: the ordinal path tip→origin is resolved via the origin store (crawl if needed), each path transaction is loaded from beef storage and merged, then serialized as AtomicBEEF rooted at the tip.
+`GET /ordfs/brc150/{txid_vout}` returns **binary AtomicBEEF** rooted at the tip for a 1-sat outpoint:
 
-Response headers:
+1. Resolve ordinal path tip→origin (origin store / crawl)
+2. Merge each path hop from beef storage
+3. For every hop, also merge **all input source transactions** so a verifier can re-run 1Sat ordinal assignment (not only “child spends parent”)
+4. Serialize AtomicBEEF at the tip
 
-| Header | Meaning |
-|--------|---------|
-| `X-Origin` | Proven origin outpoint |
-| `X-Tip` | Tip outpoint |
-| `X-Ord-Seq` | Absolute sequence of the tip (path length − 1) |
-| `X-Path` | Comma-separated outpoints tip→…→origin |
-
-Body is raw bytes (`application/octet-stream`), not base64 — suitable for embedding as `beefB64` after encoding, or for offline verify pipelines that accept binary BEEF.
+`X-Origin` names the resolved origin. Body is raw bytes (`application/octet-stream`), not base64.
 
 ### Streaming
 

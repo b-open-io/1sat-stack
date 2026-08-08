@@ -94,59 +94,57 @@ func (o *Ordfs) provenancePath(ctx context.Context, tip *transaction.Outpoint) (
 	return path, info.Origin, nil
 }
 
-// assemblePathBeef merges BEEF for every unique txid on the path and returns
-// AtomicBEEF rooted at the tip transaction.
+// assemblePathBeef merges BEEF for every path hop and, for each hop, every
+// input’s source transaction. Source txs are required so a verifier can re-run
+// 1Sat ordinal assignment (path “spends parent” alone is not enough on multi-in
+// transfers). Returns AtomicBEEF rooted at the tip.
 func (o *Ordfs) assemblePathBeef(ctx context.Context, tip *transaction.Outpoint, path []*transaction.Outpoint) ([]byte, error) {
 	var merged *transaction.Beef
-	seen := make(map[chainhash.Hash]struct{}, len(path))
+	seen := make(map[chainhash.Hash]struct{}, len(path)*2)
 
-	for _, op := range path {
-		if _, ok := seen[op.Txid]; ok {
-			continue
+	mergeTxid := func(txid *chainhash.Hash) error {
+		if txid == nil {
+			return nil
 		}
-		seen[op.Txid] = struct{}{}
-
-		b, err := o.beef.LoadBeef(ctx, &op.Txid)
+		if _, ok := seen[*txid]; ok {
+			return nil
+		}
+		seen[*txid] = struct{}{}
+		b, err := o.beef.LoadBeef(ctx, txid)
 		if err != nil {
-			return nil, fmt.Errorf("failed to load beef for %s: %w", op.Txid.String(), err)
+			return fmt.Errorf("failed to load beef for %s: %w", txid.String(), err)
 		}
 		if merged == nil {
 			merged = b
-			continue
+			return nil
 		}
 		if err := merged.MergeBeef(b); err != nil {
-			return nil, fmt.Errorf("failed to merge beef for %s: %w", op.Txid.String(), err)
+			return fmt.Errorf("failed to merge beef for %s: %w", txid.String(), err)
+		}
+		return nil
+	}
+
+	for _, op := range path {
+		if err := mergeTxid(&op.Txid); err != nil {
+			return nil, err
+		}
+		tx := merged.FindTransactionForSigningByHash(&op.Txid)
+		if tx == nil {
+			return nil, fmt.Errorf("transaction %s missing after merge", op.Txid.String())
+		}
+		// Always attach input source txs (even when hop is mined) for ordinal math.
+		for _, input := range tx.Inputs {
+			if input.SourceTXID == nil {
+				continue
+			}
+			if err := mergeTxid(input.SourceTXID); err != nil {
+				return nil, fmt.Errorf("input of %s: %w", op.Txid.String(), err)
+			}
 		}
 	}
 
 	if merged == nil {
 		return nil, fmt.Errorf("no transactions on path: %w", ErrNotFound)
-	}
-
-	// Ensure tip ancestry is complete enough for SPV when proofs are missing.
-	if tx := merged.FindTransactionForSigningByHash(&tip.Txid); tx != nil && tx.MerklePath == nil {
-		for _, input := range tx.Inputs {
-			if input.SourceTXID == nil {
-				continue
-			}
-			if _, ok := seen[*input.SourceTXID]; ok {
-				continue
-			}
-			if input.SourceTransaction != nil {
-				if _, err := merged.MergeTransaction(input.SourceTransaction); err != nil {
-					return nil, fmt.Errorf("failed to merge source tx: %w", err)
-				}
-				continue
-			}
-			srcBeef, err := o.beef.LoadBeef(ctx, input.SourceTXID)
-			if err != nil {
-				return nil, fmt.Errorf("failed to load input beef %s: %w", input.SourceTXID.String(), err)
-			}
-			if err := merged.MergeBeef(srcBeef); err != nil {
-				return nil, fmt.Errorf("failed to merge input beef %s: %w", input.SourceTXID.String(), err)
-			}
-			seen[*input.SourceTXID] = struct{}{}
-		}
 	}
 
 	beefBytes, err := merged.AtomicBytes(&tip.Txid)

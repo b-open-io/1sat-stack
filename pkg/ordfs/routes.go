@@ -600,7 +600,7 @@ func (r *Routes) HandleStream(c *fiber.Ctx) error {
 
 // HandleBRC150 returns AtomicBEEF provenance for a 1-sat tip outpoint (BRC-150).
 // @Summary BRC-150 provenance BEEF
-// @Description Binary AtomicBEEF (BRC-95) covering the ordinal path tip→origin for the given 1-sat outpoint. Headers carry origin, tip, path, and sequence.
+// @Description Binary AtomicBEEF rooted at the tip: path tip→origin plus each hop’s input source txs (for 1Sat ordinal assignment).
 // @Tags ordfs
 // @Produce application/octet-stream
 // @Param path path string true "Tip outpoint (txid_vout)"
@@ -650,15 +650,6 @@ func (r *Routes) HandleBRC150(c *fiber.Ctx) error {
 
 	c.Set("Content-Type", "application/octet-stream")
 	c.Set("X-Origin", prov.Origin.String())
-	c.Set("X-Tip", prov.Tip.String())
-	c.Set("X-Ord-Seq", fmt.Sprintf("%d", len(prov.Path)-1))
-	if len(prov.Path) > 0 {
-		parts := make([]string, len(prov.Path))
-		for i, op := range prov.Path {
-			parts[i] = op.String()
-		}
-		c.Set("X-Path", strings.Join(parts, ","))
-	}
 	httputil.SetNoStore(c)
 	return c.Send(prov.Beef)
 }
