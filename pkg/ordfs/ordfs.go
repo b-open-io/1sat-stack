@@ -697,10 +697,17 @@ func (o *Ordfs) Resolve(ctx context.Context, requestedOutpoint *transaction.Outp
 		Sequence: targetAbsoluteSeq,
 	}
 
-	revEntry, _ := o.origins.GetLatestRevBefore(ctx, origin, uint32(targetAbsoluteSeq))
+	revEntry, err := o.origins.GetLatestRevBefore(ctx, origin, uint32(targetAbsoluteSeq))
+	if err != nil {
+		return nil, fmt.Errorf("failed to load revision at seq %d for %s: %w", targetAbsoluteSeq, origin.OrdinalString(), err)
+	}
 	resolution.Content = revEntry
-	resolution.Map, _ = o.origins.GetLatestMapBefore(ctx, origin, uint32(targetAbsoluteSeq))
-	resolution.Parent, _ = o.origins.GetLatestParentBefore(ctx, origin, uint32(targetAbsoluteSeq))
+	if resolution.Map, err = o.origins.GetLatestMapBefore(ctx, origin, uint32(targetAbsoluteSeq)); err != nil {
+		return nil, fmt.Errorf("failed to load map at seq %d for %s: %w", targetAbsoluteSeq, origin.OrdinalString(), err)
+	}
+	if resolution.Parent, err = o.origins.GetLatestParentBefore(ctx, origin, uint32(targetAbsoluteSeq)); err != nil {
+		return nil, fmt.Errorf("failed to load parent at seq %d for %s: %w", targetAbsoluteSeq, origin.OrdinalString(), err)
+	}
 
 	if resolution.Content == nil {
 		return nil, fmt.Errorf("no inscription found: %w", ErrNotFound)

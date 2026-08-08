@@ -196,7 +196,7 @@ func (s *BadgerOriginStore) getLatestBefore(prefix []byte, origin *transaction.O
 		it := txn.NewIterator(opts)
 		defer it.Close()
 
-		it.Seek(seqKey(prefix, origin, seq+1))
+		it.Seek(seqKey(prefix, origin, seq))
 
 		pfx := originPrefix(prefix, origin)
 		if !it.ValidForPrefix(pfx) {
@@ -226,7 +226,7 @@ func (s *BadgerOriginStore) GetLatestRevBefore(_ context.Context, origin *transa
 		it := txn.NewIterator(opts)
 		defer it.Close()
 
-		it.Seek(seqKey(prefixRev, origin, seq+1))
+		it.Seek(seqKey(prefixRev, origin, seq))
 
 		pfx := originPrefix(prefixRev, origin)
 		if !it.ValidForPrefix(pfx) {
