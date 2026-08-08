@@ -86,21 +86,47 @@ HTML inscriptions can reference other inscriptions using relative paths. For exa
 ## Configuration
 
 ```yaml
+# Default: Badger origin store on local disk under {data_dir}/ordfs
 ordfs:
   enabled: true
-  redis:
-    url: "redis://localhost:6379/0"
+  cache:
+    lru_size: 10000
+    redis_url: "redis://localhost:6379/0"
+    redis_ttl: "24h"
   routes:
     enabled: true
     prefix: "/ordfs"
 ```
 
+```yaml
+# Stateless deployments: Redis origin store, no local volume
+ordfs:
+  enabled: true
+  origin_store_provider: "redis"
+  origin_store_redis_url: "redis://localhost:6379/1"
+```
+
 | Field | Default | Description |
 |-------|---------|-------------|
-| `enabled` | `false` | Enable the OrdFS service |
-| `redis.url` | `redis://localhost:6379/0` | Redis URL for ordinal chain caching |
+| `enabled` | `true` | Enable the OrdFS service |
+| `origin_store_provider` | `badger` | Origin store backend: `badger` or `redis`. |
+| `origin_store_path` | `{data_dir}/ordfs` | Badger data directory for the origin store (`badger` provider only). |
+| `origin_store_redis_url` | — | Redis URL for the origin store; required when the provider is `redis`, with no fallback to badger. |
+| `cache.lru_size` | `10000` | Max entries in the in-process parsed/merged cache |
+| `cache.redis_url` | — | Optional Redis tier behind the LRU cache |
+| `cache.redis_ttl` | — | TTL for Redis cache entries (e.g. `24h`); empty means no expiration |
 | `routes.enabled` | `true` | Enable HTTP route registration |
 | `routes.prefix` | `/ordfs` | Mount prefix for metadata/preview/stream routes |
+
+Badger is the default and keeps the origin index on local disk. Redis holds the
+same index in a shared server instead, which is what stateless deployments and
+horizontally scaled replicas need since they have no durable local volume.
+
+The Redis origin store writes keys with no TTL and requires a Redis configured
+as a durable store: persistence on, eviction off (`maxmemory-policy noeviction`).
+Do not point it at an instance tuned as a cache — evicted origin keys force full
+chain re-crawls. Co-hosting with the cache tier is safe (key namespaces do not
+collide) only when that instance meets the durability requirements.
 
 OrdFS depends on `beef` (transaction storage) and `spends` (spend tracking) being available.
 
