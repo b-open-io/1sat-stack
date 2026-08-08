@@ -63,6 +63,21 @@ Directory behavior:
 - SPA fallback: if the requested file isn't found, `index.html` is served instead (not `"."`)
 - Pass `?raw` to get the raw directory JSON instead of following the default
 
+### BRC-150 provenance
+
+`GET /ordfs/brc150/{txid_vout}` returns **binary AtomicBEEF** (BRC-95) for a 1-sat tip outpoint: the ordinal path tip→origin is resolved via the origin store (crawl if needed), each path transaction is loaded from beef storage and merged, then serialized as AtomicBEEF rooted at the tip.
+
+Response headers:
+
+| Header | Meaning |
+|--------|---------|
+| `X-Origin` | Proven origin outpoint |
+| `X-Tip` | Tip outpoint |
+| `X-Ord-Seq` | Absolute sequence of the tip (path length − 1) |
+| `X-Path` | Comma-separated outpoints tip→…→origin |
+
+Body is raw bytes (`application/octet-stream`), not base64 — suitable for embedding as `beefB64` after encoding, or for offline verify pipelines that accept binary BEEF.
+
 ### Streaming
 
 Large files can be split across multiple inscriptions in a transfer chain. The first inscription has its actual content type with `stream=ordfs` appended as a parameter. Subsequent chunks use the content type `ordfs/stream`.

@@ -55,6 +55,9 @@ func (r *Routes) Register(router fiber.Router) {
 	// Stream endpoint
 	router.Get("/stream/:outpoint", r.HandleStream)
 
+	// BRC-150 provenance AtomicBEEF (binary)
+	router.Get("/brc150/*", r.HandleBRC150)
+
 	// Image transforms (under /ordfs, not root — not part of the ordfs content protocol)
 	router.Get("/image/*", r.HandleImage)
 }
@@ -593,6 +596,71 @@ func (r *Routes) HandleStream(c *fiber.Ctx) error {
 	}
 
 	return nil
+}
+
+// HandleBRC150 returns AtomicBEEF provenance for a 1-sat tip outpoint (BRC-150).
+// @Summary BRC-150 provenance BEEF
+// @Description Binary AtomicBEEF (BRC-95) covering the ordinal path tip→origin for the given 1-sat outpoint. Headers carry origin, tip, path, and sequence.
+// @Tags ordfs
+// @Produce application/octet-stream
+// @Param path path string true "Tip outpoint (txid_vout)"
+// @Success 200 {file} binary "AtomicBEEF bytes"
+// @Failure 400 {object} map[string]string "Bad request"
+// @Failure 404 {object} map[string]string "Not found"
+// @Router /brc150/{path} [get]
+func (r *Routes) HandleBRC150(c *fiber.Ctx) error {
+	path := c.Params("*")
+	if path == "" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": "outpoint is required",
+		})
+	}
+
+	// Accept bare outpoint only (no :seq / filepath) — tip is the outpoint itself.
+	pp, err := parsePointerPath(path)
+	if err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": err.Error()})
+	}
+	if pp.Seq != nil || pp.FilePath != "" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": "brc150 requires a concrete tip outpoint (no :seq or filepath)",
+		})
+	}
+
+	outpoint, isTxid, err := resolvePointerToOutpoint(pp.Pointer)
+	if err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": err.Error()})
+	}
+	if isTxid {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": "brc150 requires txid_vout outpoint, not bare txid",
+		})
+	}
+
+	provCtx, cancel := context.WithTimeout(c.Context(), ResolveTimeout)
+	defer cancel()
+	prov, err := r.ordfs.BuildProvenance(provCtx, outpoint)
+	if err != nil {
+		r.logger.Debug("brc150 provenance failed", "outpoint", outpoint.String(), "error", err)
+		if errors.Is(err, ErrNotFound) {
+			return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": err.Error()})
+		}
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": err.Error()})
+	}
+
+	c.Set("Content-Type", "application/octet-stream")
+	c.Set("X-Origin", prov.Origin.String())
+	c.Set("X-Tip", prov.Tip.String())
+	c.Set("X-Ord-Seq", fmt.Sprintf("%d", len(prov.Path)-1))
+	if len(prov.Path) > 0 {
+		parts := make([]string, len(prov.Path))
+		for i, op := range prov.Path {
+			parts[i] = op.String()
+		}
+		c.Set("X-Path", strings.Join(parts, ","))
+	}
+	httputil.SetNoStore(c)
+	return c.Send(prov.Beef)
 }
 
 // pointerPath represents a parsed pointer path with optional seq and file path
