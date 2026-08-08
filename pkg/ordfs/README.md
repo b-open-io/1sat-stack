@@ -68,6 +68,17 @@ Directory behavior:
 - SPA fallback: if the requested file isn't found, `index.html` is served instead (not `"."`)
 - `?raw` skips interpretation: no ordinal resolve and no directory default — the outpoint’s bytes only (for `ord-fs/json`, that is the directory JSON itself)
 
+### BRC-150 provenance
+
+`GET /ordfs/brc150/{txid_vout}` returns **Outpoint BEEF (BRC-158)** for a 1-sat tip:
+
+1. Resolve ordinal path tip→origin (origin store / crawl)
+2. Merge each path hop from beef storage
+3. For every hop, merge source txs for inputs **0..carrier** only (carrier = spend of path parent, or origin funding input) so a verifier can re-run 1Sat assignment without pulling post-carrier noise inputs
+4. Serialize `0x16a7beef || tip_outpoint(36) || BEEF`
+
+`X-Origin` names the resolved origin. Body is raw bytes (`application/octet-stream`), not base64.
+
 ### Streaming
 
 Large files can be split across multiple inscriptions in a transfer chain. The first inscription has its actual content type with `stream=ordfs` appended as a parameter. Subsequent chunks use the content type `ordfs/stream`.
