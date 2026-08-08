@@ -101,64 +101,23 @@ func (s *BadgerOriginStore) setSchemaVersion(ver uint32) error {
 	})
 }
 
-// ensureSchema runs pending local migrations once, gated by meta:schema.
+// ensureSchema stamps meta:schema for future layout migrations.
+// v0→v1 (org: origin-only → origin||seq) is wipe-and-recrawl, not an automatic rebuild.
 func (s *BadgerOriginStore) ensureSchema() error {
 	ver, err := s.schemaVersion()
 	if err != nil {
 		return err
 	}
-	if ver < 1 {
-		if err := s.migrateOrgValuesV1(); err != nil {
-			return fmt.Errorf("v1 org values: %w", err)
-		}
-		if err := s.setSchemaVersion(1); err != nil {
+	if ver < originStoreSchemaVersion {
+		if err := s.setSchemaVersion(originStoreSchemaVersion); err != nil {
 			return err
 		}
-		ver = 1
+		ver = originStoreSchemaVersion
 	}
 	if ver > originStoreSchemaVersion {
 		return fmt.Errorf("origin store schema v%d newer than supported v%d", ver, originStoreSchemaVersion)
 	}
 	return nil
-}
-
-// migrateOrgValuesV1 rebuilds org: from seq: (origin+seq in key, outpoint in value).
-// Local only — no network, no re-crawl. Safe to re-run.
-func (s *BadgerOriginStore) migrateOrgValuesV1() error {
-	wb := s.db.NewWriteBatch()
-	defer wb.Cancel()
-
-	err := s.db.View(func(txn *badger.Txn) error {
-		opts := badger.DefaultIteratorOptions
-		opts.Prefix = prefixSeq
-		it := txn.NewIterator(opts)
-		defer it.Close()
-
-		wantKeyLen := len(prefixSeq) + outpointSize + 4
-		for it.Rewind(); it.Valid(); it.Next() {
-			item := it.Item()
-			k := item.Key()
-			if len(k) != wantKeyLen {
-				continue
-			}
-			origin := transaction.NewOutpointFromBytes(k[len(prefixSeq) : len(prefixSeq)+outpointSize])
-			seq := binary.BigEndian.Uint32(k[len(prefixSeq)+outpointSize:])
-			if err := item.Value(func(val []byte) error {
-				if len(val) < outpointSize {
-					return fmt.Errorf("seq value too short (%d)", len(val))
-				}
-				outpoint := transaction.NewOutpointFromBytes(val[:outpointSize])
-				return wb.Set(orgKey(outpoint), encodeOrgValue(origin, seq))
-			}); err != nil {
-				return err
-			}
-		}
-		return nil
-	})
-	if err != nil {
-		return err
-	}
-	return wb.Flush()
 }
 
 func seqKey(prefix []byte, origin *transaction.Outpoint, seq uint32) []byte {
