@@ -17,27 +17,32 @@ If both are present, the inscription content type takes precedence, but B protoc
 
 ### Sequence Model
 
-The `seq` parameter controls how OrdFS resolves content along the ordinal transfer chain. This is the most important concept in OrdFS.
+Sequence numbers are **absolute ranks from the origin** of the ordinal chain (`0` = origin inscription, then one hop per transfer). The path outpoint selects which chain; `:seq` selects the rank on that chain.
 
-| seq value | Behavior |
-|-----------|----------|
-| **nil** (omitted) | Return raw content from the exact outpoint. No origin resolution, no crawl. |
-| **-2** | Origin only. Backward crawl to find the origin outpoint, return its content directly. No forward crawl. |
-| **0** | Resolve content at the requested outpoint. Also resolve origin to populate metadata headers. |
-| **-1** | Latest. Full forward crawl to the tip of the transfer chain. |
-| **N** (positive int) | Resolve to a specific absolute sequence number in the transfer chain. |
+1-sat outputs are **chain-resolved by default**. Non-1-sat outputs are always parsed as the exact outpoint.
+
+| Path / flag | Behavior |
+|-------------|----------|
+| **no `:seq`** | Resolve at this outpoint’s own absolute rank (lookup/crawl origin, then rev/map/parent ≤ that rank). |
+| **`:0`** | Absolute origin (rank 0). |
+| **`:N`** (N > 0) | Absolute rank N from origin. |
+| **`:-1`** | Tip of the transfer chain. |
+| **`:-2`** | Alias for `:0` (legacy). |
+| **`?raw`** | Skip ordinal resolution (and directory defaults). Return this outpoint’s script bytes only. |
 
 The seq is appended to the path with a colon: `/content/{txid_vout}:{seq}`.
 
 ### Sequence vs Content Revision
 
-These are tracked separately in Redis sorted sets keyed by origin:
+Tracked in the origin store (Badger or Redis), keyed by origin:
 
-- **`seq:{origin}`** -- Every spend in the transfer chain, regardless of whether the output has content. This is the complete ownership history.
-- **`rev:{origin}`** -- Only entries where the output contains content (inscription or B protocol). This tracks content revisions.
-- **`map:{origin}`** -- Only entries where the output has MAP data.
+- **`seq`** -- Every hop in the transfer chain (ownership history).
+- **`rev`** -- Hops that carry content (inscription or B protocol).
+- **`map` / `par`** -- Hops with MAP or parent data.
 
-When you request seq=5, OrdFS looks up `rev:{origin}` for the most recent content entry at or before seq 5. This means a transfer (ownership change without reinscription) does not change the content -- you still get the last reinscribed content.
+When you request absolute seq=5, OrdFS uses the most recent **rev** at or before 5. A pure transfer does not change served content — you still get the last reinscription.
+
+`org:<outpoint>` stores `origin + seq` so the rank of any known outpoint is a single lookup.
 
 ### MAP Metadata Merging
 
@@ -61,7 +66,7 @@ Directory behavior:
 - Empty path default: serve map key `"."` in place if present; else redirect to `index.html` if present
 - Path traversal resolves filenames against the directory mapping
 - SPA fallback: if the requested file isn't found, `index.html` is served instead (not `"."`)
-- Pass `?raw` to get the raw directory JSON instead of following the default
+- `?raw` skips interpretation: no ordinal resolve and no directory default — the outpoint’s bytes only (for `ord-fs/json`, that is the directory JSON itself)
 
 ### Streaming
 
@@ -132,31 +137,33 @@ OrdFS depends on `beef` (transaction storage) and `spends` (spend tracking) bein
 
 ## Examples
 
-### Get raw inscription content
+### Resolve at this outpoint (default)
 
-No sequence resolution -- returns exactly what's at the outpoint:
+Chain-resolve the outpoint’s own absolute rank (origin headers, last rev ≤ that rank):
 
 ```bash
 curl https://api.1sat.app/content/{txid}_{vout}
 ```
 
-### Get latest content
+### Raw outpoint bytes (no ordinal resolve)
 
-Forward crawl to the tip of the chain:
+```bash
+curl "https://api.1sat.app/content/{txid}_{vout}?raw"
+```
+
+### Latest content (tip)
 
 ```bash
 curl https://api.1sat.app/content/{txid}_{vout}:-1
 ```
 
-### Get origin content
-
-Backward crawl to find the origin, return its content:
+### Origin (absolute rank 0)
 
 ```bash
-curl https://api.1sat.app/content/{txid}_{vout}:-2
+curl https://api.1sat.app/content/{txid}_{vout}:0
 ```
 
-### Get content at a specific sequence
+### Specific absolute sequence
 
 ```bash
 curl https://api.1sat.app/content/{txid}_{vout}:5

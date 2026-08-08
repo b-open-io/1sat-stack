@@ -100,12 +100,14 @@ func (r *Routes) HandleContent(c *fiber.Ctx) error {
 		})
 	}
 
+	raw := c.Query("raw") != ""
 	// Build request
 	var req *Request
 	if isTxid {
 		req = &Request{
 			Txid:    &outpoint.Txid,
 			Seq:     pp.Seq,
+			Raw:     raw,
 			Content: true,
 			Map:     c.QueryBool("map", false),
 			Parent:  c.QueryBool("parent", false),
@@ -114,6 +116,7 @@ func (r *Routes) HandleContent(c *fiber.Ctx) error {
 		req = &Request{
 			Outpoint: outpoint,
 			Seq:      pp.Seq,
+			Raw:      raw,
 			Content:  true,
 			Map:      c.QueryBool("map", false),
 			Parent:   c.QueryBool("parent", false),
@@ -344,6 +347,7 @@ func (r *Routes) HandleMetadata(c *fiber.Ctx) error {
 	}
 	req.Content = false // Don't load content bytes
 	req.Map = true
+	req.Raw = c.Query("raw") != ""
 
 	metaCtx, metaCancel := context.WithTimeout(c.Context(), ResolveTimeout)
 	defer metaCancel()
