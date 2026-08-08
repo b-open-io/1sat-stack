@@ -11,10 +11,14 @@ import (
 type Request struct {
 	Outpoint *transaction.Outpoint
 	Txid     *chainhash.Hash
-	Seq      *int
-	Content  bool
-	Map      bool
-	Parent   bool
+	// Seq is an absolute rank from origin when set: 0 = origin, -1 = tip, N = that hop.
+	// Nil means resolve at this outpoint's own absolute rank (1-sat only).
+	Seq *int
+	// Raw skips ordinal resolution and directory defaults — this outpoint's script only.
+	Raw     bool
+	Content bool
+	Map     bool
+	Parent  bool
 }
 
 // Response represents parsed content

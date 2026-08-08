@@ -21,8 +21,8 @@ import (
 const (
 	ResolveTimeout = 60 * time.Second // Default timeout for web-facing resolve calls
 
-	// SeqOrigin resolves to the origin outpoint and returns its data directly,
-	// without forward crawling or merging reinscriptions/MAP data.
+	// SeqOrigin is accepted as an alias for absolute sequence 0 (the origin).
+	// Prefer :0. Kept so existing clients using :-2 keep working.
 	SeqOrigin = -2
 )
 
@@ -53,7 +53,11 @@ func New(spendsStorage *spends.Storage, beefStorage *beef.Storage, origins Origi
 	}
 }
 
-// Load loads content by request
+// Load loads content by request.
+//
+// 1-sat outputs are chain-resolved by default (nil Seq = this outpoint's abs rank).
+// Set Raw to skip resolution and parse only the requested outpoint's script.
+// Non-1-sat outputs are always raw-parsed.
 func (o *Ordfs) Load(ctx context.Context, req *Request) (*Response, error) {
 	if req.Txid != nil {
 		return o.loadByTxid(ctx, req)
@@ -68,8 +72,7 @@ func (o *Ordfs) Load(ctx context.Context, req *Request) (*Response, error) {
 		return nil, fmt.Errorf("failed to load output: %w", err)
 	}
 
-	// Fast path: no ordinal tracking if not a 1-sat output or no seq requested
-	if output.Satoshis != 1 || req.Seq == nil {
+	if req.Raw || output.Satoshis != 1 {
 		resp := o.parseOutput(ctx, req.Outpoint, output, req.Content)
 		resp.Outpoint = req.Outpoint
 		if !req.Content {
@@ -81,35 +84,49 @@ func (o *Ordfs) Load(ctx context.Context, req *Request) (*Response, error) {
 		return resp, nil
 	}
 
-	// Origin-only resolution: backward crawl to origin, return its data directly
-	if *req.Seq == SeqOrigin {
-		origin, err := o.backwardCrawl(ctx, req.Outpoint)
+	seq := 0
+	if req.Seq == nil {
+		// Resolve at this outpoint's absolute rank on its origin chain.
+		info, err := o.originInfo(ctx, req.Outpoint)
 		if err != nil {
-			return nil, fmt.Errorf("origin resolution failed: %w", err)
+			return nil, err
 		}
-		originOutput, err := o.loadOutput(ctx, origin)
-		if err != nil {
-			return nil, fmt.Errorf("failed to load origin output: %w", err)
+		seq = int(info.Seq)
+	} else {
+		seq = *req.Seq
+		if seq == SeqOrigin {
+			seq = 0
 		}
-		resp := o.parseOutput(ctx, origin, originOutput, req.Content)
-		resp.Outpoint = req.Outpoint
-		resp.Origin = origin
-		if !req.Content {
-			resp.Content = nil
-		}
-		if !req.Map {
-			resp.Map = nil
-		}
-		return resp, nil
 	}
 
-	// Full ordinal resolution
-	resolution, err := o.Resolve(ctx, req.Outpoint, *req.Seq)
+	resolution, err := o.Resolve(ctx, req.Outpoint, seq)
 	if err != nil {
 		return nil, err
 	}
 
 	return o.loadResolution(ctx, req, resolution)
+}
+
+// originInfo returns the indexed origin+seq for outpoint, crawling if needed.
+func (o *Ordfs) originInfo(ctx context.Context, outpoint *transaction.Outpoint) (*OriginInfo, error) {
+	info, err := o.origins.GetOrigin(ctx, outpoint)
+	if err != nil {
+		return nil, fmt.Errorf("failed to check origin: %w", err)
+	}
+	if info != nil {
+		return info, nil
+	}
+	if _, err := o.backwardCrawl(ctx, outpoint); err != nil {
+		return nil, fmt.Errorf("backward crawl failed: %w", err)
+	}
+	info, err = o.origins.GetOrigin(ctx, outpoint)
+	if err != nil {
+		return nil, fmt.Errorf("failed to check origin after crawl: %w", err)
+	}
+	if info == nil {
+		return nil, fmt.Errorf("outpoint not indexed after crawl: %w", ErrNotFound)
+	}
+	return info, nil
 }
 
 // loadByTxid loads content by scanning all outputs of a transaction
