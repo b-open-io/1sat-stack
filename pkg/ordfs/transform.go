@@ -90,7 +90,7 @@ func (f OutputFormat) ContentType() string {
 // client asks for. Every derived image is permanently cacheable because its
 // source outpoint is content addressed, so an unbounded key space would be an
 // unbounded storage commitment.
-var ImageWidths = []int{16, 32, 48, 64, 96, 128, 192, 256, 384, 512, 640, 828, 1080, 1200, 1920}
+var ImageWidths = []int{16, 32, 48, 64, 96, 128, 192, 256, 384, 512, 640, 828, 1080, 1200, 1920, 2560, 3840}
 
 const (
 	// DefaultImageWidth applies when neither dimension is requested.
@@ -364,6 +364,12 @@ func Transform(src []byte, contentType string, p TransformParams, accept string)
 	if err != nil {
 		return nil, "", fmt.Errorf("decode: %w", err)
 	}
+	return transformImage(srcImg, p, accept)
+}
+
+// transformImage applies p to an already decoded source and encodes the
+// result. Shared by the raster decode path and the SVG rasterize path.
+func transformImage(srcImg image.Image, p TransformParams, accept string) ([]byte, OutputFormat, error) {
 	if srcImg.Bounds().Empty() {
 		return nil, "", errors.New("image has no dimensions")
 	}

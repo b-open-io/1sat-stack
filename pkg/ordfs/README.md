@@ -289,8 +289,8 @@ hero image and cropping an avatar are the same operation with different modes.
 one, they degrade to `limit` rather than producing a surprising crop.
 
 Supported dimensions: 16, 32, 48, 64, 96, 128, 192, 256, 384, 512, 640, 828,
-1080, 1200, 1920. Snapping bounds the CDN cache key space regardless of what
-clients request.
+1080, 1200, 1920, 2560, 3840. Snapping bounds the CDN cache key space
+regardless of what clients request.
 
 ### Format negotiation
 
@@ -323,7 +323,10 @@ content-addressed (concrete outpoint) and sent with:
 - Path is a concrete outpoint (or bare txid). `:seq` and directory paths return
   **400** — resolve via metadata/content first.
 - `image/jpeg`, `image/png`, `image/gif`, and `image/webp` are transformed.
-- `image/svg+xml` is passed through unchanged (already scales; no rasterize).
+- `image/svg+xml` is passed through unchanged when `f` is omitted or `auto`
+  (it already scales). An explicit raster `f` (`png`, `jpeg`, `webp`, `avif`)
+  rasterizes it through resvg for consumers that cannot decode SVG, such as
+  satori OG image rendering.
 - Anything else returns **415**.
 - Type is checked before content bytes are loaded when the parse cache can
   answer, so non-images are rejected without pulling a multi-megabyte payload.

@@ -48,7 +48,9 @@ func TestSnapDimension(t *testing.T) {
 		{17, 32},
 		{400, 512},
 		{1920, 1920},
-		{4000, 1920},
+		{2000, 2560},
+		{3840, 3840},
+		{4000, 3840},
 	}
 	for _, tc := range cases {
 		if got := SnapDimension(tc.in); got != tc.want {

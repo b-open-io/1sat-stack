@@ -12,9 +12,9 @@ import (
 )
 
 // WarmImageEncoders performs a throwaway encode so the WebAssembly runtimes
-// backing WebP and AVIF are compiled before the first real request. Without it,
-// whichever request arrives first absorbs roughly a second of one-time
-// initialisation. Safe to call in a goroutine; failures are advisory.
+// backing WebP, AVIF, and resvg are compiled before the first real request.
+// Without it, whichever request arrives first absorbs roughly a second of
+// one-time initialisation. Safe to call in a goroutine; failures are advisory.
 func WarmImageEncoders(logger *slog.Logger) {
 	pixel := image.NewRGBA(image.Rect(0, 0, 1, 1))
 	for _, f := range []OutputFormat{FormatWebP, FormatAVIF} {
@@ -22,13 +22,18 @@ func WarmImageEncoders(logger *slog.Logger) {
 			logger.Debug("image encoder warmup failed", "format", f, "error", err)
 		}
 	}
+	svg := []byte(`<svg xmlns="http://www.w3.org/2000/svg" width="1" height="1"/>`)
+	if _, err := RasterizeSVG(svg, 1, 1); err != nil && logger != nil {
+		logger.Debug("svg rasterizer warmup failed", "error", err)
+	}
 }
 
 // HandleImage serves a transformed copy of an image inscription at a concrete
 // outpoint. Callers resolve ordinality via metadata/content first; this endpoint
-// does not accept :seq. SVG is passed through unchanged; other non-rasters 415.
+// does not accept :seq. SVG passes through unchanged unless an explicit raster
+// format is requested, in which case it is rasterized; other non-rasters 415.
 // @Summary Transform inscription content
-// @Description Render a raster inscription at a bounded size, or pass SVG through. Path is a concrete outpoint (or bare txid) only — no :seq. Caching is CDN via immutable Cache-Control.
+// @Description Render a raster inscription at a bounded size. SVG passes through unless f names a raster format, then it is rasterized at the requested box. Path is a concrete outpoint (or bare txid) only — no :seq. Caching is CDN via immutable Cache-Control.
 // @Tags ordfs
 // @Produce image/jpeg,image/png,image/webp,image/avif,image/svg+xml
 // @Param path path string true "Outpoint (txid_vout) or bare txid — no :seq"
@@ -110,7 +115,17 @@ func (r *Routes) HandleImage(c *fiber.Ctx) error {
 			}
 			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": err.Error()})
 		}
-		return r.sendRawImage(c, full.Content, "image/svg+xml", xOut, false)
+		// An explicit raster format is a demand for conversion — consumers
+		// like satori OG rendering cannot decode SVG. Auto keeps passthrough.
+		if params.Format == FormatAuto {
+			return r.sendRawImage(c, full.Content, "image/svg+xml", xOut, false)
+		}
+		payload, format, err := TransformSVG(full.Content, params, accept)
+		if err != nil {
+			r.logger.Warn("svg rasterize failed", "path", path, "error", err)
+			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to rasterize svg"})
+		}
+		return r.sendRawImage(c, payload, format.ContentType(), xOut, false)
 	}
 
 	if !IsTransformable(head.ContentType) {
