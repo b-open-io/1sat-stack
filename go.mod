@@ -23,6 +23,7 @@ require (
 	github.com/gofiber/fiber/v2 v2.52.14
 	github.com/jackc/pgx/v5 v5.9.2
 	github.com/joho/godotenv v1.6.0-pre.2
+	github.com/kanrichan/resvg-go v0.0.1
 	github.com/libp2p/go-libp2p v0.48.0
 	github.com/mattn/go-sqlite3 v1.14.44
 	github.com/redis/go-redis/v9 v9.17.2

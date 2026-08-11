@@ -110,7 +110,7 @@
         },
         "/image/{path}": {
             "get": {
-                "description": "Render a raster inscription at a bounded size, or pass SVG through. Path is a concrete outpoint (or bare txid) only — no :seq. Caching is CDN via immutable Cache-Control.",
+                "description": "Render a raster inscription at a bounded size. SVG passes through unless f names a raster format, then it is rasterized at the requested box. Path is a concrete outpoint (or bare txid) only — no :seq. Caching is CDN via immutable Cache-Control.",
                 "produces": [
                     "image/jpeg",
                     "image/png",
