@@ -279,7 +279,7 @@ func (m *TokenManager) manageWorkerLifecycle(ctx context.Context) {
 				if outpoint, err := transaction.OutpointFromString(tokenId); err == nil {
 					metadata = m.getTokenMetadata(ctx, outpoint)
 				}
-				tm := NewBsv21ValidatedTopicManager(topicName, nil, metadata)
+				tm := NewBsv21ValidatedTopicManager(topicName, nil, metadata, m.beefStorage)
 				m.overlay.RegisterTopicManager(topicName, tm)
 			}
 			activeTokens[tokenId] = struct{}{}
@@ -328,7 +328,7 @@ func (m *TokenManager) manageWorkerLifecycle(ctx context.Context) {
 			if outpoint, err := transaction.OutpointFromString(tokenId); err == nil {
 				metadata = m.getTokenMetadata(ctx, outpoint)
 			}
-			tm := NewBsv21ValidatedTopicManager(topicName, nil, metadata)
+			tm := NewBsv21ValidatedTopicManager(topicName, nil, metadata, m.beefStorage)
 			m.overlay.RegisterTopicManager(topicName, tm)
 		}
 

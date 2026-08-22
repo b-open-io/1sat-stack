@@ -13,6 +13,12 @@ import (
 	"github.com/bsv-blockchain/go-sdk/transaction"
 )
 
+// TxLoader loads a transaction by txid. Used to inspect the scripts of inputs
+// that are not present in a submitted BEEF.
+type TxLoader interface {
+	LoadTx(ctx context.Context, txid *chainhash.Hash) (*transaction.Transaction, error)
+}
+
 // Bsv21ValidatedTopicManager implements the overlay TopicManager interface for BSV21.
 // It validates token transfers by checking input/output balances.
 // This matches the implementation in bsv21-overlay/topics/bsv21-topic-validated.go
@@ -20,13 +26,17 @@ type Bsv21ValidatedTopicManager struct {
 	topic    string
 	tokenIds map[string]struct{}
 	metadata *overlay.MetaData
+	txLoader TxLoader
 }
 
-// NewBsv21ValidatedTopicManager creates a new BSV21 validated topic manager
-func NewBsv21ValidatedTopicManager(topic string, tokenIds []string, metadata *overlay.MetaData) *Bsv21ValidatedTopicManager {
+// NewBsv21ValidatedTopicManager creates a new BSV21 validated topic manager.
+// txLoader is optional: when set, IdentifyNeededInputs uses it to look at the
+// scripts of unknown inputs and request only actual token inputs.
+func NewBsv21ValidatedTopicManager(topic string, tokenIds []string, metadata *overlay.MetaData, txLoader TxLoader) *Bsv21ValidatedTopicManager {
 	tm := &Bsv21ValidatedTopicManager{
 		topic:    topic,
 		metadata: metadata,
+		txLoader: txLoader,
 	}
 	if len(tokenIds) > 0 {
 		tm.tokenIds = make(map[string]struct{}, len(tokenIds))
@@ -245,7 +255,12 @@ func (tm *Bsv21ValidatedTopicManager) IdentifyAdmissibleOutputs(ctx context.Cont
 	return admit, nil
 }
 
-// IdentifyNeededInputs returns the inputs needed for processing
+// IdentifyNeededInputs returns the inputs required to validate this
+// transaction's token operations: inputs whose source output carries a token
+// id this transaction also has outputs for. Inputs already present in the
+// BEEF are skipped. For the rest, the source transaction's script decides
+// when it is available locally; when it is not, the input is requested so the
+// remote can resolve or reject it.
 func (tm *Bsv21ValidatedTopicManager) IdentifyNeededInputs(ctx context.Context, beef *transaction.Beef, txid *chainhash.Hash) ([]*transaction.Outpoint, error) {
 	tx := beef.FindTransactionForSigningByHash(txid)
 	if tx == nil {
@@ -254,12 +269,19 @@ func (tm *Bsv21ValidatedTopicManager) IdentifyNeededInputs(ctx context.Context, 
 
 	tokens := make(map[string]struct{})
 	for _, output := range tx.Outputs {
-		if b := bsv21template.Decode(output.LockingScript); b != nil {
-			if !tm.HasTokenId(b.Id) {
-				continue
-			}
-			tokens[b.Id] = struct{}{}
+		b := bsv21template.Decode(output.LockingScript)
+		if b == nil {
+			continue
 		}
+		// Deploy outputs admit unconditionally and never reference existing
+		// token inputs, so they create no input requirements.
+		if b.Op == string(bsv21template.OpDeployMint) || b.Op == string(bsv21template.OpDeployAuth) {
+			continue
+		}
+		if !tm.HasTokenId(b.Id) {
+			continue
+		}
+		tokens[b.Id] = struct{}{}
 	}
 
 	if len(tokens) == 0 {
@@ -268,12 +290,32 @@ func (tm *Bsv21ValidatedTopicManager) IdentifyNeededInputs(ctx context.Context, 
 
 	var inputs []*transaction.Outpoint
 	for _, txin := range tx.Inputs {
-		if txin.SourceTransaction == nil {
-			inputs = append(inputs, &transaction.Outpoint{
-				Txid:  *txin.SourceTXID,
-				Index: txin.SourceTxOutIndex,
-			})
+		if txin.SourceTransaction != nil {
+			continue
 		}
+		outpoint := &transaction.Outpoint{
+			Txid:  *txin.SourceTXID,
+			Index: txin.SourceTxOutIndex,
+		}
+		if tm.txLoader != nil {
+			if parent, err := tm.txLoader.LoadTx(ctx, txin.SourceTXID); err == nil && parent != nil {
+				if int(txin.SourceTxOutIndex) >= len(parent.Outputs) {
+					continue
+				}
+				b := bsv21template.Decode(parent.Outputs[txin.SourceTxOutIndex].LockingScript)
+				if b == nil {
+					continue
+				}
+				if b.Op == string(bsv21template.OpDeployMint) || b.Op == string(bsv21template.OpDeployAuth) {
+					b.Id = outpoint.OrdinalString()
+				}
+				if _, ok := tokens[b.Id]; ok {
+					inputs = append(inputs, outpoint)
+				}
+				continue
+			}
+		}
+		inputs = append(inputs, outpoint)
 	}
 	return inputs, nil
 }
