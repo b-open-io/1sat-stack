@@ -475,10 +475,13 @@ func (s *Storage) PopulateAncestors(ctx context.Context, tx *transaction.Transac
 }
 
 func (s *Storage) BuildFullBeef(ctx context.Context, txid *chainhash.Hash) ([]byte, error) {
-	beef, err := s.LoadBeef(ctx, txid)
+	loaded, err := s.LoadBeef(ctx, txid)
 	if err != nil {
 		return nil, err
 	}
+	// The loader shares one Beef instance among concurrent callers for the
+	// same txid; clone before mutating it below.
+	beef := loaded.Clone()
 	tx := beef.FindTransactionForSigningByHash(txid)
 	if tx == nil {
 		return nil, errors.New("transaction " + txid.String() + " not found in BEEF")

@@ -145,7 +145,9 @@ func (o *Ordfs) assemblePathBeef(ctx context.Context, tip *transaction.Outpoint,
 			return fmt.Errorf("failed to load beef for %s: %w", txid.String(), err)
 		}
 		if merged == nil {
-			merged = b
+			// b is shared with concurrent LoadBeef callers; clone before
+			// merging into it on later iterations.
+			merged = b.Clone()
 			return nil
 		}
 		if err := merged.MergeBeef(b); err != nil {
