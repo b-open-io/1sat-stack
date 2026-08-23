@@ -397,6 +397,15 @@ func (s *BadgerOriginStore) WriteBatch(_ context.Context, batch *OriginBatch) er
 		if err := wb.Set(seqKey(prefixSeq, batch.Origin, entry.Seq), opBytes); err != nil {
 			return fmt.Errorf("failed to write seq entry: %w", err)
 		}
+		if err := wb.Delete(seqKey(prefixRev, batch.Origin, entry.Seq)); err != nil {
+			return fmt.Errorf("failed to clear rev entry: %w", err)
+		}
+		if err := wb.Delete(seqKey(prefixMap, batch.Origin, entry.Seq)); err != nil {
+			return fmt.Errorf("failed to clear map entry: %w", err)
+		}
+		if err := wb.Delete(seqKey(prefixPar, batch.Origin, entry.Seq)); err != nil {
+			return fmt.Errorf("failed to clear par entry: %w", err)
+		}
 		if entry.HasRev {
 			revVal := encodeRevValue(entry.Outpoint, entry.ContentLength, entry.ContentType)
 			if err := wb.Set(seqKey(prefixRev, batch.Origin, entry.Seq), revVal); err != nil {
@@ -426,6 +435,15 @@ func (s *BadgerOriginStore) AddEntry(_ context.Context, origin *transaction.Outp
 			return err
 		}
 		if err := txn.Set(seqKey(prefixSeq, origin, entry.Seq), opBytes); err != nil {
+			return err
+		}
+		if err := txn.Delete(seqKey(prefixRev, origin, entry.Seq)); err != nil {
+			return err
+		}
+		if err := txn.Delete(seqKey(prefixMap, origin, entry.Seq)); err != nil {
+			return err
+		}
+		if err := txn.Delete(seqKey(prefixPar, origin, entry.Seq)); err != nil {
 			return err
 		}
 		if entry.HasRev {

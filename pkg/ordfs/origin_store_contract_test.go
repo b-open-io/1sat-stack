@@ -183,6 +183,74 @@ func TestOriginStoreGetOriginContract(t *testing.T) {
 	}
 }
 
+// TestOriginStoreReplacementDropsIndexesContract pins that replacing a sequence
+// also removes index entries whose flags are no longer present. Otherwise a
+// corrected chain entry can leave revision, MAP, or parent data behind.
+func TestOriginStoreReplacementDropsIndexesContract(t *testing.T) {
+	for name, store := range contractStores(t) {
+		t.Run(name, func(t *testing.T) {
+			origin := testOutpoint(t, 1, 0)
+			indexed := testOutpoint(t, 6, 0)
+			plain := testOutpoint(t, 7, 0)
+
+			writers := map[string]func(*OriginEntry) error{
+				"WriteBatch": func(entry *OriginEntry) error {
+					return store.WriteBatch(t.Context(), &OriginBatch{Origin: origin, Entries: []OriginEntry{*entry}})
+				},
+				"AddEntry": func(entry *OriginEntry) error {
+					return store.AddEntry(t.Context(), origin, entry)
+				},
+			}
+
+			for writerName, write := range writers {
+				t.Run(writerName, func(t *testing.T) {
+					if err := write(&OriginEntry{
+						Outpoint: indexed, Seq: 5, HasRev: true, ContentType: "application/json", ContentLength: 99,
+						HasMap: true, HasPar: true,
+					}); err != nil {
+						t.Fatalf("failed to write indexed entry: %v", err)
+					}
+					if err := write(&OriginEntry{Outpoint: plain, Seq: 5}); err != nil {
+						t.Fatalf("failed to replace indexed entry: %v", err)
+					}
+
+					rev, err := store.GetLatestRevBefore(t.Context(), origin, 5)
+					if err != nil {
+						t.Fatalf("failed to read latest revision: %v", err)
+					}
+					if rev == nil || !rev.Outpoint.Equal(testOutpoint(t, 4, 0)) {
+						t.Fatalf("expected replacement to reveal revision at seq 3, got %+v", rev)
+					}
+
+					latestMap, err := store.GetLatestMapBefore(t.Context(), origin, 5)
+					if err != nil {
+						t.Fatalf("failed to read latest MAP entry: %v", err)
+					}
+					assertContractOutpoint(t, latestMap, testOutpoint(t, 4, 0))
+
+					maps, err := store.GetAllMapUpTo(t.Context(), origin, 5)
+					if err != nil {
+						t.Fatalf("failed to read MAP entries: %v", err)
+					}
+					wantMaps := []*transaction.Outpoint{testOutpoint(t, 2, 0), testOutpoint(t, 4, 0)}
+					if len(maps) != len(wantMaps) {
+						t.Fatalf("expected %d MAP entries, got %d", len(wantMaps), len(maps))
+					}
+					for i := range wantMaps {
+						assertContractOutpoint(t, maps[i], wantMaps[i])
+					}
+
+					parent, err := store.GetLatestParentBefore(t.Context(), origin, 5)
+					if err != nil {
+						t.Fatalf("failed to read latest parent: %v", err)
+					}
+					assertContractOutpoint(t, parent, testOutpoint(t, 3, 0))
+				})
+			}
+		})
+	}
+}
+
 func assertContractOutpoint(t *testing.T, got, want *transaction.Outpoint) {
 	t.Helper()
 	if want == nil {

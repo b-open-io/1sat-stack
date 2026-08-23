@@ -271,25 +271,32 @@ func (s *RedisOriginStore) GetMapSeq(ctx context.Context, origin *transaction.Ou
 }
 
 // queueEntry queues the sorted set writes for one chain entry. Each sequence holds at most
-// one member per set, so the score is cleared before the member is added.
+// one member per set, so every score is cleared even when the replacement drops a flag.
 func queueEntry(ctx context.Context, pipe redis.Pipeliner, origin string, entry *OriginEntry) {
 	bound := scoreBound(entry.Seq)
 	score := float64(entry.Seq)
 	outpoint := entry.Outpoint.OrdinalString()
 
-	write := func(prefix, member string) {
+	clear := func(prefix string) {
 		key := prefix + origin
 		pipe.ZRemRangeByScore(ctx, key, bound, bound)
+	}
+	write := func(prefix, member string) {
+		key := prefix + origin
 		pipe.ZAdd(ctx, key, redis.Z{Score: score, Member: member})
 	}
 
+	clear(redisKeySeq)
 	write(redisKeySeq, outpoint)
+	clear(redisKeyRev)
 	if entry.HasRev {
 		write(redisKeyRev, encodeRevMember(entry.Outpoint, entry.ContentLength, entry.ContentType))
 	}
+	clear(redisKeyMap)
 	if entry.HasMap {
 		write(redisKeyMap, outpoint)
 	}
+	clear(redisKeyPar)
 	if entry.HasPar {
 		write(redisKeyPar, outpoint)
 	}
