@@ -85,5 +85,6 @@ Additional binaries live in `cmd/`: `bsv21-reindex` and `fixproofs` for maintena
 
 - `CLAUDE.md` — project conventions and package map
 - `docs/architecture/` — overlay engine, BSV21 pipeline, indexing flow, sync routing
+- `docs/research/SIGMA_IDENTITY_APPLIANCE_TOPOLOGY.md` — Sigma BAP + BRC-169 appliance boundary and consumer inventory
 - `docs/standards/` — config pattern, per-module logging
 - `pkg/store/KEYS.md` — storage key reference
