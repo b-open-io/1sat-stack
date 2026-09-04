@@ -1,0 +1,375 @@
+{
+  "fixtureVersion": 1,
+  "canonicalSha256": "d163add78c6533f8a01af597da12cc9511019c3a8223e0b541883ea43b078a1f",
+  "notes": {
+    "sigmaTransaction": "This fixture does not include or claim to reproduce a confirmed Sigma transaction. No raw Sigma transaction bytes are present in this repository.",
+    "digest": "SHA-256 of the raw concatenation of BRC-169 fields 1-5 (protocol, version, alias, domain, 33-byte certifier key) with no separators or length prefixes.",
+    "canonicalJson": "RFC 8785-style: UTF-8, no insignificant whitespace, object keys sorted lexicographically as UTF-8 code units, arrays in document order, JSON strings with encoding/json escaping, JSON numbers preserved as their literal digits. The canonicalSha256 field is omitted from the hashed document.",
+    "cursor": "Versioned prefix ea1. plus unpadded base64url of {m,q,t,v}. Clients derive the next cursor from the last returned outpoint. BRC-24 output-list hydration currently discards lookup Result metadata, so no cursor can be returned as overlay lookup metadata.",
+    "conflicts": "Multiple valid advertisements for the same alias or domain remain queryable. The overlay never imposes uniqueness.",
+    "http": "The only planned HTTP surface is POST /ecosystemalias/overlay/lookup. Do not invent alias or domain REST routes. Deterministic malformed-query codes are guaranteed at this Go interface; the shared HTTP adapter may surface them as BRC-24 provider-failure."
+  },
+  "constants": {
+    "topic": "tm_ecosystemalias",
+    "lookup": "ls_ecosystemalias",
+    "protocol": "ecosystem-alias",
+    "version": "1",
+    "fieldCount": 6,
+    "defaultLimit": 100,
+    "maxLimit": 500,
+    "httpLookupPath": "/ecosystemalias/overlay/lookup",
+    "cursorPrefix": "ea1."
+  },
+  "signing": {
+    "privateKeyHex": "0000000000000000000000000000000000000000000000000000000000000001",
+    "certifierKeyHex": "0279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
+    "note": "RFC6979/BIP0062 deterministic secp256k1. Test-only key equal to the curve generator; not a production certifier and not a confirmed on-chain signature."
+  },
+  "tokens": {
+    "positive": [
+      {
+        "name": "handcash-basic",
+        "protocol": "ecosystem-alias",
+        "version": "1",
+        "alias": "handcash",
+        "domain": "handcash.io",
+        "certifierKeyHex": "0279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
+        "preimageHex": "65636f73797374656d2d616c6961733168616e646361736868616e64636173682e696f0279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
+        "digestHex": "5d0c3f695a9cd61da6ebaa12ab383fe26ca9c69bf9e9355e4d0622ed80863624",
+        "signatureDerHex": "304502210084ac8b8d9e5d30e3c26acd0907ed68cc3f3ed6efc2bd4bd65faec2bb6dae2fd202201b3da00fe8627e38be9abc2f1fd10d2d15008b9b19bd1b8c5f7b3c12ae161faf",
+        "satoshis": 1
+      },
+      {
+        "name": "punycode-domain",
+        "protocol": "ecosystem-alias",
+        "version": "1",
+        "alias": "lkup",
+        "domain": "xn--bcher-kva.example",
+        "certifierKeyHex": "0279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
+        "preimageHex": "65636f73797374656d2d616c696173316c6b7570786e2d2d62636865722d6b76612e6578616d706c650279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
+        "digestHex": "4acdc056e9a2e3d91e103f08c2dee2981eb8f38df05335843c310bbfde005581",
+        "signatureDerHex": "3045022100be38a4d86d2763cef0c810d3d48bd32b70ff79ad1dcd3a4a8241d8c0cb70a10402203a0fef92ff159704590630a7d5d3798e6e197826ac1f6db03cb6342f2bdd4e5b",
+        "satoshis": 1
+      },
+      {
+        "name": "hyphenated-alias",
+        "protocol": "ecosystem-alias",
+        "version": "1",
+        "alias": "tree-chat",
+        "domain": "treechat.app",
+        "certifierKeyHex": "0279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
+        "preimageHex": "65636f73797374656d2d616c69617331747265652d6368617474726565636861742e6170700279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
+        "digestHex": "70578c635c7f1d7d3495966272dc810087732ea885b07d0b66525398e0742c84",
+        "signatureDerHex": "3044022066fee0609c0d3aea9537d6a204ff2e6de1fbb1424ac310c7b776c8adca12e65602207de7144b04b22b446df3c5545ec021e59fecbb5d3ed5d4e2ce904f50130a8417",
+        "satoshis": 100
+      }
+    ],
+    "negative": [
+      {
+        "name": "wrong-protocol",
+        "protocol": "ecosystem_alias",
+        "version": "1",
+        "alias": "handcash",
+        "domain": "handcash.io",
+        "certifierKeyHex": "0279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
+        "signatureDerHex": "3006020100020100",
+        "code": "invalid-protocol"
+      },
+      {
+        "name": "wrong-version",
+        "protocol": "ecosystem-alias",
+        "version": "2",
+        "alias": "handcash",
+        "domain": "handcash.io",
+        "certifierKeyHex": "0279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
+        "signatureDerHex": "3006020100020100",
+        "code": "invalid-version"
+      },
+      {
+        "name": "unnormalized-alias",
+        "protocol": "ecosystem-alias",
+        "version": "1",
+        "alias": "HandCash",
+        "domain": "handcash.io",
+        "certifierKeyHex": "0279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
+        "signatureDerHex": "3006020100020100",
+        "code": "unnormalized-token"
+      },
+      {
+        "name": "unnormalized-domain",
+        "protocol": "ecosystem-alias",
+        "version": "1",
+        "alias": "handcash",
+        "domain": "HandCash.IO",
+        "certifierKeyHex": "0279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
+        "signatureDerHex": "3006020100020100",
+        "code": "unnormalized-token"
+      },
+      {
+        "name": "empty-alias",
+        "protocol": "ecosystem-alias",
+        "version": "1",
+        "alias": "",
+        "domain": "handcash.io",
+        "certifierKeyHex": "0279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
+        "signatureDerHex": "3006020100020100",
+        "code": "empty-value"
+      },
+      {
+        "name": "short-certifier",
+        "protocol": "ecosystem-alias",
+        "version": "1",
+        "alias": "handcash",
+        "domain": "handcash.io",
+        "certifierKeyHex": "0279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f817",
+        "signatureDerHex": "3006020100020100",
+        "code": "invalid-certifier"
+      },
+      {
+        "name": "uncompressed-certifier",
+        "protocol": "ecosystem-alias",
+        "version": "1",
+        "alias": "handcash",
+        "domain": "handcash.io",
+        "certifierKeyHex": "0479be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798483ada7726a3c4655da4fbfc0e1108a8fd17b448a68554199c47d08ffb10d4b8",
+        "signatureDerHex": "3006020100020100",
+        "code": "invalid-certifier"
+      },
+      {
+        "name": "off-curve-certifier",
+        "protocol": "ecosystem-alias",
+        "version": "1",
+        "alias": "handcash",
+        "domain": "handcash.io",
+        "certifierKeyHex": "02ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+        "signatureDerHex": "3006020100020100",
+        "code": "invalid-certifier"
+      },
+      {
+        "name": "empty-signature",
+        "protocol": "ecosystem-alias",
+        "version": "1",
+        "alias": "handcash",
+        "domain": "handcash.io",
+        "certifierKeyHex": "0279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
+        "signatureDerHex": "",
+        "code": "invalid-signature"
+      },
+      {
+        "name": "non-der-signature",
+        "protocol": "ecosystem-alias",
+        "version": "1",
+        "alias": "handcash",
+        "domain": "handcash.io",
+        "certifierKeyHex": "0279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
+        "signatureDerHex": "deadbeef",
+        "code": "invalid-signature"
+      },
+      {
+        "name": "zero-sats",
+        "protocol": "ecosystem-alias",
+        "version": "1",
+        "alias": "handcash",
+        "domain": "handcash.io",
+        "certifierKeyHex": "0279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
+        "signatureDerHex": "304502210084ac8b8d9e5d30e3c26acd0907ed68cc3f3ed6efc2bd4bd65faec2bb6dae2fd202201b3da00fe8627e38be9abc2f1fd10d2d15008b9b19bd1b8c5f7b3c12ae161faf",
+        "satoshis": 0,
+        "code": "non-positive-value"
+      },
+      {
+        "name": "field-count-five",
+        "fieldCount": 5,
+        "code": "field-count"
+      }
+    ]
+  },
+  "normalization": {
+    "alias": {
+      "positive": [
+        {"input": "handcash", "output": "handcash"},
+        {"input": "HandCash", "output": "handcash"},
+        {"input": "a", "output": "a"},
+        {"input": "tree-chat", "output": "tree-chat"},
+        {"input": "1sat", "output": "1sat"},
+        {"input": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "output": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}
+      ],
+      "negative": [
+        {"input": "", "code": "empty-value"},
+        {"input": " handcash", "code": "leading-trailing-whitespace"},
+        {"input": "handcash ", "code": "leading-trailing-whitespace"},
+        {"input": "händcash", "code": "non-ascii"},
+        {"input": "-handcash", "code": "invalid-alias"},
+        {"input": "handcash-", "code": "invalid-alias"},
+        {"input": "hand--cash", "code": "invalid-alias"},
+        {"input": "hand_cash", "code": "invalid-alias"},
+        {"input": "hand.cash", "code": "invalid-alias"},
+        {"input": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "code": "invalid-alias"}
+      ]
+    },
+    "domain": {
+      "positive": [
+        {"input": "handcash.io", "output": "handcash.io"},
+        {"input": "HandCash.IO", "output": "handcash.io"},
+        {"input": "xn--bcher-kva.example", "output": "xn--bcher-kva.example"},
+        {"input": "XN--BCHER-KVA.EXAMPLE", "output": "xn--bcher-kva.example"},
+        {"input": "a.co", "output": "a.co"},
+        {"input": "1sat.app", "output": "1sat.app"},
+        {"input": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.com", "output": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.com"},
+        {"input": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb.ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc.ddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd", "output": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb.ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc.ddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"}
+      ],
+      "negative": [
+        {"input": "", "code": "empty-value"},
+        {"input": " handcash.io", "code": "leading-trailing-whitespace"},
+        {"input": "handcash.io ", "code": "leading-trailing-whitespace"},
+        {"input": "bücher.example", "code": "non-ascii"},
+        {"input": "localhost", "code": "invalid-domain"},
+        {"input": "handcash.io.", "code": "invalid-domain"},
+        {"input": "foo..bar.com", "code": "invalid-domain"},
+        {"input": "-handcash.io", "code": "invalid-domain"},
+        {"input": "handcash-.io", "code": "invalid-domain"},
+        {"input": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.com", "code": "invalid-domain"},
+        {"input": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb.ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc.dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd", "code": "invalid-domain"}
+      ]
+    }
+  },
+  "queries": {
+    "positive": [
+      {
+        "name": "alias",
+        "json": "{\"alias\":\"handcash\"}",
+        "mode": "alias",
+        "value": "handcash",
+        "limit": 100
+      },
+      {
+        "name": "alias-mixed-case",
+        "json": "{\"alias\":\"HandCash\"}",
+        "mode": "alias",
+        "value": "handcash",
+        "limit": 100
+      },
+      {
+        "name": "domain",
+        "json": "{\"domain\":\"handcash.io\"}",
+        "mode": "domain",
+        "value": "handcash.io",
+        "limit": 100
+      },
+      {
+        "name": "domain-punycode-case",
+        "json": "{\"domain\":\"XN--BCHER-KVA.EXAMPLE\"}",
+        "mode": "domain",
+        "value": "xn--bcher-kva.example",
+        "limit": 100
+      },
+      {
+        "name": "findall",
+        "json": "{\"findAll\":true}",
+        "mode": "findAll",
+        "value": "",
+        "limit": 100
+      },
+      {
+        "name": "alias-limit",
+        "json": "{\"alias\":\"handcash\",\"limit\":50}",
+        "mode": "alias",
+        "value": "handcash",
+        "limit": 50
+      },
+      {
+        "name": "findall-max-limit",
+        "json": "{\"findAll\":true,\"limit\":500}",
+        "mode": "findAll",
+        "value": "",
+        "limit": 500
+      },
+      {
+        "name": "alias-with-cursor",
+        "json": "{\"alias\":\"handcash\",\"cursor\":\"ea1.eyJtIjoiYWxpYXMiLCJxIjoiNTdlNjAwYjUzMzM1OGRlYmQyNmVhYWVjZTIzZWRiNWFkYzVlMmFjNDhmYWVkYmRhMmM4YTg5ZWI5NmZmNDhjZSIsInQiOiIwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAxIiwidiI6MH0\"}",
+        "mode": "alias",
+        "value": "handcash",
+        "limit": 100,
+        "cursorTxid": "0000000000000000000000000000000000000000000000000000000000000001",
+        "cursorVout": 0
+      }
+    ],
+    "negative": [
+      {"name": "null", "json": "null", "code": "json-null"},
+      {"name": "empty", "json": "", "code": "malformed-json"},
+      {"name": "array", "json": "[]", "code": "malformed-json"},
+      {"name": "truncated", "json": "{", "code": "malformed-json"},
+      {"name": "empty-object", "json": "{}", "code": "invalid-combination"},
+      {"name": "alias-null", "json": "{\"alias\":null}", "code": "json-null"},
+      {"name": "alias-and-domain", "json": "{\"alias\":\"handcash\",\"domain\":\"handcash.io\"}", "code": "invalid-combination"},
+      {"name": "alias-and-findall", "json": "{\"alias\":\"handcash\",\"findAll\":true}", "code": "invalid-combination"},
+      {"name": "findall-false", "json": "{\"findAll\":false}", "code": "findall-false"},
+      {"name": "unknown-field", "json": "{\"alias\":\"handcash\",\"extra\":1}", "code": "unknown-field"},
+      {"name": "capital-alias-key", "json": "{\"Alias\":\"handcash\"}", "code": "unknown-field"},
+      {"name": "duplicate-alias", "json": "{\"alias\":\"handcash\",\"alias\":\"lkup\"}", "code": "duplicate-field"},
+      {"name": "leading-space-alias", "json": "{\"alias\":\" handcash\"}", "code": "leading-trailing-whitespace"},
+      {"name": "empty-alias", "json": "{\"alias\":\"\"}", "code": "empty-value"},
+      {"name": "unicode-alias", "json": "{\"alias\":\"händcash\"}", "code": "non-ascii"},
+      {"name": "limit-zero", "json": "{\"alias\":\"handcash\",\"limit\":0}", "code": "limit-zero"},
+      {"name": "limit-too-large", "json": "{\"alias\":\"handcash\",\"limit\":501}", "code": "limit-too-large"},
+      {"name": "limit-float", "json": "{\"alias\":\"handcash\",\"limit\":1.5}", "code": "malformed-json"},
+      {"name": "malformed-cursor", "json": "{\"alias\":\"handcash\",\"cursor\":\"not-a-cursor\"}", "code": "malformed-cursor"},
+      {"name": "cursor-from-other-query", "json": "{\"domain\":\"handcash.io\",\"cursor\":\"ea1.eyJtIjoiYWxpYXMiLCJxIjoiNTdlNjAwYjUzMzM1OGRlYmQyNmVhYWVjZTIzZWRiNWFkYzVlMmFjNDhmYWVkYmRhMmM4YTg5ZWI5NmZmNDhjZSIsInQiOiIwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAxIiwidiI6MH0\"}", "code": "cursor-mismatch"}
+    ]
+  },
+  "ordering": {
+    "items": [
+      {"id": "mem-bb", "confirmed": false, "blockHeight": 0, "blockIndex": 0, "txid": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", "vout": 0},
+      {"id": "mem-aa", "confirmed": false, "blockHeight": 0, "blockIndex": 0, "txid": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "vout": 1},
+      {"id": "conf-late", "confirmed": true, "blockHeight": 800001, "blockIndex": 0, "txid": "0000000000000000000000000000000000000000000000000000000000000001", "vout": 0},
+      {"id": "conf-h1-later-idx", "confirmed": true, "blockHeight": 800000, "blockIndex": 5, "txid": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff", "vout": 0},
+      {"id": "conf-h1-same-idx-ff", "confirmed": true, "blockHeight": 800000, "blockIndex": 1, "txid": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff", "vout": 1},
+      {"id": "conf-h1-same-idx-ee", "confirmed": true, "blockHeight": 800000, "blockIndex": 1, "txid": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee", "vout": 0}
+    ],
+    "aliasDomain": ["conf-h1-same-idx-ee", "conf-h1-same-idx-ff", "conf-h1-later-idx", "conf-late", "mem-aa", "mem-bb"],
+    "enumeration": ["conf-late", "mem-aa", "mem-bb", "conf-h1-same-idx-ee", "conf-h1-later-idx", "conf-h1-same-idx-ff"]
+  },
+  "cursors": {
+    "positive": [
+      {
+        "name": "alias-handcash",
+        "mode": "alias",
+        "value": "handcash",
+        "txid": "0000000000000000000000000000000000000000000000000000000000000001",
+        "vout": 0,
+        "fingerprint": "57e600b533358debd26eaaece23edb5adc5e2ac48faedbda2c8a89eb96ff48ce",
+        "encoded": "ea1.eyJtIjoiYWxpYXMiLCJxIjoiNTdlNjAwYjUzMzM1OGRlYmQyNmVhYWVjZTIzZWRiNWFkYzVlMmFjNDhmYWVkYmRhMmM4YTg5ZWI5NmZmNDhjZSIsInQiOiIwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAxIiwidiI6MH0"
+      },
+      {
+        "name": "domain-handcash",
+        "mode": "domain",
+        "value": "handcash.io",
+        "txid": "0000000000000000000000000000000000000000000000000000000000000001",
+        "vout": 2,
+        "fingerprint": "b2ce036da0f5604348de861b772798ccb6000365f7d8cdb5949a8e98959d5339",
+        "encoded": "ea1.eyJtIjoiZG9tYWluIiwicSI6ImIyY2UwMzZkYTBmNTYwNDM0OGRlODYxYjc3Mjc5OGNjYjYwMDAzNjVmN2Q4Y2RiNTk0OWE4ZTk4OTU5ZDUzMzkiLCJ0IjoiMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMSIsInYiOjJ9"
+      },
+      {
+        "name": "findall",
+        "mode": "findAll",
+        "value": "",
+        "txid": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "vout": 1,
+        "fingerprint": "ff68adcf8025fdfbd2aa0678e8d2fce8958920302f9ba38e063b1d376731b709",
+        "encoded": "ea1.eyJtIjoiZmluZEFsbCIsInEiOiJmZjY4YWRjZjgwMjVmZGZiZDJhYTA2NzhlOGQyZmNlODk1ODkyMDMwMmY5YmEzOGUwNjNiMWQzNzY3MzFiNzA5IiwidCI6ImFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWEiLCJ2IjoxfQ"
+      }
+    ],
+    "negative": [
+      {"name": "empty", "encoded": "", "code": "malformed-cursor"},
+      {"name": "wrong-prefix", "encoded": "ea2.AAAA", "code": "malformed-cursor"},
+      {"name": "not-base64", "encoded": "ea1.!!!", "code": "malformed-cursor"},
+      {"name": "newline-in-base64", "encoded": "ea1.AAAA\n", "code": "malformed-cursor"},
+      {
+        "name": "bound-to-other-query",
+        "encoded": "ea1.eyJtIjoiYWxpYXMiLCJxIjoiNTdlNjAwYjUzMzM1OGRlYmQyNmVhYWVjZTIzZWRiNWFkYzVlMmFjNDhmYWVkYmRhMmM4YTg5ZWI5NmZmNDhjZSIsInQiOiIwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAxIiwidiI6MH0",
+        "bindMode": "domain",
+        "bindValue": "handcash.io",
+        "code": "cursor-mismatch"
+      }
+    ]
+  }
+}
