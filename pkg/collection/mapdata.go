@@ -2,7 +2,6 @@ package collection
 
 import (
 	"encoding/json"
-	"strconv"
 
 	"github.com/b-open-io/1sat-stack/pkg/template/bitcom"
 	"github.com/b-open-io/1sat-stack/pkg/template/inscription"
@@ -54,48 +53,20 @@ func DecodeMapFields(lockingScript *script.Script) *MapFields {
 		}
 		// collectionId / mintNumber / rank live in subTypeData JSON (collectionItem subtype).
 		if fields.SubTypeData != "" {
-			var sub map[string]json.RawMessage
-			if json.Unmarshal([]byte(fields.SubTypeData), &sub) == nil && sub != nil {
-				// Optional display metadata must not suppress a collection claim.
-				var collectionID string
-				if json.Unmarshal(sub["collectionId"], &collectionID) == nil {
-					fields.CollectionID = collectionID
-				}
-				fields.MintNumber = decodeDisplayInteger(sub["mintNumber"])
-				fields.Rank = decodeDisplayInteger(sub["rank"])
+			var sub struct {
+				CollectionID string `json:"collectionId"`
+				MintNumber   *int   `json:"mintNumber"`
+				Rank         *int   `json:"rank"`
+			}
+			if json.Unmarshal([]byte(fields.SubTypeData), &sub) == nil {
+				fields.CollectionID = sub.CollectionID
+				fields.MintNumber = sub.MintNumber
+				fields.Rank = sub.Rank
 			}
 		}
 		return fields
 	}
 	return nil
-}
-
-// decodeDisplayInteger accepts nonnegative JSON integers and historical decimal
-// strings. Invalid or overflowing optional metadata remains available in Raw.
-func decodeDisplayInteger(raw json.RawMessage) *int {
-	if len(raw) == 0 {
-		return nil
-	}
-	decimal := string(raw)
-	if raw[0] == '"' {
-		if err := json.Unmarshal(raw, &decimal); err != nil {
-			return nil
-		}
-	}
-	if decimal == "" || (len(decimal) > 1 && decimal[0] == '0') {
-		return nil
-	}
-	for _, digit := range decimal {
-		if digit < '0' || digit > '9' {
-			return nil
-		}
-	}
-	value, err := strconv.ParseInt(decimal, 10, strconv.IntSize)
-	if err != nil || value > 9007199254740991 {
-		return nil
-	}
-	result := int(value)
-	return &result
 }
 
 // IsCollectionMintOutput reports whether an output can be a collection or item mint:
