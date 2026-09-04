@@ -3,6 +3,7 @@ package config
 import (
 	"context"
 	"errors"
+	"log/slog"
 	"path/filepath"
 	"testing"
 )
@@ -173,5 +174,32 @@ func TestClose(t *testing.T) {
 	}
 	if err := store.Close(); err != nil {
 		t.Errorf("Close: %v", err)
+	}
+}
+
+func TestLoadRuntimeConfigEcosystemAlias(t *testing.T) {
+	s := newTestStore(t)
+	ctx := context.Background()
+	values := map[string]string{
+		"overlay.ecosystemalias.enabled":     "true",
+		"overlay.ecosystemalias.sub_id":      "subscription-id",
+		"overlay.ecosystemalias.concurrency": "12",
+		"overlay.ecosystemalias.batch_size":  "750",
+		"overlay.ecosystemalias.log_level":   "debug",
+	}
+	for key, value := range values {
+		if err := s.Set(ctx, key, value); err != nil {
+			t.Fatalf("Set(%q): %v", key, err)
+		}
+	}
+
+	rc, err := LoadRuntimeConfig(ctx, s, slog.Default())
+	if err != nil {
+		t.Fatalf("LoadRuntimeConfig: %v", err)
+	}
+	if !rc.EcosystemAliasEnabled || rc.EcosystemAliasSyncSubID != "subscription-id" ||
+		rc.EcosystemAliasSyncConcurrency != 12 || rc.EcosystemAliasSyncBatchSize != 750 ||
+		rc.EcosystemAliasLogLevel != "debug" {
+		t.Fatalf("ecosystem-alias runtime config = %+v", rc)
 	}
 }

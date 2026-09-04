@@ -81,6 +81,13 @@ type RuntimeConfig struct {
 	BAPSyncBatchSize   int
 	BAPLogLevel        string
 
+	// Ecosystem-alias overlay
+	EcosystemAliasEnabled         bool
+	EcosystemAliasSyncSubID       string
+	EcosystemAliasSyncConcurrency int
+	EcosystemAliasSyncBatchSize   int
+	EcosystemAliasLogLevel        string
+
 	// BSocial overlay
 	BSocialEnabled         bool
 	BSocialSyncSubID       string
@@ -217,6 +224,13 @@ func LoadRuntimeConfig(ctx context.Context, cs Store, logger *slog.Logger) (*Run
 	rc.BAPSyncConcurrency = getInt(ctx, cs, "overlay.bap.concurrency")
 	rc.BAPSyncBatchSize = getInt(ctx, cs, "overlay.bap.batch_size")
 	rc.BAPLogLevel = getString(ctx, cs, "overlay.bap.log_level")
+
+	// Ecosystem alias
+	rc.EcosystemAliasEnabled = getBool(ctx, cs, "overlay.ecosystemalias.enabled")
+	rc.EcosystemAliasSyncSubID = getString(ctx, cs, "overlay.ecosystemalias.sub_id")
+	rc.EcosystemAliasSyncConcurrency = getInt(ctx, cs, "overlay.ecosystemalias.concurrency")
+	rc.EcosystemAliasSyncBatchSize = getInt(ctx, cs, "overlay.ecosystemalias.batch_size")
+	rc.EcosystemAliasLogLevel = getString(ctx, cs, "overlay.ecosystemalias.log_level")
 
 	// BSocial
 	rc.BSocialEnabled = getBool(ctx, cs, "overlay.bsocial.enabled")

@@ -24,6 +24,7 @@ import (
 	"github.com/b-open-io/1sat-stack/pkg/bsocial"
 	"github.com/b-open-io/1sat-stack/pkg/bsv21"
 	configpkg "github.com/b-open-io/1sat-stack/pkg/config"
+	"github.com/b-open-io/1sat-stack/pkg/ecosystemalias"
 	"github.com/b-open-io/1sat-stack/pkg/httputil"
 	"github.com/b-open-io/1sat-stack/sweep"
 
@@ -113,6 +114,9 @@ type Config struct {
 
 	// BAP identity overlay
 	BAP bap.Config `mapstructure:"bap"`
+
+	// BRC-169 ecosystem-alias overlay
+	EcosystemAlias ecosystemalias.Config `mapstructure:"ecosystemalias"`
 
 	// BSocial overlay
 	BSocial bsocial.Config `mapstructure:"bsocial"`
@@ -239,25 +243,26 @@ func (c *Config) CreateLogger(logLevelOverride string) *slog.Logger {
 
 // Services holds all initialized services
 type Services struct {
-	Store   *store.Services
-	PubSub  *pubsub.Services
-	Beef    *beef.Services
-	TXO     *txo.Services
-	Indexer *indexer.Services
-	BSV21   *bsv21.Services
-	BAP     *bap.Services
-	BSocial *bsocial.Services
-	OPNS    *opns.Services
-	OrdLock *ordlockpkg.Services
-	Overlay *overlay.Services
-	Spends  *spends.Services
-	ORDFS   *ordfs.Services
-	Own     *owner.Services
-	Admin   *admin.Services
-	Sweep   *sweep.Services
-	Landing *landing.Services
-	Wallet  *wallet.Services
-	Paymail *paymail.Services
+	Store          *store.Services
+	PubSub         *pubsub.Services
+	Beef           *beef.Services
+	TXO            *txo.Services
+	Indexer        *indexer.Services
+	BSV21          *bsv21.Services
+	BAP            *bap.Services
+	EcosystemAlias *ecosystemalias.Services
+	BSocial        *bsocial.Services
+	OPNS           *opns.Services
+	OrdLock        *ordlockpkg.Services
+	Overlay        *overlay.Services
+	Spends         *spends.Services
+	ORDFS          *ordfs.Services
+	Own            *owner.Services
+	Admin          *admin.Services
+	Sweep          *sweep.Services
+	Landing        *landing.Services
+	Wallet         *wallet.Services
+	Paymail        *paymail.Services
 
 	// ConfigStore for admin data (users, progress, settings)
 	ConfigStore configpkg.Store
@@ -346,6 +351,7 @@ func (c *Config) SetDefaults(v *viper.Viper) {
 	c.Indexer.SetDefaults(v, "indexer")
 	c.BSV21.SetDefaults(v, "bsv21")
 	c.BAP.SetDefaults(v, "bap")
+	c.EcosystemAlias.SetDefaults(v, "ecosystemalias")
 	c.BSocial.SetDefaults(v, "bsocial")
 	c.OPNS.SetDefaults(v, "opns")
 	c.OrdLock.SetDefaults(v, "ordlock")
@@ -574,6 +580,28 @@ func (c *Config) applyRuntimeConfig(rc *configpkg.RuntimeConfig) {
 		}
 		if rc.BAPSyncBatchSize > 0 {
 			c.BAP.Sync.BatchSize = rc.BAPSyncBatchSize
+		}
+	}
+
+	// Ecosystem-alias overlay
+	if rc.EcosystemAliasLogLevel != "" {
+		c.EcosystemAlias.LogLevel = rc.EcosystemAliasLogLevel
+	}
+	if rc.EcosystemAliasEnabled {
+		c.EcosystemAlias.Mode = ecosystemalias.ModeEmbedded
+		c.Overlay.Mode = overlay.ModeEmbedded
+		if c.EcosystemAlias.Sync == nil {
+			c.EcosystemAlias.Sync = &overlay.OverlaySyncConfig{}
+		}
+		if rc.EcosystemAliasSyncSubID != "" {
+			c.EcosystemAlias.Sync.SubscriptionID = rc.EcosystemAliasSyncSubID
+			c.EcosystemAlias.Sync.Enabled = true
+		}
+		if rc.EcosystemAliasSyncConcurrency > 0 {
+			c.EcosystemAlias.Sync.Concurrency = rc.EcosystemAliasSyncConcurrency
+		}
+		if rc.EcosystemAliasSyncBatchSize > 0 {
+			c.EcosystemAlias.Sync.BatchSize = rc.EcosystemAliasSyncBatchSize
 		}
 	}
 
@@ -1048,6 +1076,35 @@ func (c *Config) Initialize(ctx context.Context, logger *slog.Logger) (*Services
 		logger.Info("bap initialized", "duration", time.Since(start).Round(time.Millisecond))
 	}
 
+	// Initialize BRC-169 ecosystem-alias overlay.
+	if c.EcosystemAlias.Mode != "" && c.EcosystemAlias.Mode != ecosystemalias.ModeDisabled {
+		start = time.Now()
+		ecosystemAliasLogger := logging.NewComponentLogger(logger, "ecosystemalias", c.EcosystemAlias.LogLevel)
+		ecosystemAliasSvc, err := c.EcosystemAlias.Initialize(ctx, ecosystemAliasLogger, moduleDeps)
+		if err != nil {
+			return nil, fmt.Errorf("failed to initialize ecosystem-alias: %w", err)
+		}
+		svc.EcosystemAlias = ecosystemAliasSvc
+
+		if c.EcosystemAlias.Sync != nil && c.EcosystemAlias.Sync.Enabled {
+			if svc.Store == nil || svc.Beef == nil {
+				return nil, fmt.Errorf("ecosystem-alias sync requires store and BEEF services")
+			}
+			if c.EcosystemAlias.Sync.QueueName == "" {
+				c.EcosystemAlias.Sync.QueueName = ecosystemalias.QueueName
+			}
+			svc.EcosystemAlias.Sync = overlay.NewOverlaySync(
+				c.EcosystemAlias.Sync,
+				ecosystemalias.TopicName,
+				svc.Store.Store,
+				svc.Beef.Storage,
+				svc.EcosystemAlias.Engine,
+				ecosystemAliasLogger,
+			)
+		}
+		logger.Info("ecosystem-alias initialized", "duration", time.Since(start).Round(time.Millisecond))
+	}
+
 	// Initialize BSocial
 	if c.BSocial.Mode != bsocial.ModeDisabled && svc.MongoDB != nil {
 		start = time.Now()
@@ -1195,6 +1252,9 @@ func (c *Config) Initialize(ctx context.Context, logger *slog.Logger) (*Services
 			if svc.BAP != nil {
 				lookups["tm_bap"] = svc.BAP.Lookup
 			}
+			if svc.EcosystemAlias != nil {
+				lookups[ecosystemalias.TopicName] = svc.EcosystemAlias.Lookup
+			}
 			if svc.BSocial != nil {
 				lookups["tm_bsocial"] = svc.BSocial.Lookup
 			}
@@ -1258,6 +1318,9 @@ func (c *Config) Initialize(ctx context.Context, logger *slog.Logger) (*Services
 		engines := make(map[string]*engine.Engine)
 		if svc.BAP != nil {
 			engines["bap"] = svc.BAP.Engine
+		}
+		if svc.EcosystemAlias != nil {
+			engines["ecosystemalias"] = svc.EcosystemAlias.Engine
 		}
 		if svc.BSocial != nil {
 			engines["bsocial"] = svc.BSocial.Engine
@@ -1415,6 +1478,17 @@ func (c *Config) Initialize(ctx context.Context, logger *slog.Logger) (*Services
 			logger.Info("BAP JungleBus subscriber initialized", "queue", subCfg.QueueName, "from_block", subCfg.FromBlock)
 		}
 
+		// Ecosystem-alias subscriber (if subscription_id configured).
+		if svc.EcosystemAlias != nil && svc.EcosystemAlias.Sync != nil && c.EcosystemAlias.Sync != nil && c.EcosystemAlias.Sync.SubscriptionID != "" {
+			subCfg := c.EcosystemAlias.Sync.SubscriberConfig()
+			sub, err := jbsync.NewSubscriber(subCfg, svc.Store.Store, svc.ConfigStore, svc.Chaintracks, svc.JungleBus, logger)
+			if err != nil {
+				return nil, fmt.Errorf("failed to create ecosystem-alias subscriber: %w", err)
+			}
+			svc.JBSubscribers = append(svc.JBSubscribers, sub)
+			logger.Info("ecosystem-alias JungleBus subscriber initialized", "queue", subCfg.QueueName, "from_block", subCfg.FromBlock)
+		}
+
 		// BSocial subscriber (if subscription_id configured)
 		if svc.BSocial != nil && c.BSocial.Sync != nil && c.BSocial.Sync.SubscriptionID != "" {
 			subCfg := c.BSocial.Sync.SubscriberConfig()
@@ -1531,6 +1605,15 @@ func (c *Config) RegisterRoutes(app *fiber.App, svc *Services) {
 			Spec:       bapdocs.Spec,
 			Mounts: moduleMounts(prefixOr(c.BAP.Routes.Prefix, "/bap"), "/bap/overlay",
 				registerFunc(svc.BAP.Routes), svc.BAP.OverlayRoutes, overlayBodyLimit),
+		})
+	}
+
+	if svc.EcosystemAlias != nil && svc.EcosystemAlias.OverlayRoutes != nil {
+		prefix := prefixOr(c.EcosystemAlias.Routes.Prefix, "/ecosystemalias")
+		reg.Add(registrar.Registration{
+			Capability: "ecosystemalias",
+			Mounts: moduleMounts(prefix, prefix+"/overlay",
+				nil, svc.EcosystemAlias.OverlayRoutes, overlayBodyLimit),
 		})
 	}
 
@@ -1801,6 +1884,12 @@ func (svc *Services) Close() error {
 		}
 	}
 
+	if svc.EcosystemAlias != nil {
+		if err := svc.EcosystemAlias.Close(); err != nil {
+			errs = append(errs, fmt.Errorf("ecosystem-alias close: %w", err))
+		}
+	}
+
 	if svc.BAP != nil {
 		if err := svc.BAP.Close(); err != nil {
 			errs = append(errs, fmt.Errorf("bap close: %w", err))
@@ -1993,6 +2082,14 @@ func (svc *Services) StartSubscribers(ctx context.Context, logger *slog.Logger) 
 			}
 		}()
 		logger.Info("started BAP overlay sync")
+	}
+	if svc.EcosystemAlias != nil && svc.EcosystemAlias.Sync != nil {
+		go func() {
+			if err := svc.EcosystemAlias.Sync.Start(ctx); err != nil {
+				logger.Error("ecosystem-alias sync error", "error", err)
+			}
+		}()
+		logger.Info("started ecosystem-alias overlay sync")
 	}
 	if svc.BSocial != nil && svc.BSocial.Sync != nil {
 		go func() {

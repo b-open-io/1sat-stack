@@ -8,6 +8,8 @@ import (
 
 	"github.com/b-open-io/1sat-stack/pkg/beef"
 	"github.com/b-open-io/1sat-stack/pkg/bsv21"
+	configpkg "github.com/b-open-io/1sat-stack/pkg/config"
+	"github.com/b-open-io/1sat-stack/pkg/ecosystemalias"
 	"github.com/b-open-io/1sat-stack/pkg/ordfs"
 	"github.com/b-open-io/1sat-stack/pkg/overlay"
 	"github.com/b-open-io/1sat-stack/pkg/pubsub"
@@ -52,6 +54,9 @@ func TestConfigSetDefaults(t *testing.T) {
 	}
 	if v.GetString("overlay.mode") != overlay.ModeDisabled {
 		t.Errorf("expected overlay.mode=disabled, got %s", v.GetString("overlay.mode"))
+	}
+	if v.GetString("ecosystemalias.mode") != ecosystemalias.ModeDisabled {
+		t.Errorf("expected ecosystemalias.mode=disabled, got %s", v.GetString("ecosystemalias.mode"))
 	}
 	if !v.GetBool("ordfs.enabled") {
 		t.Errorf("expected ordfs.enabled=true, got %v", v.GetBool("ordfs.enabled"))
@@ -165,5 +170,29 @@ func TestServicesClose(t *testing.T) {
 	svc := &Services{}
 	if err := svc.Close(); err != nil {
 		t.Fatalf("expected no error closing nil services, got: %v", err)
+	}
+}
+
+func TestApplyRuntimeConfigEnablesEcosystemAlias(t *testing.T) {
+	cfg := &Config{}
+	cfg.applyRuntimeConfig(&configpkg.RuntimeConfig{
+		SetupComplete:                 true,
+		EcosystemAliasEnabled:         true,
+		EcosystemAliasSyncSubID:       "subscription-id",
+		EcosystemAliasSyncConcurrency: 12,
+		EcosystemAliasSyncBatchSize:   750,
+		EcosystemAliasLogLevel:        "debug",
+	})
+
+	if cfg.EcosystemAlias.Mode != ecosystemalias.ModeEmbedded || cfg.Overlay.Mode != overlay.ModeEmbedded {
+		t.Fatalf("modes = ecosystemalias:%q overlay:%q", cfg.EcosystemAlias.Mode, cfg.Overlay.Mode)
+	}
+	if cfg.EcosystemAlias.Sync == nil || !cfg.EcosystemAlias.Sync.Enabled ||
+		cfg.EcosystemAlias.Sync.SubscriptionID != "subscription-id" ||
+		cfg.EcosystemAlias.Sync.Concurrency != 12 || cfg.EcosystemAlias.Sync.BatchSize != 750 {
+		t.Fatalf("sync config = %+v", cfg.EcosystemAlias.Sync)
+	}
+	if cfg.EcosystemAlias.LogLevel != "debug" {
+		t.Fatalf("log level = %q, want debug", cfg.EcosystemAlias.LogLevel)
 	}
 }
