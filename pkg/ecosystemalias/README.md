@@ -54,14 +54,15 @@ ASCII. Unicode input is rejected; clients must pass punycode.
 
 ## Query
 
-`DecodeQuery` accepts a BRC-24 `query` object with exactly one mode:
+`DecodeQuery` accepts a BRC-24 `query` object with exactly one of:
 
 - `alias`
 - `domain`
+- neither (`{}` or skip/limit only), which lists every live claim
 
-It rejects unknown fields, JSON `null`, malformed JSON, duplicate fields, invalid
-combinations, zero or oversized limits, and negative skips. Full topic membership
-is GASP (`FindUTXOs` / ingest scores), not a lookup mode.
+It rejects unknown fields (`findAll` included), JSON `null`, malformed JSON,
+duplicate fields, alias+domain together, zero or oversized limits, and negative
+skips. Overlay peers still sync the topic with GASP (`FindUTXOs` / ingest scores).
 
 Default page size is 100. Maximum is 500. Optional `skip` is a non-negative
 offset (default 0).
@@ -90,7 +91,7 @@ HeightScore ordering.
 serializing with RFC 8785-style canonical JSON (sorted object keys, no
 insignificant whitespace, JSON numbers as digit literals). Current value:
 
-`b6d8cb2134e0af8b2e49d57a3a58dbddd1703b7d79161d6baf83f88772cf5a0c`
+`c5e5e1d1a62653b721995782f0386f3c666633a079de9e5963758ecc14553418`
 
 A TypeScript copy must fail on drift.
 
@@ -113,8 +114,7 @@ consent (`metanet.handles.aliases`) remains resolver-side.
 
 ### Enumeration and ordering
 
-Admission writes `alias:` and `domain:` events. Lookup filters spent outputs and
-sorts by event score, then numeric output index, before skip/limit. Confirmation
-and reorg restamp those events. Output ingestion scores stay unchanged because
-GASP uses them as sync watermarks. Overlay peers receive the UTXO set in ingest
-order and admit the same way, so their event index matches.
+Admission writes `alias:`, `domain:`, and `*` events. Empty query reads `*`.
+Lookup filters spent outputs and sorts by event score, then numeric output index,
+before skip/limit. Confirmation and reorg restamp those events. Output ingestion
+scores stay unchanged because GASP uses them as sync watermarks.

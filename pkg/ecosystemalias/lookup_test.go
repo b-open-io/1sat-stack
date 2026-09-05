@@ -42,6 +42,10 @@ func TestLookupAdmitAndQuery(t *testing.T) {
 	if len(got) != 1 || got[0] != op.String() {
 		t.Fatalf("domain lookup %v", got)
 	}
+	got = lookupOutpoints(t, svc, `{}`)
+	if len(got) != 1 || got[0] != op.String() {
+		t.Fatalf("empty query %v", got)
+	}
 }
 
 func TestLookupSkipsSpentAndPaginates(t *testing.T) {
@@ -183,7 +187,7 @@ func TestLookupConfirmationOrderingAcrossModes(t *testing.T) {
 	if err := svc.OutputBlockHeightUpdated(t.Context(), &ops[1].Txid, 800000, 3); err != nil {
 		t.Fatal(err)
 	}
-	for _, query := range []string{`{"alias":"aaa","limit":1}`, `{"domain":"aaa.example","limit":1}`} {
+	for _, query := range []string{`{"alias":"aaa","limit":1}`, `{"domain":"aaa.example","limit":1}`, `{"limit":1}`} {
 		got := lookupOutpoints(t, svc, query)
 		if len(got) != 1 || got[0] != ops[1].String() {
 			t.Fatalf("%s: %v, want confirmed %s first", query, got, ops[1])
@@ -201,7 +205,7 @@ func TestLookupConfirmationOrderingAcrossModes(t *testing.T) {
 	}
 	// A reorg restamps all event keys; all modes must agree again.
 	want := lookupOutpoints(t, svc, `{"alias":"aaa"}`)
-	for _, query := range []string{`{"domain":"aaa.example"}`} {
+	for _, query := range []string{`{"domain":"aaa.example"}`, `{}`} {
 		got := lookupOutpoints(t, svc, query)
 		if !reflect.DeepEqual(got, want) {
 			t.Fatalf("reorg %s: %v, want %v", query, got, want)
@@ -235,20 +239,28 @@ func TestLookupNumericVoutOrderBeforePaging(t *testing.T) {
 	if err := svc.OutputBlockHeightUpdated(t.Context(), txid, 800000, 3); err != nil {
 		t.Fatal(err)
 	}
-	for _, mode := range []string{`"alias":"aaa"`, `"domain":"aaa.example"`} {
-		got := lookupOutpoints(t, svc, `{`+mode+`,"limit":1}`)
+	for _, q := range []struct {
+		limit1  string
+		page2   string
+		maxSkip string
+	}{
+		{`{"alias":"aaa","limit":1}`, `{"alias":"aaa","skip":1,"limit":1}`, `{"alias":"aaa","skip":4294967295}`},
+		{`{"domain":"aaa.example","limit":1}`, `{"domain":"aaa.example","skip":1,"limit":1}`, `{"domain":"aaa.example","skip":4294967295}`},
+		{`{"limit":1}`, `{"skip":1,"limit":1}`, `{"skip":4294967295}`},
+	} {
+		got := lookupOutpoints(t, svc, q.limit1)
 		want := (&transaction.Outpoint{Txid: *txid, Index: 1}).String()
 		if len(got) != 1 || got[0] != want {
-			t.Fatalf("%s first page %v, want %s", mode, got, want)
+			t.Fatalf("%s first page %v, want %s", q.limit1, got, want)
 		}
-		got = lookupOutpoints(t, svc, `{`+mode+`,"skip":1,"limit":1}`)
+		got = lookupOutpoints(t, svc, q.page2)
 		want = (&transaction.Outpoint{Txid: *txid, Index: 256}).String()
 		if len(got) != 1 || got[0] != want {
-			t.Fatalf("%s second page %v, want %s", mode, got, want)
+			t.Fatalf("%s second page %v, want %s", q.page2, got, want)
 		}
-		got = lookupOutpoints(t, svc, `{`+mode+`,"skip":4294967295}`)
+		got = lookupOutpoints(t, svc, q.maxSkip)
 		if len(got) != 0 {
-			t.Fatalf("max skip returned %v", got)
+			t.Fatalf("max skip %s returned %v", q.maxSkip, got)
 		}
 	}
 }

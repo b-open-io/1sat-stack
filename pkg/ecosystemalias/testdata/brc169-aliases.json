@@ -1,6 +1,6 @@
 {
   "fixtureVersion": 1,
-  "canonicalSha256": "b6d8cb2134e0af8b2e49d57a3a58dbddd1703b7d79161d6baf83f88772cf5a0c",
+  "canonicalSha256": "c5e5e1d1a62653b721995782f0386f3c666633a079de9e5963758ecc14553418",
   "notes": {
     "sigmaTransaction": "This fixture does not include or claim to reproduce a confirmed Sigma transaction. No raw Sigma transaction bytes are present in this repository.",
     "digest": "SHA-256 of the raw concatenation of BRC-169 fields 1-5 (protocol, version, alias, domain, 33-byte certifier key) with no separators or length prefixes.",
@@ -282,6 +282,21 @@
         "value": "handcash",
         "limit": 100,
         "skip": 100
+      },
+      {
+        "name": "empty",
+        "json": "{}",
+        "mode": "*",
+        "value": "",
+        "limit": 100
+      },
+      {
+        "name": "empty-with-paging",
+        "json": "{\"limit\":500,\"skip\":100}",
+        "mode": "*",
+        "value": "",
+        "limit": 500,
+        "skip": 100
       }
     ],
     "negative": [
@@ -289,7 +304,6 @@
       {"name": "empty", "json": "", "code": "malformed-json"},
       {"name": "array", "json": "[]", "code": "malformed-json"},
       {"name": "truncated", "json": "{", "code": "malformed-json"},
-      {"name": "empty-object", "json": "{}", "code": "invalid-combination"},
       {"name": "alias-null", "json": "{\"alias\":null}", "code": "json-null"},
       {"name": "alias-and-domain", "json": "{\"alias\":\"handcash\",\"domain\":\"handcash.io\"}", "code": "invalid-combination"},
       {"name": "findall-unknown", "json": "{\"findAll\":true}", "code": "unknown-field"},
