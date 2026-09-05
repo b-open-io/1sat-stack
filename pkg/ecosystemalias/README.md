@@ -2,9 +2,9 @@
 
 Contract-only foundation for the generic BRC-169 ecosystem-alias overlay module.
 
-This package freezes parser, query, and cursor interfaces plus conformance vectors.
-It does **not** wire a live module, HTTP routes, topic manager, store, lookup
-implementation, discovery, or sync. OPL-4445 implements those.
+This package freezes parser and query interfaces plus conformance vectors.
+It does **not** wire a live module, HTTP routes, topic manager, or lookup.
+Lookup indexes overlay events. OPL-4445 implements decoding, topic, and routes.
 
 ## Frozen names
 
@@ -61,10 +61,10 @@ ASCII. Unicode input is rejected; clients must pass punycode.
 - `findAll: true`
 
 It rejects unknown fields, JSON `null`, malformed JSON, duplicate fields, invalid
-combinations, `findAll: false`, zero or oversized limits, malformed cursors, and
-a cursor bound to another query.
+combinations, `findAll: false`, zero or oversized limits, and negative skips.
 
-Default page size is 100. Maximum is 500.
+Default page size is 100. Maximum is 500. Optional `skip` is a non-negative
+offset (default 0).
 
 Deterministic malformed-query codes are guaranteed at this Go interface
 (`Error.Code`, independent of `Error.Message`). The existing shared HTTP adapter
@@ -73,37 +73,24 @@ outside this contract.
 
 ## Ordering
 
-Alias/domain results: confirmed first, then earliest block height, lexical txid, output index. Mempool entries follow confirmed
-entries and use lexical txid and output index only.
+Lookup order is overlay `HeightScore` on the event, then output index.
 
-Enumeration (`findAll`) results: lexical txid then output index.
+Confirmed: `height + txIndex/1e9`. Unconfirmed: ingest unix time (sorts after
+any block height). Same transaction (same score) uses `vout`.
 
-Do not use wall-clock scores. Confirmed vs mempool is an explicit flag, not
-`height == 0`.
-
-## Cursor
-
-Cursors are opaque, URL-safe, and versioned (`ea1.` + unpadded base64url).
-They are client-derived from the last returned outpoint plus a fingerprint of
-the normalized query mode and value. On receipt the service resolves that
-outpoint's stored sort key. No server secret is required. Validation is
-structural and binding, not authorization.
-
-The current overlay engine discards lookup `Result` metadata when hydrating an
-`output-list`, so **no cursor can currently be returned as BRC-24 lookup
-metadata**. Clients must derive the next cursor from the last hydrated outpoint.
+`outputs.score` stays ingest time for GASP. Do not page with opaque cursors.
 
 ## Fixtures
 
 `testdata/brc169-aliases.json` is versioned. It covers all six token fields,
-signature digest/vector material, normalization, strict query decoding, ordering
-keys, and cursors.
+signature digest/vector material, normalization, strict query decoding, and
+HeightScore ordering.
 
 `canonicalSha256` is SHA-256 of the document after omitting that field and
 serializing with RFC 8785-style canonical JSON (sorted object keys, no
 insignificant whitespace, JSON numbers as digit literals). Current value:
 
-`fdfa12e2417c474ab0f0a7392e09c5e96fdd5146f4fc38c922e9aef1ba093664`
+`c8a9d7fbd555ba98ad547daa590f30fd480f05841ba93be52bbf756b1e920bb8`
 
 A TypeScript copy must fail on drift.
 
@@ -113,14 +100,13 @@ Signature vectors use a documented RFC6979 test key (secp256k1 generator).
 
 ## OPL-4445 remaining work
 
-The current storage lifecycle has incomplete rollback propagation. Full
-lifecycle and reorg support is required of OPL-4445, including:
+Remaining work:
 
 - A strict local BRC-48 decoder shared by parser and topic manager
-- SQLite and PostgreSQL storage
-- Standard BRC-24 lookup (`ls_ecosystemalias`) returning `output-list`
-- Configuration, routes, discovery, sync, and docs
-- Complete spend, eviction, block-update, restart, and reorg behavior
+- Lookup via overlay events (`alias:` / `domain:`), spends on `outputs`
+- HeightScore restamp on `OutputBlockHeightUpdated`
+- Standard BRC-24 lookup returning `output-list`
+- Configuration, routes, and docs
 
 Parser and topic manager must never fetch manifests. Bidirectional manifest
 consent (`metanet.handles.aliases`) remains resolver-side.
