@@ -1,18 +1,18 @@
 // Package ecosystemalias freezes the BRC-169 ecosystem-alias overlay contract.
 //
-// This package is contract-only: it defines parser/query/cursor interfaces,
-// normalization, typed errors, ordering keys, and conformance vectors.
-// OPL-4445 implements storage, BRC-48 decoding, lookup, routes, and lifecycle.
+// This package is contract-only: it defines parser/query interfaces,
+// normalization, typed errors, HeightScore ordering, and conformance vectors.
+// Lookup indexes overlay events; OPL-4445 implements decoding, topic, routes.
 package ecosystemalias
 
 import (
 	"bytes"
 	"crypto/sha256"
-	"encoding/hex"
 	"errors"
 	"fmt"
 	"math/big"
 
+	"github.com/b-open-io/1sat-stack/pkg/types"
 	ec "github.com/bsv-blockchain/go-sdk/primitives/ec"
 )
 
@@ -59,7 +59,7 @@ type Query struct {
 	Domain  *string
 	FindAll *bool
 	Limit   *uint32
-	Cursor  *string
+	Skip    *uint32
 }
 
 // Claim is a BRC-169 alias advertisement after the six PushDrop fields are decoded.
@@ -99,8 +99,7 @@ const (
 	CodeNonASCII                  Code = "non-ascii"
 	CodeLimitZero                 Code = "limit-zero"
 	CodeLimitTooLarge             Code = "limit-too-large"
-	CodeMalformedCursor           Code = "malformed-cursor"
-	CodeCursorMismatch            Code = "cursor-mismatch"
+	CodeSkipNegative              Code = "skip-negative"
 	CodeInvalidProtocol           Code = "invalid-protocol"
 	CodeInvalidVersion            Code = "invalid-version"
 	CodeFieldCount                Code = "field-count"
@@ -151,6 +150,14 @@ func (q Query) PageLimit() uint32 {
 	return *q.Limit
 }
 
+// PageSkip returns the query offset, zero when Skip is omitted.
+func (q Query) PageSkip() uint32 {
+	if q.Skip == nil {
+		return 0
+	}
+	return *q.Skip
+}
+
 // Mode returns the exclusive query mode. Invalid combinations return ModeNone.
 func (q Query) Mode() Mode {
 	n := 0
@@ -176,9 +183,7 @@ func (q Query) Mode() Mode {
 	return mode
 }
 
-// BindingValue returns the value currently stored on the query. DecodeQuery
-// stores normalized values; direct Query construction may not. QueryFingerprint
-// normalizes and validates direct values before binding them into a cursor.
+// BindingValue returns the normalized alias or domain on the query, or empty for findAll.
 func (q Query) BindingValue() string {
 	switch q.Mode() {
 	case ModeAlias:
@@ -191,29 +196,6 @@ func (q Query) BindingValue() string {
 		}
 	}
 	return ""
-}
-
-// QueryFingerprint is SHA-256 hex of mode || 0x00 || normalized binding value.
-func QueryFingerprint(q Query) (string, error) {
-	mode := q.Mode()
-	if mode == ModeNone {
-		return "", fail(CodeInvalidCombination, "query must have exactly one of alias, domain, or findAll:true")
-	}
-	var binding string
-	var err error
-	switch mode {
-	case ModeAlias:
-		binding, err = NormalizeAliasQuery(*q.Alias)
-	case ModeDomain:
-		binding, err = NormalizeDomainQuery(*q.Domain)
-	case ModeFindAll:
-		binding = ""
-	}
-	if err != nil {
-		return "", err
-	}
-	sum := sha256.Sum256([]byte(string(mode) + "\x00" + binding))
-	return hex.EncodeToString(sum[:]), nil
 }
 
 // Digest is SHA-256 of the raw concatenation of BRC-169 fields 1–5
@@ -358,48 +340,25 @@ func parseDERInt(b []byte) (val []byte, rest []byte, err error) {
 	return val, b[2+n:], nil
 }
 
-// Placement is the stored sort key resolved from a cursor outpoint.
+// Placement is an event-score sort key. Score is overlay HeightScore
+// (confirmed: height + txIndex/1e9; unconfirmed: ingest unix seconds).
+// Vout breaks ties when two outputs share a score (same transaction).
 type Placement struct {
-	Confirmed   bool
-	BlockHeight uint32
-	BlockIndex  uint64
-	Txid        string
-	Vout        uint32
+	Score float64
+	Vout  uint32
 }
 
-// CompareLookup orders alias/domain results: confirmed first, then earliest
-// block height, lexical txid, output index. Block index is metadata only. Mempool
-// entries follow confirmed entries and compare by lexical txid and output
-// index only. Wall-clock scores are not used.
+// EventScore is types.HeightScore: the value stored on overlay events.
+func EventScore(height uint32, txIndex uint64) float64 {
+	return types.HeightScore(height, txIndex)
+}
+
+// CompareLookup orders alias, domain, and findAll results by event score, then vout.
 func CompareLookup(a, b Placement) int {
-	if a.Confirmed != b.Confirmed {
-		if a.Confirmed {
-			return -1
-		}
-		return 1
-	}
-	if a.Confirmed {
-		if a.BlockHeight != b.BlockHeight {
-			if a.BlockHeight < b.BlockHeight {
-				return -1
-			}
-			return 1
-		}
-	}
-	return compareOutpoint(a, b)
-}
-
-// CompareEnumeration orders findAll results by lexical txid then output index.
-func CompareEnumeration(a, b Placement) int {
-	return compareOutpoint(a, b)
-}
-
-func compareOutpoint(a, b Placement) int {
-	ta, tb := a.Txid, b.Txid
-	if ta < tb {
+	if a.Score < b.Score {
 		return -1
 	}
-	if ta > tb {
+	if a.Score > b.Score {
 		return 1
 	}
 	if a.Vout < b.Vout {
