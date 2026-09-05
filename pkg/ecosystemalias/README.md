@@ -58,10 +58,10 @@ ASCII. Unicode input is rejected; clients must pass punycode.
 
 - `alias`
 - `domain`
-- `findAll: true`
 
 It rejects unknown fields, JSON `null`, malformed JSON, duplicate fields, invalid
-combinations, `findAll: false`, zero or oversized limits, and negative skips.
+combinations, zero or oversized limits, and negative skips. Full topic membership
+is GASP (`FindUTXOs` / ingest scores), not a lookup mode.
 
 Default page size is 100. Maximum is 500. Optional `skip` is a non-negative
 offset (default 0).
@@ -90,7 +90,7 @@ HeightScore ordering.
 serializing with RFC 8785-style canonical JSON (sorted object keys, no
 insignificant whitespace, JSON numbers as digit literals). Current value:
 
-`c8a9d7fbd555ba98ad547daa590f30fd480f05841ba93be52bbf756b1e920bb8`
+`b6d8cb2134e0af8b2e49d57a3a58dbddd1703b7d79161d6baf83f88772cf5a0c`
 
 A TypeScript copy must fail on drift.
 
@@ -113,11 +113,8 @@ consent (`metanet.handles.aliases`) remains resolver-side.
 
 ### Enumeration and ordering
 
-Admission writes an `ecosystemalias:all` event alongside `alias:` and `domain:`.
-All query modes filter spent outputs and sort by event score, then numeric output
-index, before applying skip/limit. Confirmation and reorg callbacks restamp all
-three events. Output ingestion scores stay unchanged because GASP uses them as
-sync watermarks. This replaces `FindUTXOs` enumeration, whose ingestion order
-cannot represent confirmation order. Before activating a node built from an
-earlier review branch, re-index its alias events so enumeration includes every
-retained claim.
+Admission writes `alias:` and `domain:` events. Lookup filters spent outputs and
+sorts by event score, then numeric output index, before skip/limit. Confirmation
+and reorg restamp those events. Output ingestion scores stay unchanged because
+GASP uses them as sync watermarks. Overlay peers receive the UTXO set in ingest
+order and admit the same way, so their event index matches.
