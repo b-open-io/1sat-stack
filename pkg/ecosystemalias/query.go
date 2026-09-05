@@ -10,8 +10,8 @@ import (
 
 // DecodeQuery strictly decodes a BRC-24 query object for ls_ecosystemalias.
 // Unknown fields, JSON null, malformed JSON, invalid combinations,
-// findAll:false, empty or illegal values, zero/oversized limits, malformed
-// cursors, and cursors bound to another query are rejected with typed codes.
+// findAll:false, empty or illegal values, zero/oversized limits, and
+// negative skips are rejected with typed codes.
 func DecodeQuery(raw json.RawMessage) (Query, error) {
 	trimmed := bytes.TrimSpace(raw)
 	if len(trimmed) == 0 {
@@ -96,15 +96,12 @@ func DecodeQuery(raw json.RawMessage) (Query, error) {
 				return Query{}, err
 			}
 			q.Limit = &n
-		case "cursor":
-			s, err := decodeJSONString(value, "cursor")
+		case "skip":
+			n, err := decodeJSONSkip(value)
 			if err != nil {
 				return Query{}, err
 			}
-			if s == "" {
-				return Query{}, fail(CodeMalformedCursor, "cursor is empty")
-			}
-			q.Cursor = &s
+			q.Skip = &n
 		default:
 			return Query{}, fail(CodeUnknownField, "unknown field "+key)
 		}
@@ -119,11 +116,6 @@ func DecodeQuery(raw json.RawMessage) (Query, error) {
 	mode := q.Mode()
 	if mode == ModeNone {
 		return Query{}, fail(CodeInvalidCombination, "query must have exactly one of alias, domain, or findAll:true")
-	}
-	if q.Cursor != nil {
-		if _, err := BindCursor(*q.Cursor, q); err != nil {
-			return Query{}, err
-		}
 	}
 	return q, nil
 }
@@ -186,6 +178,33 @@ func decodeJSONLimit(raw json.RawMessage) (uint32, error) {
 	}
 	if n > int64(MaxLimit) {
 		return 0, fail(CodeLimitTooLarge, fmt.Sprintf("limit must be at most %d", MaxLimit))
+	}
+	return uint32(n), nil
+}
+
+func decodeJSONSkip(raw json.RawMessage) (uint32, error) {
+	dec := json.NewDecoder(bytes.NewReader(raw))
+	dec.UseNumber()
+	tok, err := dec.Token()
+	if err != nil {
+		return 0, fail(CodeMalformedJSON, "skip must be an integer")
+	}
+	num, ok := tok.(json.Number)
+	if !ok {
+		return 0, fail(CodeMalformedJSON, "skip must be an integer")
+	}
+	if err := consumeEOF(dec); err != nil {
+		return 0, fail(CodeMalformedJSON, "skip must be an integer")
+	}
+	if strings.ContainsAny(num.String(), ".eE+") {
+		return 0, fail(CodeMalformedJSON, "skip must be an integer")
+	}
+	n, err := num.Int64()
+	if err != nil {
+		return 0, fail(CodeMalformedJSON, "skip must be an integer")
+	}
+	if n < 0 {
+		return 0, fail(CodeSkipNegative, "skip must not be negative")
 	}
 	return uint32(n), nil
 }
