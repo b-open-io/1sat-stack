@@ -368,7 +368,7 @@ type Placement struct {
 }
 
 // CompareLookup orders alias/domain results: confirmed first, then earliest
-// block height, earliest block index, lexical txid, output index. Mempool
+// block height, lexical txid, output index. Block index is metadata only. Mempool
 // entries follow confirmed entries and compare by lexical txid and output
 // index only. Wall-clock scores are not used.
 func CompareLookup(a, b Placement) int {
@@ -381,12 +381,6 @@ func CompareLookup(a, b Placement) int {
 	if a.Confirmed {
 		if a.BlockHeight != b.BlockHeight {
 			if a.BlockHeight < b.BlockHeight {
-				return -1
-			}
-			return 1
-		}
-		if a.BlockIndex != b.BlockIndex {
-			if a.BlockIndex < b.BlockIndex {
 				return -1
 			}
 			return 1
