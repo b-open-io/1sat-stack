@@ -118,12 +118,8 @@ func TestConfigInitializeRegistersExactContractNames(t *testing.T) {
 	if svc.Lookup.GetMetaData().Name != LookupName {
 		t.Fatalf("lookup metadata name = %q", svc.Lookup.GetMetaData().Name)
 	}
-	if svc.ClaimStore == nil || svc.OverlayRoutes == nil {
-		fatal := "claim store"
-		if svc.ClaimStore != nil {
-			fatal = "overlay routes"
-		}
-		t.Fatalf("%s was not initialized", fatal)
+	if svc.OverlayRoutes == nil {
+		t.Fatal("overlay routes were not initialized")
 	}
 	if err := svc.Close(); err != nil {
 		t.Fatalf("Close: %v", err)

@@ -1,11 +1,11 @@
 {
   "fixtureVersion": 1,
-  "canonicalSha256": "fdfa12e2417c474ab0f0a7392e09c5e96fdd5146f4fc38c922e9aef1ba093664",
+  "canonicalSha256": "c8a9d7fbd555ba98ad547daa590f30fd480f05841ba93be52bbf756b1e920bb8",
   "notes": {
     "sigmaTransaction": "This fixture does not include or claim to reproduce a confirmed Sigma transaction. No raw Sigma transaction bytes are present in this repository.",
     "digest": "SHA-256 of the raw concatenation of BRC-169 fields 1-5 (protocol, version, alias, domain, 33-byte certifier key) with no separators or length prefixes.",
     "canonicalJson": "RFC 8785-style: UTF-8, no insignificant whitespace, object keys sorted lexicographically as UTF-8 code units, arrays in document order, JSON strings with encoding/json escaping, JSON numbers preserved as their literal digits. The canonicalSha256 field is omitted from the hashed document.",
-    "cursor": "Versioned prefix ea1. plus unpadded base64url of {m,q,t,v}. Clients derive the next cursor from the last returned outpoint. BRC-24 output-list hydration currently discards lookup Result metadata, so no cursor can be returned as overlay lookup metadata.",
+    "pagination": "Lookup pages with skip and limit on the query object. Default skip is 0. Default limit is 100. Maximum limit is 500.",
     "conflicts": "Multiple valid advertisements for the same alias or domain remain queryable. The overlay never imposes uniqueness.",
     "http": "The only planned HTTP surface is POST /ecosystemalias/overlay/lookup. Do not invent alias or domain REST routes. Deterministic malformed-query codes are guaranteed at this Go interface; the shared HTTP adapter may surface them as BRC-24 provider-failure."
   },
@@ -17,8 +17,7 @@
     "fieldCount": 6,
     "defaultLimit": 100,
     "maxLimit": 500,
-    "httpLookupPath": "/ecosystemalias/overlay/lookup",
-    "cursorPrefix": "ea1."
+    "httpLookupPath": "/ecosystemalias/overlay/lookup"
   },
   "signing": {
     "privateKeyHex": "0000000000000000000000000000000000000000000000000000000000000001",
@@ -284,13 +283,12 @@
         "limit": 500
       },
       {
-        "name": "alias-with-cursor",
-        "json": "{\"alias\":\"handcash\",\"cursor\":\"ea1.eyJtIjoiYWxpYXMiLCJxIjoiNTdlNjAwYjUzMzM1OGRlYmQyNmVhYWVjZTIzZWRiNWFkYzVlMmFjNDhmYWVkYmRhMmM4YTg5ZWI5NmZmNDhjZSIsInQiOiIwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAxIiwidiI6MH0\"}",
+        "name": "alias-with-skip",
+        "json": "{\"alias\":\"handcash\",\"skip\":100}",
         "mode": "alias",
         "value": "handcash",
         "limit": 100,
-        "cursorTxid": "0000000000000000000000000000000000000000000000000000000000000001",
-        "cursorVout": 0
+        "skip": 100
       }
     ],
     "negative": [
@@ -312,64 +310,19 @@
       {"name": "limit-zero", "json": "{\"alias\":\"handcash\",\"limit\":0}", "code": "limit-zero"},
       {"name": "limit-too-large", "json": "{\"alias\":\"handcash\",\"limit\":501}", "code": "limit-too-large"},
       {"name": "limit-float", "json": "{\"alias\":\"handcash\",\"limit\":1.5}", "code": "malformed-json"},
-      {"name": "malformed-cursor", "json": "{\"alias\":\"handcash\",\"cursor\":\"not-a-cursor\"}", "code": "malformed-cursor"},
-      {"name": "cursor-from-other-query", "json": "{\"domain\":\"handcash.io\",\"cursor\":\"ea1.eyJtIjoiYWxpYXMiLCJxIjoiNTdlNjAwYjUzMzM1OGRlYmQyNmVhYWVjZTIzZWRiNWFkYzVlMmFjNDhmYWVkYmRhMmM4YTg5ZWI5NmZmNDhjZSIsInQiOiIwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAxIiwidiI6MH0\"}", "code": "cursor-mismatch"}
+      {"name": "skip-negative", "json": "{\"alias\":\"handcash\",\"skip\":-1}", "code": "skip-negative"},
+      {"name": "cursor-unknown", "json": "{\"alias\":\"handcash\",\"cursor\":\"ea1.x\"}", "code": "unknown-field"}
     ]
   },
   "ordering": {
     "items": [
-      {"id": "mem-bb", "confirmed": false, "blockHeight": 0, "blockIndex": 0, "txid": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", "vout": 0},
-      {"id": "mem-aa", "confirmed": false, "blockHeight": 0, "blockIndex": 0, "txid": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "vout": 1},
-      {"id": "conf-late", "confirmed": true, "blockHeight": 800001, "blockIndex": 0, "txid": "0000000000000000000000000000000000000000000000000000000000000001", "vout": 0},
-      {"id": "conf-h1-later-idx", "confirmed": true, "blockHeight": 800000, "blockIndex": 5, "txid": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff", "vout": 0},
-      {"id": "conf-h1-same-idx-ff", "confirmed": true, "blockHeight": 800000, "blockIndex": 1, "txid": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff", "vout": 1},
-      {"id": "conf-h1-same-idx-ee", "confirmed": true, "blockHeight": 800000, "blockIndex": 1, "txid": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee", "vout": 0}
+      {"id": "mem-bb", "score": 1800000000, "vout": 0},
+      {"id": "mem-aa", "score": 1700000000, "vout": 1},
+      {"id": "conf-late", "score": 800001, "vout": 0},
+      {"id": "conf-h1-later-idx", "score": 800000.000000005, "vout": 0},
+      {"id": "conf-h1-same-idx-ff", "score": 800000.000000001, "vout": 1},
+      {"id": "conf-h1-same-idx-ee", "score": 800000.000000001, "vout": 0}
     ],
-    "aliasDomain": ["conf-h1-same-idx-ee", "conf-h1-later-idx", "conf-h1-same-idx-ff", "conf-late", "mem-aa", "mem-bb"],
-    "enumeration": ["conf-late", "mem-aa", "mem-bb", "conf-h1-same-idx-ee", "conf-h1-later-idx", "conf-h1-same-idx-ff"]
-  },
-  "cursors": {
-    "positive": [
-      {
-        "name": "alias-handcash",
-        "mode": "alias",
-        "value": "handcash",
-        "txid": "0000000000000000000000000000000000000000000000000000000000000001",
-        "vout": 0,
-        "fingerprint": "57e600b533358debd26eaaece23edb5adc5e2ac48faedbda2c8a89eb96ff48ce",
-        "encoded": "ea1.eyJtIjoiYWxpYXMiLCJxIjoiNTdlNjAwYjUzMzM1OGRlYmQyNmVhYWVjZTIzZWRiNWFkYzVlMmFjNDhmYWVkYmRhMmM4YTg5ZWI5NmZmNDhjZSIsInQiOiIwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAxIiwidiI6MH0"
-      },
-      {
-        "name": "domain-handcash",
-        "mode": "domain",
-        "value": "handcash.io",
-        "txid": "0000000000000000000000000000000000000000000000000000000000000001",
-        "vout": 2,
-        "fingerprint": "b2ce036da0f5604348de861b772798ccb6000365f7d8cdb5949a8e98959d5339",
-        "encoded": "ea1.eyJtIjoiZG9tYWluIiwicSI6ImIyY2UwMzZkYTBmNTYwNDM0OGRlODYxYjc3Mjc5OGNjYjYwMDAzNjVmN2Q4Y2RiNTk0OWE4ZTk4OTU5ZDUzMzkiLCJ0IjoiMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMSIsInYiOjJ9"
-      },
-      {
-        "name": "findall",
-        "mode": "findAll",
-        "value": "",
-        "txid": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-        "vout": 1,
-        "fingerprint": "ff68adcf8025fdfbd2aa0678e8d2fce8958920302f9ba38e063b1d376731b709",
-        "encoded": "ea1.eyJtIjoiZmluZEFsbCIsInEiOiJmZjY4YWRjZjgwMjVmZGZiZDJhYTA2NzhlOGQyZmNlODk1ODkyMDMwMmY5YmEzOGUwNjNiMWQzNzY3MzFiNzA5IiwidCI6ImFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWEiLCJ2IjoxfQ"
-      }
-    ],
-    "negative": [
-      {"name": "empty", "encoded": "", "code": "malformed-cursor"},
-      {"name": "wrong-prefix", "encoded": "ea2.AAAA", "code": "malformed-cursor"},
-      {"name": "not-base64", "encoded": "ea1.!!!", "code": "malformed-cursor"},
-      {"name": "newline-in-base64", "encoded": "ea1.AAAA\n", "code": "malformed-cursor"},
-      {
-        "name": "bound-to-other-query",
-        "encoded": "ea1.eyJtIjoiYWxpYXMiLCJxIjoiNTdlNjAwYjUzMzM1OGRlYmQyNmVhYWVjZTIzZWRiNWFkYzVlMmFjNDhmYWVkYmRhMmM4YTg5ZWI5NmZmNDhjZSIsInQiOiIwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAxIiwidiI6MH0",
-        "bindMode": "domain",
-        "bindValue": "handcash.io",
-        "code": "cursor-mismatch"
-      }
-    ]
+    "aliasDomain": ["conf-h1-same-idx-ee", "conf-h1-same-idx-ff", "conf-h1-later-idx", "conf-late", "mem-aa", "mem-bb"]
   }
 }
