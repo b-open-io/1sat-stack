@@ -1,6 +1,6 @@
 {
   "fixtureVersion": 1,
-  "canonicalSha256": "d163add78c6533f8a01af597da12cc9511019c3a8223e0b541883ea43b078a1f",
+  "canonicalSha256": "fdfa12e2417c474ab0f0a7392e09c5e96fdd5146f4fc38c922e9aef1ba093664",
   "notes": {
     "sigmaTransaction": "This fixture does not include or claim to reproduce a confirmed Sigma transaction. No raw Sigma transaction bytes are present in this repository.",
     "digest": "SHA-256 of the raw concatenation of BRC-169 fields 1-5 (protocol, version, alias, domain, 33-byte certifier key) with no separators or length prefixes.",
@@ -325,7 +325,7 @@
       {"id": "conf-h1-same-idx-ff", "confirmed": true, "blockHeight": 800000, "blockIndex": 1, "txid": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff", "vout": 1},
       {"id": "conf-h1-same-idx-ee", "confirmed": true, "blockHeight": 800000, "blockIndex": 1, "txid": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee", "vout": 0}
     ],
-    "aliasDomain": ["conf-h1-same-idx-ee", "conf-h1-same-idx-ff", "conf-h1-later-idx", "conf-late", "mem-aa", "mem-bb"],
+    "aliasDomain": ["conf-h1-same-idx-ee", "conf-h1-later-idx", "conf-h1-same-idx-ff", "conf-late", "mem-aa", "mem-bb"],
     "enumeration": ["conf-late", "mem-aa", "mem-bb", "conf-h1-same-idx-ee", "conf-h1-later-idx", "conf-h1-same-idx-ff"]
   },
   "cursors": {

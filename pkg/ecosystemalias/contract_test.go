@@ -555,3 +555,11 @@ func writeCanonical(buf *bytes.Buffer, v any) error {
 	}
 	return nil
 }
+
+func TestSameBlockTieIgnoresPosition(t *testing.T) {
+	a := Placement{Confirmed: true, BlockHeight: 100, BlockIndex: 9, Txid: strings.Repeat("1", 64)}
+	b := Placement{Confirmed: true, BlockHeight: 100, BlockIndex: 1, Txid: strings.Repeat("2", 64)}
+	if CompareLookup(a, b) >= 0 {
+		t.Fatal("same-block tie must prefer the lower txid")
+	}
+}

@@ -73,8 +73,7 @@ outside this contract.
 
 ## Ordering
 
-Alias/domain results: confirmed first, then earliest block height, earliest
-block index, lexical txid, output index. Mempool entries follow confirmed
+Alias/domain results: confirmed first, then earliest block height, lexical txid, output index. Mempool entries follow confirmed
 entries and use lexical txid and output index only.
 
 Enumeration (`findAll`) results: lexical txid then output index.
@@ -104,7 +103,7 @@ keys, and cursors.
 serializing with RFC 8785-style canonical JSON (sorted object keys, no
 insignificant whitespace, JSON numbers as digit literals). Current value:
 
-`d163add78c6533f8a01af597da12cc9511019c3a8223e0b541883ea43b078a1f`
+`fdfa12e2417c474ab0f0a7392e09c5e96fdd5146f4fc38c922e9aef1ba093664`
 
 A TypeScript copy must fail on drift.
 
