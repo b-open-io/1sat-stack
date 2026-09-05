@@ -114,7 +114,14 @@ func (c *Config) Initialize(
 		outputLoader := overlaystorage.NewEngineAdapter(deps.Factory, deps.BeefStorage, deps.TxTopicIndex)
 		lookupService := NewLookupService(claimStore, outputLoader)
 		topicManager := &TopicManager{}
-		eng := overlay.NewModuleEngine(deps,
+		// Alias admission precedes the publishing wallet's sendWith. The shared
+		// broadcaster would publish before admission commits, and OnAdmission
+		// would advertise state before that commit. Keep both effects out of
+		// this module until its durable lifecycle coordinator owns them.
+		aliasDeps := *deps
+		aliasDeps.Broadcaster = nil
+		aliasDeps.P2PBus = nil
+		eng := overlay.NewModuleEngine(&aliasDeps,
 			map[string]engine.TopicManager{TopicName: topicManager},
 			map[string]engine.LookupService{LookupName: lookupService},
 		)

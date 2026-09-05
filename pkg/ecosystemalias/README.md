@@ -211,3 +211,17 @@ Before advertising an instance:
 - [BRC-169](https://github.com/bitcoin-sv/BRCs/blob/master/peer-to-peer/0169.md)
 - [BRC-24](https://github.com/bitcoin-sv/BRCs/blob/master/peer-to-peer/0024.md)
 - [BRC-48](https://github.com/bitcoin-sv/BRCs/blob/master/scripts/0048.md)
+
+## Admission rollout gates
+
+Alias submission does not inherit the shared chain broadcaster or the early
+P2P admission callback. The publishing wallet retains responsibility for
+`sendWith` after durable overlay admission. Other modules retain their existing
+shared dependencies.
+
+Before enabling publication, the lifecycle coordinator must persist and replay
+exact admission receipts, recover interrupted engine/lookup mutations, and
+process authoritative reorg and finality events. The upstream engine returns an
+empty receipt for already-applied transactions; that is not proof of output-zero
+admission after a lost response. The storage rollback primitives alone do not
+complete these gates. P2P admission announcements must occur after durable commit.
