@@ -212,6 +212,15 @@ func (s *PostgresStorage) DeleteEvent(ctx context.Context, event string, op *tra
 	return err
 }
 
+func (s *PostgresStorage) UpdateEventsForTxid(ctx context.Context, txid *chainhash.Hash, score float64) error {
+	_, err := s.db.ExecContext(ctx,
+		`UPDATE events SET score = $1 WHERE topic_id = $2 AND outpoint IN (
+			SELECT outpoint FROM outputs WHERE topic_id = $2 AND txid = $3)`,
+		score, s.topicID, txid[:],
+	)
+	return err
+}
+
 func (s *PostgresStorage) FindByEvent(ctx context.Context, event string, opts *QueryOpts) ([]OutputRecord, error) {
 	query := `SELECT o.outpoint, o.txid, o.satoshis, o.spend_txid, o.score, o.deps, o.inputs_consumed, o.consumed_by, o.created_at
 		FROM events e JOIN outputs o ON e.topic_id = o.topic_id AND e.outpoint = o.outpoint
