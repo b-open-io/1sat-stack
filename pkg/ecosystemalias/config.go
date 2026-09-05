@@ -7,7 +7,6 @@ import (
 
 	configpkg "github.com/b-open-io/1sat-stack/pkg/config"
 	"github.com/b-open-io/1sat-stack/pkg/overlay"
-	overlaystorage "github.com/b-open-io/1sat-stack/pkg/overlay/storage"
 	"github.com/bsv-blockchain/go-overlay-services/pkg/core/engine"
 	"github.com/spf13/viper"
 )
@@ -57,13 +56,11 @@ type Services struct {
 	Engine        *engine.Engine
 	Lookup        *LookupService
 	TopicManager  *TopicManager
-	ClaimStore    ClaimStore
 	Sync          *overlay.OverlaySync
 	OverlayRoutes *overlay.Routes
 }
 
-// Initialize creates the ecosystem-alias engine and its durable, topic-scoped
-// claim store. The shared overlay factory retains ownership of the database.
+// Initialize creates the ecosystem-alias engine. Topic storage is owned by ModuleDeps.
 func (c *Config) Initialize(
 	ctx context.Context,
 	logger *slog.Logger,
@@ -97,22 +94,17 @@ func (c *Config) Initialize(
 			return nil, fmt.Errorf("overlay ModuleDeps with Factory is required for ecosystem-alias")
 		}
 		if deps.BeefStorage == nil {
-			return nil, fmt.Errorf("overlay ModuleDeps with BEEF storage is required for ecosystem-alias lookup hydration")
+			return nil, fmt.Errorf("overlay ModuleDeps with BEEF storage is required for ecosystem-alias")
 		}
 		topicStorage, err := deps.Factory(TopicName)
 		if err != nil {
 			return nil, fmt.Errorf("failed to get ecosystem-alias topic storage: %w", err)
 		}
-		if topicStorage == nil || topicStorage.DB() == nil {
-			return nil, fmt.Errorf("ecosystem-alias topic storage has no database")
+		if topicStorage == nil {
+			return nil, fmt.Errorf("ecosystem-alias topic storage is required")
 		}
 
-		claimStore := NewSQLStore(topicStorage.DB(), topicStorage.TopicID())
-		if err := claimStore.ensureSchema(); err != nil {
-			return nil, fmt.Errorf("failed to initialize ecosystem-alias claim store: %w", err)
-		}
-		outputLoader := overlaystorage.NewEngineAdapter(deps.Factory, deps.BeefStorage, deps.TxTopicIndex)
-		lookupService := NewLookupService(claimStore, outputLoader)
+		lookupService := NewLookupService(topicStorage)
 		topicManager := &TopicManager{}
 		eng := overlay.NewModuleEngine(deps,
 			map[string]engine.TopicManager{TopicName: topicManager},
@@ -123,7 +115,6 @@ func (c *Config) Initialize(
 			Engine:       eng,
 			Lookup:       lookupService,
 			TopicManager: topicManager,
-			ClaimStore:   claimStore,
 		}
 		if c.Routes.Enabled && deps.RoutesConfig != nil && deps.RoutesConfig.Enabled {
 			svc.OverlayRoutes = overlay.NewRoutes(eng, deps.RoutesConfig, logger)

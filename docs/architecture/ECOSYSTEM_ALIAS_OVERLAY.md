@@ -10,7 +10,7 @@ standard overlay HTTP surface:
 tm_ecosystemalias
         │ admission and spend lifecycle
         ▼
-topic-scoped overlay storage + ecosystem_alias_claims
+topic-scoped overlay storage (events + outputs)
         │
         ▼
 ls_ecosystemalias ──► BRC-24 output-list (Atomic BEEF + output index)
@@ -81,8 +81,7 @@ The query object has exactly one mode:
 - `domain: string`
 - `findAll: true`
 
-It may also include `limit` (1–500) and an opaque cursor bound to the same
-normalized query. Responses use `type: "output-list"`, with an `outputs` array
+It may also include `limit` (1–500) and `skip` (default 0). Responses use `type: "output-list"`, with an `outputs` array
 containing base64 Atomic BEEF and the claim's `outputIndex`.
 
 ```json

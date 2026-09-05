@@ -62,7 +62,7 @@ Index admitted outputs by adding custom schemas to the topic's database:
 | `BSV21Lookup` | `token_outputs` per topic DB | Token operations (deploy, transfer, burn) |
 | `OneSatLookup` | Uses shared events table | `own:`, `txid:`, tag-specific events |
 | `BAPLookup` | `bap_identity_addresses`, `bap_attestations` | Identity rotations, attestations |
-| `ls_ecosystemalias` | `ecosystem_alias_claims` | BRC-169 aliases, domains, conflicts, and lifecycle |
+| `ls_ecosystemalias` | overlay events (`alias:`, `domain:`) | BRC-169 aliases and domains |
 | `OrdLockLookup` | `listings` | Marketplace listings |
 
 Lookup services access the topic database via `TopicStorage.DB()` and lazily create their custom tables on first use.
