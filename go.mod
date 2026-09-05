@@ -347,3 +347,9 @@ require (
 )
 
 replace github.com/bsv-blockchain/go-overlay-services => github.com/bsv-blockchain/go-overlay-services v1.3.5-0.20260822035934-e40042674b7d
+
+// Match wallet-toolbox transport pins: dependency replace directives are not inherited.
+// https://github.com/bsv-blockchain/go-wallet-toolbox/issues/983
+replace github.com/quic-go/webtransport-go => github.com/quic-go/webtransport-go v0.11.1
+
+replace github.com/quic-go/quic-go => github.com/quic-go/quic-go v0.60.0

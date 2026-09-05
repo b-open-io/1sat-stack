@@ -519,3 +519,42 @@ func TestPostgresFactory_TxTopicIndex(t *testing.T) {
 		t.Errorf("topics after delete = %d, want 0", len(topics))
 	}
 }
+
+func TestTopicStorage_EventScoreRestamp(t *testing.T) {
+	for _, b := range backends(t) {
+		t.Run(b.name, func(t *testing.T) {
+			ts, cleanup := b.factory(t)
+			defer cleanup()
+			ctx := t.Context()
+			op := makeOutpoint(1, 256)
+			txid := makeTxid(1)
+			if err := ts.InsertOutput(ctx, op, txid, 1, nil, nil, 1700000000); err != nil {
+				t.Fatal(err)
+			}
+			for _, key := range []string{"alias:aaa", "domain:aaa.example", "*"} {
+				if err := ts.SaveEvent(ctx, key, op, 1700000000); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if err := ts.UpdateEventsForTxid(ctx, txid, 800000.000000003); err != nil {
+				t.Fatal(err)
+			}
+			for _, key := range []string{"alias:aaa", "domain:aaa.example", "*"} {
+				got, err := ts.FindByEvent(ctx, key, nil)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if len(got) != 1 || got[0].Score != 800000.000000003 {
+					t.Fatalf("%s event score: %+v", key, got)
+				}
+			}
+			got, err := ts.GetOutput(ctx, op)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got.Score != 1700000000 {
+				t.Fatalf("ingestion watermark changed: %v", got.Score)
+			}
+		})
+	}
+}

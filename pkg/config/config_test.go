@@ -3,6 +3,7 @@ package config
 import (
 	"context"
 	"errors"
+	"log/slog"
 	"path/filepath"
 	"testing"
 )
@@ -173,5 +174,118 @@ func TestClose(t *testing.T) {
 	}
 	if err := store.Close(); err != nil {
 		t.Errorf("Close: %v", err)
+	}
+}
+
+func TestLoadRuntimeConfigEcosystemAlias(t *testing.T) {
+	s := newTestStore(t)
+	ctx := context.Background()
+	values := map[string]string{
+		"overlay.ecosystemalias.enabled":        "true",
+		"overlay.ecosystemalias.sync_enabled":   "true",
+		"overlay.ecosystemalias.sub_id":         "subscription-id",
+		"overlay.ecosystemalias.concurrency":    "12",
+		"overlay.ecosystemalias.batch_size":     "750",
+		"overlay.ecosystemalias.log_level":      "debug",
+		"overlay.ecosystemalias.routes_enabled": "false",
+		"overlay.ecosystemalias.route_prefix":   "/identity",
+	}
+	for key, value := range values {
+		if err := s.Set(ctx, key, value); err != nil {
+			t.Fatalf("Set(%q): %v", key, err)
+		}
+	}
+
+	rc, err := LoadRuntimeConfig(ctx, s, slog.Default())
+	if err != nil {
+		t.Fatalf("LoadRuntimeConfig: %v", err)
+	}
+	if !rc.EcosystemAliasEnabledSet || !rc.EcosystemAliasEnabled ||
+		!rc.EcosystemAliasSyncEnabledSet || !rc.EcosystemAliasSyncEnabled ||
+		rc.EcosystemAliasSyncSubID != "subscription-id" ||
+		!rc.EcosystemAliasSyncConcurrencySet || rc.EcosystemAliasSyncConcurrency != 12 ||
+		!rc.EcosystemAliasSyncBatchSizeSet || rc.EcosystemAliasSyncBatchSize != 750 ||
+		rc.EcosystemAliasLogLevel != "debug" || !rc.EcosystemAliasRoutesEnabledSet ||
+		rc.EcosystemAliasRoutesEnabled || !rc.EcosystemAliasRoutePrefixSet || rc.EcosystemAliasRoutePrefix != "/identity" {
+		t.Fatalf("ecosystem-alias runtime config = %+v", rc)
+	}
+}
+
+func TestLoadRuntimeConfigRejectsInvalidEcosystemAliasSettings(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		key   string
+		value string
+	}{
+		{name: "invalid boolean", key: "overlay.ecosystemalias.enabled", value: "yes"},
+		{name: "invalid concurrency", key: "overlay.ecosystemalias.concurrency", value: "not-a-number"},
+		{name: "zero concurrency", key: "overlay.ecosystemalias.concurrency", value: "0"},
+		{name: "excessive concurrency", key: "overlay.ecosystemalias.concurrency", value: "65"},
+		{name: "zero batch", key: "overlay.ecosystemalias.batch_size", value: "0"},
+		{name: "excessive batch", key: "overlay.ecosystemalias.batch_size", value: "10001"},
+		{name: "root route", key: "overlay.ecosystemalias.route_prefix", value: "/"},
+		{name: "query route", key: "overlay.ecosystemalias.route_prefix", value: "/identity?x=1"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			s := newTestStore(t)
+			if err := s.Set(context.Background(), tc.key, tc.value); err != nil {
+				t.Fatalf("Set: %v", err)
+			}
+			if _, err := LoadRuntimeConfig(context.Background(), s, slog.Default()); err == nil {
+				t.Fatal("LoadRuntimeConfig accepted invalid setting")
+			}
+		})
+	}
+}
+
+func TestLoadRuntimeConfigNormalizesEcosystemAliasRoutePrefix(t *testing.T) {
+	s := newTestStore(t)
+	if err := s.Set(context.Background(), "overlay.ecosystemalias.route_prefix", "/identity/"); err != nil {
+		t.Fatalf("Set: %v", err)
+	}
+	rc, err := LoadRuntimeConfig(context.Background(), s, slog.Default())
+	if err != nil {
+		t.Fatalf("LoadRuntimeConfig: %v", err)
+	}
+	if !rc.EcosystemAliasRoutePrefixSet || rc.EcosystemAliasRoutePrefix != "/identity" {
+		t.Fatalf("route prefix = %q, set=%v", rc.EcosystemAliasRoutePrefix, rc.EcosystemAliasRoutePrefixSet)
+	}
+}
+
+func TestLoadRuntimeConfigDistinguishesFalseFromUnset(t *testing.T) {
+	s := newTestStore(t)
+	ctx := context.Background()
+	if err := s.Set(ctx, "overlay.ecosystemalias.enabled", "false"); err != nil {
+		t.Fatalf("Set enabled: %v", err)
+	}
+	if err := s.Set(ctx, "overlay.ecosystemalias.sync_enabled", "false"); err != nil {
+		t.Fatalf("Set sync enabled: %v", err)
+	}
+	if err := s.Set(ctx, "overlay.ecosystemalias.routes_enabled", "false"); err != nil {
+		t.Fatalf("Set routes enabled: %v", err)
+	}
+
+	rc, err := LoadRuntimeConfig(ctx, s, slog.Default())
+	if err != nil {
+		t.Fatalf("LoadRuntimeConfig: %v", err)
+	}
+	if !rc.EcosystemAliasEnabledSet || rc.EcosystemAliasEnabled ||
+		!rc.EcosystemAliasSyncEnabledSet || rc.EcosystemAliasSyncEnabled ||
+		!rc.EcosystemAliasRoutesEnabledSet || rc.EcosystemAliasRoutesEnabled {
+		t.Fatalf("false settings lost presence: %+v", rc)
+	}
+}
+
+func TestLoadRuntimeConfigPreservesExplicitEmptySubscription(t *testing.T) {
+	s := newTestStore(t)
+	if err := s.Set(context.Background(), "overlay.ecosystemalias.sub_id", ""); err != nil {
+		t.Fatal(err)
+	}
+	rc, err := LoadRuntimeConfig(context.Background(), s, slog.Default())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !rc.EcosystemAliasSyncSubIDSet || rc.EcosystemAliasSyncSubID != "" {
+		t.Fatal("empty subscription lost presence")
 	}
 }
