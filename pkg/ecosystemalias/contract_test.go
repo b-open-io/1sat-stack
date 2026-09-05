@@ -93,6 +93,19 @@ func asNumberInt(t *testing.T, v any) int64 {
 	return i
 }
 
+func asFloat(t *testing.T, v any) float64 {
+	t.Helper()
+	n, ok := v.(json.Number)
+	if !ok {
+		t.Fatalf("not a number: %T", v)
+	}
+	f, err := n.Float64()
+	if err != nil {
+		t.Fatal(err)
+	}
+	return f
+}
+
 func TestFixtureCanonicalSHA256(t *testing.T) {
 	doc, _ := loadFixture(t)
 	gotStored := asString(t, doc["canonicalSha256"])
@@ -125,9 +138,6 @@ func TestConstants(t *testing.T) {
 	}
 	if LookupHTTPPath != asString(t, c["httpLookupPath"]) {
 		t.Fatalf("http path")
-	}
-	if CursorPrefix != asString(t, c["cursorPrefix"]) {
-		t.Fatalf("cursor prefix")
 	}
 }
 
@@ -298,14 +308,12 @@ func TestDecodeQuery(t *testing.T) {
 			if q.PageLimit() != uint32(asNumberInt(t, row["limit"])) {
 				t.Fatalf("limit %d", q.PageLimit())
 			}
-			if txid, ok := row["cursorTxid"].(string); ok {
-				cur, err := BindCursor(*q.Cursor, q)
-				if err != nil {
-					t.Fatal(err)
-				}
-				if cur.Txid != txid || cur.Vout != uint32(asNumberInt(t, row["cursorVout"])) {
-					t.Fatalf("cursor outpoint %s:%d", cur.Txid, cur.Vout)
-				}
+			var wantSkip uint32
+			if _, ok := row["skip"]; ok {
+				wantSkip = uint32(asNumberInt(t, row["skip"]))
+			}
+			if q.PageSkip() != wantSkip {
+				t.Fatalf("skip %d", q.PageSkip())
 			}
 		})
 	}
@@ -328,11 +336,8 @@ func TestOrdering(t *testing.T) {
 		items = append(items, namedPlacement{
 			id: asString(t, row["id"]),
 			p: Placement{
-				Confirmed:   row["confirmed"].(bool),
-				BlockHeight: uint32(asNumberInt(t, row["blockHeight"])),
-				BlockIndex:  uint64(asNumberInt(t, row["blockIndex"])),
-				Txid:        asString(t, row["txid"]),
-				Vout:        uint32(asNumberInt(t, row["vout"])),
+				Score: asFloat(t, row["score"]),
+				Vout:  uint32(asNumberInt(t, row["vout"])),
 			},
 		})
 	}
@@ -341,75 +346,6 @@ func TestOrdering(t *testing.T) {
 	if !reflect.DeepEqual(gotLookup, wantLookup) {
 		t.Fatalf("alias/domain order\n got %v\nwant %v", gotLookup, wantLookup)
 	}
-	gotEnum := orderIDs(items, CompareEnumeration)
-	wantEnum := stringSlice(t, ord["enumeration"].([]any))
-	if !reflect.DeepEqual(gotEnum, wantEnum) {
-		t.Fatalf("enumeration order\n got %v\nwant %v", gotEnum, wantEnum)
-	}
-}
-
-func TestCursors(t *testing.T) {
-	doc, _ := loadFixture(t)
-	for _, item := range fixtureSlice(t, doc, "cursors", "positive") {
-		row := item.(map[string]any)
-		name := asString(t, row["name"])
-		t.Run(name, func(t *testing.T) {
-			q := queryFrom(asString(t, row["mode"]), asString(t, row["value"]))
-			fp, err := QueryFingerprint(q)
-			if err != nil {
-				t.Fatal(err)
-			}
-			if fp != asString(t, row["fingerprint"]) {
-				t.Fatalf("fingerprint %s", fp)
-			}
-			enc, err := NewCursor(q, asString(t, row["txid"]), uint32(asNumberInt(t, row["vout"])))
-			if err != nil {
-				t.Fatal(err)
-			}
-			if enc != asString(t, row["encoded"]) {
-				t.Fatalf("encoded\n got %s\nwant %s", enc, asString(t, row["encoded"]))
-			}
-			cur, err := BindCursor(enc, q)
-			if err != nil {
-				t.Fatal(err)
-			}
-			if cur.Txid != asString(t, row["txid"]) || cur.Vout != uint32(asNumberInt(t, row["vout"])) {
-				t.Fatalf("outpoint %s:%d", cur.Txid, cur.Vout)
-			}
-			if cur.Version != CursorVersion {
-				t.Fatalf("version %d", cur.Version)
-			}
-		})
-	}
-	for _, item := range fixtureSlice(t, doc, "cursors", "negative") {
-		row := item.(map[string]any)
-		name := asString(t, row["name"])
-		t.Run("neg/"+name, func(t *testing.T) {
-			enc := asString(t, row["encoded"])
-			want := Code(asString(t, row["code"]))
-			if bindMode, ok := row["bindMode"].(string); ok {
-				q := queryFrom(bindMode, asString(t, row["bindValue"]))
-				_, err := BindCursor(enc, q)
-				assertCode(t, err, want)
-				return
-			}
-			_, err := ParseCursor(enc)
-			assertCode(t, err, want)
-		})
-	}
-
-	t.Run("direct query normalization", func(t *testing.T) {
-		mixed := "HandCash"
-		normalized := "handcash"
-		const txid = "0000000000000000000000000000000000000000000000000000000000000001"
-		encoded, err := NewCursor(Query{Alias: &mixed}, txid, 0)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if _, err := BindCursor(encoded, Query{Alias: &normalized}); err != nil {
-			t.Fatalf("cursor must bind to the normalized query: %v", err)
-		}
-	})
 }
 
 func TestTypedErrorCodesSeparateFromMessages(t *testing.T) {
@@ -453,21 +389,6 @@ func stringSlice(t *testing.T, in []any) []string {
 		out[i] = asString(t, v)
 	}
 	return out
-}
-
-func queryFrom(mode, value string) Query {
-	switch Mode(mode) {
-	case ModeAlias:
-		v := value
-		return Query{Alias: &v}
-	case ModeDomain:
-		v := value
-		return Query{Domain: &v}
-	case ModeFindAll:
-		t := true
-		return Query{FindAll: &t}
-	}
-	return Query{}
 }
 
 func assertCode(t *testing.T, err error, want Code) {
@@ -556,10 +477,14 @@ func writeCanonical(buf *bytes.Buffer, v any) error {
 	return nil
 }
 
-func TestSameBlockTieIgnoresPosition(t *testing.T) {
-	a := Placement{Confirmed: true, BlockHeight: 100, BlockIndex: 9, Txid: strings.Repeat("1", 64)}
-	b := Placement{Confirmed: true, BlockHeight: 100, BlockIndex: 1, Txid: strings.Repeat("2", 64)}
+func TestSameBlockTieUsesTxIndexThenVout(t *testing.T) {
+	a := Placement{Score: EventScore(100, 1), Vout: 1}
+	b := Placement{Score: EventScore(100, 9), Vout: 0}
 	if CompareLookup(a, b) >= 0 {
-		t.Fatal("same-block tie must prefer the lower txid")
+		t.Fatal("same-block must prefer the lower transaction index")
+	}
+	c := Placement{Score: EventScore(100, 1), Vout: 0}
+	if CompareLookup(c, a) >= 0 {
+		t.Fatal("same score must prefer the lower vout")
 	}
 }
