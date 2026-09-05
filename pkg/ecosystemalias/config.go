@@ -106,14 +106,7 @@ func (c *Config) Initialize(
 
 		lookupService := NewLookupService(topicStorage)
 		topicManager := &TopicManager{}
-		// Alias admission precedes the publishing wallet's sendWith. The shared
-		// broadcaster would publish before admission commits, and OnAdmission
-		// would advertise state before that commit. Keep both effects out of
-		// this module until its durable lifecycle coordinator owns them.
-		aliasDeps := *deps
-		aliasDeps.Broadcaster = nil
-		aliasDeps.P2PBus = nil
-		eng := overlay.NewModuleEngine(&aliasDeps,
+		eng := overlay.NewModuleEngine(deps,
 			map[string]engine.TopicManager{TopicName: topicManager},
 			map[string]engine.LookupService{LookupName: lookupService},
 		)

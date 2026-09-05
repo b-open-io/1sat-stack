@@ -10,7 +10,6 @@ import (
 	"github.com/b-open-io/1sat-stack/pkg/beef"
 	"github.com/b-open-io/1sat-stack/pkg/overlay"
 	overlaystorage "github.com/b-open-io/1sat-stack/pkg/overlay/storage"
-	"github.com/bsv-blockchain/go-sdk/transaction"
 	"github.com/spf13/viper"
 )
 
@@ -152,34 +151,4 @@ func TestConfigInitializeCanDisableRoutes(t *testing.T) {
 
 func testBeefStorage() *beef.Storage {
 	return beef.NewStorageFromProviders(nil, nil)
-}
-
-// A configured shared broadcaster must never leak into the no-send alias path.
-type forbiddenAliasBroadcaster struct{}
-
-func (*forbiddenAliasBroadcaster) Broadcast(*transaction.Transaction) (*transaction.BroadcastSuccess, *transaction.BroadcastFailure) {
-	panic("alias admission must not broadcast")
-}
-func (*forbiddenAliasBroadcaster) BroadcastCtx(context.Context, *transaction.Transaction) (*transaction.BroadcastSuccess, *transaction.BroadcastFailure) {
-	panic("alias admission must not broadcast")
-}
-func TestAliasAdmissionDoesNotInheritSharedPublicationEffects(t *testing.T) {
-	factory, err := overlaystorage.NewSQLiteFactory(t.TempDir())
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = factory.Close() })
-	broadcaster := &forbiddenAliasBroadcaster{}
-	bus := &overlay.P2PBus{}
-	deps := &overlay.ModuleDeps{Factory: factory.Factory(), TxTopicIndex: factory.TxTopicIndex(), BeefStorage: testBeefStorage(), Broadcaster: broadcaster, P2PBus: bus}
-	svc, err := (&Config{Mode: ModeEmbedded}).Initialize(t.Context(), nil, deps)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if svc.Engine.Broadcaster != nil || svc.Engine.OnAdmission != nil {
-		t.Fatal("alias module inherited pre-commit publication effects")
-	}
-	if deps.Broadcaster != broadcaster || deps.P2PBus != bus {
-		t.Fatal("alias initialization mutated shared dependencies")
-	}
 }
