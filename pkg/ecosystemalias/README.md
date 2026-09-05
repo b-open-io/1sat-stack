@@ -110,3 +110,14 @@ Remaining work:
 
 Parser and topic manager must never fetch manifests. Bidirectional manifest
 consent (`metanet.handles.aliases`) remains resolver-side.
+
+### Enumeration and ordering
+
+Admission writes an `ecosystemalias:all` event alongside `alias:` and `domain:`.
+All query modes filter spent outputs and sort by event score, then numeric output
+index, before applying skip/limit. Confirmation and reorg callbacks restamp all
+three events. Output ingestion scores stay unchanged because GASP uses them as
+sync watermarks. This replaces `FindUTXOs` enumeration, whose ingestion order
+cannot represent confirmation order. Before activating a node built from an
+earlier review branch, re-index its alias events so enumeration includes every
+retained claim.
