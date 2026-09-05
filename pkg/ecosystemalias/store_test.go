@@ -170,8 +170,8 @@ func testClaimStoreQueryOrderingConflictsAndCursors(t *testing.T, store *SQLStor
 	}
 
 	wantLookup := []string{
-		claims[2].Outpoint.String(),
 		claims[1].Outpoint.String(),
+		claims[2].Outpoint.String(),
 		claims[0].Outpoint.String(),
 		claims[4].Outpoint.String(),
 		claims[3].Outpoint.String(),
@@ -205,6 +205,34 @@ func testClaimStoreQueryOrderingConflictsAndCursors(t *testing.T, store *SQLStor
 	}
 
 	query := aliasStoreQuery("alice")
+	// Follow one-output pages to ensure the SQL order and cursor predicate agree.
+	var paged []string
+	var pageCursor *Cursor
+	for {
+		page, err := store.QueryClaims(ctx, query, pageCursor, 1)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(page) == 0 {
+			break
+		}
+		paged = append(paged, page[0].Outpoint.String())
+		if len(paged) > len(wantLookup) {
+			t.Fatal("pagination repeated a claim")
+		}
+		encoded, err := NewCursor(query, page[0].Outpoint.Txid.String(), page[0].Outpoint.Index)
+		if err != nil {
+			t.Fatal(err)
+		}
+		bound, err := BindCursor(encoded, query)
+		if err != nil {
+			t.Fatal(err)
+		}
+		pageCursor = &bound
+	}
+	if !reflect.DeepEqual(paged, wantLookup) {
+		t.Fatalf("paginated order %v, want %v", paged, wantLookup)
+	}
 	cursorText, err := NewCursor(query, claims[1].Outpoint.Txid.String(), claims[1].Outpoint.Index)
 	if err != nil {
 		t.Fatal(err)
@@ -217,8 +245,8 @@ func testClaimStoreQueryOrderingConflictsAndCursors(t *testing.T, store *SQLStor
 	if err != nil {
 		t.Fatal(err)
 	}
-	if outpoints := claimOutpointStrings(after); !reflect.DeepEqual(outpoints, wantLookup[2:]) {
-		t.Fatalf("cursor outpoints\n got %v\nwant %v", outpoints, wantLookup[2:])
+	if outpoints := claimOutpointStrings(after); !reflect.DeepEqual(outpoints, wantLookup[1:]) {
+		t.Fatalf("cursor outpoints\n got %v\nwant %v", outpoints, wantLookup[1:])
 	}
 
 	findAll := findAllStoreQuery()
@@ -424,10 +452,10 @@ func testPostgresTextCollation(t *testing.T, db *sql.DB) {
 	for _, column := range []string{"txid", "spending_txid", "alias", "domain"} {
 		var collation string
 		err := db.QueryRowContext(t.Context(), `
-			SELECT collation.collname
+			SELECT coll.collname
 			FROM pg_attribute attribute
 			JOIN pg_class relation ON relation.oid = attribute.attrelid
-			JOIN pg_collation collation ON collation.oid = attribute.attcollation
+			JOIN pg_collation coll ON coll.oid = attribute.attcollation
 			WHERE relation.relname = 'ecosystem_alias_claims'
 				AND attribute.attname = $1
 				AND attribute.attnum > 0
