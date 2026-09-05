@@ -84,11 +84,20 @@ func decodeLockAfter(lockingScript *script.Script) ([][]byte, error) {
 
 	dropEnd := len(chunks) - 2
 	dropStart := dropEnd
-	for dropStart > 0 && chunks[dropStart-1].Op == script.Op2DROP {
+	dropped := 0
+	for dropStart > 0 {
+		op := chunks[dropStart-1].Op
+		if op == script.OpDROP {
+			dropped++
+		} else if op == script.Op2DROP {
+			dropped += 2
+		} else {
+			break
+		}
 		dropStart--
 	}
-	if dropEnd-dropStart != FieldCount/2 {
-		return nil, fail(CodeInvalidScript, "locking script must contain exactly three OP_2DROP opcodes before the owner key")
+	if dropped != FieldCount {
+		return nil, fail(CodeInvalidScript, "locking script must drop exactly six fields before the owner key")
 	}
 	if dropStart != FieldCount {
 		return nil, fail(CodeFieldCount, fmt.Sprintf("token must have exactly %d fields, got %d", FieldCount, dropStart))
