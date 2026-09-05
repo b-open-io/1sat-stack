@@ -66,3 +66,14 @@ formulas to:
 
 - [`docs/architecture/ECOSYSTEM_ALIAS_OVERLAY.md`](../../docs/architecture/ECOSYSTEM_ALIAS_OVERLAY.md)
 - [BRC-169](https://github.com/bitcoin-sv/BRCs/blob/master/peer-to-peer/0169.md)
+
+### Enumeration and ordering
+
+Admission writes an `ecosystemalias:all` event alongside `alias:` and `domain:`.
+All query modes filter spent outputs and sort by event score, then numeric output
+index, before applying skip/limit. Confirmation and reorg callbacks restamp all
+three events. Output ingestion scores stay unchanged because GASP uses them as
+sync watermarks. This replaces `FindUTXOs` enumeration, whose ingestion order
+cannot represent confirmation order. Before activating a node built from an
+earlier review branch, re-index its alias events so enumeration includes every
+retained claim.

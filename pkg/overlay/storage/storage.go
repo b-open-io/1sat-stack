@@ -53,6 +53,7 @@ type TopicStorage interface {
 	// --- Lookup service writes (overlay-scoped events) ---
 	SaveEvent(ctx context.Context, event string, op *transaction.Outpoint, score float64) error
 	DeleteEvent(ctx context.Context, event string, op *transaction.Outpoint) error
+	// FindByEvent returns each record with its event score, not its output ingestion score.
 	FindByEvent(ctx context.Context, event string, opts *QueryOpts) ([]OutputRecord, error)
 	UpdateEventsForTxid(ctx context.Context, txid *chainhash.Hash, score float64) error
 

@@ -337,7 +337,7 @@ func (s *SQLiteStorage) UpdateEventsForTxid(ctx context.Context, txid *chainhash
 }
 
 func (s *SQLiteStorage) FindByEvent(ctx context.Context, event string, opts *QueryOpts) ([]OutputRecord, error) {
-	query := `SELECT o.outpoint, o.txid, o.satoshis, o.spend_txid, o.score, o.deps, o.inputs_consumed, o.consumed_by, o.created_at
+	query := `SELECT o.outpoint, o.txid, o.satoshis, o.spend_txid, e.score, o.deps, o.inputs_consumed, o.consumed_by, o.created_at
 		FROM events e JOIN outputs o ON e.outpoint = o.outpoint
 		WHERE e.event = ?`
 	args := []any{event}

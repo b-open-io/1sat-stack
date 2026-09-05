@@ -488,3 +488,15 @@ func TestSameBlockTieUsesTxIndexThenVout(t *testing.T) {
 		t.Fatal("same score must prefer the lower vout")
 	}
 }
+
+func TestQuerySkipBounds(t *testing.T) {
+	for _, raw := range []string{`{"findAll":true,"skip":4294967296}`, `{"findAll":true,"skip":9223372036854775807}`} {
+		if _, err := DecodeQuery([]byte(raw)); err == nil {
+			t.Fatalf("accepted overflowing skip: %s", raw)
+		}
+	}
+	q, err := DecodeQuery([]byte(`{"findAll":true,"skip":4294967295}`))
+	if err != nil || q.PageSkip() != 4294967295 {
+		t.Fatalf("max uint32 skip: %v, %v", q, err)
+	}
+}

@@ -3,6 +3,7 @@ package ecosystemalias
 import (
 	"context"
 	"fmt"
+	"sort"
 
 	overlaystorage "github.com/b-open-io/1sat-stack/pkg/overlay/storage"
 	"github.com/b-open-io/1sat-stack/pkg/types"
@@ -14,6 +15,7 @@ import (
 )
 
 const (
+	eventAllClaims    = "ecosystemalias:all"
 	eventAliasPrefix  = "alias:"
 	eventDomainPrefix = "domain:"
 )
@@ -63,7 +65,10 @@ func (l *LookupService) OutputAdmittedByTopic(ctx context.Context, payload *engi
 	if err := l.store.SaveEvent(ctx, eventAliasPrefix+claim.Alias, op, score); err != nil {
 		return err
 	}
-	return l.store.SaveEvent(ctx, eventDomainPrefix+claim.Domain, op, score)
+	if err := l.store.SaveEvent(ctx, eventDomainPrefix+claim.Domain, op, score); err != nil {
+		return err
+	}
+	return l.store.SaveEvent(ctx, eventAllClaims, op, score)
 }
 
 // OutputSpent is a no-op: spends are recorded on outputs.spend_txid.
@@ -116,7 +121,9 @@ func (l *LookupService) Lookup(ctx context.Context, question *overlaylookup.Look
 	case ModeDomain:
 		recs, err = l.store.FindByEvent(ctx, eventDomainPrefix+*query.Domain, nil)
 	case ModeFindAll:
-		recs, err = l.store.FindUTXOs(ctx, nil)
+		// Output scores are ingestion watermarks for GASP, not confirmation order.
+		// Enumerate through the same event score as alias/domain queries.
+		recs, err = l.store.FindByEvent(ctx, eventAllClaims, nil)
 	default:
 		return nil, fail(CodeInvalidCombination, "query must have exactly one of alias, domain, or findAll:true")
 	}
@@ -132,13 +139,16 @@ func (l *LookupService) Lookup(ctx context.Context, question *overlaylookup.Look
 		unspent = append(unspent, recs[i])
 	}
 
-	skip := int(query.PageSkip())
-	limit := int(query.PageLimit())
-	if skip > len(unspent) {
+	sort.SliceStable(unspent, func(i, j int) bool {
+		return CompareLookup(Placement{Score: unspent[i].Score, Vout: unspent[i].Outpoint.Index}, Placement{Score: unspent[j].Score, Vout: unspent[j].Outpoint.Index}) < 0
+	})
+
+	if uint64(query.PageSkip()) >= uint64(len(unspent)) {
 		unspent = nil
 	} else {
-		unspent = unspent[skip:]
+		unspent = unspent[query.PageSkip():]
 	}
+	limit := int(query.PageLimit())
 	if limit < len(unspent) {
 		unspent = unspent[:limit]
 	}

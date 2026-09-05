@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"math"
 	"strings"
 )
 
@@ -205,6 +206,9 @@ func decodeJSONSkip(raw json.RawMessage) (uint32, error) {
 	}
 	if n < 0 {
 		return 0, fail(CodeSkipNegative, "skip must not be negative")
+	}
+	if n > math.MaxUint32 {
+		return 0, fail(CodeMalformedJSON, "skip must fit in a uint32")
 	}
 	return uint32(n), nil
 }
