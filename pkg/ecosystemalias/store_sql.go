@@ -11,8 +11,6 @@ import (
 	"github.com/bsv-blockchain/go-sdk/transaction"
 )
 
-const zeroBlockIndex = "00000000000000000000"
-
 // SQLStore implements ClaimStore using database/sql for SQLite or PostgreSQL.
 // A positive topicID selects the shared PostgreSQL schema and scopes every
 // statement to that topic. Zero selects the single-topic SQLite schema.
@@ -198,7 +196,6 @@ func (s *SQLStore) QueryClaims(ctx context.Context, query Query, cursor *Cursor,
 	} else {
 		statement += ` ORDER BY confirmed DESC,
 			CASE WHEN confirmed THEN block_height ELSE 0 END ASC,
-			CASE WHEN confirmed THEN block_index ELSE '` + zeroBlockIndex + `' END ASC,
 			txid ASC, vout ASC`
 	}
 	statement += " LIMIT " + q.ph(limit)
@@ -262,15 +259,13 @@ func lookupAfter(q *claimQB, placement Placement) string {
 		confirmed = %s OR
 		(confirmed = %s AND (
 			block_height > %s OR
-			(block_height = %s AND block_index > %s) OR
-			(block_height = %s AND block_index = %s AND txid > %s) OR
-			(block_height = %s AND block_index = %s AND txid = %s AND vout > %s)
+			(block_height = %s AND txid > %s) OR
+			(block_height = %s AND txid = %s AND vout > %s)
 		)))`,
 		q.ph(false), q.ph(true),
 		q.ph(placement.BlockHeight),
-		q.ph(placement.BlockHeight), q.ph(formatBlockIndex(placement.BlockIndex)),
-		q.ph(placement.BlockHeight), q.ph(formatBlockIndex(placement.BlockIndex)), q.ph(placement.Txid),
-		q.ph(placement.BlockHeight), q.ph(formatBlockIndex(placement.BlockIndex)), q.ph(placement.Txid), q.ph(placement.Vout),
+		q.ph(placement.BlockHeight), q.ph(placement.Txid),
+		q.ph(placement.BlockHeight), q.ph(placement.Txid), q.ph(placement.Vout),
 	)
 }
 
