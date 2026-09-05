@@ -1,6 +1,6 @@
 {
   "fixtureVersion": 1,
-  "canonicalSha256": "c8a9d7fbd555ba98ad547daa590f30fd480f05841ba93be52bbf756b1e920bb8",
+  "canonicalSha256": "b6d8cb2134e0af8b2e49d57a3a58dbddd1703b7d79161d6baf83f88772cf5a0c",
   "notes": {
     "sigmaTransaction": "This fixture does not include or claim to reproduce a confirmed Sigma transaction. No raw Sigma transaction bytes are present in this repository.",
     "digest": "SHA-256 of the raw concatenation of BRC-169 fields 1-5 (protocol, version, alias, domain, 33-byte certifier key) with no separators or length prefixes.",
@@ -262,13 +262,6 @@
         "limit": 100
       },
       {
-        "name": "findall",
-        "json": "{\"findAll\":true}",
-        "mode": "findAll",
-        "value": "",
-        "limit": 100
-      },
-      {
         "name": "alias-limit",
         "json": "{\"alias\":\"handcash\",\"limit\":50}",
         "mode": "alias",
@@ -276,10 +269,10 @@
         "limit": 50
       },
       {
-        "name": "findall-max-limit",
-        "json": "{\"findAll\":true,\"limit\":500}",
-        "mode": "findAll",
-        "value": "",
+        "name": "alias-max-limit",
+        "json": "{\"alias\":\"handcash\",\"limit\":500}",
+        "mode": "alias",
+        "value": "handcash",
         "limit": 500
       },
       {
@@ -299,8 +292,7 @@
       {"name": "empty-object", "json": "{}", "code": "invalid-combination"},
       {"name": "alias-null", "json": "{\"alias\":null}", "code": "json-null"},
       {"name": "alias-and-domain", "json": "{\"alias\":\"handcash\",\"domain\":\"handcash.io\"}", "code": "invalid-combination"},
-      {"name": "alias-and-findall", "json": "{\"alias\":\"handcash\",\"findAll\":true}", "code": "invalid-combination"},
-      {"name": "findall-false", "json": "{\"findAll\":false}", "code": "findall-false"},
+      {"name": "findall-unknown", "json": "{\"findAll\":true}", "code": "unknown-field"},
       {"name": "unknown-field", "json": "{\"alias\":\"handcash\",\"extra\":1}", "code": "unknown-field"},
       {"name": "capital-alias-key", "json": "{\"Alias\":\"handcash\"}", "code": "unknown-field"},
       {"name": "duplicate-alias", "json": "{\"alias\":\"handcash\",\"alias\":\"lkup\"}", "code": "duplicate-field"},

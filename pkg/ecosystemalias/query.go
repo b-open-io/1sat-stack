@@ -11,7 +11,7 @@ import (
 
 // DecodeQuery strictly decodes a BRC-24 query object for ls_ecosystemalias.
 // Unknown fields, JSON null, malformed JSON, invalid combinations,
-// findAll:false, empty or illegal values, zero/oversized limits, and
+// empty or illegal values, zero/oversized limits, and
 // negative skips are rejected with typed codes.
 func DecodeQuery(raw json.RawMessage) (Query, error) {
 	trimmed := bytes.TrimSpace(raw)
@@ -82,15 +82,6 @@ func DecodeQuery(raw json.RawMessage) (Query, error) {
 				return Query{}, err
 			}
 			q.Domain = &norm
-		case "findAll":
-			v, err := decodeJSONBool(value, "findAll")
-			if err != nil {
-				return Query{}, err
-			}
-			if !v {
-				return Query{}, fail(CodeFindAllFalse, "findAll must be true when present")
-			}
-			q.FindAll = boolPtr(true)
 		case "limit":
 			n, err := decodeJSONLimit(value)
 			if err != nil {
@@ -116,7 +107,7 @@ func DecodeQuery(raw json.RawMessage) (Query, error) {
 
 	mode := q.Mode()
 	if mode == ModeNone {
-		return Query{}, fail(CodeInvalidCombination, "query must have exactly one of alias, domain, or findAll:true")
+		return Query{}, fail(CodeInvalidCombination, "query must have exactly one of alias or domain")
 	}
 	return q, nil
 }
@@ -135,22 +126,6 @@ func decodeJSONString(raw json.RawMessage, field string) (string, error) {
 		return "", fail(CodeMalformedJSON, field+" must be a string")
 	}
 	return s, nil
-}
-
-func decodeJSONBool(raw json.RawMessage, field string) (bool, error) {
-	dec := json.NewDecoder(bytes.NewReader(raw))
-	tok, err := dec.Token()
-	if err != nil {
-		return false, fail(CodeMalformedJSON, field+" must be a boolean")
-	}
-	v, ok := tok.(bool)
-	if !ok {
-		return false, fail(CodeMalformedJSON, field+" must be a boolean")
-	}
-	if err := consumeEOF(dec); err != nil {
-		return false, fail(CodeMalformedJSON, field+" must be a boolean")
-	}
-	return v, nil
 }
 
 func decodeJSONLimit(raw json.RawMessage) (uint32, error) {
@@ -224,5 +199,3 @@ func consumeEOF(dec *json.Decoder) error {
 	}
 	return nil
 }
-
-func boolPtr(v bool) *bool { return &v }

@@ -27,7 +27,7 @@ The module is responsible for:
 - retaining all valid conflicting alias/domain claims;
 - tracking admission, spend, block placement, eviction, rollback, and reorg
   lifecycle state;
-- querying by normalized alias, normalized domain, or `findAll`;
+- querying by normalized alias or normalized domain;
 - hydrating results as standard BRC-24 Atomic BEEF output-list entries.
 
 The module is not responsible for:
@@ -79,9 +79,9 @@ The query object has exactly one mode:
 
 - `alias: string`
 - `domain: string`
-- `findAll: true`
 
-It may also include `limit` (1–500) and `skip` (default 0). Responses use `type: "output-list"`, with an `outputs` array
+It may also include `limit` (1–500) and `skip` (default 0). Full topic membership
+is GASP (`FindUTXOs` / ingest scores), not a lookup mode. Responses use `type: "output-list"`, with an `outputs` array
 containing base64 Atomic BEEF and the claim's `outputIndex`.
 
 ```json
@@ -163,7 +163,7 @@ Before a host is advertised:
 1. verify disabled mode registers no route or capability;
 2. verify the chosen prefix owns the standard route group;
 3. verify `tm_ecosystemalias` and `ls_ecosystemalias` documentation discovery;
-4. verify alias, domain, enumeration, pagination, and conflict results on both
+   4. verify alias, domain, pagination, and conflict results on both
    configured storage backends;
 5. verify spend, eviction, confirmation, rollback, restart, and reorg behavior;
 6. add host-level health checks, backups, logs, and alerting;

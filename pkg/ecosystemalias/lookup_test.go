@@ -42,10 +42,6 @@ func TestLookupAdmitAndQuery(t *testing.T) {
 	if len(got) != 1 || got[0] != op.String() {
 		t.Fatalf("domain lookup %v", got)
 	}
-	got = lookupOutpoints(t, svc, `{"findAll":true}`)
-	if len(got) != 1 {
-		t.Fatalf("findAll %v", got)
-	}
 }
 
 func TestLookupSkipsSpentAndPaginates(t *testing.T) {
@@ -187,7 +183,7 @@ func TestLookupConfirmationOrderingAcrossModes(t *testing.T) {
 	if err := svc.OutputBlockHeightUpdated(t.Context(), &ops[1].Txid, 800000, 3); err != nil {
 		t.Fatal(err)
 	}
-	for _, query := range []string{`{"alias":"aaa","limit":1}`, `{"domain":"aaa.example","limit":1}`, `{"findAll":true,"limit":1}`} {
+	for _, query := range []string{`{"alias":"aaa","limit":1}`, `{"domain":"aaa.example","limit":1}`} {
 		got := lookupOutpoints(t, svc, query)
 		if len(got) != 1 || got[0] != ops[1].String() {
 			t.Fatalf("%s: %v, want confirmed %s first", query, got, ops[1])
@@ -205,7 +201,7 @@ func TestLookupConfirmationOrderingAcrossModes(t *testing.T) {
 	}
 	// A reorg restamps all event keys; all modes must agree again.
 	want := lookupOutpoints(t, svc, `{"alias":"aaa"}`)
-	for _, query := range []string{`{"domain":"aaa.example"}`, `{"findAll":true}`} {
+	for _, query := range []string{`{"domain":"aaa.example"}`} {
 		got := lookupOutpoints(t, svc, query)
 		if !reflect.DeepEqual(got, want) {
 			t.Fatalf("reorg %s: %v, want %v", query, got, want)
@@ -239,7 +235,7 @@ func TestLookupNumericVoutOrderBeforePaging(t *testing.T) {
 	if err := svc.OutputBlockHeightUpdated(t.Context(), txid, 800000, 3); err != nil {
 		t.Fatal(err)
 	}
-	for _, mode := range []string{`"alias":"aaa"`, `"domain":"aaa.example"`, `"findAll":true`} {
+	for _, mode := range []string{`"alias":"aaa"`, `"domain":"aaa.example"`} {
 		got := lookupOutpoints(t, svc, `{`+mode+`,"limit":1}`)
 		want := (&transaction.Outpoint{Txid: *txid, Index: 1}).String()
 		if len(got) != 1 || got[0] != want {

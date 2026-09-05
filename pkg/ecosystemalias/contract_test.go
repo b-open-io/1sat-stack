@@ -349,12 +349,12 @@ func TestOrdering(t *testing.T) {
 }
 
 func TestTypedErrorCodesSeparateFromMessages(t *testing.T) {
-	_, err := DecodeQuery(json.RawMessage(`{"findAll":false}`))
+	_, err := DecodeQuery(json.RawMessage(`{"alias":"handcash","extra":1}`))
 	if err == nil {
 		t.Fatal("expected error")
 	}
 	code, ok := CodeOf(err)
-	if !ok || code != CodeFindAllFalse {
+	if !ok || code != CodeUnknownField {
 		t.Fatalf("code %s", code)
 	}
 	if err.Error() == string(code) {
@@ -490,12 +490,12 @@ func TestSameBlockTieUsesTxIndexThenVout(t *testing.T) {
 }
 
 func TestQuerySkipBounds(t *testing.T) {
-	for _, raw := range []string{`{"findAll":true,"skip":4294967296}`, `{"findAll":true,"skip":9223372036854775807}`} {
+	for _, raw := range []string{`{"alias":"handcash","skip":4294967296}`, `{"alias":"handcash","skip":9223372036854775807}`} {
 		if _, err := DecodeQuery([]byte(raw)); err == nil {
 			t.Fatalf("accepted overflowing skip: %s", raw)
 		}
 	}
-	q, err := DecodeQuery([]byte(`{"findAll":true,"skip":4294967295}`))
+	q, err := DecodeQuery([]byte(`{"alias":"handcash","skip":4294967295}`))
 	if err != nil || q.PageSkip() != 4294967295 {
 		t.Fatalf("max uint32 skip: %v, %v", q, err)
 	}
