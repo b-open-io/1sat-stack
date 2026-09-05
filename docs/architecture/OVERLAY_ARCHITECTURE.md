@@ -48,6 +48,7 @@ Decide which outputs to admit to a topic:
 | `tm_col_{collectionId}` | `ItemTopicManager` (collection) | Collection item mints for one collection |
 | `tm_1sat` | `OneSatTopicManager` | All outputs (catch-all) |
 | `tm_bap` | `TopicManager` (BAP) | Structurally valid BAP+AIP outputs |
+| `tm_ecosystemalias` | `TopicManager` (BRC-169) | Valid six-field ecosystem-alias claims |
 | `tm_bsocial` | `TopicManager` (BSocial) | BSocial protocol outputs |
 | `tm_opns` | `TopicManager` (OPNS) | OPNS protocol outputs |
 | `tm_ordlock` | `TopicManager` (OrdLock) | OrdLock listing outputs |
@@ -61,6 +62,7 @@ Index admitted outputs by adding custom schemas to the topic's database:
 | `BSV21Lookup` | `token_outputs` per topic DB | Token operations (deploy, transfer, burn) |
 | `OneSatLookup` | Uses shared events table | `own:`, `txid:`, tag-specific events |
 | `BAPLookup` | `bap_identity_addresses`, `bap_attestations` | Identity rotations, attestations |
+| `ls_ecosystemalias` | `ecosystem_alias_claims` | BRC-169 aliases, domains, conflicts, and lifecycle |
 | `OrdLockLookup` | `listings` | Marketplace listings |
 
 Lookup services access the topic database via `TopicStorage.DB()` and lazily create their custom tables on first use.
@@ -103,7 +105,8 @@ Engine.Submit()
 ```
 Client
      │
-     │ GET /1sat/lookup/{service}?query=...
+     │ POST /1sat/{module}/overlay/lookup
+     │ {"service":"ls_xxx","query":{...}}
      ▼
 LookupService.Lookup()
      │
@@ -162,6 +165,7 @@ SQLite files created per topic:
 ├── tm_bsv21.db          # BSV21 discovery topic
 ├── tm_{tokenId}.db      # Per-token topics (created dynamically)
 ├── tm_bap.db            # BAP identity topic
+├── tm_ecosystemalias.db # BRC-169 ecosystem-alias topic
 ├── tm_bsocial.db        # BSocial topic
 ├── tm_opns.db           # OPNS topic
 ├── tm_ordlock.db        # OrdLock marketplace topic
@@ -205,3 +209,4 @@ Helper functions:
 
 - `pkg/store/KEYS.md` - Storage key reference for the main data store (Badger/Redis)
 - `docs/architecture/BSV21_PIPELINE.md` - BSV21-specific processing pipeline
+- `docs/architecture/ECOSYSTEM_ALIAS_OVERLAY.md` - BRC-169 module, API, and deployment boundaries

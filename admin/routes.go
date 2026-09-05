@@ -9,6 +9,7 @@ import (
 	"embed"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io/fs"
 	"log/slog"
 	"net/http"
@@ -1311,6 +1312,9 @@ func (r *Routes) handleUpdateConfig(c *fiber.Ctx) error {
 			"error": "invalid request body",
 		})
 	}
+	if err := validateEcosystemAliasConfigUpdates(updates); err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": err.Error()})
+	}
 
 	ctx := c.Context()
 	var updated int
@@ -1356,6 +1360,37 @@ func (r *Routes) handleUpdateConfig(c *fiber.Ctx) error {
 		"status":  "ok",
 		"updated": updated,
 	})
+}
+
+func validateEcosystemAliasConfigUpdates(updates map[string]string) error {
+	for _, key := range []string{"overlay.ecosystemalias.enabled", "overlay.ecosystemalias.sync_enabled", "overlay.ecosystemalias.routes_enabled"} {
+		if value, present := updates[key]; present && value != "true" && value != "false" {
+			return fmt.Errorf("%s must be true or false", key)
+		}
+	}
+
+	if raw, ok := updates["overlay.ecosystemalias.concurrency"]; ok {
+		if _, err := config.ParseEcosystemAliasBoundedInt(
+			"concurrency", raw, config.EcosystemAliasMinConcurrency, config.EcosystemAliasMaxConcurrency,
+		); err != nil {
+			return fmt.Errorf("overlay.ecosystemalias.concurrency: %w", err)
+		}
+	}
+	if raw, ok := updates["overlay.ecosystemalias.batch_size"]; ok {
+		if _, err := config.ParseEcosystemAliasBoundedInt(
+			"batch size", raw, config.EcosystemAliasMinBatchSize, config.EcosystemAliasMaxBatchSize,
+		); err != nil {
+			return fmt.Errorf("overlay.ecosystemalias.batch_size: %w", err)
+		}
+	}
+	if raw, ok := updates["overlay.ecosystemalias.route_prefix"]; ok {
+		normalized, err := config.NormalizeEcosystemAliasRoutePrefix(raw)
+		if err != nil {
+			return fmt.Errorf("overlay.ecosystemalias.route_prefix: %w", err)
+		}
+		updates["overlay.ecosystemalias.route_prefix"] = normalized
+	}
+	return nil
 }
 
 // syncPrefixedKeys replaces all keys with the given prefix to match the JSON array value.

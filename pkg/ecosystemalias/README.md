@@ -1,126 +1,213 @@
-# ecosystemalias
+# Ecosystem Alias
 
-Contract-only foundation for the generic BRC-169 ecosystem-alias overlay module.
+## Purpose
 
-This package freezes parser, query, and cursor interfaces plus conformance vectors.
-It does **not** wire a live module, HTTP routes, topic manager, store, lookup
-implementation, discovery, or sync. OPL-4445 implements those.
+`ecosystemalias` is the generic BRC-169 ecosystem-alias overlay module. It
+validates on-chain alias claims, retains their lifecycle in topic-scoped
+storage, and answers standard BRC-24 lookups by alias, domain, or enumeration.
 
-## Frozen names
+The module has no Sigma-specific behavior. A Sigma appliance can enable it,
+but the same module can be enabled by any independently operated 1sat-stack.
+
+## Contract
 
 | Token | Value |
 | --- | --- |
-| Topic | `tm_ecosystemalias` |
+| Topic manager | `tm_ecosystemalias` |
 | Lookup service | `ls_ecosystemalias` |
 | Protocol | `ecosystem-alias` |
 | Version | `1` |
-| HTTP (planned only) | `POST /ecosystemalias/overlay/lookup` |
+| Default lookup path | `POST /1sat/ecosystemalias/overlay/lookup` |
 
-Do not invent alias or domain REST routes.
+The topic manager accepts a positive-satoshi BRC-48 PushDrop output with
+exactly six fields:
 
-## Token
-
-A claim is a [BRC-48](https://github.com/bitcoin-sv/BRCs/blob/master/scripts/0048.md)
-PushDrop output with exactly six fields, in order:
-
-1. protocol — ASCII `ecosystem-alias`
-2. version — ASCII `1`
+1. ASCII protocol `ecosystem-alias`
+2. ASCII version `1`
 3. normalized alias
 4. normalized RFC 1123 FQDN
 5. compressed 33-byte certifier key
 6. DER ECDSA signature
 
-The digest is SHA-256 of the raw concatenation of fields 1–5, with no separators
-or length prefixes. The certifier key in field 5 signs that digest.
+The signature covers one SHA-256 digest of the raw concatenation of fields
+1–5. The certifier key in field 5 verifies the signature. Alias and domain
+values must already be normalized because they are signed.
 
-Claims require a positive satoshi value. Conflicts remain queryable; this overlay
-never imposes uniqueness on alias or domain.
+The overlay deliberately keeps conflicts. Multiple unspent claims for the
+same alias or domain are returned in deterministic order so the resolver can
+apply policy with full information.
 
-Token values must already be normalized because they are signed.
-`ValidateTokenFields` therefore does not case-fold. Query normalization may
-ASCII-lowercase, but rejects leading/trailing whitespace, non-ASCII/Unicode
-input, and empty values.
+Admission validates only the on-chain BRC-169 claim. It does not fetch the
+claimed domain's manifest. Manifest discovery and bidirectional consent (for
+example, checking `metanet.handles.aliases`) belong to the resolver or
+application using the lookup result.
 
-### Alias grammar
+## Configuration
 
-Lowercase ASCII letters and digits with internal single hyphens. 1–32 bytes.
-No leading or trailing hyphen. No consecutive hyphens.
+The module is disabled by default. Only `disabled` and `embedded` modes are
+supported. `embedded` means the module runs in the current process; the shared
+overlay storage may still use SQLite or PostgreSQL.
 
-### Domain grammar
+### Default / disabled
 
-Lowercase ASCII RFC 1123 FQDN. At least two labels. No trailing dot. Each label
-1–63 bytes. Total at most 253 bytes. Valid `xn--` punycode labels are accepted as
-ASCII. Unicode input is rejected; clients must pass punycode.
+```yaml
+ecosystemalias:
+  mode: disabled
+```
 
-## Query
+### Embedded with SQLite
 
-`DecodeQuery` accepts a BRC-24 `query` object with exactly one mode:
+```yaml
+overlay:
+  mode: embedded
+  storage_backend: sqlite
+  storage_path: overlay
 
-- `alias`
-- `domain`
-- `findAll: true`
+ecosystemalias:
+  mode: embedded
+  log_level: info
+  routes:
+    enabled: true
+    prefix: /ecosystemalias
+  sync:
+    enabled: false
+    subscription_id: ""
+    queue_name: ecosystemalias
+    concurrency: 8
+    batch_size: 1000
+```
 
-It rejects unknown fields, JSON `null`, malformed JSON, duplicate fields, invalid
-combinations, `findAll: false`, zero or oversized limits, malformed cursors, and
-a cursor bound to another query.
+SQLite creates `tm_ecosystemalias.db` below `overlay.storage_path`. The claim
+table lives in that topic database.
 
-Default page size is 100. Maximum is 500.
+### Embedded with PostgreSQL
 
-Deterministic malformed-query codes are guaranteed at this Go interface
-(`Error.Code`, independent of `Error.Message`). The existing shared HTTP adapter
-may surface them as BRC-24 `provider-failure`. Changing transport errors is
-outside this contract.
+```yaml
+overlay:
+  mode: embedded
+  storage_backend: postgres
+  storage_url: postgres://user:password@postgres:5432/onesat?sslmode=require
 
-## Ordering
+ecosystemalias:
+  mode: embedded
+  routes:
+    enabled: true
+    prefix: /ecosystemalias
+```
 
-Alias/domain results: confirmed first, then earliest block height, lexical txid, output index. Mempool entries follow confirmed
-entries and use lexical txid and output index only.
+PostgreSQL uses the shared overlay database and isolates engine and claim rows
+by topic ID.
 
-Enumeration (`findAll`) results: lexical txid then output index.
+### Custom route prefix
 
-Do not use wall-clock scores. Confirmed vs mempool is an explicit flag, not
-`height == 0`.
+```yaml
+ecosystemalias:
+  mode: embedded
+  routes:
+    enabled: true
+    prefix: /identity
+```
 
-## Cursor
+With the default server base path, the BRC-24 lookup then moves to
+`POST /1sat/identity/overlay/lookup`. No alias- or domain-specific REST routes
+are registered.
 
-Cursors are opaque, URL-safe, and versioned (`ea1.` + unpadded base64url).
-They are client-derived from the last returned outpoint plus a fingerprint of
-the normalized query mode and value. On receipt the service resolves that
-outpoint's stored sort key. No server secret is required. Validation is
-structural and binding, not authorization.
+### Admin UI settings
 
-The current overlay engine discards lookup `Result` metadata when hydrating an
-`output-list`, so **no cursor can currently be returned as BRC-24 lookup
-metadata**. Clients must derive the next cursor from the last hydrated outpoint.
+The admin UI writes these runtime settings to `{data_dir}/config.db` and
+restarts the server when they change:
 
-## Fixtures
+| Runtime key | Meaning | Default |
+| --- | --- | --- |
+| `overlay.ecosystemalias.enabled` | Select embedded mode | `false` |
+| `overlay.ecosystemalias.routes_enabled` | Register standard overlay routes | `true` |
+| `overlay.ecosystemalias.route_prefix` | Module mount prefix | `/ecosystemalias` |
+| `overlay.ecosystemalias.sync_enabled` | Run the queue worker | `false` |
+| `overlay.ecosystemalias.sub_id` | Optional JungleBus subscription | empty |
+| `overlay.ecosystemalias.concurrency` | Queue-worker concurrency | `8` |
+| `overlay.ecosystemalias.batch_size` | JungleBus page batch size | `1000` |
+| `overlay.ecosystemalias.log_level` | Component log level | `info` in the UI |
 
-`testdata/brc169-aliases.json` is versioned. It covers all six token fields,
-signature digest/vector material, normalization, strict query decoding, ordering
-keys, and cursors.
+The subscription is optional. Enable the worker without a subscription when
+another ingestion path fills the `ecosystemalias` queue.
 
-`canonicalSha256` is SHA-256 of the document after omitting that field and
-serializing with RFC 8785-style canonical JSON (sorted object keys, no
-insignificant whitespace, JSON numbers as digit literals). Current value:
+## BRC-24 lookup
 
-`fdfa12e2417c474ab0f0a7392e09c5e96fdd5146f4fc38c922e9aef1ba093664`
+Send a JSON lookup question to the module's standard overlay endpoint:
 
-A TypeScript copy must fail on drift.
+```http
+POST /1sat/ecosystemalias/overlay/lookup
+Content-Type: application/json
 
-This fixture does **not** include or claim to reproduce a confirmed Sigma
-transaction. No raw Sigma transaction bytes are present in this repository.
-Signature vectors use a documented RFC6979 test key (secp256k1 generator).
+{
+  "service": "ls_ecosystemalias",
+  "query": {
+    "alias": "sigma",
+    "limit": 100
+  }
+}
+```
 
-## OPL-4445 remaining work
+Exactly one query mode is allowed:
 
-The current storage lifecycle has incomplete rollback propagation. Full
-lifecycle and reorg support is required of OPL-4445, including:
+```json
+{ "domain": "sigmaidentity.com", "limit": 100 }
+```
 
-- A strict local BRC-48 decoder shared by parser and topic manager
-- SQLite and PostgreSQL storage
-- Standard BRC-24 lookup (`ls_ecosystemalias`) returning `output-list`
-- Configuration, routes, discovery, sync, and docs
-- Complete spend, eviction, block-update, restart, and reorg behavior
+```json
+{ "findAll": true, "limit": 100 }
+```
 
-Parser and topic manager must never fetch manifests. Bidirectional manifest
-consent (`metanet.handles.aliases`) remains resolver-side.
+An opaque `cursor` may accompany the same mode and normalized value. The
+default page size is 100 and the maximum is 500.
+
+The response is the standard BRC-24 `output-list` envelope. Each `beef` value
+is base64-encoded Atomic BEEF and `outputIndex` identifies the claim output:
+
+```json
+{
+  "type": "output-list",
+  "outputs": [
+    {
+      "beef": "<base64 Atomic BEEF>",
+      "outputIndex": 0
+    }
+  ],
+  "result": ""
+}
+```
+
+The current overlay transport cannot carry cursor metadata on an output-list.
+Compatible clients derive the next cursor from the final returned outpoint.
+
+## Operations and deployment boundary
+
+Enabling this package only starts a local module. It does not deploy a host,
+configure DNS, or publish SHIP/SLAP advertisements.
+
+The proposed Sigma appliance is an independently operated 1sat-stack instance
+with the required shared services and selected identity modules, exposed at a
+Sigma-owned hostname such as `overlay.sigmaidentity.com`. That hostname,
+deployment, and its advertisements are rollout work; they are not live merely
+because this module is present. `api.1sat.app` is not implied by this package.
+
+Before advertising an instance:
+
+1. choose SQLite for a single-node appliance or PostgreSQL for shared/durable
+   database operations;
+2. enable the shared overlay engine and this module;
+3. verify the capability list includes `ecosystemalias`;
+4. query the topic and lookup documentation endpoints for
+   `tm_ecosystemalias` and `ls_ecosystemalias`;
+5. exercise alias, domain, conflict, enumeration, spend, restart, and reorg
+   behavior against staging;
+6. publish discovery advertisements only after the public route and monitoring
+   are ready.
+
+## See also
+
+- [`docs/architecture/ECOSYSTEM_ALIAS_OVERLAY.md`](../../docs/architecture/ECOSYSTEM_ALIAS_OVERLAY.md)
+- [`docs/architecture/OVERLAY_ARCHITECTURE.md`](../../docs/architecture/OVERLAY_ARCHITECTURE.md)
+- [BRC-169](https://github.com/bitcoin-sv/BRCs/blob/master/peer-to-peer/0169.md)
+- [BRC-24](https://github.com/bitcoin-sv/BRCs/blob/master/peer-to-peer/0024.md)
+- [BRC-48](https://github.com/bitcoin-sv/BRCs/blob/master/scripts/0048.md)
