@@ -1,6 +1,7 @@
 package storage
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"os"
@@ -254,6 +255,329 @@ func TestTopicStorage_Rollback(t *testing.T) {
 				t.Errorf("expected 0 outputs after rollback, got %d", len(recs))
 			}
 		})
+	}
+}
+
+func TestReversibleTopicStorage_RestoresRecursiveAncestryAndFinalizes(t *testing.T) {
+	for _, b := range backends(t) {
+		t.Run(b.name, func(t *testing.T) {
+			topicStorage, cleanup := b.factory(t)
+			defer cleanup()
+			storage, ok := topicStorage.(ReversibleTopicStorage)
+			if !ok {
+				t.Fatal("backend does not implement reversible storage")
+			}
+			ctx := context.Background()
+			grandparent := makeOutpoint(0x51, 0)
+			parent := makeOutpoint(0x52, 0)
+			direct := makeOutpoint(0x53, 0)
+			mutationTxid := makeTxid(0x54)
+			created := makeOutpoint(0x54, 0)
+
+			if err := storage.InsertOutput(ctx, grandparent, &grandparent.Txid, 11, []byte("g-deps"), nil, 1); err != nil {
+				t.Fatal(err)
+			}
+			if err := storage.MarkSpent(ctx, grandparent, &parent.Txid); err != nil {
+				t.Fatal(err)
+			}
+			if err := storage.UpdateConsumedBy(ctx, grandparent, parent.Bytes()); err != nil {
+				t.Fatal(err)
+			}
+			if err := storage.SaveEvent(ctx, "grandparent", grandparent, 1); err != nil {
+				t.Fatal(err)
+			}
+			if err := storage.InsertOutput(ctx, parent, &parent.Txid, 12, []byte("p-deps"), grandparent.Bytes(), 2); err != nil {
+				t.Fatal(err)
+			}
+			if err := storage.MarkSpent(ctx, parent, &direct.Txid); err != nil {
+				t.Fatal(err)
+			}
+			if err := storage.UpdateConsumedBy(ctx, parent, direct.Bytes()); err != nil {
+				t.Fatal(err)
+			}
+			if err := storage.SaveEvent(ctx, "parent", parent, 2); err != nil {
+				t.Fatal(err)
+			}
+			if err := storage.InsertOutput(ctx, direct, &direct.Txid, 13, []byte("d-deps"), parent.Bytes(), 3); err != nil {
+				t.Fatal(err)
+			}
+			if err := storage.SaveEvent(ctx, "direct", direct, 3); err != nil {
+				t.Fatal(err)
+			}
+
+			if err := storage.BeginMutation(ctx, mutationTxid, []*transaction.Outpoint{direct}); err != nil {
+				t.Fatal(err)
+			}
+			if err := storage.DeleteOutput(ctx, direct); err != nil {
+				t.Fatal(err)
+			}
+			if err := storage.UpdateConsumedBy(ctx, parent, nil); err != nil {
+				t.Fatal(err)
+			}
+			if err := storage.DeleteOutput(ctx, parent); err != nil {
+				t.Fatal(err)
+			}
+			if err := storage.UpdateConsumedBy(ctx, grandparent, nil); err != nil {
+				t.Fatal(err)
+			}
+			if err := storage.DeleteOutput(ctx, grandparent); err != nil {
+				t.Fatal(err)
+			}
+			if err := storage.InsertOutput(ctx, created, mutationTxid, 36, nil, nil, 4); err != nil {
+				t.Fatal(err)
+			}
+			if err := storage.SaveEvent(ctx, "created", created, 4); err != nil {
+				t.Fatal(err)
+			}
+			if err := storage.CommitMutation(ctx, mutationTxid, 4); err != nil {
+				t.Fatal(err)
+			}
+
+			result, err := storage.RollbackMutation(ctx, mutationTxid)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(result.Evicted) != 1 || result.Evicted[0] != *created {
+				t.Fatalf("evicted = %+v, want %s", result.Evicted, created)
+			}
+			if len(result.Restored) != 3 {
+				t.Fatalf("restored %d outputs, want 3", len(result.Restored))
+			}
+			assertOutputBeforeImage(t, storage, grandparent, &parent.Txid, parent.Bytes(), []byte("g-deps"))
+			assertOutputBeforeImage(t, storage, parent, &direct.Txid, direct.Bytes(), []byte("p-deps"))
+			assertOutputBeforeImage(t, storage, direct, nil, nil, []byte("d-deps"))
+			for event := range map[string]struct{}{"grandparent": {}, "parent": {}, "direct": {}} {
+				outputs, err := storage.FindByEvent(ctx, event, nil)
+				if err != nil || len(outputs) != 1 {
+					t.Fatalf("event %q was not restored: outputs=%v err=%v", event, outputs, err)
+				}
+			}
+			if outputs, err := storage.FindByEvent(ctx, "created", nil); err != nil || len(outputs) != 0 {
+				t.Fatalf("created event survived rollback: outputs=%v err=%v", outputs, err)
+			}
+			if guarded, err := storage.HasMutationGuard(ctx, mutationTxid); err != nil || !guarded {
+				t.Fatalf("guard before finalization: guarded=%v err=%v", guarded, err)
+			}
+			if mutation, err := storage.GetMutation(ctx, mutationTxid); err != nil || mutation == nil || mutation.Phase != MutationPhaseRollbackPending {
+				t.Fatalf("rollback phase: mutation=%+v err=%v", mutation, err)
+			}
+			if applied, err := storage.HasAppliedTx(ctx, mutationTxid); err != nil || !applied {
+				t.Fatalf("applied marker before finalization: applied=%v err=%v", applied, err)
+			}
+			retry, err := storage.RollbackMutation(ctx, mutationTxid)
+			if err != nil || len(retry.Evicted) != 1 || len(retry.Restored) != 3 {
+				t.Fatalf("idempotent rollback result=%+v err=%v", retry, err)
+			}
+			if err := storage.FinalizeRollback(ctx, mutationTxid); err != nil {
+				t.Fatal(err)
+			}
+			if err := storage.FinalizeRollback(ctx, mutationTxid); err != nil {
+				t.Fatalf("idempotent finalization: %v", err)
+			}
+			if guarded, err := storage.HasMutationGuard(ctx, mutationTxid); err != nil || guarded {
+				t.Fatalf("guard after finalization: guarded=%v err=%v", guarded, err)
+			}
+			if applied, err := storage.HasAppliedTx(ctx, mutationTxid); err != nil || applied {
+				t.Fatalf("applied marker after finalization: applied=%v err=%v", applied, err)
+			}
+			if err := storage.BeginMutation(ctx, mutationTxid, []*transaction.Outpoint{direct}); err != nil {
+				t.Fatalf("replay after finalization: %v", err)
+			}
+		})
+	}
+}
+
+func TestReversibleTopicStorage_EnumeratesAndPrunesAppliedMutations(t *testing.T) {
+	for _, b := range backends(t) {
+		t.Run(b.name, func(t *testing.T) {
+			topicStorage, cleanup := b.factory(t)
+			defer cleanup()
+			storage := topicStorage.(ReversibleTopicStorage)
+			ctx := context.Background()
+			txid := makeTxid(0x59)
+			if mutations, err := storage.ListMutations(ctx); err != nil || len(mutations) != 0 {
+				t.Fatalf("dormant mutation tables: mutations=%v err=%v", mutations, err)
+			}
+			if err := storage.BeginMutation(ctx, txid, nil); err != nil {
+				t.Fatal(err)
+			}
+			if mutation, err := storage.GetMutation(ctx, txid); err != nil || mutation == nil || mutation.Phase != MutationPhaseActive {
+				t.Fatalf("active phase: mutation=%+v err=%v", mutation, err)
+			}
+			if err := storage.PruneMutation(ctx, txid); err == nil {
+				t.Fatal("active mutation was pruned")
+			}
+			if err := storage.CommitMutation(ctx, txid, 1); err != nil {
+				t.Fatal(err)
+			}
+			mutations, err := storage.ListMutations(ctx)
+			if err != nil || len(mutations) != 1 || mutations[0].Txid != *txid || mutations[0].Phase != MutationPhaseApplied {
+				t.Fatalf("applied enumeration: mutations=%+v err=%v", mutations, err)
+			}
+			if err := storage.PruneMutation(ctx, txid); err != nil {
+				t.Fatal(err)
+			}
+			if err := storage.PruneMutation(ctx, txid); err != nil {
+				t.Fatalf("idempotent prune: %v", err)
+			}
+			if mutation, err := storage.GetMutation(ctx, txid); err != nil || mutation != nil {
+				t.Fatalf("mutation after prune: mutation=%+v err=%v", mutation, err)
+			}
+			if applied, err := storage.HasAppliedTx(ctx, txid); err != nil || !applied {
+				t.Fatalf("prune removed applied marker: applied=%v err=%v", applied, err)
+			}
+			if _, err := storage.RollbackMutation(ctx, txid); err == nil {
+				t.Fatal("rollback silently accepted an applied transaction after its journal was pruned")
+			}
+		})
+	}
+}
+
+func TestReversibleTopicStorage_BeginIsAtomicOnSnapshotFailure(t *testing.T) {
+	for _, b := range backends(t) {
+		t.Run(b.name, func(t *testing.T) {
+			topicStorage, cleanup := b.factory(t)
+			defer cleanup()
+			storage := topicStorage.(ReversibleTopicStorage)
+			ctx := context.Background()
+			input := makeOutpoint(0x5a, 0)
+			mutationTxid := makeTxid(0x5b)
+			if err := storage.InsertOutput(ctx, input, &input.Txid, 1, nil, []byte{0x01}, 1); err != nil {
+				t.Fatal(err)
+			}
+			if err := storage.BeginMutation(ctx, mutationTxid, []*transaction.Outpoint{input}); err == nil {
+				t.Fatal("begin accepted a malformed ancestry snapshot")
+			}
+			if mutation, err := storage.GetMutation(ctx, mutationTxid); err != nil || mutation != nil {
+				t.Fatalf("failed begin left a mutation guard: mutation=%+v err=%v", mutation, err)
+			}
+			rec, err := storage.GetOutput(ctx, input)
+			if err != nil || rec == nil || rec.SpendTxid != nil {
+				t.Fatalf("failed begin partially marked its input: output=%+v err=%v", rec, err)
+			}
+		})
+	}
+}
+
+func TestReversibleTopicStorage_SerializesInputReservations(t *testing.T) {
+	for _, b := range backends(t) {
+		t.Run(b.name, func(t *testing.T) {
+			topicStorage, cleanup := b.factory(t)
+			defer cleanup()
+			storage := topicStorage.(ReversibleTopicStorage)
+			ctx := context.Background()
+			input := makeOutpoint(0x61, 0)
+			first := makeTxid(0x62)
+			second := makeTxid(0x63)
+			if err := storage.InsertOutput(ctx, input, &input.Txid, 1, nil, nil, 1); err != nil {
+				t.Fatal(err)
+			}
+			start := make(chan struct{})
+			type beginResult struct {
+				txid *chainhash.Hash
+				err  error
+			}
+			results := make(chan beginResult, 2)
+			for _, txid := range []*chainhash.Hash{first, second} {
+				go func(txid *chainhash.Hash) {
+					<-start
+					results <- beginResult{txid: txid, err: storage.BeginMutation(ctx, txid, []*transaction.Outpoint{input})}
+				}(txid)
+			}
+			close(start)
+			var winner, loser *chainhash.Hash
+			for range 2 {
+				result := <-results
+				if result.err == nil {
+					if winner != nil {
+						t.Fatal("both concurrent mutations reserved the same input")
+					}
+					winner = result.txid
+				} else {
+					loser = result.txid
+				}
+			}
+			if winner == nil || loser == nil {
+				t.Fatalf("concurrent begin results: winner=%v loser=%v", winner, loser)
+			}
+			rec, err := storage.GetOutput(ctx, input)
+			if err != nil || rec == nil || rec.SpendTxid == nil || !rec.SpendTxid.Equal(*winner) {
+				t.Fatalf("winning reservation was not preserved: output=%+v err=%v", rec, err)
+			}
+			if _, err := storage.RollbackMutation(ctx, winner); err != nil {
+				t.Fatal(err)
+			}
+			if err := storage.FinalizeRollback(ctx, winner); err != nil {
+				t.Fatal(err)
+			}
+			if err := storage.BeginMutation(ctx, loser, []*transaction.Outpoint{input}); err != nil {
+				t.Fatalf("input remained reserved after finalization: %v", err)
+			}
+		})
+	}
+}
+
+func TestReversibleTopicStorage_RollbackRejectsActiveAndCommittedDescendants(t *testing.T) {
+	for _, b := range backends(t) {
+		t.Run(b.name, func(t *testing.T) {
+			topicStorage, cleanup := b.factory(t)
+			defer cleanup()
+			storage := topicStorage.(ReversibleTopicStorage)
+			ctx := context.Background()
+			parentTxid := makeTxid(0x71)
+			parentOutput := makeOutpoint(0x71, 0)
+			descendantTxid := makeTxid(0x72)
+			if err := storage.BeginMutation(ctx, parentTxid, nil); err != nil {
+				t.Fatal(err)
+			}
+			if err := storage.InsertOutput(ctx, parentOutput, parentTxid, 1, nil, nil, 1); err != nil {
+				t.Fatal(err)
+			}
+			if err := storage.CommitMutation(ctx, parentTxid, 1); err != nil {
+				t.Fatal(err)
+			}
+			if err := storage.BeginMutation(ctx, descendantTxid, []*transaction.Outpoint{parentOutput}); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := storage.RollbackMutation(ctx, parentTxid); err == nil {
+				t.Fatal("parent rollback overwrote an active descendant reservation")
+			}
+			if rec, err := storage.GetOutput(ctx, parentOutput); err != nil || rec == nil || rec.SpendTxid == nil || !rec.SpendTxid.Equal(*descendantTxid) {
+				t.Fatalf("parent changed after rejected rollback: output=%+v err=%v", rec, err)
+			}
+			if err := storage.CommitMutation(ctx, descendantTxid, 2); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := storage.RollbackMutation(ctx, parentTxid); err == nil {
+				t.Fatal("parent rollback ignored a committed descendant")
+			}
+			if err := storage.PruneMutation(ctx, descendantTxid); err == nil {
+				t.Fatal("descendant prune discarded its link to a reversible parent")
+			}
+			if _, err := storage.RollbackMutation(ctx, descendantTxid); err != nil {
+				t.Fatal(err)
+			}
+			if err := storage.FinalizeRollback(ctx, descendantTxid); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := storage.RollbackMutation(ctx, parentTxid); err != nil {
+				t.Fatalf("parent rollback after descendant cleanup: %v", err)
+			}
+		})
+	}
+}
+
+func assertOutputBeforeImage(t *testing.T, storage TopicStorage, op *transaction.Outpoint, spend *chainhash.Hash, consumedBy, deps []byte) {
+	t.Helper()
+	rec, err := storage.GetOutput(context.Background(), op)
+	if err != nil || rec == nil {
+		t.Fatalf("output %s was not restored: output=%+v err=%v", op, rec, err)
+	}
+	if (spend == nil) != (rec.SpendTxid == nil) || spend != nil && !rec.SpendTxid.Equal(*spend) {
+		t.Fatalf("output %s spend = %v, want %v", op, rec.SpendTxid, spend)
+	}
+	if !bytes.Equal(rec.ConsumedBy, consumedBy) || !bytes.Equal(rec.Deps, deps) {
+		t.Fatalf("output %s before image mismatch: consumed_by=%x deps=%x", op, rec.ConsumedBy, rec.Deps)
 	}
 }
 
@@ -517,5 +841,72 @@ func TestPostgresFactory_TxTopicIndex(t *testing.T) {
 	}
 	if len(topics) != 0 {
 		t.Errorf("topics after delete = %d, want 0", len(topics))
+	}
+}
+
+func TestReversibleTopicStorage_SharedAncestorOrder(t *testing.T) {
+	for _, b := range backends(t) {
+		t.Run(b.name, func(t *testing.T) {
+			ts, close := b.factory(t)
+			defer close()
+			s := ts.(ReversibleTopicStorage)
+			ctx := context.Background()
+			root, left, right := makeOutpoint(0x80, 0), makeOutpoint(0x81, 0), makeOutpoint(0x81, 1)
+			first, second := makeTxid(0x82), makeTxid(0x83)
+			must := func(err error) {
+				t.Helper()
+				if err != nil {
+					t.Fatal(err)
+				}
+			}
+			must(s.InsertOutput(ctx, root, &root.Txid, 2, nil, nil, 1))
+			must(s.MarkSpent(ctx, root, &left.Txid))
+			both := append(append([]byte{}, left.Bytes()...), right.Bytes()...)
+			must(s.UpdateConsumedBy(ctx, root, both))
+			must(s.InsertOutput(ctx, left, &left.Txid, 1, nil, root.Bytes(), 2))
+			must(s.InsertOutput(ctx, right, &right.Txid, 1, nil, root.Bytes(), 2))
+			must(s.BeginMutation(ctx, first, []*transaction.Outpoint{left}))
+			must(s.DeleteOutput(ctx, left))
+			must(s.UpdateConsumedBy(ctx, root, right.Bytes()))
+			must(s.CommitMutation(ctx, first, 3))
+			must(s.BeginMutation(ctx, second, []*transaction.Outpoint{right}))
+			must(s.DeleteOutput(ctx, right))
+			must(s.UpdateConsumedBy(ctx, root, nil))
+			must(s.CommitMutation(ctx, second, 4))
+			if _, err := s.RollbackMutation(ctx, first); err == nil {
+				t.Fatal("earlier overlapping rollback succeeded")
+			}
+			if err := s.PruneMutation(ctx, second); err == nil {
+				t.Fatal("later overlapping prune succeeded")
+			}
+			record, err := s.GetOutput(ctx, root)
+			must(err)
+			if len(record.ConsumedBy) != 0 {
+				t.Fatal("rejected rollback mutated shared ancestry")
+			}
+			_, err = s.RollbackMutation(ctx, second)
+			must(err)
+			if _, err := s.RollbackMutation(ctx, first); err == nil {
+				t.Fatal("earlier rollback ran before later callbacks were finalized")
+			}
+			must(s.FinalizeRollback(ctx, second))
+			record, err = s.GetOutput(ctx, root)
+			must(err)
+			if !bytes.Equal(record.ConsumedBy, right.Bytes()) {
+				t.Fatal("later rollback did not preserve the earlier mutation")
+			}
+			_, err = s.RollbackMutation(ctx, first)
+			must(err)
+			must(s.FinalizeRollback(ctx, first))
+			record, err = s.GetOutput(ctx, root)
+			must(err)
+			if !bytes.Equal(record.ConsumedBy, both) {
+				t.Fatal("reverse rollback did not restore both original edges")
+			}
+			// Finalized journals must not retain dependency edges when the transactions replay.
+			must(s.BeginMutation(ctx, first, []*transaction.Outpoint{left}))
+			must(s.CommitMutation(ctx, first, 3))
+			must(s.PruneMutation(ctx, first))
+		})
 	}
 }
