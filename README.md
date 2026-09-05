@@ -5,7 +5,7 @@ A composable BSV indexing server. One Go binary consolidates overlay, indexer, B
 ## What's inside
 
 - **Overlay engine** — topic managers and lookup services built on [go-overlay-services](https://github.com/bsv-blockchain/go-overlay-services), with GASP sync support
-- **Overlay modules** — BSV21 fungible tokens, BAP identity, BSocial, OPNS domain names, OrdLock marketplace
+- **Overlay modules** — BSV21 fungible tokens, BAP identity, BRC-169 ecosystem aliases, BSocial, OPNS domain names, OrdLock marketplace
 - **Indexer** — output-level script parsing (P2PKH, inscriptions, BSV21, and more) and transaction ingestion
 - **ORDFS** — ordinal content serving with optional Redis caching
 - **BEEF storage** — tiered transaction storage (LRU cache, Redis, filesystem, JungleBus fallback)
@@ -57,7 +57,7 @@ Routes mount under the base path (default `/1sat`):
 
 | Prefix | Service |
 |--------|---------|
-| `/bsv21`, `/bap`, `/bsocial`, `/opns`, `/market` | Overlay module lookups, plus `/{module}/overlay` for engine endpoints |
+| `/bsv21`, `/bap`, `/ecosystemalias`, `/bsocial`, `/opns`, `/market` | Overlay module APIs, plus `/{module}/overlay` for standard overlay endpoints |
 | `/txo`, `/owner` | Indexed outputs and address history |
 | `/beef` | BEEF transaction retrieval |
 | `/content` | ORDFS ordinal content |

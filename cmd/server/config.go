@@ -407,9 +407,9 @@ func (c *Config) resolveAllPaths() {
 // The config store is the sole source of truth for all operational settings.
 // Only values actually present in the store are applied — zero values from
 // missing keys leave the Viper defaults in place.
-func (c *Config) applyRuntimeConfig(rc *configpkg.RuntimeConfig) {
+func (c *Config) applyRuntimeConfig(rc *configpkg.RuntimeConfig) error {
 	if !rc.SetupComplete {
-		return
+		return nil
 	}
 
 	// Server
@@ -587,20 +587,48 @@ func (c *Config) applyRuntimeConfig(rc *configpkg.RuntimeConfig) {
 	if rc.EcosystemAliasLogLevel != "" {
 		c.EcosystemAlias.LogLevel = rc.EcosystemAliasLogLevel
 	}
-	if rc.EcosystemAliasEnabled {
-		c.EcosystemAlias.Mode = ecosystemalias.ModeEmbedded
-		c.Overlay.Mode = overlay.ModeEmbedded
-		if c.EcosystemAlias.Sync == nil {
-			c.EcosystemAlias.Sync = &overlay.OverlaySyncConfig{}
+	if rc.EcosystemAliasEnabledSet {
+		if rc.EcosystemAliasEnabled {
+			c.EcosystemAlias.Mode = ecosystemalias.ModeEmbedded
+			c.Overlay.Mode = overlay.ModeEmbedded
+		} else {
+			c.EcosystemAlias.Mode = ecosystemalias.ModeDisabled
 		}
-		if rc.EcosystemAliasSyncSubID != "" {
+	}
+	if rc.EcosystemAliasRoutesEnabledSet {
+		c.EcosystemAlias.Routes.Enabled = rc.EcosystemAliasRoutesEnabled
+	}
+	if rc.EcosystemAliasRoutePrefixSet {
+		prefix, err := configpkg.NormalizeEcosystemAliasRoutePrefix(rc.EcosystemAliasRoutePrefix)
+		if err != nil {
+			return fmt.Errorf("apply ecosystem-alias route prefix: %w", err)
+		}
+		c.EcosystemAlias.Routes.Prefix = prefix
+	}
+	if c.EcosystemAlias.Sync == nil && (rc.EcosystemAliasSyncEnabledSet || rc.EcosystemAliasSyncSubIDSet || rc.EcosystemAliasSyncSubID != "" ||
+		rc.EcosystemAliasSyncConcurrencySet || rc.EcosystemAliasSyncBatchSizeSet) {
+		c.EcosystemAlias.Sync = &overlay.OverlaySyncConfig{}
+	}
+	if c.EcosystemAlias.Sync != nil {
+		if rc.EcosystemAliasSyncEnabledSet {
+			c.EcosystemAlias.Sync.Enabled = rc.EcosystemAliasSyncEnabled
+		}
+		if rc.EcosystemAliasSyncSubIDSet || rc.EcosystemAliasSyncSubID != "" {
 			c.EcosystemAlias.Sync.SubscriptionID = rc.EcosystemAliasSyncSubID
-			c.EcosystemAlias.Sync.Enabled = true
+			if !rc.EcosystemAliasSyncEnabledSet && rc.EcosystemAliasSyncSubID != "" {
+				c.EcosystemAlias.Sync.Enabled = true
+			}
 		}
-		if rc.EcosystemAliasSyncConcurrency > 0 {
+		if rc.EcosystemAliasSyncConcurrencySet {
+			if err := configpkg.ValidateEcosystemAliasConcurrency(rc.EcosystemAliasSyncConcurrency); err != nil {
+				return fmt.Errorf("apply ecosystem-alias concurrency: %w", err)
+			}
 			c.EcosystemAlias.Sync.Concurrency = rc.EcosystemAliasSyncConcurrency
 		}
-		if rc.EcosystemAliasSyncBatchSize > 0 {
+		if rc.EcosystemAliasSyncBatchSizeSet {
+			if err := configpkg.ValidateEcosystemAliasBatchSize(rc.EcosystemAliasSyncBatchSize); err != nil {
+				return fmt.Errorf("apply ecosystem-alias batch size: %w", err)
+			}
 			c.EcosystemAlias.Sync.BatchSize = rc.EcosystemAliasSyncBatchSize
 		}
 	}
@@ -755,6 +783,8 @@ func (c *Config) applyRuntimeConfig(rc *configpkg.RuntimeConfig) {
 	if rc.PubSubRedisURL != "" {
 		c.PubSub.Redis.URL = rc.PubSubRedisURL
 	}
+
+	return nil
 }
 
 // splitMultiDelim splits a string by newlines, commas, or both, trimming whitespace
@@ -881,7 +911,9 @@ func (c *Config) Initialize(ctx context.Context, logger *slog.Logger) (*Services
 	if err != nil {
 		return nil, fmt.Errorf("failed to load runtime config: %w", err)
 	}
-	c.applyRuntimeConfig(runtimeCfg)
+	if err := c.applyRuntimeConfig(runtimeCfg); err != nil {
+		return nil, fmt.Errorf("failed to apply runtime config: %w", err)
+	}
 	c.resolveAllPaths()
 
 	// Initialize pubsub

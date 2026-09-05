@@ -95,7 +95,7 @@ func TestConfigInitializeRegistersExactContractNames(t *testing.T) {
 		BeefStorage:  testBeefStorage(),
 		RoutesConfig: &overlay.RoutesConfig{Enabled: true},
 	}
-	cfg := &Config{Mode: ModeEmbedded, Routes: RoutesConfig{Enabled: true}}
+	cfg := &Config{Mode: ModeEmbedded, Routes: RoutesConfig{Enabled: true, Prefix: "/ecosystemalias"}}
 	svc, err := cfg.Initialize(context.Background(), slog.Default(), deps)
 	if err != nil {
 		t.Fatalf("Initialize: %v", err)

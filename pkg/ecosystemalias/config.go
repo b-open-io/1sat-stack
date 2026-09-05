@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log/slog"
 
+	configpkg "github.com/b-open-io/1sat-stack/pkg/config"
 	"github.com/b-open-io/1sat-stack/pkg/overlay"
 	overlaystorage "github.com/b-open-io/1sat-stack/pkg/overlay/storage"
 	"github.com/bsv-blockchain/go-overlay-services/pkg/core/engine"
@@ -77,6 +78,21 @@ func (c *Config) Initialize(
 
 	switch c.Mode {
 	case ModeEmbedded:
+		if c.Routes.Enabled {
+			prefix, err := configpkg.NormalizeEcosystemAliasRoutePrefix(c.Routes.Prefix)
+			if err != nil {
+				return nil, fmt.Errorf("invalid ecosystem-alias route prefix: %w", err)
+			}
+			c.Routes.Prefix = prefix
+		}
+		if c.Sync != nil && c.Sync.Enabled {
+			if err := configpkg.ValidateEcosystemAliasConcurrency(c.Sync.Concurrency); err != nil {
+				return nil, err
+			}
+			if err := configpkg.ValidateEcosystemAliasBatchSize(c.Sync.BatchSize); err != nil {
+				return nil, err
+			}
+		}
 		if deps == nil || deps.Factory == nil {
 			return nil, fmt.Errorf("overlay ModuleDeps with Factory is required for ecosystem-alias")
 		}

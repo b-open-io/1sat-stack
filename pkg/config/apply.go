@@ -2,6 +2,8 @@ package config
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"log/slog"
 	"strconv"
 )
@@ -82,11 +84,21 @@ type RuntimeConfig struct {
 	BAPLogLevel        string
 
 	// Ecosystem-alias overlay
-	EcosystemAliasEnabled         bool
-	EcosystemAliasSyncSubID       string
-	EcosystemAliasSyncConcurrency int
-	EcosystemAliasSyncBatchSize   int
-	EcosystemAliasLogLevel        string
+	EcosystemAliasEnabled            bool
+	EcosystemAliasEnabledSet         bool
+	EcosystemAliasSyncEnabled        bool
+	EcosystemAliasSyncEnabledSet     bool
+	EcosystemAliasSyncSubID          string
+	EcosystemAliasSyncSubIDSet       bool
+	EcosystemAliasSyncConcurrency    int
+	EcosystemAliasSyncConcurrencySet bool
+	EcosystemAliasSyncBatchSize      int
+	EcosystemAliasSyncBatchSizeSet   bool
+	EcosystemAliasLogLevel           string
+	EcosystemAliasRoutesEnabled      bool
+	EcosystemAliasRoutesEnabledSet   bool
+	EcosystemAliasRoutePrefix        string
+	EcosystemAliasRoutePrefixSet     bool
 
 	// BSocial overlay
 	BSocialEnabled         bool
@@ -226,11 +238,58 @@ func LoadRuntimeConfig(ctx context.Context, cs Store, logger *slog.Logger) (*Run
 	rc.BAPLogLevel = getString(ctx, cs, "overlay.bap.log_level")
 
 	// Ecosystem alias
-	rc.EcosystemAliasEnabled = getBool(ctx, cs, "overlay.ecosystemalias.enabled")
-	rc.EcosystemAliasSyncSubID = getString(ctx, cs, "overlay.ecosystemalias.sub_id")
-	rc.EcosystemAliasSyncConcurrency = getInt(ctx, cs, "overlay.ecosystemalias.concurrency")
-	rc.EcosystemAliasSyncBatchSize = getInt(ctx, cs, "overlay.ecosystemalias.batch_size")
+	if value, present, err := getOptionalBool(ctx, cs, "overlay.ecosystemalias.enabled"); err != nil {
+		return nil, err
+	} else {
+		rc.EcosystemAliasEnabled, rc.EcosystemAliasEnabledSet = value, present
+	}
+	if value, present, err := getOptionalBool(ctx, cs, "overlay.ecosystemalias.sync_enabled"); err != nil {
+		return nil, err
+	} else {
+		rc.EcosystemAliasSyncEnabled, rc.EcosystemAliasSyncEnabledSet = value, present
+	}
+	if value, present, err := getOptionalString(ctx, cs, "overlay.ecosystemalias.sub_id"); err != nil {
+		return nil, err
+	} else {
+		rc.EcosystemAliasSyncSubID, rc.EcosystemAliasSyncSubIDSet = value, present
+	}
+	if raw, present, err := getOptionalString(ctx, cs, "overlay.ecosystemalias.concurrency"); err != nil {
+		return nil, err
+	} else if present {
+		rc.EcosystemAliasSyncConcurrency, err = ParseEcosystemAliasBoundedInt(
+			"concurrency", raw, EcosystemAliasMinConcurrency, EcosystemAliasMaxConcurrency,
+		)
+		if err != nil {
+			return nil, fmt.Errorf("overlay.ecosystemalias.concurrency: %w", err)
+		}
+		rc.EcosystemAliasSyncConcurrencySet = true
+	}
+	if raw, present, err := getOptionalString(ctx, cs, "overlay.ecosystemalias.batch_size"); err != nil {
+		return nil, err
+	} else if present {
+		rc.EcosystemAliasSyncBatchSize, err = ParseEcosystemAliasBoundedInt(
+			"batch size", raw, EcosystemAliasMinBatchSize, EcosystemAliasMaxBatchSize,
+		)
+		if err != nil {
+			return nil, fmt.Errorf("overlay.ecosystemalias.batch_size: %w", err)
+		}
+		rc.EcosystemAliasSyncBatchSizeSet = true
+	}
 	rc.EcosystemAliasLogLevel = getString(ctx, cs, "overlay.ecosystemalias.log_level")
+	if value, present, err := getOptionalBool(ctx, cs, "overlay.ecosystemalias.routes_enabled"); err != nil {
+		return nil, err
+	} else {
+		rc.EcosystemAliasRoutesEnabled, rc.EcosystemAliasRoutesEnabledSet = value, present
+	}
+	if raw, present, err := getOptionalString(ctx, cs, "overlay.ecosystemalias.route_prefix"); err != nil {
+		return nil, err
+	} else if present {
+		rc.EcosystemAliasRoutePrefix, err = NormalizeEcosystemAliasRoutePrefix(raw)
+		if err != nil {
+			return nil, fmt.Errorf("overlay.ecosystemalias.route_prefix: %w", err)
+		}
+		rc.EcosystemAliasRoutePrefixSet = true
+	}
 
 	// BSocial
 	rc.BSocialEnabled = getBool(ctx, cs, "overlay.bsocial.enabled")
@@ -318,6 +377,28 @@ func getString(ctx context.Context, cs Store, key string) string {
 
 func getBool(ctx context.Context, cs Store, key string) bool {
 	return getString(ctx, cs, key) == "true"
+}
+
+func getOptionalBool(ctx context.Context, cs Store, key string) (bool, bool, error) {
+	value, present, err := getOptionalString(ctx, cs, key)
+	if err != nil || !present {
+		return false, present, err
+	}
+	if value != "true" && value != "false" {
+		return false, true, fmt.Errorf("config key %q must be true or false", key)
+	}
+	return value == "true", true, nil
+}
+
+func getOptionalString(ctx context.Context, cs Store, key string) (value string, present bool, err error) {
+	value, err = cs.Get(ctx, key)
+	if errors.Is(err, ErrNotFound) {
+		return "", false, nil
+	}
+	if err != nil {
+		return "", false, fmt.Errorf("read config key %q: %w", key, err)
+	}
+	return value, true, nil
 }
 
 func getInt(ctx context.Context, cs Store, key string) int {

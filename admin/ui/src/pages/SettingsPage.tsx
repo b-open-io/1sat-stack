@@ -3,6 +3,14 @@ import { toast } from "sonner";
 import { getConfig, saveConfig, apiFetch } from "@/api";
 import { toastError } from "@/lib/utils";
 import {
+  ECOSYSTEM_ALIAS_KEYS,
+  readEcosystemAliasSettings,
+  writeEcosystemAliasSettings,
+  validateEcosystemAliasSettings,
+  normalizeEcosystemAliasSettings,
+  ecosystemAliasLookupPath,
+} from "@/lib/ecosystem-alias-settings";
+import {
   Server,
   Database,
   RefreshCw,
@@ -242,6 +250,7 @@ type SectionId =
   | "indexer"
   | "overlays"
   | "overlay-bap"
+  | "overlay-ecosystemalias"
   | "overlay-opns"
   | "overlay-bsv21"
   | "overlay-bsocial"
@@ -846,6 +855,116 @@ function BapPanel({
   );
 }
 
+interface EcosystemAliasPanelProps extends OverlayPanelProps {
+  syncEnabled: boolean;
+  setSyncEnabled: (v: boolean) => void;
+  routesEnabled: boolean;
+  setRoutesEnabled: (v: boolean) => void;
+  routePrefix: string;
+  setRoutePrefix: (v: string) => void;
+  logLevel: string;
+  setLogLevel: (v: string) => void;
+}
+
+function EcosystemAliasPanel({
+  enabled, onToggle,
+  syncEnabled, setSyncEnabled,
+  subId, setSubId,
+  concurrency, setConcurrency,
+  batchSize, setBatchSize,
+  routesEnabled, setRoutesEnabled,
+  routePrefix, setRoutePrefix,
+  logLevel, setLogLevel,
+}: EcosystemAliasPanelProps) {
+  let lookupHint: string;
+  try {
+    lookupHint = `Lookup path (default server base): ${ecosystemAliasLookupPath("/1sat", routePrefix)}`;
+  } catch (error) {
+    lookupHint = error instanceof Error ? error.message : "Invalid route prefix";
+  }
+
+  return (
+    <div className="space-y-4">
+      <PageHeader
+        title="Ecosystem Alias"
+        description="BRC-169 ecosystem alias claims and standard BRC-24 lookup."
+      />
+
+      <SectionCard>
+        <OverlayToggleHeader
+          title="Ecosystem-alias overlay"
+          description="Runs tm_ecosystemalias and ls_ecosystemalias in this process."
+          enabled={enabled}
+          onToggle={onToggle}
+        />
+        <p className="text-[11px] text-muted-foreground">
+          Disabled is the default. Enabling selects the supported embedded mode and also enables the shared overlay engine.
+        </p>
+      </SectionCard>
+
+      <SectionCard>
+        <div className="flex items-center justify-between">
+          <div>
+            <SectionHeading>Standard overlay routes</SectionHeading>
+            <p className="text-xs text-muted-foreground mt-0.5">
+              Expose the BRC-24 lookup, submit, metadata, and discovery endpoints.
+            </p>
+          </div>
+          <Toggle enabled={routesEnabled} onChange={setRoutesEnabled} />
+        </div>
+        <FieldRow label="Route prefix" badge={<RestartBadge />} hint={lookupHint}>
+          <Input
+            aria-label="Route prefix"
+            value={routePrefix}
+            onChange={(e) => setRoutePrefix(e.target.value)}
+            placeholder="/ecosystemalias"
+            className="font-mono text-xs h-8"
+          />
+        </FieldRow>
+      </SectionCard>
+
+      <SectionCard>
+        <div className="flex items-center justify-between">
+          <div>
+            <SectionHeading>Sync worker</SectionHeading>
+            <p className="text-xs text-muted-foreground mt-0.5">
+              Process the ecosystemalias queue; a subscription ID also enables JungleBus history ingestion.
+            </p>
+          </div>
+          <Toggle enabled={syncEnabled} onChange={setSyncEnabled} />
+        </div>
+        <FieldRow label="JungleBus subscription ID" hint="Optional. Leave blank when another source fills the queue.">
+          <Input aria-label="JungleBus subscription ID" value={subId} onChange={(e) => setSubId(e.target.value)} placeholder="sub_..." className="font-mono text-xs h-8" />
+        </FieldRow>
+        <div className="grid grid-cols-2 gap-3">
+          <FieldRow label="Concurrency">
+            <Input aria-label="Concurrency" type="number" min={1} max={64} value={concurrency} onChange={(e) => setConcurrency(e.target.value)} className="font-mono text-xs h-8" />
+          </FieldRow>
+          <FieldRow label="Batch size">
+            <Input aria-label="Batch size" type="number" min={1} max={10000} value={batchSize} onChange={(e) => setBatchSize(e.target.value)} className="font-mono text-xs h-8" />
+          </FieldRow>
+        </div>
+      </SectionCard>
+
+      <SectionCard>
+        <SectionHeading>Logging</SectionHeading>
+        <FieldRow label="Log level">
+          <SegmentedControl
+            options={[
+              { value: "debug", label: "Debug" },
+              { value: "info", label: "Info" },
+              { value: "warn", label: "Warn" },
+              { value: "error", label: "Error" },
+            ]}
+            value={logLevel}
+            onChange={setLogLevel}
+          />
+        </FieldRow>
+      </SectionCard>
+    </div>
+  );
+}
+
 interface OpnsPanelProps extends OverlayPanelProps {
   paymailEnabled: boolean;
   setPaymailEnabled: (v: boolean) => void;
@@ -1418,6 +1537,7 @@ export default function SettingsPage() {
   const [bsv21Enabled, setBsv21Enabled] = useState(false);
   const [bsocialEnabled, setBsocialEnabled] = useState(false);
   const [ordlockEnabled, setOrdlockEnabled] = useState(false);
+  const [ecosystemAliasEnabled, setEcosystemAliasEnabled] = useState(false);
 
   // Storage
   const [storeProvider, setStoreProvider] = useState<"badger" | "redis">("badger");
@@ -1448,6 +1568,15 @@ export default function SettingsPage() {
   const [bapSubId, setBapSubId] = useState("");
   const [bapConcurrency, setBapConcurrency] = useState("8");
   const [bapBatchSize, setBapBatchSize] = useState("1000");
+
+  // Ecosystem-alias overlay
+  const [ecosystemAliasSyncEnabled, setEcosystemAliasSyncEnabled] = useState(false);
+  const [ecosystemAliasSubId, setEcosystemAliasSubId] = useState("");
+  const [ecosystemAliasConcurrency, setEcosystemAliasConcurrency] = useState("8");
+  const [ecosystemAliasBatchSize, setEcosystemAliasBatchSize] = useState("1000");
+  const [ecosystemAliasRoutesEnabled, setEcosystemAliasRoutesEnabled] = useState(true);
+  const [ecosystemAliasRoutePrefix, setEcosystemAliasRoutePrefix] = useState("/ecosystemalias");
+  const [ecosystemAliasLogLevel, setEcosystemAliasLogLevel] = useState("info");
 
   // OPNS overlay
   const [opnsSubId, setOpnsSubId] = useState("");
@@ -1550,6 +1679,17 @@ export default function SettingsPage() {
         setBapConcurrency(s("overlay.bap.concurrency", "8"));
         setBapBatchSize(s("overlay.bap.batch_size", "1000"));
 
+        // Ecosystem alias
+        const ecosystemAlias = readEcosystemAliasSettings(cfg);
+        setEcosystemAliasEnabled(ecosystemAlias.enabled);
+        setEcosystemAliasSyncEnabled(ecosystemAlias.syncEnabled);
+        setEcosystemAliasSubId(ecosystemAlias.subscriptionId);
+        setEcosystemAliasConcurrency(ecosystemAlias.concurrency);
+        setEcosystemAliasBatchSize(ecosystemAlias.batchSize);
+        setEcosystemAliasRoutesEnabled(ecosystemAlias.routesEnabled);
+        setEcosystemAliasRoutePrefix(ecosystemAlias.routePrefix);
+        setEcosystemAliasLogLevel(ecosystemAlias.logLevel);
+
         // OPNS
         setOpnsSubId(s("overlay.opns.sub_id", ""));
         setOpnsConcurrency(s("overlay.opns.concurrency", "8"));
@@ -1626,6 +1766,7 @@ export default function SettingsPage() {
     "overlay.engine.p2p.dht_mode", "overlay.engine.p2p.bootstrap_peers",
     "indexer.parsers",
     "overlay.bap.sub_id", "overlay.bap.concurrency", "overlay.bap.batch_size",
+    ...Object.values(ECOSYSTEM_ALIAS_KEYS),
     "overlay.opns.sub_id", "overlay.opns.concurrency", "overlay.opns.batch_size",
     "overlay.bsv21.sub_id", "overlay.bsv21.concurrency", "overlay.bsv21.token_workers", "overlay.bsv21.batch_size",
     "overlay.bsocial.sub_id", "overlay.bsocial.concurrency", "overlay.bsocial.batch_size",
@@ -1641,6 +1782,16 @@ export default function SettingsPage() {
     "overlay.bsv21.enabled": String(bsv21Enabled),
     "overlay.bsocial.enabled": String(bsocialEnabled),
     "overlay.ordlock.enabled": String(ordlockEnabled),
+    ...writeEcosystemAliasSettings({
+      enabled: ecosystemAliasEnabled,
+      syncEnabled: ecosystemAliasSyncEnabled,
+      subscriptionId: ecosystemAliasSubId,
+      concurrency: ecosystemAliasConcurrency,
+      batchSize: ecosystemAliasBatchSize,
+      routesEnabled: ecosystemAliasRoutesEnabled,
+      routePrefix: ecosystemAliasRoutePrefix,
+      logLevel: ecosystemAliasLogLevel,
+    }),
     "owner.enabled": String(ownerSync),
     "faucet.enabled": String(faucetEnabled),
     "store.provider": storeProvider,
@@ -1682,12 +1833,14 @@ export default function SettingsPage() {
     "indexer.sync.concurrency": indexerConcurrency,
     "indexer.sync.batch_size": indexerBatchSize,
   }), [
-    bapEnabled, opnsEnabled, bsv21Enabled, bsocialEnabled, ordlockEnabled, ownerSync, faucetEnabled,
+    bapEnabled, opnsEnabled, bsv21Enabled, bsocialEnabled, ordlockEnabled, ecosystemAliasEnabled, ownerSync, faucetEnabled,
     storeProvider, storePath, pubsubProvider, authMode,
     chaintracksPath, arcadeUrl, arcadeCallbackToken, arcadeWaitTimeout,
     engineStorage, engineStoragePath,
     p2pEnabled, p2pPort, p2pDhtMode, bootstrapPeers, activeTags,
     bapSubId, bapConcurrency, bapBatchSize,
+    ecosystemAliasSyncEnabled, ecosystemAliasSubId, ecosystemAliasConcurrency,
+    ecosystemAliasBatchSize, ecosystemAliasRoutesEnabled, ecosystemAliasRoutePrefix, ecosystemAliasLogLevel,
     opnsSubId, opnsConcurrency, opnsBatchSize,
     bsv21SubId, bsv21Concurrency, bsv21TokenWorkers, bsv21BatchSize,
     bsocialSubId, bsocialConcurrency, bsocialBatchSize, bsocialMongoUrl,
@@ -1707,6 +1860,22 @@ export default function SettingsPage() {
   }, [currentValues]);
 
   async function handleSave() {
+    const aliasSettings = {
+      enabled: ecosystemAliasEnabled,
+      syncEnabled: ecosystemAliasSyncEnabled,
+      subscriptionId: ecosystemAliasSubId,
+      concurrency: ecosystemAliasConcurrency,
+      batchSize: ecosystemAliasBatchSize,
+      routesEnabled: ecosystemAliasRoutesEnabled,
+      routePrefix: ecosystemAliasRoutePrefix,
+      logLevel: ecosystemAliasLogLevel,
+    };
+    const errors = validateEcosystemAliasSettings(aliasSettings);
+    if (Object.keys(errors).length > 0) {
+      toastError(Object.values(errors).join(" "));
+      return;
+    }
+    const normalizedAliasSettings = normalizeEcosystemAliasSettings(aliasSettings);
     setSaving(true);
     try {
       const values: Record<string, string> = {
@@ -1716,6 +1885,7 @@ export default function SettingsPage() {
         "overlay.bsv21.enabled": String(bsv21Enabled),
         "overlay.bsocial.enabled": String(bsocialEnabled),
         "overlay.ordlock.enabled": String(ordlockEnabled),
+        ...writeEcosystemAliasSettings(normalizedAliasSettings),
 
         // Storage
         "store.provider": storeProvider,
@@ -1799,6 +1969,7 @@ export default function SettingsPage() {
       };
 
       await saveConfig(values);
+      setEcosystemAliasRoutePrefix(normalizedAliasSettings.routePrefix);
       if (needsRestart) {
         toast.success("Settings saved — restarting server...");
         await apiFetch("/restart", { method: "POST" }).catch(() => {});
@@ -1815,7 +1986,7 @@ export default function SettingsPage() {
     }
   }
 
-  const anyOverlayEnabled = bapEnabled || opnsEnabled || bsv21Enabled || bsocialEnabled || ordlockEnabled;
+  const anyOverlayEnabled = bapEnabled || ecosystemAliasEnabled || opnsEnabled || bsv21Enabled || bsocialEnabled || ordlockEnabled;
 
   type NavItem =
     | { type: "item"; id: SectionId; label: string; icon: React.ElementType; dot?: boolean }
@@ -1827,6 +1998,7 @@ export default function SettingsPage() {
     { type: "item", id: "indexer", label: "Indexer", icon: ScanSearch },
     { type: "item", id: "overlays", label: "Overlays", icon: Network, dot: anyOverlayEnabled },
     { type: "item", id: "overlay-bap", label: "BAP", icon: Network, dot: bapEnabled },
+    { type: "item", id: "overlay-ecosystemalias", label: "Ecosystem Alias", icon: Network, dot: ecosystemAliasEnabled },
     { type: "item", id: "overlay-opns", label: "OPNS", icon: Network, dot: opnsEnabled },
     { type: "item", id: "overlay-bsv21", label: "BSV21", icon: Network, dot: bsv21Enabled },
     { type: "item", id: "overlay-bsocial", label: "BSocial", icon: Network, dot: bsocialEnabled },
@@ -1954,6 +2126,18 @@ export default function SettingsPage() {
               subId={bapSubId} setSubId={setBapSubId}
               concurrency={bapConcurrency} setConcurrency={setBapConcurrency}
               batchSize={bapBatchSize} setBatchSize={setBapBatchSize}
+            />
+          )}
+          {activeSection === "overlay-ecosystemalias" && (
+            <EcosystemAliasPanel
+              enabled={ecosystemAliasEnabled} onToggle={setEcosystemAliasEnabled}
+              syncEnabled={ecosystemAliasSyncEnabled} setSyncEnabled={setEcosystemAliasSyncEnabled}
+              subId={ecosystemAliasSubId} setSubId={setEcosystemAliasSubId}
+              concurrency={ecosystemAliasConcurrency} setConcurrency={setEcosystemAliasConcurrency}
+              batchSize={ecosystemAliasBatchSize} setBatchSize={setEcosystemAliasBatchSize}
+              routesEnabled={ecosystemAliasRoutesEnabled} setRoutesEnabled={setEcosystemAliasRoutesEnabled}
+              routePrefix={ecosystemAliasRoutePrefix} setRoutePrefix={setEcosystemAliasRoutePrefix}
+              logLevel={ecosystemAliasLogLevel} setLogLevel={setEcosystemAliasLogLevel}
             />
           )}
           {activeSection === "overlay-opns" && (

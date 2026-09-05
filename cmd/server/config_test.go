@@ -175,14 +175,26 @@ func TestServicesClose(t *testing.T) {
 
 func TestApplyRuntimeConfigEnablesEcosystemAlias(t *testing.T) {
 	cfg := &Config{}
-	cfg.applyRuntimeConfig(&configpkg.RuntimeConfig{
-		SetupComplete:                 true,
-		EcosystemAliasEnabled:         true,
-		EcosystemAliasSyncSubID:       "subscription-id",
-		EcosystemAliasSyncConcurrency: 12,
-		EcosystemAliasSyncBatchSize:   750,
-		EcosystemAliasLogLevel:        "debug",
+	err := cfg.applyRuntimeConfig(&configpkg.RuntimeConfig{
+		SetupComplete:                    true,
+		EcosystemAliasEnabled:            true,
+		EcosystemAliasEnabledSet:         true,
+		EcosystemAliasSyncEnabled:        true,
+		EcosystemAliasSyncEnabledSet:     true,
+		EcosystemAliasSyncSubID:          "subscription-id",
+		EcosystemAliasSyncConcurrency:    12,
+		EcosystemAliasSyncConcurrencySet: true,
+		EcosystemAliasSyncBatchSize:      750,
+		EcosystemAliasSyncBatchSizeSet:   true,
+		EcosystemAliasLogLevel:           "debug",
+		EcosystemAliasRoutesEnabled:      false,
+		EcosystemAliasRoutesEnabledSet:   true,
+		EcosystemAliasRoutePrefix:        "/identity",
+		EcosystemAliasRoutePrefixSet:     true,
 	})
+	if err != nil {
+		t.Fatalf("applyRuntimeConfig: %v", err)
+	}
 
 	if cfg.EcosystemAlias.Mode != ecosystemalias.ModeEmbedded || cfg.Overlay.Mode != overlay.ModeEmbedded {
 		t.Fatalf("modes = ecosystemalias:%q overlay:%q", cfg.EcosystemAlias.Mode, cfg.Overlay.Mode)
@@ -194,5 +206,72 @@ func TestApplyRuntimeConfigEnablesEcosystemAlias(t *testing.T) {
 	}
 	if cfg.EcosystemAlias.LogLevel != "debug" {
 		t.Fatalf("log level = %q, want debug", cfg.EcosystemAlias.LogLevel)
+	}
+	if cfg.EcosystemAlias.Routes.Enabled || cfg.EcosystemAlias.Routes.Prefix != "/identity" {
+		t.Fatalf("routes = %+v, want disabled /identity", cfg.EcosystemAlias.Routes)
+	}
+}
+
+func TestApplyRuntimeConfigCanDisableEcosystemAliasControls(t *testing.T) {
+	cfg := &Config{
+		EcosystemAlias: ecosystemalias.Config{
+			Mode:   ecosystemalias.ModeEmbedded,
+			Sync:   &overlay.OverlaySyncConfig{Enabled: true},
+			Routes: ecosystemalias.RoutesConfig{Enabled: true, Prefix: "/ecosystemalias"},
+		},
+	}
+	err := cfg.applyRuntimeConfig(&configpkg.RuntimeConfig{
+		SetupComplete:                  true,
+		EcosystemAliasEnabledSet:       true,
+		EcosystemAliasEnabled:          false,
+		EcosystemAliasSyncEnabledSet:   true,
+		EcosystemAliasSyncEnabled:      false,
+		EcosystemAliasRoutesEnabledSet: true,
+		EcosystemAliasRoutesEnabled:    false,
+	})
+	if err != nil {
+		t.Fatalf("applyRuntimeConfig: %v", err)
+	}
+
+	if cfg.EcosystemAlias.Mode != ecosystemalias.ModeDisabled {
+		t.Fatalf("mode = %q, want disabled", cfg.EcosystemAlias.Mode)
+	}
+	if cfg.EcosystemAlias.Sync == nil || cfg.EcosystemAlias.Sync.Enabled {
+		t.Fatalf("sync = %+v, want disabled", cfg.EcosystemAlias.Sync)
+	}
+	if cfg.EcosystemAlias.Routes.Enabled {
+		t.Fatal("routes enabled, want disabled")
+	}
+}
+
+func TestApplyRuntimeConfigRejectsInvalidEcosystemAliasSettings(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		rc   configpkg.RuntimeConfig
+	}{
+		{name: "zero concurrency", rc: configpkg.RuntimeConfig{EcosystemAliasSyncConcurrencySet: true}},
+		{name: "oversized batch", rc: configpkg.RuntimeConfig{EcosystemAliasSyncBatchSize: configpkg.EcosystemAliasMaxBatchSize + 1, EcosystemAliasSyncBatchSizeSet: true}},
+		{name: "root route", rc: configpkg.RuntimeConfig{EcosystemAliasRoutePrefix: "/", EcosystemAliasRoutePrefixSet: true}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			cfg := &Config{}
+			tc.rc.SetupComplete = true
+			if err := cfg.applyRuntimeConfig(&tc.rc); err == nil {
+				t.Fatal("applyRuntimeConfig accepted invalid ecosystem-alias setting")
+			}
+		})
+	}
+}
+
+func TestApplyRuntimeConfigClearsEcosystemAliasSubscription(t *testing.T) {
+	cfg := &Config{EcosystemAlias: ecosystemalias.Config{Sync: &overlay.OverlaySyncConfig{Enabled: true, SubscriptionID: "old-subscription"}}}
+	if err := cfg.applyRuntimeConfig(&configpkg.RuntimeConfig{SetupComplete: true, EcosystemAliasSyncSubIDSet: true}); err != nil {
+		t.Fatal(err)
+	}
+	if cfg.EcosystemAlias.Sync.SubscriptionID != "" {
+		t.Fatal("saved empty subscription did not override static configuration")
+	}
+	if !cfg.EcosystemAlias.Sync.Enabled {
+		t.Fatal("clearing subscription disabled queue worker")
 	}
 }

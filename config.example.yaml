@@ -68,6 +68,35 @@ arcade:
 # mongodb:
 #   url: mongodb://mongo:mongo@localhost:27017
 
+# BRC-169 ecosystem-alias overlay (disabled by default).
+# "embedded" means the module runs in this process. The shared overlay storage
+# can still be SQLite or PostgreSQL. The module exposes standard overlay routes;
+# it does not add alias- or domain-specific REST endpoints.
+# overlay:
+#   mode: embedded
+#   storage_backend: sqlite
+#   storage_path: overlay
+# ecosystemalias:
+#   mode: embedded
+#   log_level: info
+#   routes:
+#     enabled: true
+#     prefix: /ecosystemalias
+#   sync:
+#     enabled: false
+#     subscription_id: ""
+#     queue_name: ecosystemalias
+#     concurrency: 8
+#     batch_size: 1000
+
+# PostgreSQL alternative for the shared overlay storage:
+# overlay:
+#   mode: embedded
+#   storage_backend: postgres
+#   storage_url: postgres://user:password@postgres:5432/onesat?sslmode=require
+# ecosystemalias:
+#   mode: embedded
+
 # Auth
 # auth:
 #   api_key: ""            # ONESAT_AUTH_API_KEY — static key for agent/dev access
