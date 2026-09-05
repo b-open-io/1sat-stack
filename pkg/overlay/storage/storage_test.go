@@ -531,7 +531,7 @@ func TestTopicStorage_EventScoreRestamp(t *testing.T) {
 			if err := ts.InsertOutput(ctx, op, txid, 1, nil, nil, 1700000000); err != nil {
 				t.Fatal(err)
 			}
-			for _, key := range []string{"alias:aaa", "domain:aaa.example"} {
+			for _, key := range []string{"alias:aaa", "domain:aaa.example", "*"} {
 				if err := ts.SaveEvent(ctx, key, op, 1700000000); err != nil {
 					t.Fatal(err)
 				}
@@ -539,7 +539,7 @@ func TestTopicStorage_EventScoreRestamp(t *testing.T) {
 			if err := ts.UpdateEventsForTxid(ctx, txid, 800000.000000003); err != nil {
 				t.Fatal(err)
 			}
-			for _, key := range []string{"alias:aaa", "domain:aaa.example"} {
+			for _, key := range []string{"alias:aaa", "domain:aaa.example", "*"} {
 				got, err := ts.FindByEvent(ctx, key, nil)
 				if err != nil {
 					t.Fatal(err)

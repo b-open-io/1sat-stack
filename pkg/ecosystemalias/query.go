@@ -10,9 +10,10 @@ import (
 )
 
 // DecodeQuery strictly decodes a BRC-24 query object for ls_ecosystemalias.
-// Unknown fields, JSON null, malformed JSON, invalid combinations,
+// Unknown fields, JSON null, malformed JSON, alias+domain together,
 // empty or illegal values, zero/oversized limits, and
-// negative skips are rejected with typed codes.
+// negative skips are rejected with typed codes. An empty object is the
+// unfiltered dump.
 func DecodeQuery(raw json.RawMessage) (Query, error) {
 	trimmed := bytes.TrimSpace(raw)
 	if len(trimmed) == 0 {
@@ -107,7 +108,7 @@ func DecodeQuery(raw json.RawMessage) (Query, error) {
 
 	mode := q.Mode()
 	if mode == ModeNone {
-		return Query{}, fail(CodeInvalidCombination, "query must have exactly one of alias or domain")
+		return Query{}, fail(CodeInvalidCombination, "query must not combine alias and domain")
 	}
 	return q, nil
 }

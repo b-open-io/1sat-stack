@@ -2,7 +2,7 @@
 
 `ecosystemalias` is the generic BRC-169 overlay module. It admits on-chain
 alias claims, indexes them as overlay events, and answers BRC-24 lookups by
-alias or domain.
+alias, domain, or empty query.
 
 The module has no Sigma-specific behavior.
 
@@ -21,10 +21,10 @@ version, alias, domain, certifier key, DER signature. The signature is over
 SHA-256 of fields 1–5 concatenated. Conflicts stay queryable. The module does not fetch
 manifests. Enabling it does not publish SHIP/SLAP advertisements.
 
-Lookup indexes `alias:` and `domain:` overlay events. Spends live on
+Lookup indexes `alias:`, `domain:`, and `*` overlay events. Spends live on
 `outputs.spend_txid`. Event order is `HeightScore` then `vout`. Paging is
-`skip` + `limit` (default skip 0, limit 100, max 500). Full topic membership
-is GASP (`FindUTXOs` / ingest scores), not a lookup mode.
+`skip` + `limit` (default skip 0, limit 100, max 500). Empty query reads `*`.
+Overlay peers still sync with GASP (`FindUTXOs` / ingest scores).
 
 ## Configuration
 
@@ -56,7 +56,7 @@ POST /1sat/ecosystemalias/overlay/lookup
 { "alias": "sigma", "limit": 100, "skip": 0 }
 ```
 
-Exactly one of `alias` or `domain`. The engine hydrates formulas to:
+Exactly one of `alias`, `domain`, or neither (`{}`). The engine hydrates formulas to:
 
 ```json
 { "type": "output-list", "outputs": [{ "beef": "<base64>", "outputIndex": 0 }] }
