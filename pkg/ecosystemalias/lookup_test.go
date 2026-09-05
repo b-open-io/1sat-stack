@@ -122,9 +122,9 @@ func TestLookupReturnsDirectOrderedAtomicBEEFOutputLists(t *testing.T) {
 	loader.mergeAncillary[claims[0].Outpoint.String()] = lookupBeef(t, tx1)
 
 	aliasAnswer := lookupQuestion(t, service, `{"alias":"ALICE","limit":2}`)
-	assertLookupOutpoints(t, aliasAnswer, []transaction.Outpoint{claims[2].Outpoint, claims[1].Outpoint})
+	assertLookupOutpoints(t, aliasAnswer, []transaction.Outpoint{claims[1].Outpoint, claims[2].Outpoint})
 
-	cursor, err := NewCursor(aliasStoreQuery("alice"), claims[1].Outpoint.Txid.String(), claims[1].Outpoint.Index)
+	cursor, err := NewCursor(aliasStoreQuery("alice"), claims[2].Outpoint.Txid.String(), claims[2].Outpoint.Index)
 	if err != nil {
 		t.Fatal(err)
 	}
