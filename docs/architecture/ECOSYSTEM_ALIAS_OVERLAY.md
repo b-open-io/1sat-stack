@@ -27,7 +27,7 @@ The module is responsible for:
 - retaining all valid conflicting alias/domain claims;
 - tracking admission, spend, block placement, eviction, rollback, and reorg
   lifecycle state;
-- querying by normalized alias or normalized domain;
+- querying by normalized alias, normalized domain, or empty query;
 - hydrating results as standard BRC-24 Atomic BEEF output-list entries.
 
 The module is not responsible for:
@@ -75,13 +75,14 @@ Content-Type: application/json
 }
 ```
 
-The query object has exactly one mode:
+The query object is one of:
 
 - `alias: string`
 - `domain: string`
+- empty (`{}` or skip/limit only), which lists every live claim via event `*`
 
-It may also include `limit` (1–500) and `skip` (default 0). Full topic membership
-is GASP (`FindUTXOs` / ingest scores), not a lookup mode. Responses use `type: "output-list"`, with an `outputs` array
+It may also include `limit` (1–500) and `skip` (default 0). Overlay peers still
+sync with GASP (`FindUTXOs` / ingest scores). Responses use `type: "output-list"`, with an `outputs` array
 containing base64 Atomic BEEF and the claim's `outputIndex`.
 
 ```json

@@ -15,6 +15,7 @@ import (
 )
 
 const (
+	eventAll          = "*"
 	eventAliasPrefix  = "alias:"
 	eventDomainPrefix = "domain:"
 )
@@ -64,7 +65,10 @@ func (l *LookupService) OutputAdmittedByTopic(ctx context.Context, payload *engi
 	if err := l.store.SaveEvent(ctx, eventAliasPrefix+claim.Alias, op, score); err != nil {
 		return err
 	}
-	return l.store.SaveEvent(ctx, eventDomainPrefix+claim.Domain, op, score)
+	if err := l.store.SaveEvent(ctx, eventDomainPrefix+claim.Domain, op, score); err != nil {
+		return err
+	}
+	return l.store.SaveEvent(ctx, eventAll, op, score)
 }
 
 // OutputSpent is a no-op: spends are recorded on outputs.spend_txid.
@@ -116,8 +120,10 @@ func (l *LookupService) Lookup(ctx context.Context, question *overlaylookup.Look
 		recs, err = l.store.FindByEvent(ctx, eventAliasPrefix+*query.Alias, nil)
 	case ModeDomain:
 		recs, err = l.store.FindByEvent(ctx, eventDomainPrefix+*query.Domain, nil)
+	case ModeAll:
+		recs, err = l.store.FindByEvent(ctx, eventAll, nil)
 	default:
-		return nil, fail(CodeInvalidCombination, "query must have exactly one of alias or domain")
+		return nil, fail(CodeInvalidCombination, "query must not combine alias and domain")
 	}
 	if err != nil {
 		return nil, err
@@ -157,7 +163,7 @@ func (l *LookupService) Lookup(ctx context.Context, question *overlaylookup.Look
 }
 
 func (l *LookupService) GetDocumentation() string {
-	return "BRC-169 ecosystem-alias lookup by alias or domain"
+	return "BRC-169 ecosystem-alias lookup by alias, domain, or empty query"
 }
 
 func (l *LookupService) GetMetaData() *overlay.MetaData {

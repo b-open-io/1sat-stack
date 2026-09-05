@@ -53,7 +53,7 @@ const (
 )
 
 // Query is the BRC-24 lookup query object for ls_ecosystemalias.
-// Exactly one of Alias or Domain is a valid mode.
+// Alias, Domain, or neither (empty object / skip+limit only) is a valid mode.
 type Query struct {
 	Alias  *string
 	Domain *string
@@ -78,6 +78,7 @@ const (
 	ModeNone   Mode = ""
 	ModeAlias  Mode = "alias"
 	ModeDomain Mode = "domain"
+	ModeAll    Mode = "*"
 )
 
 // Code is a stable typed error code, independent of the human-readable message.
@@ -166,6 +167,9 @@ func (q Query) Mode() Mode {
 	if q.Domain != nil {
 		n++
 		mode = ModeDomain
+	}
+	if n == 0 {
+		return ModeAll
 	}
 	if n != 1 {
 		return ModeNone
@@ -343,7 +347,7 @@ func EventScore(height uint32, txIndex uint64) float64 {
 	return types.HeightScore(height, txIndex)
 }
 
-// CompareLookup orders alias and domain results by event score, then vout.
+// CompareLookup orders alias, domain, and empty-query results by event score, then vout.
 func CompareLookup(a, b Placement) int {
 	if a.Score < b.Score {
 		return -1
