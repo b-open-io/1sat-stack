@@ -391,3 +391,21 @@ func decodeAssertCode(t *testing.T, err error, want Code) {
 		t.Fatalf("got %v (%s) want %s", err, got, want)
 	}
 }
+
+func TestDecodeEquivalentDropLayouts(t *testing.T) {
+	fields := decodeFirstPositiveFields(t)
+	owner := fields[FieldCertifier]
+	for _, drops := range [][]byte{
+		{script.OpDROP, script.OpDROP, script.OpDROP, script.OpDROP, script.OpDROP, script.OpDROP},
+		{script.OpDROP, script.Op2DROP, script.OpDROP, script.Op2DROP},
+	} {
+		chunks := decodeFieldChunks(fields)
+		for _, op := range drops {
+			chunks = append(chunks, &script.ScriptChunk{Op: op})
+		}
+		chunks = append(chunks, &script.ScriptChunk{Op: byte(len(owner)), Data: owner}, &script.ScriptChunk{Op: script.OpCHECKSIG})
+		if _, err := Decode(decodeScriptFromChunks(t, chunks), 1); err != nil {
+			t.Fatal(err)
+		}
+	}
+}
