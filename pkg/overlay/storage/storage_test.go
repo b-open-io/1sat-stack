@@ -843,3 +843,70 @@ func TestPostgresFactory_TxTopicIndex(t *testing.T) {
 		t.Errorf("topics after delete = %d, want 0", len(topics))
 	}
 }
+
+func TestReversibleTopicStorage_SharedAncestorOrder(t *testing.T) {
+	for _, b := range backends(t) {
+		t.Run(b.name, func(t *testing.T) {
+			ts, close := b.factory(t)
+			defer close()
+			s := ts.(ReversibleTopicStorage)
+			ctx := context.Background()
+			root, left, right := makeOutpoint(0x80, 0), makeOutpoint(0x81, 0), makeOutpoint(0x81, 1)
+			first, second := makeTxid(0x82), makeTxid(0x83)
+			must := func(err error) {
+				t.Helper()
+				if err != nil {
+					t.Fatal(err)
+				}
+			}
+			must(s.InsertOutput(ctx, root, &root.Txid, 2, nil, nil, 1))
+			must(s.MarkSpent(ctx, root, &left.Txid))
+			both := append(append([]byte{}, left.Bytes()...), right.Bytes()...)
+			must(s.UpdateConsumedBy(ctx, root, both))
+			must(s.InsertOutput(ctx, left, &left.Txid, 1, nil, root.Bytes(), 2))
+			must(s.InsertOutput(ctx, right, &right.Txid, 1, nil, root.Bytes(), 2))
+			must(s.BeginMutation(ctx, first, []*transaction.Outpoint{left}))
+			must(s.DeleteOutput(ctx, left))
+			must(s.UpdateConsumedBy(ctx, root, right.Bytes()))
+			must(s.CommitMutation(ctx, first, 3))
+			must(s.BeginMutation(ctx, second, []*transaction.Outpoint{right}))
+			must(s.DeleteOutput(ctx, right))
+			must(s.UpdateConsumedBy(ctx, root, nil))
+			must(s.CommitMutation(ctx, second, 4))
+			if _, err := s.RollbackMutation(ctx, first); err == nil {
+				t.Fatal("earlier overlapping rollback succeeded")
+			}
+			if err := s.PruneMutation(ctx, second); err == nil {
+				t.Fatal("later overlapping prune succeeded")
+			}
+			record, err := s.GetOutput(ctx, root)
+			must(err)
+			if len(record.ConsumedBy) != 0 {
+				t.Fatal("rejected rollback mutated shared ancestry")
+			}
+			_, err = s.RollbackMutation(ctx, second)
+			must(err)
+			if _, err := s.RollbackMutation(ctx, first); err == nil {
+				t.Fatal("earlier rollback ran before later callbacks were finalized")
+			}
+			must(s.FinalizeRollback(ctx, second))
+			record, err = s.GetOutput(ctx, root)
+			must(err)
+			if !bytes.Equal(record.ConsumedBy, right.Bytes()) {
+				t.Fatal("later rollback did not preserve the earlier mutation")
+			}
+			_, err = s.RollbackMutation(ctx, first)
+			must(err)
+			must(s.FinalizeRollback(ctx, first))
+			record, err = s.GetOutput(ctx, root)
+			must(err)
+			if !bytes.Equal(record.ConsumedBy, both) {
+				t.Fatal("reverse rollback did not restore both original edges")
+			}
+			// Finalized journals must not retain dependency edges when the transactions replay.
+			must(s.BeginMutation(ctx, first, []*transaction.Outpoint{left}))
+			must(s.CommitMutation(ctx, first, 3))
+			must(s.PruneMutation(ctx, first))
+		})
+	}
+}

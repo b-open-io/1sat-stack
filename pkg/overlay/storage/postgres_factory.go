@@ -72,6 +72,12 @@ CREATE TABLE IF NOT EXISTS mutation_evictions (
     PRIMARY KEY (topic_id, mutation_txid, outpoint)
 );
 
+CREATE TABLE IF NOT EXISTS mutation_dependencies (
+    topic_id INTEGER NOT NULL REFERENCES topics(id),
+    earlier BYTEA NOT NULL,
+    later BYTEA NOT NULL,
+    PRIMARY KEY (topic_id, earlier, later)
+);
 CREATE TABLE IF NOT EXISTS mutation_reservations (
     topic_id      INTEGER NOT NULL REFERENCES topics(id),
     outpoint      BYTEA NOT NULL,

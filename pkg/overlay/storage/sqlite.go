@@ -67,6 +67,12 @@ CREATE TABLE IF NOT EXISTS mutation_evictions (
     PRIMARY KEY (mutation_txid, outpoint)
 );
 
+-- Snapshot dependencies include siblings sharing retained ancestry.
+CREATE TABLE IF NOT EXISTS mutation_dependencies (
+    earlier BLOB NOT NULL,
+    later BLOB NOT NULL,
+    PRIMARY KEY (earlier, later)
+);
 CREATE TABLE IF NOT EXISTS mutation_reservations (
     outpoint      BLOB PRIMARY KEY,
     mutation_txid BLOB NOT NULL
@@ -344,6 +350,14 @@ func (s *SQLiteStorage) BeginMutation(ctx context.Context, txid *chainhash.Hash,
 	if err := sqliteSnapshotAncestry(ctx, tx, txid, directInputs); err != nil {
 		return err
 	}
+	// Preserve snapshot order after active reservations are released at commit.
+	if _, err := tx.ExecContext(ctx, `
+		INSERT OR IGNORE INTO mutation_dependencies (earlier, later)
+		SELECT DISTINCT old.mutation_txid, current.mutation_txid
+		FROM mutation_outputs old JOIN mutation_outputs current ON old.outpoint = current.outpoint
+		WHERE current.mutation_txid = ? AND old.mutation_txid != ?`, txid[:], txid[:]); err != nil {
+		return err
+	}
 	for _, op := range directInputs {
 		if op == nil {
 			return fmt.Errorf("begin mutation: direct input is nil")
@@ -606,6 +620,14 @@ func (s *SQLiteStorage) RollbackMutation(ctx context.Context, txid *chainhash.Ha
 }
 
 func sqliteRejectLiveDescendants(ctx context.Context, tx *sql.Tx, txid *chainhash.Hash) error {
+	var overlapping []byte
+	if err := tx.QueryRowContext(ctx, `
+		SELECT d.later FROM mutation_dependencies d JOIN overlay_mutations m ON m.txid = d.later
+		WHERE d.earlier = ? LIMIT 1`, txid[:]).Scan(&overlapping); err == nil {
+		return fmt.Errorf("overlapping mutation %x must be rolled back first", overlapping)
+	} else if err != sql.ErrNoRows {
+		return err
+	}
 	var conflictingOutpoint []byte
 	err := tx.QueryRowContext(ctx, `
 		SELECT r.outpoint FROM mutation_reservations r
@@ -739,6 +761,12 @@ func (s *SQLiteStorage) PruneMutation(ctx context.Context, txid *chainhash.Hash)
 }
 
 func sqliteRejectLiveAncestors(ctx context.Context, tx *sql.Tx, txid *chainhash.Hash) error {
+	var overlapping []byte
+	if err := tx.QueryRowContext(ctx, `SELECT earlier FROM mutation_dependencies WHERE later = ? LIMIT 1`, txid[:]).Scan(&overlapping); err == nil {
+		return fmt.Errorf("overlapping mutation %x must be pruned first", overlapping)
+	} else if err != sql.ErrNoRows {
+		return err
+	}
 	var ancestorTxid []byte
 	err := tx.QueryRowContext(ctx, `
 		SELECT parent.txid FROM overlay_mutations parent
@@ -756,6 +784,7 @@ func sqliteRejectLiveAncestors(ctx context.Context, tx *sql.Tx, txid *chainhash.
 
 func sqliteDeleteMutationJournal(ctx context.Context, tx *sql.Tx, txid *chainhash.Hash) error {
 	for _, query := range []string{
+		`DELETE FROM mutation_dependencies WHERE earlier = ?1 OR later = ?1`,
 		`DELETE FROM mutation_events WHERE mutation_txid = ?`,
 		`DELETE FROM mutation_outputs WHERE mutation_txid = ?`,
 		`DELETE FROM mutation_evictions WHERE mutation_txid = ?`,

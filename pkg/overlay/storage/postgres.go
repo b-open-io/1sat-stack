@@ -180,6 +180,15 @@ func (s *PostgresStorage) BeginMutation(ctx context.Context, txid *chainhash.Has
 	if err := s.postgresSnapshotAncestry(ctx, tx, txid, directInputs); err != nil {
 		return err
 	}
+	if _, err := tx.ExecContext(ctx, `
+		INSERT INTO mutation_dependencies (topic_id, earlier, later)
+		SELECT DISTINCT current.topic_id, old.mutation_txid, current.mutation_txid
+		FROM mutation_outputs old JOIN mutation_outputs current
+		  ON old.topic_id = current.topic_id AND old.outpoint = current.outpoint
+		WHERE current.topic_id = $1 AND current.mutation_txid = $2 AND old.mutation_txid != $2
+		ON CONFLICT DO NOTHING`, s.topicID, txid[:]); err != nil {
+		return err
+	}
 	for _, op := range directInputs {
 		if op == nil {
 			return fmt.Errorf("begin mutation: direct input is nil")
@@ -463,6 +472,15 @@ func (s *PostgresStorage) RollbackMutation(ctx context.Context, txid *chainhash.
 }
 
 func (s *PostgresStorage) postgresRejectLiveDescendants(ctx context.Context, tx *sql.Tx, txid *chainhash.Hash) error {
+	var overlapping []byte
+	if err := tx.QueryRowContext(ctx, `
+		SELECT d.later FROM mutation_dependencies d
+		JOIN overlay_mutations m ON m.topic_id = d.topic_id AND m.txid = d.later
+		WHERE d.topic_id = $1 AND d.earlier = $2 LIMIT 1`, s.topicID, txid[:]).Scan(&overlapping); err == nil {
+		return fmt.Errorf("overlapping mutation %x must be rolled back first", overlapping)
+	} else if err != sql.ErrNoRows {
+		return err
+	}
 	var conflictingOutpoint []byte
 	err := tx.QueryRowContext(ctx, `
 		SELECT r.outpoint FROM mutation_reservations r
@@ -601,6 +619,12 @@ func (s *PostgresStorage) PruneMutation(ctx context.Context, txid *chainhash.Has
 }
 
 func (s *PostgresStorage) postgresRejectLiveAncestors(ctx context.Context, tx *sql.Tx, txid *chainhash.Hash) error {
+	var overlapping []byte
+	if err := tx.QueryRowContext(ctx, `SELECT earlier FROM mutation_dependencies WHERE topic_id = $1 AND later = $2 LIMIT 1`, s.topicID, txid[:]).Scan(&overlapping); err == nil {
+		return fmt.Errorf("overlapping mutation %x must be pruned first", overlapping)
+	} else if err != sql.ErrNoRows {
+		return err
+	}
 	var ancestorTxid []byte
 	err := tx.QueryRowContext(ctx, `
 		SELECT parent.txid FROM overlay_mutations parent
@@ -618,6 +642,7 @@ func (s *PostgresStorage) postgresRejectLiveAncestors(ctx context.Context, tx *s
 
 func (s *PostgresStorage) postgresDeleteMutationJournal(ctx context.Context, tx *sql.Tx, txid *chainhash.Hash) error {
 	queries := []string{
+		`DELETE FROM mutation_dependencies WHERE topic_id = $1 AND (earlier = $2 OR later = $2)`,
 		`DELETE FROM mutation_events WHERE topic_id = $1 AND mutation_txid = $2`,
 		`DELETE FROM mutation_outputs WHERE topic_id = $1 AND mutation_txid = $2`,
 		`DELETE FROM mutation_evictions WHERE topic_id = $1 AND mutation_txid = $2`,
