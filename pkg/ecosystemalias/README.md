@@ -2,7 +2,7 @@
 
 `ecosystemalias` is the generic BRC-169 overlay module. It admits on-chain
 alias claims, indexes them as overlay events, and answers BRC-24 lookups by
-alias, domain, or `findAll`.
+alias or domain.
 
 The module has no Sigma-specific behavior.
 
@@ -23,7 +23,8 @@ manifests. Enabling it does not publish SHIP/SLAP advertisements.
 
 Lookup indexes `alias:` and `domain:` overlay events. Spends live on
 `outputs.spend_txid`. Event order is `HeightScore` then `vout`. Paging is
-`skip` + `limit` (default skip 0, limit 100, max 500).
+`skip` + `limit` (default skip 0, limit 100, max 500). Full topic membership
+is GASP (`FindUTXOs` / ingest scores), not a lookup mode.
 
 ## Configuration
 
@@ -55,8 +56,7 @@ POST /1sat/ecosystemalias/overlay/lookup
 { "alias": "sigma", "limit": 100, "skip": 0 }
 ```
 
-Exactly one of `alias`, `domain`, or `findAll: true`. The engine hydrates
-formulas to:
+Exactly one of `alias` or `domain`. The engine hydrates formulas to:
 
 ```json
 { "type": "output-list", "outputs": [{ "beef": "<base64>", "outputIndex": 0 }] }
@@ -66,14 +66,3 @@ formulas to:
 
 - [`docs/architecture/ECOSYSTEM_ALIAS_OVERLAY.md`](../../docs/architecture/ECOSYSTEM_ALIAS_OVERLAY.md)
 - [BRC-169](https://github.com/bitcoin-sv/BRCs/blob/master/peer-to-peer/0169.md)
-
-### Enumeration and ordering
-
-Admission writes an `ecosystemalias:all` event alongside `alias:` and `domain:`.
-All query modes filter spent outputs and sort by event score, then numeric output
-index, before applying skip/limit. Confirmation and reorg callbacks restamp all
-three events. Output ingestion scores stay unchanged because GASP uses them as
-sync watermarks. This replaces `FindUTXOs` enumeration, whose ingestion order
-cannot represent confirmation order. Before activating a node built from an
-earlier review branch, re-index its alias events so enumeration includes every
-retained claim.

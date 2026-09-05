@@ -53,13 +53,12 @@ const (
 )
 
 // Query is the BRC-24 lookup query object for ls_ecosystemalias.
-// Exactly one of Alias, Domain, or FindAll=true is a valid mode.
+// Exactly one of Alias or Domain is a valid mode.
 type Query struct {
-	Alias   *string
-	Domain  *string
-	FindAll *bool
-	Limit   *uint32
-	Skip    *uint32
+	Alias  *string
+	Domain *string
+	Limit  *uint32
+	Skip   *uint32
 }
 
 // Claim is a BRC-169 alias advertisement after the six PushDrop fields are decoded.
@@ -76,10 +75,9 @@ type Claim struct {
 type Mode string
 
 const (
-	ModeNone    Mode = ""
-	ModeAlias   Mode = "alias"
-	ModeDomain  Mode = "domain"
-	ModeFindAll Mode = "findAll"
+	ModeNone   Mode = ""
+	ModeAlias  Mode = "alias"
+	ModeDomain Mode = "domain"
 )
 
 // Code is a stable typed error code, independent of the human-readable message.
@@ -91,7 +89,6 @@ const (
 	CodeUnknownField              Code = "unknown-field"
 	CodeDuplicateField            Code = "duplicate-field"
 	CodeInvalidCombination        Code = "invalid-combination"
-	CodeFindAllFalse              Code = "findall-false"
 	CodeEmptyValue                Code = "empty-value"
 	CodeInvalidAlias              Code = "invalid-alias"
 	CodeInvalidDomain             Code = "invalid-domain"
@@ -170,20 +167,13 @@ func (q Query) Mode() Mode {
 		n++
 		mode = ModeDomain
 	}
-	if q.FindAll != nil {
-		n++
-		mode = ModeFindAll
-	}
 	if n != 1 {
-		return ModeNone
-	}
-	if mode == ModeFindAll && (q.FindAll == nil || !*q.FindAll) {
 		return ModeNone
 	}
 	return mode
 }
 
-// BindingValue returns the normalized alias or domain on the query, or empty for findAll.
+// BindingValue returns the normalized alias or domain on the query.
 func (q Query) BindingValue() string {
 	switch q.Mode() {
 	case ModeAlias:
@@ -353,7 +343,7 @@ func EventScore(height uint32, txIndex uint64) float64 {
 	return types.HeightScore(height, txIndex)
 }
 
-// CompareLookup orders alias, domain, and findAll results by event score, then vout.
+// CompareLookup orders alias and domain results by event score, then vout.
 func CompareLookup(a, b Placement) int {
 	if a.Score < b.Score {
 		return -1
