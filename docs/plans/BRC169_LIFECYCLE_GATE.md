@@ -2,7 +2,7 @@
 
 Status: **In Progress**
 
-Linear: OPL-4473. Based on the ecosystem-alias wiring PR #30.
+Linear: OPL-4473. Targets master after ecosystem-alias wiring PR #30 merged.
 
 ## Implemented checks
 
@@ -37,9 +37,37 @@ plus PR #365's two-file patch; then run `go test -modfile=<temporary.mod> ./...`
 Do not commit a local-path replacement or change production dependencies as part
 of the test rehearsal.
 
+## TypeScript client interoperability
+
+The optional `TestHTTPLifecycleTypeScriptClient` starts the real Fiber listener
+on loopback and imports two synthetic confirmed conflicting claims using the
+historical engine path. Bun runs the actual SDK client source from PR #41 over
+TCP and verifies alias/domain/empty queries, pagination, empty results, output
+indices, and locally derived transaction IDs from returned Atomic BEEF.
+
+```sh
+BRC169_SDK_ROOT=/absolute/path/to/1sat-sdk go test -modfile=/tmp/brc169-lifecycle.mod ./pkg/ecosystemalias -run TestHTTPLifecycle -count=1 -v
+```
+
+The SDK checkout must include #41 and have its client dependencies installed.
+The temporary module override is the same review-only dependency gate described
+above. Without BRC169_SDK_ROOT this cross-repository check explicitly skips;
+the Go HTTP lifecycle gate still runs normally. This proves transport and BEEF
+interoperability, not public SHIP/SLAP discovery or real-chain custody.
+
+## Deployed endpoint observation (2026-09-06)
+
+Read-only probes and the actual #41 SDK client against
+`https://api.1sat.app/1sat/ecosystemalias/overlay` confirmed both capability
+listings. Alias `sigma`, domain `sigmaidentity.com`, and skip=0/limit=1 return
+HTTP 200 with an empty output list. Explicit `{}` returns HTTP 400 before
+provider dispatch. No claim was imported, submitted, spent, or broadcast.
+Empty results cannot exercise populated-output hydration; that fix is supported
+by the local populated HTTP gate, not a demonstrated live HTTP 500.
+
 ## Still required before rollout
 
-Real staged appliance/BAP compatibility, third-party SDK over live HTTP,
+Real staged appliance/BAP compatibility, public discovery and populated real-chain SDK lookup,
 PostgreSQL topic-isolation evidence for the complete engine flow, interrupted
 writes and duplicate-admission reconciliation, authoritative reorg/rollback and
 restart recovery, and finality retention. OPL-4473 remains In Progress.

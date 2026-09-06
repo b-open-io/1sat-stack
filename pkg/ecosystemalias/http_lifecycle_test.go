@@ -6,12 +6,16 @@ import (
 	"encoding/json"
 	"io"
 	"log/slog"
+	"net"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"os/exec"
 	"path/filepath"
 	"reflect"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/b-open-io/1sat-stack/pkg/beef"
 	stackoverlay "github.com/b-open-io/1sat-stack/pkg/overlay"
@@ -261,5 +265,87 @@ func TestHTTPLifecycleSubmitImportLookupAndReopen(t *testing.T) {
 			}
 
 		})
+	}
+}
+
+// Opt in with BRC169_SDK_ROOT pointing to the SDK checkout containing PR #41.
+// A real Bun client connects over TCP; no fetch mock or response fixture is used.
+func TestHTTPLifecycleTypeScriptClient(t *testing.T) {
+	sdkRoot := os.Getenv("BRC169_SDK_ROOT")
+	if sdkRoot == "" {
+		t.Skip("set BRC169_SDK_ROOT to run the TypeScript SDK HTTP gate")
+	}
+	bun, err := exec.LookPath("bun")
+	if err != nil {
+		t.Fatal(err)
+	}
+	sdkSource, err := filepath.Abs(filepath.Join(sdkRoot, "packages/client/src/services/EcosystemAliasClient.ts"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(sdkSource); err != nil {
+		t.Fatal(err)
+	}
+	chain := &lifecycleChain{roots: map[uint32]chainhash.Hash{}}
+	node := openLifecycleNode(t, t.TempDir(), "/ecosystemalias", chain)
+	owner := decodePrivateKey(t, "0000000000000000000000000000000000000000000000000000000000000002").PubKey().Compressed()
+	var expected []string
+	for i, domain := range []string{"sigma.example", "other.example"} {
+		tx := transaction.NewTransaction()
+		tx.Outputs = []*transaction.TransactionOutput{{Satoshis: 1, LockingScript: topicSignedScript(t, "sigma", domain, owner)}}
+		raw := chain.prove(t, tx, uint32(800001+i))
+		steak, err := node.svc.Engine.Submit(t.Context(), overlay.TaggedBEEF{Beef: raw, Topics: []string{TopicName}}, engine.SubmitModeHistorical, nil)
+		if err != nil || steak[TopicName] == nil || !reflect.DeepEqual(steak[TopicName].OutputsToAdmit, []uint32{0}) {
+			t.Fatalf("import: %v %v", steak, err)
+		}
+		expected = append(expected, tx.TxID().String())
+	}
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer listener.Close()
+	served := make(chan error, 1)
+	go func() { served <- node.app.Listener(listener) }()
+	defer func() {
+		node.close()
+		if err := <-served; err != nil {
+			t.Errorf("HTTP server: %v", err)
+		}
+	}()
+	ctx, cancel := context.WithTimeout(t.Context(), 20*time.Second)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, bun, "-e", `
+import assert from 'node:assert/strict';
+import { pathToFileURL } from 'node:url';
+const { EcosystemAliasClient } = await import(pathToFileURL(process.env.BRC169_SDK_SOURCE).href);
+const client = new EcosystemAliasClient(process.env.BRC169_TEST_URL);
+const expected = JSON.parse(process.env.BRC169_EXPECTED);
+for (const [query, ids] of [
+ [{}, expected], [{alias:'sigma'}, expected],
+ [{domain:'sigma.example'}, expected.slice(0,1)],
+ [{skip:1,limit:1}, expected.slice(1)], [{alias:'absent'}, []],
+]) {
+ const result = await client.lookup(query);
+ assert.deepEqual(result.outputs.map(o => o.txid), ids);
+ for (const output of result.outputs) {
+  assert.equal(output.outputIndex, 0);
+  assert.ok(output.beef instanceof Uint8Array && output.beef.length > 0);
+ }
+}
+console.log('TypeScript SDK: real HTTP alias/domain/empty/paging/BEEF checks passed');
+`)
+	encoded, err := json.Marshal(expected)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cmd.Env = append(os.Environ(), "BRC169_SDK_SOURCE="+sdkSource, "BRC169_TEST_URL=http://"+listener.Addr().String(), "BRC169_EXPECTED="+string(encoded))
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("TypeScript client: %v\n%s", err, output)
+	}
+	t.Log(string(output))
+	if len(chain.broadcasts) != 0 {
+		t.Fatal("historical fixture import broadcast")
 	}
 }
