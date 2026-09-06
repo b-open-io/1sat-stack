@@ -24,25 +24,15 @@ The HTTP gate exposed two defects that provider-only tests missed:
   module engines now bind that operation to their own topic; unbound adapters
   still reject ambiguous requests. An isolation regression covers this scope.
 
-## Validation and dependency gate
+## Validation and upstream dependency
 
-Upstream #365 has merged. Stack also requires the unmerged GASP isolation
-changes in upstream #361; switching directly to master would remove those fixes.
-Upstream #366 carries the exact #365 patch onto that existing integration branch:
-https://github.com/bsv-blockchain/go-overlay-services/pull/366
-The fork commit could not be resolved under the official Go module path. Wait
-for the compatible revision to become available upstream before updating the pin.
+Upstream #365 and the compatibility backport #366 are merged. The committed
+pin is `v1.3.5-0.20260906191948-e58da23b6c44`, containing both the empty-query
+fix and the GASP traversal isolation already required by stack. No fork module
+path or local dependency override is needed.
 
-Run `go test ./pkg/ecosystemalias ./pkg/overlay/storage` after the upstream fix
-is included in the pinned overlay-services dependency. Until then, the new HTTP
-test deliberately fails on the empty query. Do not merge this gate with an
-unresolved dependency, disable the test, or silently rewrite `{}` on the client.
-
-For review before an upstream release, copy go.mod/go.sum to a temporary module
-file and replace overlay-services there with a checkout of the pinned version
-plus PR #365's two-file patch; then run `go test -modfile=<temporary.mod> ./...`.
-Do not commit a local-path replacement or change production dependencies as part
-of the test rehearsal.
+The full `go test ./...` suite, scoped vet, and server build pass with this pin.
+The original test-only /tmp module override is obsolete; it was never deployed.
 
 ## TypeScript client interoperability
 
@@ -53,12 +43,11 @@ TCP and verifies alias/domain/empty queries, pagination, empty results, output
 indices, and locally derived transaction IDs from returned Atomic BEEF.
 
 ```sh
-BRC169_SDK_ROOT=/absolute/path/to/1sat-sdk go test -modfile=/tmp/brc169-lifecycle.mod ./pkg/ecosystemalias -run TestHTTPLifecycle -count=1 -v
+BRC169_SDK_ROOT=/absolute/path/to/1sat-sdk go test ./pkg/ecosystemalias -run TestHTTPLifecycle -count=1 -v
 ```
 
 The SDK checkout must include #41 and have its client dependencies installed.
-The temporary module override is the same review-only dependency gate described
-above. Without BRC169_SDK_ROOT this cross-repository check explicitly skips;
+Without BRC169_SDK_ROOT this cross-repository check explicitly skips;
 the Go HTTP lifecycle gate still runs normally. This proves transport and BEEF
 interoperability, not public SHIP/SLAP discovery or real-chain custody.
 
