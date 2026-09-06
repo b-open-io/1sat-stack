@@ -26,6 +26,13 @@ The HTTP gate exposed two defects that provider-only tests missed:
 
 ## Validation and dependency gate
 
+Upstream #365 has merged. Stack also requires the unmerged GASP isolation
+changes in upstream #361; switching directly to master would remove those fixes.
+Upstream #366 carries the exact #365 patch onto that existing integration branch:
+https://github.com/bsv-blockchain/go-overlay-services/pull/366
+The fork commit could not be resolved under the official Go module path. Wait
+for the compatible revision to become available upstream before updating the pin.
+
 Run `go test ./pkg/ecosystemalias ./pkg/overlay/storage` after the upstream fix
 is included in the pinned overlay-services dependency. Until then, the new HTTP
 test deliberately fails on the empty query. Do not merge this gate with an
