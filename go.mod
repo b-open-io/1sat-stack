@@ -346,7 +346,7 @@ require (
 	sigs.k8s.io/yaml v1.6.0 // indirect
 )
 
-replace github.com/bsv-blockchain/go-overlay-services => github.com/bsv-blockchain/go-overlay-services v1.3.5-0.20260822035934-e40042674b7d
+replace github.com/bsv-blockchain/go-overlay-services => github.com/bsv-blockchain/go-overlay-services v1.3.5-0.20260906191948-e58da23b6c44
 
 // Match wallet-toolbox transport pins: dependency replace directives are not inherited.
 // https://github.com/bsv-blockchain/go-wallet-toolbox/issues/983
