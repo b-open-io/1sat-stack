@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"math"
 	"strconv"
 	"strings"
 	"sync"
@@ -231,7 +232,7 @@ type SyncOutput struct {
 
 // OwnerSync streams owner sync via SSE.
 // @Summary Stream owner sync via SSE
-// @Description Stream paginated outputs for wallet synchronization via Server-Sent Events. Waits for JungleBus owner ingest (including mempool) before streaming, matching /{owner}/txos?refresh=true. On reconnect, Last-Event-ID skips ingest and resumes from that score.
+// @Description Stream paginated outputs for wallet synchronization via Server-Sent Events. Already-indexed outputs are streamed immediately while JungleBus ingest runs. Newly ingested outputs are streamed only after that prefix, in score order, so Last-Event-ID / lastScore is not advanced past unseen confirmed rows. done is sent after ingest finishes. On reconnect, Last-Event-ID skips ingest and resumes from that score.
 // @Tags owner
 // @Produce text/event-stream
 // @Param owner query []string true "Owner identifier(s) (address, pubkey, or script hash)"
@@ -272,151 +273,228 @@ func (r *Routes) OwnerSync(c *fiber.Ctx) error {
 	c.Set("Access-Control-Allow-Origin", "*")
 
 	c.Context().SetBodyStreamWriter(func(w *bufio.Writer) {
-		if !reconnect && r.sync != nil {
-			if err := r.waitOwnerSync(w, ownerStrs); err != nil {
-				return
-			}
-		}
-
-		// Build keys for all owners
 		keys := make([][]byte, 0, len(ownerStrs)*2)
 		for _, owner := range ownerStrs {
 			ownerKey := "own:" + owner
 			keys = append(keys, []byte(ownerKey), []byte(ownerKey+":spnd"))
 		}
-		currentFrom := from
 
-		for {
-			// Query batchSize+1 to detect if there are more results
-			queryLimit := batchSize + 1
-
-			cfg := &txo.OutputSearchCfg{
-				SearchCfg: store.SearchCfg{
-					Keys:  keys,
-					From:  &currentFrom,
-					Limit: queryLimit,
-				},
-			}
-
-			results, err := r.outputStore.Search(c.Context(), cfg)
-			if err != nil {
-				r.logger.Error("OwnerSync search error", "error", err)
-				fmt.Fprintf(w, "event: error\ndata: %s\n\n", err.Error())
-				w.Flush()
+		if reconnect || r.sync == nil {
+			if _, _, ok := r.streamOwnerOutputs(w, keys, from, nil, batchSize, nil); !ok {
 				return
 			}
+			fmt.Fprintf(w, "event: done\ndata: {}\nretry: 60000\n\n")
+			w.Flush()
+			return
+		}
 
-			hasMore := len(results) > int(batchSize)
-			if hasMore {
-				results = results[:batchSize]
-			}
+		// High-water of rows already in the store. First pass is capped here so
+		// ingest cannot insert a mempool timestamp (~1.7e9) ahead of remaining
+		// confirmed scores in the same stream.
+		var snapshotMax *float64
+		if max, ok := r.ownerHighScore(keys); ok {
+			snapshotMax = &max
+		}
 
-			if len(results) == 0 {
-				fmt.Fprintf(w, "event: done\ndata: {}\nretry: 60000\n\n")
-				w.Flush()
-				return
-			}
-
-			// Parse binary outpoints from results
-			ops := make([]*txo.Outpoint, len(results))
-			for i, result := range results {
-				ops[i] = transaction.NewOutpointFromBytes(result.Member)
-			}
-
-			spends, err := r.outputStore.GetSpends(c.Context(), ops)
-			if err != nil {
-				r.logger.Error("OwnerSync GetSpends error", "error", err)
-				fmt.Fprintf(w, "event: error\ndata: %s\n\n", err.Error())
-				w.Flush()
-				return
-			}
-
-			// Stream each output as an SSE event
-			for i := range results {
-				if ops[i] == nil {
-					continue
-				}
-				output := SyncOutput{
-					Outpoint: ops[i].String(),
-					Score:    results[i].Score,
-				}
-				if spends[i] != nil {
-					output.SpendTxid = spends[i].String()
-				}
-
-				data, err := json.Marshal(output)
+		var writeMu sync.Mutex
+		progress, ingestErr := r.startOwnerIngest(ownerStrs)
+		progressDone := make(chan struct{})
+		go func() {
+			defer close(progressDone)
+			for p := range progress {
+				data, err := json.Marshal(p)
 				if err != nil {
 					continue
 				}
-
-				fmt.Fprintf(w, "data: %s\nid: %.0f\n\n", data, results[i].Score)
-				if err := w.Flush(); err != nil {
-					// Client disconnected
-					return
-				}
-
-				currentFrom = results[i].Score
+				writeMu.Lock()
+				fmt.Fprintf(w, "event: sync\ndata: %s\n\n", data)
+				_ = w.Flush()
+				writeMu.Unlock()
 			}
+		}()
 
-			if !hasMore {
-				fmt.Fprintf(w, "event: done\ndata: {}\nretry: 60000\n\n")
-				w.Flush()
+		newFrom := from
+		if snapshotMax != nil {
+			last, emitted, ok := r.streamOwnerOutputs(w, keys, from, snapshotMax, batchSize, &writeMu)
+			if !ok {
 				return
 			}
+			if emitted {
+				newFrom = math.Nextafter(last, math.Inf(1))
+			}
 		}
+
+		err := <-ingestErr
+		<-progressDone
+		if err != nil {
+			errData, _ := json.Marshal(SyncProgress{Phase: "error", Error: err.Error()})
+			writeMu.Lock()
+			fmt.Fprintf(w, "event: error\ndata: %s\n\n", errData)
+			w.Flush()
+			writeMu.Unlock()
+			return
+		}
+
+		if _, _, ok := r.streamOwnerOutputs(w, keys, newFrom, nil, batchSize, &writeMu); !ok {
+			return
+		}
+
+		writeMu.Lock()
+		fmt.Fprintf(w, "event: done\ndata: {}\nretry: 60000\n\n")
+		w.Flush()
+		writeMu.Unlock()
 	})
 
 	return nil
 }
 
-// waitOwnerSync runs JungleBus ingest for each owner and streams sync progress,
-// matching /{owner}/txos?refresh=true so newly ingested (including mempool)
-// outputs are in the store before results are streamed.
-func (r *Routes) waitOwnerSync(w *bufio.Writer, owners []string) error {
-	progress := make(chan SyncProgress, 32)
-	var wg sync.WaitGroup
-	var mu sync.Mutex
-	var firstErr error
-
-	for _, owner := range owners {
-		wg.Add(1)
-		go func(owner string) {
-			defer wg.Done()
-			if err := r.sync.SyncWithProgress(r.ctx, owner, progress); err != nil {
-				r.logger.Error("OwnerSync ingest error", "owner", owner, "error", err)
-				mu.Lock()
-				if firstErr == nil {
-					firstErr = err
-				}
-				mu.Unlock()
-			}
-		}(owner)
+func (r *Routes) ownerHighScore(keys [][]byte) (float64, bool) {
+	results, err := r.outputStore.Search(r.ctx, &txo.OutputSearchCfg{
+		SearchCfg: store.SearchCfg{
+			Keys:    keys,
+			Limit:   1,
+			Reverse: true,
+		},
+	})
+	if err != nil || len(results) == 0 {
+		return 0, false
 	}
+	return results[0].Score, true
+}
+
+// streamOwnerOutputs writes SyncOutput events in score order from `from` to `to`
+// (nil to = +inf). ok is false if the client disconnected or search failed.
+func (r *Routes) streamOwnerOutputs(
+	w *bufio.Writer,
+	keys [][]byte,
+	from float64,
+	to *float64,
+	batchSize uint32,
+	writeMu *sync.Mutex,
+) (last float64, emitted bool, ok bool) {
+	last = from
+	currentFrom := from
+
+	lock := func() {
+		if writeMu != nil {
+			writeMu.Lock()
+		}
+	}
+	unlock := func() {
+		if writeMu != nil {
+			writeMu.Unlock()
+		}
+	}
+
+	for {
+		queryLimit := batchSize + 1
+		cfg := &txo.OutputSearchCfg{
+			SearchCfg: store.SearchCfg{
+				Keys:  keys,
+				From:  &currentFrom,
+				To:    to,
+				Limit: queryLimit,
+			},
+		}
+
+		results, err := r.outputStore.Search(r.ctx, cfg)
+		if err != nil {
+			r.logger.Error("OwnerSync search error", "error", err)
+			lock()
+			fmt.Fprintf(w, "event: error\ndata: %s\n\n", err.Error())
+			w.Flush()
+			unlock()
+			return last, emitted, false
+		}
+
+		hasMore := len(results) > int(batchSize)
+		if hasMore {
+			results = results[:batchSize]
+		}
+
+		if len(results) == 0 {
+			return last, emitted, true
+		}
+
+		ops := make([]*txo.Outpoint, len(results))
+		for i, result := range results {
+			ops[i] = transaction.NewOutpointFromBytes(result.Member)
+		}
+
+		spends, err := r.outputStore.GetSpends(r.ctx, ops)
+		if err != nil {
+			r.logger.Error("OwnerSync GetSpends error", "error", err)
+			lock()
+			fmt.Fprintf(w, "event: error\ndata: %s\n\n", err.Error())
+			w.Flush()
+			unlock()
+			return last, emitted, false
+		}
+
+		for i := range results {
+			if ops[i] == nil {
+				continue
+			}
+			output := SyncOutput{
+				Outpoint: ops[i].String(),
+				Score:    results[i].Score,
+			}
+			if spends[i] != nil {
+				output.SpendTxid = spends[i].String()
+			}
+
+			data, err := json.Marshal(output)
+			if err != nil {
+				continue
+			}
+
+			lock()
+			fmt.Fprintf(w, "data: %s\nid: %.0f\n\n", data, results[i].Score)
+			flushErr := w.Flush()
+			unlock()
+			if flushErr != nil {
+				return last, emitted, false
+			}
+
+			last = results[i].Score
+			emitted = true
+			currentFrom = results[i].Score
+		}
+
+		if !hasMore {
+			return last, emitted, true
+		}
+	}
+}
+
+func (r *Routes) startOwnerIngest(owners []string) (<-chan SyncProgress, <-chan error) {
+	progress := make(chan SyncProgress, 32)
+	done := make(chan error, 1)
 
 	go func() {
+		var wg sync.WaitGroup
+		var mu sync.Mutex
+		var firstErr error
+
+		for _, owner := range owners {
+			wg.Add(1)
+			go func(owner string) {
+				defer wg.Done()
+				if err := r.sync.SyncWithProgress(r.ctx, owner, progress); err != nil {
+					r.logger.Error("OwnerSync ingest error", "owner", owner, "error", err)
+					mu.Lock()
+					if firstErr == nil {
+						firstErr = err
+					}
+					mu.Unlock()
+				}
+			}(owner)
+		}
+
 		wg.Wait()
 		close(progress)
+		done <- firstErr
 	}()
 
-	for p := range progress {
-		data, err := json.Marshal(p)
-		if err != nil {
-			continue
-		}
-		fmt.Fprintf(w, "event: sync\ndata: %s\n\n", data)
-		if err := w.Flush(); err != nil {
-			return err
-		}
-	}
-
-	if firstErr != nil {
-		errData, _ := json.Marshal(SyncProgress{
-			Phase: "error",
-			Error: firstErr.Error(),
-		})
-		fmt.Fprintf(w, "event: error\ndata: %s\n\n", errData)
-		w.Flush()
-		return firstErr
-	}
-	return nil
+	return progress, done
 }
