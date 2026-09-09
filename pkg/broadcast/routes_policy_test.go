@@ -26,10 +26,10 @@ func TestGetPolicyPassthrough(t *testing.T) {
 	routes := NewRoutes(nil, client, nil)
 
 	app := fiber.New()
-	g := app.Group("/tx")
-	routes.Register(g)
+	g := app.Group("/arcade")
+	routes.RegisterArcade(g)
 
-	resp, err := app.Test(httptest.NewRequest(http.MethodGet, "/tx/policy", nil))
+	resp, err := app.Test(httptest.NewRequest(http.MethodGet, "/arcade/policy", nil))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -61,10 +61,10 @@ func TestGetPolicyDoesNotCaptureAsTxid(t *testing.T) {
 	client := arcadeclient.New(arcade.URL, "", arcade.Client(), nil)
 	routes := NewRoutes(nil, client, nil)
 	app := fiber.New()
-	g := app.Group("/tx")
-	routes.Register(g)
+	g := app.Group("/arcade")
+	routes.RegisterArcade(g)
 
-	resp, err := app.Test(httptest.NewRequest(http.MethodGet, "/tx/policy", nil))
+	resp, err := app.Test(httptest.NewRequest(http.MethodGet, "/arcade/policy", nil))
 	if err != nil {
 		t.Fatal(err)
 	}
