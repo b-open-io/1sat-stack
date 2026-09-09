@@ -66,6 +66,37 @@
                 }
             }
         },
+        "/policy": {
+            "get": {
+                "description": "Returns arcade's mining fee and transaction size policy",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "broadcast"
+                ],
+                "summary": "Get mining policy",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/arcadeclient.PolicyResponse"
+                        }
+                    },
+                    "502": {
+                        "description": "Upstream arcade error",
+                        "schema": {
+                            "type": "object",
+                            "properties": {
+                                "error": {
+                                    "type": "string"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
         "/{txid}": {
             "get": {
                 "description": "Returns the arcade broadcast status for a transaction",
@@ -130,6 +161,48 @@
         }
     },
     "definitions": {
+        "arcadeclient.MiningFee": {
+            "type": "object",
+            "properties": {
+                "bytes": {
+                    "type": "integer"
+                },
+                "satoshis": {
+                    "type": "integer"
+                }
+            }
+        },
+        "arcadeclient.Policy": {
+            "type": "object",
+            "properties": {
+                "maxscriptsizepolicy": {
+                    "type": "integer"
+                },
+                "maxtxsigopscountspolicy": {
+                    "type": "integer"
+                },
+                "maxtxsizepolicy": {
+                    "type": "integer"
+                },
+                "miningFee": {
+                    "$ref": "#/definitions/arcadeclient.MiningFee"
+                },
+                "standardFormatSupported": {
+                    "type": "boolean"
+                }
+            }
+        },
+        "arcadeclient.PolicyResponse": {
+            "type": "object",
+            "properties": {
+                "policy": {
+                    "$ref": "#/definitions/arcadeclient.Policy"
+                },
+                "timestamp": {
+                    "type": "string"
+                }
+            }
+        },
         "arcadeclient.TransactionStatus": {
             "type": "object",
             "properties": {

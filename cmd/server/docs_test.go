@@ -53,6 +53,7 @@ func TestMergedSpecPaths(t *testing.T) {
 		"/1sat/bsvalias/id/{paymail}",
 		"/.well-known/bsvalias",
 		"/1sat/tx/{txid}",
+		"/1sat/tx/policy",
 		"/1sat/market/overlay/submit",
 		"/1sat/admin/api/whitelist",
 		"/1sat/capabilities",

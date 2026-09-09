@@ -116,6 +116,31 @@ func (c *Client) Submit(ctx context.Context, rawTx []byte, opts SubmitOptions) (
 	return txid, submitResp.TxStatus, nil
 }
 
+// GetPolicy fetches arcade's mining policy (GET /policy).
+func (c *Client) GetPolicy(ctx context.Context) (*PolicyResponse, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.baseURL+"/policy", nil)
+	if err != nil {
+		return nil, fmt.Errorf("build policy request: %w", err)
+	}
+
+	resp, err := c.http.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("get /policy: %w", err)
+	}
+	defer resp.Body.Close()
+	body, _ := io.ReadAll(resp.Body)
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("arcade get /policy returned %d: %s", resp.StatusCode, string(body))
+	}
+
+	var policy PolicyResponse
+	if err := json.Unmarshal(body, &policy); err != nil {
+		return nil, fmt.Errorf("decode policy response: %w", err)
+	}
+	return &policy, nil
+}
+
 // GetStatus fetches the current status of a transaction by txid.
 // Returns (nil, nil) if arcade has no record of the txid (404).
 func (c *Client) GetStatus(ctx context.Context, txid string) (*TransactionStatus, error) {

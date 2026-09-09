@@ -46,6 +46,7 @@ func NewRoutes(handler *Handler, client *arcadeclient.Client, logger *slog.Logge
 // Typical usage: api.Group("/tx") under the existing "/1sat" base path.
 func (r *Routes) Register(router fiber.Router) {
 	router.Post("/", r.handleSubmit)
+	router.Get("/policy", r.handleGetPolicy)
 	router.Get("/:txid", r.handleGetStatus)
 }
 
@@ -109,6 +110,25 @@ func (r *Routes) handleSubmit(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusBadRequest).JSON(status)
 	}
 	return c.Status(fiber.StatusOK).JSON(status)
+}
+
+// handleGetPolicy handles GET /1sat/tx/policy — passthrough of arcade GET /policy.
+// @Summary Get mining policy
+// @Description Returns arcade's mining fee and transaction size policy
+// @Tags broadcast
+// @Produce json
+// @Success 200 {object} arcadeclient.PolicyResponse
+// @Failure 502 {object} object{error=string} "Upstream arcade error"
+// @Router /policy [get]
+func (r *Routes) handleGetPolicy(c *fiber.Ctx) error {
+	policy, err := r.client.GetPolicy(c.UserContext())
+	if err != nil {
+		return c.Status(fiber.StatusBadGateway).JSON(fiber.Map{"error": err.Error()})
+	}
+	if policy == nil {
+		return c.Status(fiber.StatusBadGateway).JSON(fiber.Map{"error": "empty policy"})
+	}
+	return c.JSON(policy)
 }
 
 // handleGetStatus handles GET /1sat/tx/:txid — direct passthrough to arcade.
