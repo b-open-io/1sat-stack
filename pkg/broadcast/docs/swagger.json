@@ -66,6 +66,57 @@
                 }
             }
         },
+        "/txs": {
+            "post": {
+                "description": "Submits concatenated raw transactions to arcade POST /txs. Body is application/octet-stream.",
+                "consumes": [
+                    "application/octet-stream"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "broadcast"
+                ],
+                "summary": "Broadcast transaction batch",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/arcadeclient.BatchSubmitResponse"
+                        }
+                    },
+                    "202": {
+                        "description": "Accepted",
+                        "schema": {
+                            "$ref": "#/definitions/arcadeclient.BatchSubmitResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "type": "object",
+                            "properties": {
+                                "error": {
+                                    "type": "string"
+                                }
+                            }
+                        }
+                    },
+                    "502": {
+                        "description": "Upstream arcade error",
+                        "schema": {
+                            "type": "object",
+                            "properties": {
+                                "error": {
+                                    "type": "string"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
         "/policy": {
             "get": {
                 "description": "Returns arcade's mining fee and transaction size policy",
@@ -161,6 +212,20 @@
         }
     },
     "definitions": {
+        "arcadeclient.BatchSubmitResponse": {
+            "type": "object",
+            "properties": {
+                "duplicates": {
+                    "type": "integer"
+                },
+                "submitted": {
+                    "type": "integer"
+                },
+                "total": {
+                    "type": "integer"
+                }
+            }
+        },
         "arcadeclient.MiningFee": {
             "type": "object",
             "properties": {

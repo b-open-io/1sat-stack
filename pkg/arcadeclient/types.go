@@ -45,6 +45,13 @@ type Policy struct {
 	StandardFormatSupported bool      `json:"standardFormatSupported,omitempty"`
 }
 
+// BatchSubmitResponse is the body of Arcade POST /txs.
+type BatchSubmitResponse struct {
+	Submitted  int `json:"submitted"`
+	Duplicates int `json:"duplicates"`
+	Total      int `json:"total"`
+}
+
 // PolicyResponse is the body of GET /policy.
 type PolicyResponse struct {
 	Policy    Policy `json:"policy"`

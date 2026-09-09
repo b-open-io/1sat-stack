@@ -116,6 +116,33 @@ func (c *Client) Submit(ctx context.Context, rawTx []byte, opts SubmitOptions) (
 	return txid, submitResp.TxStatus, nil
 }
 
+// SubmitBatch posts concatenated raw transactions to arcade POST /txs.
+func (c *Client) SubmitBatch(ctx context.Context, rawTxs []byte, opts SubmitOptions) (*BatchSubmitResponse, int, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.baseURL+"/txs", bytes.NewReader(rawTxs))
+	if err != nil {
+		return nil, 0, fmt.Errorf("build batch submit request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/octet-stream")
+	c.applySubmitHeaders(req, opts)
+
+	resp, err := c.http.Do(req)
+	if err != nil {
+		return nil, 0, fmt.Errorf("submit /txs: %w", err)
+	}
+	defer resp.Body.Close()
+	body, _ := io.ReadAll(resp.Body)
+
+	if resp.StatusCode != http.StatusAccepted && resp.StatusCode != http.StatusOK {
+		return nil, resp.StatusCode, fmt.Errorf("arcade submit /txs returned %d: %s", resp.StatusCode, string(body))
+	}
+
+	var parsed BatchSubmitResponse
+	if err := json.Unmarshal(body, &parsed); err != nil {
+		return nil, resp.StatusCode, fmt.Errorf("decode /txs response: %w", err)
+	}
+	return &parsed, resp.StatusCode, nil
+}
+
 // GetPolicy fetches arcade's mining policy (GET /policy).
 func (c *Client) GetPolicy(ctx context.Context) (*PolicyResponse, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.baseURL+"/policy", nil)
