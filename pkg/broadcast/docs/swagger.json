@@ -4,7 +4,7 @@
         "contact": {}
     },
     "paths": {
-        "/": {
+        "/tx": {
             "post": {
                 "description": "Submits a raw transaction or BEEF to arcade and waits for acceptance. Body is raw bytes (application/octet-stream), hex (text/plain), or JSON {\"rawTx\":\"\u003chex\u003e\"}",
                 "consumes": [
@@ -97,7 +97,7 @@
                 }
             }
         },
-        "/{txid}": {
+        "/tx/{txid}": {
             "get": {
                 "description": "Returns the arcade broadcast status for a transaction",
                 "produces": [
