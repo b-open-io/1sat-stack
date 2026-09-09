@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"strconv"
 	"strings"
+	"sync"
 
 	"github.com/b-open-io/1sat-stack/pkg/store"
 	"github.com/b-open-io/1sat-stack/pkg/txo"
@@ -230,11 +231,12 @@ type SyncOutput struct {
 
 // OwnerSync streams owner sync via SSE.
 // @Summary Stream owner sync via SSE
-// @Description Stream paginated outputs for wallet synchronization via Server-Sent Events. Streams all outputs until exhausted, then triggers background sync and sends retry directive.
+// @Description Stream paginated outputs for wallet synchronization via Server-Sent Events. Waits for JungleBus owner ingest (including mempool) before streaming, matching /{owner}/txos?refresh=true. On reconnect, Last-Event-ID skips ingest and resumes from that score.
 // @Tags owner
 // @Produce text/event-stream
 // @Param owner query []string true "Owner identifier(s) (address, pubkey, or script hash)"
 // @Param from query number false "Starting score for pagination"
+// @Param Last-Event-ID header string false "Score of last received event (sent automatically by EventSource on reconnect). When present, ingest is skipped."
 // @Success 200 {string} string "SSE stream of SyncOutput events"
 // @Router /sync [get]
 func (r *Routes) OwnerSync(c *fiber.Ctx) error {
@@ -243,9 +245,16 @@ func (r *Routes) OwnerSync(c *fiber.Ctx) error {
 		return fiber.NewError(fiber.StatusBadRequest, "owner query parameter required")
 	}
 
+	ownerStrs := make([]string, len(owners))
+	for i, owner := range owners {
+		ownerStrs[i] = string(owner)
+	}
+
 	// Check for Last-Event-ID header first (sent by browser on reconnect)
 	var from float64
+	reconnect := false
 	if lastEventID := c.Get("Last-Event-ID"); lastEventID != "" {
+		reconnect = true
 		if parsed, err := strconv.ParseFloat(lastEventID, 64); err == nil {
 			from = parsed
 		}
@@ -263,10 +272,16 @@ func (r *Routes) OwnerSync(c *fiber.Ctx) error {
 	c.Set("Access-Control-Allow-Origin", "*")
 
 	c.Context().SetBodyStreamWriter(func(w *bufio.Writer) {
+		if !reconnect && r.sync != nil {
+			if err := r.waitOwnerSync(w, ownerStrs); err != nil {
+				return
+			}
+		}
+
 		// Build keys for all owners
-		keys := make([][]byte, 0, len(owners)*2)
-		for _, owner := range owners {
-			ownerKey := "own:" + string(owner)
+		keys := make([][]byte, 0, len(ownerStrs)*2)
+		for _, owner := range ownerStrs {
+			ownerKey := "own:" + owner
 			keys = append(keys, []byte(ownerKey), []byte(ownerKey+":spnd"))
 		}
 		currentFrom := from
@@ -297,18 +312,6 @@ func (r *Routes) OwnerSync(c *fiber.Ctx) error {
 			}
 
 			if len(results) == 0 {
-				// Trigger sync in background so new items are ready when client returns
-				if r.sync != nil {
-					for _, owner := range owners {
-						ownerStr := string(owner)
-						go func() {
-							if err := r.sync.Sync(r.ctx, ownerStr); err != nil {
-								r.logger.Error("OwnerSync background sync error", "error", err)
-							}
-						}()
-					}
-				}
-				// No more results - tell client to retry in 60 seconds
 				fmt.Fprintf(w, "event: done\ndata: {}\nretry: 60000\n\n")
 				w.Flush()
 				return
@@ -356,18 +359,6 @@ func (r *Routes) OwnerSync(c *fiber.Ctx) error {
 			}
 
 			if !hasMore {
-				// Trigger sync in background so new items are ready when client returns
-				if r.sync != nil {
-					for _, owner := range owners {
-						ownerStr := string(owner)
-						go func() {
-							if err := r.sync.Sync(r.ctx, ownerStr); err != nil {
-								r.logger.Error("OwnerSync background sync error", "error", err)
-							}
-						}()
-					}
-				}
-				// No more results - tell client to retry in 60 seconds
 				fmt.Fprintf(w, "event: done\ndata: {}\nretry: 60000\n\n")
 				w.Flush()
 				return
@@ -375,5 +366,57 @@ func (r *Routes) OwnerSync(c *fiber.Ctx) error {
 		}
 	})
 
+	return nil
+}
+
+// waitOwnerSync runs JungleBus ingest for each owner and streams sync progress,
+// matching /{owner}/txos?refresh=true so newly ingested (including mempool)
+// outputs are in the store before results are streamed.
+func (r *Routes) waitOwnerSync(w *bufio.Writer, owners []string) error {
+	progress := make(chan SyncProgress, 32)
+	var wg sync.WaitGroup
+	var mu sync.Mutex
+	var firstErr error
+
+	for _, owner := range owners {
+		wg.Add(1)
+		go func(owner string) {
+			defer wg.Done()
+			if err := r.sync.SyncWithProgress(r.ctx, owner, progress); err != nil {
+				r.logger.Error("OwnerSync ingest error", "owner", owner, "error", err)
+				mu.Lock()
+				if firstErr == nil {
+					firstErr = err
+				}
+				mu.Unlock()
+			}
+		}(owner)
+	}
+
+	go func() {
+		wg.Wait()
+		close(progress)
+	}()
+
+	for p := range progress {
+		data, err := json.Marshal(p)
+		if err != nil {
+			continue
+		}
+		fmt.Fprintf(w, "event: sync\ndata: %s\n\n", data)
+		if err := w.Flush(); err != nil {
+			return err
+		}
+	}
+
+	if firstErr != nil {
+		errData, _ := json.Marshal(SyncProgress{
+			Phase: "error",
+			Error: firstErr.Error(),
+		})
+		fmt.Fprintf(w, "event: error\ndata: %s\n\n", errData)
+		w.Flush()
+		return firstErr
+	}
 	return nil
 }
