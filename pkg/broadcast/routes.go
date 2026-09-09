@@ -13,6 +13,7 @@ import (
 	"encoding/json"
 	"errors"
 	"log/slog"
+	"net/http"
 	"strings"
 	"time"
 
@@ -49,9 +50,10 @@ func (r *Routes) Register(router fiber.Router) {
 }
 
 // RegisterArcade mounts Arcade-shaped routes under /1sat/arcade
-// (POST /tx, GET /tx/:txid, GET /policy).
+// (POST /tx, POST /txs, GET /tx/:txid, GET /policy).
 func (r *Routes) RegisterArcade(router fiber.Router) {
 	router.Post("/tx", r.handleSubmit)
+	router.Post("/txs", r.handleSubmitBatch)
 	router.Get("/policy", r.handleGetPolicy)
 	router.Get("/tx/:txid", r.handleGetStatus)
 }
@@ -116,6 +118,27 @@ func (r *Routes) handleSubmit(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusBadRequest).JSON(status)
 	}
 	return c.Status(fiber.StatusOK).JSON(status)
+}
+
+// handleSubmitBatch handles POST /1sat/arcade/txs — passthrough of arcade POST /txs.
+// Body is concatenated raw transaction bytes (application/octet-stream).
+func (r *Routes) handleSubmitBatch(c *fiber.Ctx) error {
+	body := c.Body()
+	if len(body) == 0 {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "empty body"})
+	}
+	parsed, status, err := r.client.SubmitBatch(c.UserContext(), body, arcadeclient.SubmitOptions{})
+	if err != nil {
+		if status == http.StatusBadRequest {
+			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": err.Error()})
+		}
+		return c.Status(fiber.StatusBadGateway).JSON(fiber.Map{"error": err.Error()})
+	}
+	code := status
+	if code == 0 {
+		code = http.StatusOK
+	}
+	return c.Status(code).JSON(parsed)
 }
 
 // handleGetPolicy handles GET /1sat/arcade/policy — passthrough of arcade GET /policy.
