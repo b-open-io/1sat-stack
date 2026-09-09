@@ -232,12 +232,12 @@ type SyncOutput struct {
 
 // OwnerSync streams owner sync via SSE.
 // @Summary Stream owner sync via SSE
-// @Description Stream paginated outputs for wallet synchronization via Server-Sent Events. Already-indexed outputs are streamed immediately while JungleBus ingest runs. Newly ingested outputs are streamed only after that prefix, in score order, so Last-Event-ID / lastScore is not advanced past unseen confirmed rows. done is sent after ingest finishes. On reconnect, Last-Event-ID skips ingest and resumes from that score.
+// @Description Stream paginated outputs for wallet synchronization via Server-Sent Events. Already-indexed outputs are streamed immediately while JungleBus ingest runs. Newly ingested outputs are streamed only after that prefix, in score order, so Last-Event-ID / lastScore is not advanced past unseen confirmed rows. Ingest failure is logged; existing rows are still streamed and done is still sent. Last-Event-ID resumes from that score and still kicks ingest.
 // @Tags owner
 // @Produce text/event-stream
 // @Param owner query []string true "Owner identifier(s) (address, pubkey, or script hash)"
 // @Param from query number false "Starting score for pagination"
-// @Param Last-Event-ID header string false "Score of last received event (sent automatically by EventSource on reconnect). When present, ingest is skipped."
+// @Param Last-Event-ID header string false "Score of last received event (sent automatically by EventSource on reconnect)."
 // @Success 200 {string} string "SSE stream of SyncOutput events"
 // @Router /sync [get]
 func (r *Routes) OwnerSync(c *fiber.Ctx) error {
@@ -253,9 +253,7 @@ func (r *Routes) OwnerSync(c *fiber.Ctx) error {
 
 	// Check for Last-Event-ID header first (sent by browser on reconnect)
 	var from float64
-	reconnect := false
 	if lastEventID := c.Get("Last-Event-ID"); lastEventID != "" {
-		reconnect = true
 		if parsed, err := strconv.ParseFloat(lastEventID, 64); err == nil {
 			from = parsed
 		}
@@ -279,7 +277,7 @@ func (r *Routes) OwnerSync(c *fiber.Ctx) error {
 			keys = append(keys, []byte(ownerKey), []byte(ownerKey+":spnd"))
 		}
 
-		if reconnect || r.sync == nil {
+		if r.sync == nil {
 			if _, _, ok := r.streamOwnerOutputs(w, keys, from, nil, batchSize, nil); !ok {
 				return
 			}
@@ -324,16 +322,10 @@ func (r *Routes) OwnerSync(c *fiber.Ctx) error {
 			}
 		}
 
-		err := <-ingestErr
-		<-progressDone
-		if err != nil {
-			errData, _ := json.Marshal(SyncProgress{Phase: "error", Error: err.Error()})
-			writeMu.Lock()
-			fmt.Fprintf(w, "event: error\ndata: %s\n\n", errData)
-			w.Flush()
-			writeMu.Unlock()
-			return
+		if err := <-ingestErr; err != nil {
+			r.logger.Error("OwnerSync ingest failed; streaming store contents anyway", "error", err)
 		}
+		<-progressDone
 
 		if _, _, ok := r.streamOwnerOutputs(w, keys, newFrom, nil, batchSize, &writeMu); !ok {
 			return
