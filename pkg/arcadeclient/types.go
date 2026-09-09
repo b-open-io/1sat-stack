@@ -30,6 +30,27 @@ type TransactionStatus struct {
 	CompetingTxs []string `json:"competingTxs,omitempty"`
 }
 
+// MiningFee is arcade's satoshis-per-bytes mining fee.
+type MiningFee struct {
+	Satoshis int `json:"satoshis"`
+	Bytes    int `json:"bytes"`
+}
+
+// Policy is the mining/size policy object returned inside GET /policy.
+type Policy struct {
+	MiningFee               MiningFee `json:"miningFee"`
+	MaxTxSizePolicy         uint64    `json:"maxtxsizepolicy,omitempty"`
+	MaxScriptSizePolicy     uint64    `json:"maxscriptsizepolicy,omitempty"`
+	MaxTxSigopsCountsPolicy uint64    `json:"maxtxsigopscountspolicy,omitempty"`
+	StandardFormatSupported bool      `json:"standardFormatSupported,omitempty"`
+}
+
+// PolicyResponse is the body of GET /policy.
+type PolicyResponse struct {
+	Policy    Policy `json:"policy"`
+	Timestamp string `json:"timestamp,omitempty"`
+}
+
 // SubmitOptions configures a single POST /tx request. Empty fields are not sent.
 type SubmitOptions struct {
 	CallbackURL       string // X-CallbackUrl
