@@ -1704,10 +1704,10 @@ func (c *Config) RegisterRoutes(app *fiber.App, svc *Services) {
 		}})
 	}
 
-	// Broadcast routes (POST /tx, GET /tx/:txid). Label predates the arcade
-	// removal; kept for SDK compatibility.
+	// Arcade-shaped routes under /arcade; /tx kept for submit/status compatibility.
 	if svc.BroadcastRoutes != nil {
 		reg.Add(registrar.Registration{Capability: "arcade", Spec: broadcastdocs.Spec, Mounts: []registrar.Mount{
+			{Prefix: "/arcade", Register: svc.BroadcastRoutes.RegisterArcade},
 			{Prefix: "/tx", Register: svc.BroadcastRoutes.Register},
 		}})
 	}
