@@ -687,6 +687,19 @@ func (c *Config) applyRuntimeConfig(rc *configpkg.RuntimeConfig) error {
 	if rc.OrdLockEnabled {
 		c.OrdLock.Mode = "embedded"
 		c.Overlay.Mode = "embedded"
+		if c.OrdLock.Sync == nil {
+			c.OrdLock.Sync = &overlay.OverlaySyncConfig{}
+		}
+		if rc.OrdLockSyncSubID != "" {
+			c.OrdLock.Sync.SubscriptionID = rc.OrdLockSyncSubID
+			c.OrdLock.Sync.Enabled = true
+		}
+		if rc.OrdLockSyncConcurrency > 0 {
+			c.OrdLock.Sync.Concurrency = rc.OrdLockSyncConcurrency
+		}
+		if rc.OrdLockSyncBatchSize > 0 {
+			c.OrdLock.Sync.BatchSize = rc.OrdLockSyncBatchSize
+		}
 	}
 
 	// BSV21
@@ -1183,6 +1196,18 @@ func (c *Config) Initialize(ctx context.Context, logger *slog.Logger) (*Services
 			return nil, fmt.Errorf("failed to initialize ordlock: %w", err)
 		}
 		svc.OrdLock = ordlockSvc
+		// OverlaySync drains q:ordlock (fed by the ordlock2 event bridge and the
+		// optional JungleBus subscriber) into the v2 topic via processDirect.
+		if svc.OrdLock != nil && svc.Beef != nil {
+			syncCfg := c.OrdLock.Sync
+			if syncCfg == nil {
+				syncCfg = &overlay.OverlaySyncConfig{}
+			}
+			if syncCfg.QueueName == "" {
+				syncCfg.QueueName = ordlockpkg.QueueName
+			}
+			svc.OrdLock.Sync = overlay.NewOverlaySync(syncCfg, ordlockpkg.TopicNameV2, svc.Store.Store, svc.Beef.Storage, svc.OrdLock.Engine, ordlockLogger)
+		}
 		logger.Info("ordlock initialized", "duration", time.Since(start).Round(time.Millisecond))
 	}
 
@@ -1473,6 +1498,19 @@ func (c *Config) Initialize(ctx context.Context, logger *slog.Logger) (*Services
 			}
 			svc.JBSubscribers = append(svc.JBSubscribers, sub)
 			logger.Info("BSV21 JungleBus subscriber initialized", "queue", "bsv21", "from_block", subCfg.FromBlock)
+		}
+
+		// OrdLock v2 subscriber (if subscription_id configured). The JungleBus
+		// subscription should filter on output type "ordlock2" (listings) and
+		// input type "ordlock2" (purchases/cancels).
+		if svc.OrdLock != nil && c.OrdLock.Sync != nil && c.OrdLock.Sync.SubscriptionID != "" {
+			subCfg := c.OrdLock.Sync.SubscriberConfig()
+			sub, err := jbsync.NewSubscriber(subCfg, svc.Store.Store, svc.ConfigStore, svc.Chaintracks, svc.JungleBus, logger)
+			if err != nil {
+				return nil, fmt.Errorf("failed to create ordlock subscriber: %w", err)
+			}
+			svc.JBSubscribers = append(svc.JBSubscribers, sub)
+			logger.Info("OrdLock v2 JungleBus subscriber initialized", "queue", subCfg.QueueName, "from_block", subCfg.FromBlock)
 		}
 
 		// BAP subscriber (if subscription_id configured)
@@ -1998,6 +2036,26 @@ func (svc *Services) StartSubscribers(ctx context.Context, logger *slog.Logger) 
 				logger.Error("failed to start BSocial event bridge", "error", err)
 			}
 		}
+		// OrdLock v2: listing outputs (ordlock2) and their spends (spend:ordlock2)
+		// from the indexer route to the v2 topic. No GASP: admission only checks
+		// the script, so processDirect is sufficient.
+		if svc.OrdLock != nil && svc.OrdLock.Sync != nil {
+			bridge := overlay.NewEventBridge(&overlay.EventBridgeConfig{
+				PubSub:   svc.PubSub.PubSub,
+				Store:    svc.Store.Store,
+				Patterns: []string{"ordlock2", "spend:ordlock2"},
+				QueueFunc: func(ev pubsub.Event) string {
+					return string(txo.KeyQueue(ordlockpkg.QueueName))
+				},
+				Logger:       logger,
+				Engine:       svc.OrdLock.Engine,
+				BeefStorage:  svc.Beef.Storage,
+				SubmitBuffer: 64,
+			})
+			if err := bridge.Start(ctx); err != nil {
+				logger.Error("failed to start OrdLock v2 event bridge", "error", err)
+			}
+		}
 		if svc.OPNS != nil && svc.OPNS.Sync != nil {
 			bridge := overlay.NewEventBridge(&overlay.EventBridgeConfig{
 				PubSub:   svc.PubSub.PubSub,
@@ -2078,6 +2136,14 @@ func (svc *Services) StartSubscribers(ctx context.Context, logger *slog.Logger) 
 			}
 		}()
 		logger.Info("started BSocial overlay sync")
+	}
+	if svc.OrdLock != nil && svc.OrdLock.Sync != nil {
+		go func() {
+			if err := svc.OrdLock.Sync.Start(ctx); err != nil {
+				logger.Error("OrdLock v2 sync error", "error", err)
+			}
+		}()
+		logger.Info("started OrdLock v2 overlay sync")
 	}
 	if svc.OPNS != nil && svc.OPNS.Sync != nil {
 		go func() {

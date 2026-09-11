@@ -1,7 +1,6 @@
 package txo
 
 import (
-	"log/slog"
 	"strings"
 
 	"github.com/b-open-io/1sat-stack/pkg/spends"
@@ -297,13 +296,6 @@ func (r *Routes) Search(c *fiber.Ctx) error {
 		cfg.JoinType = store.JoinIntersect
 	case "difference":
 		cfg.JoinType = store.JoinDifference
-	}
-
-	// Public search of deprecated listing events and topics is omitted.
-	// Owner intersections still resolve remaining inventory for wallets.
-	if isPublicOrdLockSearch(cfg.Keys, cfg.JoinType) {
-		slog.Info("deprecated listing index queried", "endpoint", "txo/search")
-		return c.JSON(make([]*IndexedOutput, 0))
 	}
 
 	if tagsQuery := c.Query("tags", ""); tagsQuery != "" {

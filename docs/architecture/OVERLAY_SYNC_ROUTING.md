@@ -46,7 +46,7 @@ Each module's bridge is wired up in `cmd/server/config.go` `StartSubscribers()`:
 | BAP | `bap:*` | `q:bap` | Fixed queue |
 | BSocial | `map:type:*` | `q:bsocial` | Fixed queue |
 | OPNS | `opns:mine` | `q:opns` | Fixed queue |
-| OrdLock | `ordlock`, `spend:ordlock` | `q:ordlock` | Includes spend events |
+| OrdLock v2 | `ordlock2`, `spend:ordlock2` | `q:ordlock` | Includes spend events; topic `tm_ordlock_v2` |
 | BSV21 | `bsv21:*` | `q:tm_{tokenId}` | Routes to per-token queues, bypasses dispatcher |
 
 Events are published by `OutputStore.SaveTransaction()` (`pkg/txo/output_store.go:249-273`) after the indexer parses a transaction. Each parser attaches events to its `ParseResult.Events` field.
@@ -63,7 +63,7 @@ These use `overlay.OverlaySync` — the generic sync worker. Key settings:
 - **Single topic queue** — one queue per module (e.g., `q:ordlock`).
 - **JungleBus subscriber optional** — can operate solely from the indexer's JungleBus subscription via the event bridge path. If a module-specific JungleBus subscription ID is configured, it provides a dedicated feed.
 
-The topic managers for these modules don't require inputs to be pre-existing in the overlay. OrdLock's `IdentifyAdmissibleOutputs` checks if the output has a valid ordlock script pattern — it doesn't verify input balances. This is why `processDirect` (no GASP) works.
+The topic managers for these modules don't require inputs to be pre-existing in the overlay. OrdLock v2's `IdentifyAdmissibleOutputs` checks if the output matches the compiled v2 template — it doesn't verify input balances. This is why `processDirect` (no GASP) works.
 
 ### BSV21: Per-Token Queues
 
@@ -78,11 +78,13 @@ The event bridge routes `bsv21:*` events directly to per-token queues, bypassing
 
 ## Why OrdLock Uses the Indexer Route
 
-OrdLock's JungleBus subscription feeds the general-purpose indexer queue rather than having a completely independent path. This works because:
+OrdLock v2's JungleBus subscription (filtered on the junglebus `ordlock2` output/input type) feeds the general-purpose indexer queue rather than having a completely independent path. This works because:
 
-1. **No balance validation** — OrdLock admission doesn't check input balances. Any 1-sat output with a valid ordlock script is admitted. No GASP needed.
+1. **No balance validation** — OrdLock v2 admission doesn't check input balances. Any 1-sat output matching the v2 template is admitted. No GASP needed.
 2. **processDirect is sufficient** — the full BEEF is loaded from beef storage and submitted to the engine. The topic manager validates the script pattern directly from the BEEF.
-3. **Spend tracking via events** — OrdLock subscribes to both `ordlock` and `spend:ordlock` patterns. When a listing is purchased or cancelled, the spend event routes the spending transaction to the overlay for cleanup.
+3. **Spend tracking via events** — OrdLock v2 subscribes to both `ordlock2` and `spend:ordlock2` patterns. When a listing is purchased or cancelled, the spend event routes the spending transaction to the overlay for cleanup.
+
+OrdLock **v1** is deprecated. `pkg/parse/ordlock.go` still stores its decoded data (`dt:ordlock`) and indexes the seller under `own:{addr}` so the legacy sweep tool can cancel old listings, but it emits **no** public event, so v1 never reaches any topic or public listing index.
 
 ## Parser Event Reference
 
@@ -91,7 +93,7 @@ Each parser emits events that the event bridge routes:
 | Parser | File | Events Emitted |
 |--------|------|---------------|
 | BSV21 | `pkg/parse/bsv21.go` | `bsv21:{tokenId}` |
-| OrdLock | `pkg/parse/ordlock.go` | `ordlock` |
+| OrdLock | `pkg/parse/ordlock.go` | `ordlock2` (v2 only; v1 emits none) |
 | BAP | `pkg/parse/bitcom.go` | `bap:{type}` |
 | MAP | `pkg/parse/bitcom.go` | `map:type:{type}`, `map:subType:{subType}` |
 | Collection | `pkg/parse/collection.go` | `map:collectionId:{id}` from `subTypeData` (after MAP; `_N` normalized) |

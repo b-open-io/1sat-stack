@@ -123,12 +123,12 @@ func classifyOutput(events []string, satoshis uint64) *outputClassification {
 		}
 	}
 
-	// OrdLock listing
-	if hasEvent("ordlock") {
+	// OrdLock v2 listing (v1 is deprecated and no longer emits an event)
+	if hasEvent("ordlock2") {
 		return &outputClassification{
 			basket:   "ordlock",
 			protocol: sdk.InternalizeProtocolBasketInsertion,
-			tags:     filterEvents(events, "ordlock"),
+			tags:     filterEvents(events, "ordlock2"),
 		}
 	}
 
