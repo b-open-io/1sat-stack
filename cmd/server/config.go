@@ -1196,7 +1196,7 @@ func (c *Config) Initialize(ctx context.Context, logger *slog.Logger) (*Services
 			return nil, fmt.Errorf("failed to initialize ordlock: %w", err)
 		}
 		svc.OrdLock = ordlockSvc
-		// OverlaySync drains q:ordlock (fed by the ordlock2 event bridge and the
+		// OverlaySync drains q:ordlock2 (fed by the ordlock2 event bridge and the
 		// optional JungleBus subscriber) into the v2 topic via processDirect.
 		if svc.OrdLock != nil && svc.Beef != nil {
 			syncCfg := c.OrdLock.Sync
