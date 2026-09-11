@@ -3,8 +3,12 @@
 //
 // What it deletes:
 //   - txo store sorted sets ev:ordlock, ev:ordlock:spnd, tp:tm_ordlock,
-//     tp:tm_ordlock:spnd (the public v1 listing enumeration; nothing writes
-//     to them any more).
+//     tp:tm_ordlock:spnd (the public v1 listing enumeration). New v1
+//     outputs no longer get the ordlock event, but rows indexed before
+//     the deprecation still carry it, so ev:ordlock:spnd may regrow as
+//     those old listings are spent. Nothing reads it; spend tracking for
+//     wallets and sweep runs off the per-output spend record and the
+//     owner (ev:own:*) index, which are untouched.
 //   - the v1 overlay topic storage: <overlay dir>/tm_ordlock.db (SQLite) or
 //     every tm_ordlock row in the shared Postgres overlay tables.
 //
