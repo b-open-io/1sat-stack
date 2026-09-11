@@ -46,7 +46,7 @@ Each module's bridge is wired up in `cmd/server/config.go` `StartSubscribers()`:
 | BAP | `bap:*` | `q:bap` | Fixed queue |
 | BSocial | `map:type:*` | `q:bsocial` | Fixed queue |
 | OPNS | `opns:mine` | `q:opns` | Fixed queue |
-| OrdLock v2 | `ordlock2`, `spend:ordlock2` | `q:ordlock` | Includes spend events; topic `tm_ordlock_v2` |
+| OrdLock v2 | `ordlock2`, `spend:ordlock2` | `q:ordlock2` | Includes spend events; topic `tm_ordlock_v2` |
 | BSV21 | `bsv21:*` | `q:tm_{tokenId}` | Routes to per-token queues, bypasses dispatcher |
 
 Events are published by `OutputStore.SaveTransaction()` (`pkg/txo/output_store.go:249-273`) after the indexer parses a transaction. Each parser attaches events to its `ParseResult.Events` field.
@@ -60,7 +60,7 @@ The event bridge converts outpoint strings to 36-byte binary members via `parseE
 These use `overlay.OverlaySync` — the generic sync worker. Key settings:
 
 - **ResolveDependencies: false** — no GASP. Uses `processDirect`: loads full BEEF, calls `engine.Submit()` directly.
-- **Single topic queue** — one queue per module (e.g., `q:ordlock`).
+- **Single topic queue** — one queue per module (e.g., `q:ordlock2`).
 - **JungleBus subscriber optional** — can operate solely from the indexer's JungleBus subscription via the event bridge path. If a module-specific JungleBus subscription ID is configured, it provides a dedicated feed.
 
 The topic managers for these modules don't require inputs to be pre-existing in the overlay. OrdLock v2's `IdentifyAdmissibleOutputs` checks if the output matches the compiled v2 template — it doesn't verify input balances. This is why `processDirect` (no GASP) works.

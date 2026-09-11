@@ -71,6 +71,7 @@ func main() {
 		txo.KeyEventSpent("ordlock"),
 		[]byte(txo.PfxTopic + v1Topic),
 		[]byte(txo.PfxTopic + v1Topic + ":spnd"),
+		txo.KeyQueue("ordlock"), // v1 overlay work queue; v2 uses q:ordlock2
 	}
 	for _, k := range keys {
 		n, err := st.ZCard(ctx, k)

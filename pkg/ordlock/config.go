@@ -17,7 +17,7 @@ const (
 
 // QueueName is the overlay work queue fed by the event bridge and the
 // optional JungleBus subscriber; OverlaySync drains it into TopicNameV2.
-const QueueName = "ordlock"
+const QueueName = "ordlock2"
 
 type Config struct {
 	Mode     string                     `mapstructure:"mode"`
