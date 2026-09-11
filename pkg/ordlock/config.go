@@ -13,15 +13,12 @@ import (
 const (
 	ModeDisabled = "disabled"
 	ModeEmbedded = "embedded"
-	TopicName    = "tm_ordlock"
-	QueueName    = "ordlock"
 )
 
 type Config struct {
-	Mode     string                     `mapstructure:"mode"`
-	LogLevel string                     `mapstructure:"log_level"` // debug, info, warn, error
-	Sync     *overlay.OverlaySyncConfig `mapstructure:"sync"`
-	Routes   RoutesConfig               `mapstructure:"routes"`
+	Mode     string       `mapstructure:"mode"`
+	LogLevel string       `mapstructure:"log_level"` // debug, info, warn, error
+	Routes   RoutesConfig `mapstructure:"routes"`
 }
 
 type RoutesConfig struct {
@@ -36,25 +33,17 @@ func (c *Config) SetDefaults(v *viper.Viper, prefix string) {
 	}
 
 	v.SetDefault(p+"mode", ModeDisabled)
-	v.SetDefault(p+"sync.enabled", false)
-	v.SetDefault(p+"sync.subscription_id", "")
-	v.SetDefault(p+"sync.queue_name", QueueName)
-	v.SetDefault(p+"sync.from_block", 783968)
-	v.SetDefault(p+"sync.concurrency", 8)
-	v.SetDefault(p+"sync.batch_size", 1000)
-	v.SetDefault(p+"sync.resolve_dependencies", false)
 	v.SetDefault(p+"routes.enabled", true)
 	v.SetDefault(p+"routes.prefix", "/market")
 }
 
 type Services struct {
-	Engine        *engine.Engine
-	Lookup        *LookupService
-	TopicManager  *TopicManager
-	OrdLock       *OrdLock
-	Sync          *overlay.OverlaySync
-	Routes        *Routes
-	OverlayRoutes *overlay.Routes
+	Engine         *engine.Engine
+	LookupV2       *LookupServiceV2
+	TopicManagerV2 *TopicManagerV2
+	OrdLockV2      *OrdLock
+	Routes         *Routes
+	OverlayRoutes  *overlay.Routes
 }
 
 func (c *Config) Initialize(
@@ -75,30 +64,34 @@ func (c *Config) Initialize(
 		if deps == nil || deps.Factory == nil {
 			return nil, fmt.Errorf("overlay ModuleDeps with Factory is required for OrdLock")
 		}
-		ts, err := deps.Factory(TopicName)
+		// The market module serves v2. Deprecated v1 listings remain in the
+		// independent owner/address index for wallet recovery.
+		tsV2, err := deps.Factory(TopicNameV2)
 		if err != nil {
-			return nil, fmt.Errorf("failed to get OrdLock topic storage: %w", err)
+			return nil, fmt.Errorf("failed to get OrdLock v2 topic storage: %w", err)
 		}
-
-		ol := New(ts.DB(), ts.TopicID(), nil, logger)
-
-		lookupSvc := NewLookupService(ol)
-		topicManager := &TopicManager{}
+		olV2 := New(tsV2.DB(), tsV2.TopicID(), nil, logger)
+		lookupSvcV2 := NewLookupServiceV2(olV2)
+		topicManagerV2 := &TopicManagerV2{}
 
 		eng := overlay.NewModuleEngine(deps,
-			map[string]engine.TopicManager{TopicName: topicManager},
-			map[string]engine.LookupService{"ordlock": lookupSvc},
+			map[string]engine.TopicManager{
+				TopicNameV2: topicManagerV2,
+			},
+			map[string]engine.LookupService{
+				"ordlock2": lookupSvcV2,
+			},
 		)
 
 		svc := &Services{
-			Engine:       eng,
-			Lookup:       lookupSvc,
-			TopicManager: topicManager,
-			OrdLock:      ol,
+			Engine:         eng,
+			LookupV2:       lookupSvcV2,
+			TopicManagerV2: topicManagerV2,
+			OrdLockV2:      olV2,
 		}
 
 		if c.Routes.Enabled {
-			svc.Routes = NewRoutes(ol, logger)
+			svc.Routes = NewRoutes(olV2, logger)
 		}
 
 		if deps.RoutesConfig != nil && deps.RoutesConfig.Enabled {
@@ -113,11 +106,8 @@ func (c *Config) Initialize(
 }
 
 func (s *Services) Close() error {
-	if s.Sync != nil {
-		s.Sync.Stop()
-	}
-	if s.OrdLock != nil {
-		return s.OrdLock.Close()
+	if s.OrdLockV2 != nil {
+		return s.OrdLockV2.Close()
 	}
 	return nil
 }

@@ -22,13 +22,14 @@ func ParseOrdLock(ctx *ParseContext) (*ParseResult, error) {
 		return nil, nil
 	}
 
+	// Deprecated v1 listings retain their data and cancellation owner for
+	// address-based recovery without publishing a new public listing event.
 	result := &ParseResult{
-		Tag:    TagOrdLock,
-		Data:   ol,
-		Events: []string{"ordlock"},
+		Tag:  TagOrdLock,
+		Data: ol,
 	}
 
-	// Extract owner (seller) from ordlock
+	// Extract owner (seller/cancel address) from ordlock
 	if ol.Seller != nil {
 		pkHash := types.PKHashFromBytes(ol.Seller.PublicKeyHash)
 		if pkHash != nil {

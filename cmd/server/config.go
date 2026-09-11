@@ -687,19 +687,6 @@ func (c *Config) applyRuntimeConfig(rc *configpkg.RuntimeConfig) error {
 	if rc.OrdLockEnabled {
 		c.OrdLock.Mode = "embedded"
 		c.Overlay.Mode = "embedded"
-		if c.OrdLock.Sync == nil {
-			c.OrdLock.Sync = &overlay.OverlaySyncConfig{}
-		}
-		if rc.OrdLockSyncSubID != "" {
-			c.OrdLock.Sync.SubscriptionID = rc.OrdLockSyncSubID
-			c.OrdLock.Sync.Enabled = true
-		}
-		if rc.OrdLockSyncConcurrency > 0 {
-			c.OrdLock.Sync.Concurrency = rc.OrdLockSyncConcurrency
-		}
-		if rc.OrdLockSyncBatchSize > 0 {
-			c.OrdLock.Sync.BatchSize = rc.OrdLockSyncBatchSize
-		}
 	}
 
 	// BSV21
@@ -1196,17 +1183,6 @@ func (c *Config) Initialize(ctx context.Context, logger *slog.Logger) (*Services
 			return nil, fmt.Errorf("failed to initialize ordlock: %w", err)
 		}
 		svc.OrdLock = ordlockSvc
-
-		if svc.Beef != nil {
-			syncCfg := c.OrdLock.Sync
-			if syncCfg == nil {
-				syncCfg = &overlay.OverlaySyncConfig{}
-			}
-			if syncCfg.QueueName == "" {
-				syncCfg.QueueName = ordlockpkg.QueueName
-			}
-			svc.OrdLock.Sync = overlay.NewOverlaySync(syncCfg, ordlockpkg.TopicName, svc.Store.Store, svc.Beef.Storage, svc.OrdLock.Engine, ordlockLogger)
-		}
 		logger.Info("ordlock initialized", "duration", time.Since(start).Round(time.Millisecond))
 	}
 
@@ -1244,9 +1220,9 @@ func (c *Config) Initialize(ctx context.Context, logger *slog.Logger) (*Services
 		}
 		svc.ORDFS = ordfsSvc
 
-		// Wire ORDFS into OrdLock for origin resolution on transferred ordinals
-		if svc.OrdLock != nil && svc.OrdLock.Lookup != nil {
-			svc.OrdLock.Lookup.SetOrdfs(ordfsSvc.Ordfs)
+		// Wire ORDFS into OrdLock v2 for origin resolution on transferred ordinals
+		if svc.OrdLock != nil && svc.OrdLock.LookupV2 != nil {
+			svc.OrdLock.LookupV2.SetOrdfs(ordfsSvc.Ordfs)
 		}
 
 		logger.Info("ordfs initialized", "duration", time.Since(start).Round(time.Millisecond))
@@ -1293,8 +1269,8 @@ func (c *Config) Initialize(ctx context.Context, logger *slog.Logger) (*Services
 			if svc.OPNS != nil {
 				lookups["tm_opns"] = svc.OPNS.Lookup
 			}
-			if svc.OrdLock != nil {
-				lookups[ordlockpkg.TopicName] = svc.OrdLock.Lookup
+			if svc.OrdLock != nil && svc.OrdLock.LookupV2 != nil {
+				lookups[ordlockpkg.TopicNameV2] = svc.OrdLock.LookupV2
 			}
 			if svc.BSV21 != nil {
 				lookups["bsv21"] = svc.BSV21.Lookup
@@ -1530,17 +1506,6 @@ func (c *Config) Initialize(ctx context.Context, logger *slog.Logger) (*Services
 			}
 			svc.JBSubscribers = append(svc.JBSubscribers, sub)
 			logger.Info("BSocial JungleBus subscriber initialized", "queue", subCfg.QueueName, "from_block", subCfg.FromBlock)
-		}
-
-		// OrdLock subscriber (if subscription_id configured)
-		if svc.OrdLock != nil && c.OrdLock.Sync != nil && c.OrdLock.Sync.SubscriptionID != "" {
-			subCfg := c.OrdLock.Sync.SubscriberConfig()
-			sub, err := jbsync.NewSubscriber(subCfg, svc.Store.Store, svc.ConfigStore, svc.Chaintracks, svc.JungleBus, logger)
-			if err != nil {
-				return nil, fmt.Errorf("failed to create ordlock subscriber: %w", err)
-			}
-			svc.JBSubscribers = append(svc.JBSubscribers, sub)
-			logger.Info("OrdLock JungleBus subscriber initialized", "queue", subCfg.QueueName, "from_block", subCfg.FromBlock)
 		}
 
 		// Ingest subscribers (multiple subscription_ids filling q:ingest)
@@ -2050,23 +2015,6 @@ func (svc *Services) StartSubscribers(ctx context.Context, logger *slog.Logger) 
 				logger.Error("failed to start OPNS event bridge", "error", err)
 			}
 		}
-		if svc.OrdLock != nil && svc.OrdLock.Sync != nil {
-			bridge := overlay.NewEventBridge(&overlay.EventBridgeConfig{
-				PubSub:   svc.PubSub.PubSub,
-				Store:    svc.Store.Store,
-				Patterns: []string{"ordlock", "spend:ordlock"},
-				QueueFunc: func(ev pubsub.Event) string {
-					return string(txo.KeyQueue(ordlockpkg.QueueName))
-				},
-				Logger:       logger,
-				Engine:       svc.OrdLock.Engine,
-				BeefStorage:  svc.Beef.Storage,
-				SubmitBuffer: 64,
-			})
-			if err := bridge.Start(ctx); err != nil {
-				logger.Error("failed to start OrdLock event bridge", "error", err)
-			}
-		}
 		if svc.BSV21 != nil && svc.BSV21.Sync != nil {
 			bridge := overlay.NewEventBridge(&overlay.EventBridgeConfig{
 				PubSub:   svc.PubSub.PubSub,
@@ -2130,14 +2078,6 @@ func (svc *Services) StartSubscribers(ctx context.Context, logger *slog.Logger) 
 			}
 		}()
 		logger.Info("started BSocial overlay sync")
-	}
-	if svc.OrdLock != nil && svc.OrdLock.Sync != nil {
-		go func() {
-			if err := svc.OrdLock.Sync.Start(ctx); err != nil {
-				logger.Error("OrdLock sync error", "error", err)
-			}
-		}()
-		logger.Info("started OrdLock overlay sync")
 	}
 	if svc.OPNS != nil && svc.OPNS.Sync != nil {
 		go func() {

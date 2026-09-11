@@ -37,6 +37,18 @@ func TestSearchOmitsDeprecatedListings(t *testing.T) {
 			if err := db.ZAdd(ctx, []byte("tp:tm_ordlock"), store.ScoredMember{Member: op.Bytes(), Score: float64(i + 1)}); err != nil {
 				t.Fatal(err)
 			}
+			// Reindex a deprecated listing without adding its old public event.
+			// Existing event and topic memberships remain available for recovery.
+			if err := outputs.SaveOutput(ctx, &IndexedOutput{
+				Outpoint: op,
+				Events:   []string{"1sat", events[1]},
+				Data:     map[string]any{"ordlock": map[string]any{"price": 1000}},
+			}, 1, float64(i+1)); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := db.ZScore(ctx, KeyEvent("ordlock"), op.Bytes()); err != nil {
+				t.Fatalf("retained listing membership: %v", err)
+			}
 		}
 	}
 
@@ -109,5 +121,23 @@ func TestSearchOmitsDeprecatedListings(t *testing.T) {
 				}
 			})
 		}
+		t.Run(prefix+"/outpoint recovery", func(t *testing.T) {
+			op := transaction.Outpoint{}
+			resp, err := app.Test(httptest.NewRequest(http.MethodGet, prefix+"/"+op.String()+"?tags=ordlock&events=true", nil))
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer resp.Body.Close()
+			if resp.StatusCode != http.StatusOK {
+				t.Fatalf("status = %d, want 200", resp.StatusCode)
+			}
+			var got IndexedOutputResponse
+			if err := json.NewDecoder(resp.Body).Decode(&got); err != nil {
+				t.Fatal(err)
+			}
+			if got.Outpoint != op.String() || got.Data["ordlock"] == nil || slices.Contains(got.Events, "ordlock") {
+				t.Fatalf("reindexed listing = %+v", got)
+			}
+		})
 	}
 }
