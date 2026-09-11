@@ -64,16 +64,19 @@ func TestV2AdmissionAndRetentionRequireCompleteListings(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !slices.Equal(admit.OutputsToAdmit, []uint32{0}) || !slices.Equal(admit.CoinsToRetain, []uint32{0}) {
-		t.Fatalf("admittance = %+v, want only output/input 0", admit)
+	// Outputs 0 and 2 are listings (2 carries trailing data after the template,
+	// which recognition ignores); 1 and 4 are bare prefixes, 3 is not 1 sat.
+	if !slices.Equal(admit.OutputsToAdmit, []uint32{0, 2}) || !slices.Equal(admit.CoinsToRetain, []uint32{0, 2}) {
+		t.Fatalf("admittance = %+v, want outputs/inputs 0 and 2", admit)
 	}
 	needed, err := tm.IdentifyNeededInputs(t.Context(), beef, spend.TxID())
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := transaction.Outpoint{Txid: *prior.TxID(), Index: 0}
-	if len(needed) != 1 || *needed[0] != want {
-		t.Fatalf("needed inputs = %v, want %s", needed, want.String())
+	want0 := transaction.Outpoint{Txid: *prior.TxID(), Index: 0}
+	want2 := transaction.Outpoint{Txid: *prior.TxID(), Index: 2}
+	if len(needed) != 2 || *needed[0] != want0 || *needed[1] != want2 {
+		t.Fatalf("needed inputs = %v, want %s and %s", needed, want0.String(), want2.String())
 	}
 }
 

@@ -7,25 +7,33 @@ import (
 	"github.com/bsv-blockchain/go-sdk/transaction"
 )
 
-// IsOrdLockV2 reports whether the complete locking script is an OrdLock v2 listing.
+// IsOrdLockV2 reports whether the locking script contains an OrdLock v2 listing.
 func IsOrdLockV2(scr *script.Script) bool {
 	return DecodeV2(scr) != nil
 }
 
 // DecodeV2 recovers the seller (cancel PKH) and payout from a deployed v2
-// listing script. Artifact-driven: it walks OrdLockV2Template and the deployed
-// script in lockstep, reading one pushdata at each constructor slot. Returns
-// the same OrdLock shape as v1 so downstream code is uniform. nil if not v2.
+// listing script. Artifact-driven: it locates the invariant template prefix,
+// then walks OrdLockV2Template and the deployed script in lockstep, reading one
+// pushdata at each constructor slot. Only the template has to match: bytes
+// before it (e.g. an inscription envelope) and after it (e.g. MAP metadata
+// appended by the SDK's sellOrdinal) are ignored, exactly as v1 Decode and the
+// 1sat-sdk OrdLockV2.decode behave. Returns the same OrdLock shape as v1 so
+// downstream code is uniform. nil if not v2.
 func DecodeV2(scr *script.Script) *OrdLock {
-	if scr == nil || !bytes.HasPrefix(*scr, OrdLockV2Prefix) {
+	if scr == nil {
 		return nil
 	}
-	args, ok := decodeV2Slots(*scr)
+	start := bytes.Index(*scr, OrdLockV2Prefix)
+	if start < 0 {
+		return nil
+	}
+	args, ok := decodeV2Slots((*scr)[start:])
 	if !ok {
 		return nil
 	}
 	sellerPKH, ok := args[0]
-	if !ok {
+	if !ok || len(sellerPKH) != 20 {
 		return nil
 	}
 	payoutBytes, ok := args[1]
@@ -47,9 +55,10 @@ func DecodeV2(scr *script.Script) *OrdLock {
 	}
 }
 
-// decodeV2Slots walks the template vs the deployed script; at each OP_0 slot it
-// reads the deployed push, keyed by paramIndex. Non-slot regions must match the
-// template byte-for-byte.
+// decodeV2Slots walks the template vs the deployed script (which must start
+// at the template); at each OP_0 slot it reads the deployed push, keyed by
+// paramIndex. Non-slot regions must match the template byte-for-byte. Bytes
+// after the template is fully consumed are not examined.
 func decodeV2Slots(deployed []byte) (map[int][]byte, bool) {
 	out := map[int][]byte{}
 	slotAt := map[int]int{} // byteOffset -> paramIndex
@@ -77,7 +86,7 @@ func decodeV2Slots(deployed []byte) (map[int][]byte, bool) {
 		ti++
 		di++
 	}
-	return out, di == len(deployed)
+	return out, true
 }
 
 // readPushAt reads one pushdata op at off, returning (data, bytesConsumed, ok).
