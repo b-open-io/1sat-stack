@@ -22,13 +22,16 @@ func ParseOrdLock(ctx *ParseContext) (*ParseResult, error) {
 		return nil, nil
 	}
 
+	// v1 OrdLock is a deprecated, vulnerable contract. It is NOT published as a
+	// public "ordlock" event, so it can't be enumerated via the public event
+	// index. The owner (cancel address) IS still indexed so the sweep-address
+	// recovery tool can find legacy listings by the user's own addresses.
 	result := &ParseResult{
-		Tag:    TagOrdLock,
-		Data:   ol,
-		Events: []string{"ordlock"},
+		Tag:  TagOrdLock,
+		Data: ol,
 	}
 
-	// Extract owner (seller) from ordlock
+	// Extract owner (seller/cancel address) from ordlock
 	if ol.Seller != nil {
 		pkHash := types.PKHashFromBytes(ol.Seller.PublicKeyHash)
 		if pkHash != nil {
