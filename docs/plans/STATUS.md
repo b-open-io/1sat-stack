@@ -2,6 +2,7 @@
 
 | Plan | Status | Description |
 |------|--------|-------------|
+| [BRC-169 lifecycle gate](./BRC169_LIFECYCLE_GATE.md) | **In Progress** | OPL-4473 — Real HTTP submit/import/lookup, disk persistence, and upstream empty-query gate |
 | [Market API & OPNS Validation](./market-api-opns-validation.md) | **In Progress** | Rename ordlock→market, origin BLOB fix, OPNS bulk validate, SDK clients |
 | [GASP Wire Protocol](./gasp-wire-protocol.md) | **In Progress** | OPL-1135 — Binary wire protocol for GASP over libp2p streams, with payment envelope |
 | [Admin UI Plan](./admin-ui-plan.md) | **In Progress** | OPL-1186 — First-run wizard, settings page, clean-slate UI redesign |
