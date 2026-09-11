@@ -184,3 +184,39 @@ func TestGetListingByOriginStillResolvesInternally(t *testing.T) {
 		t.Fatalf("internal origin lookup = %s, want %s", got.Outpoint.String(), op.String())
 	}
 }
+
+func TestOwnerLookupUnlimitedInventory(t *testing.T) {
+	ol, app := testServices(t)
+	seller := "1OwnerLookupAddressxxxxxxxxxxxxx"
+	const count = 25
+	for i := 0; i < count; i++ {
+		op := testOutpoint(byte(i + 1))
+		insertListing(t, ol, op, op, seller, "", float64(i+1))
+	}
+	other := testOutpoint(100)
+	insertListing(t, ol, other, other, "1OtherAddressxxxxxxxxxxxxxxxxxxx", "", 100)
+
+	resp, err := app.Test(httptest.NewRequest(http.MethodGet, "/market/listings/owner/"+seller+"?status=active&limit=0", nil))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d, want 200", resp.StatusCode)
+	}
+	var results []struct {
+		Outpoint string `json:"outpoint"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&results); err != nil {
+		t.Fatal(err)
+	}
+	if len(results) != count {
+		t.Fatalf("owner listings = %d, want %d", len(results), count)
+	}
+	for i, result := range results {
+		want := testOutpoint(byte(count - i)).String()
+		if result.Outpoint != want {
+			t.Fatalf("listing %d = %s, want %s", i, result.Outpoint, want)
+		}
+	}
+}
