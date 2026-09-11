@@ -60,11 +60,46 @@ func TestV2RecognitionRequiresCompleteTemplate(t *testing.T) {
 		"template slots":   script.NewFromBytes(OrdLockV2Template),
 		"truncated ending": script.NewFromBytes((*valid)[:len(*valid)-1]),
 		"changed ending":   script.NewFromBytes(changedEnd),
-		"appended opcode":  script.NewFromBytes(append(bytes.Clone(*valid), 0x00)),
 	} {
 		t.Run(name, func(t *testing.T) {
 			require.Nil(t, DecodeV2(scr))
 			require.False(t, IsOrdLockV2(scr))
+		})
+	}
+}
+
+// Only the template has to match. Data around it — an inscription envelope
+// before, MAP metadata after (the SDK's sellOrdinal appends MAP to the same
+// output) — must not break recognition, same as v1 Decode.
+func TestV2RecognitionIgnoresSurroundingData(t *testing.T) {
+	valid, err := script.NewFromHex(v2ListingHex)
+	require.NoError(t, err)
+	want := DecodeV2(valid)
+	require.NotNil(t, want)
+
+	trailer := &script.Script{}
+	require.NoError(t, trailer.AppendOpcodes(script.OpRETURN))
+	require.NoError(t, trailer.AppendPushData([]byte("1PuQa7K62MiKCtssSLKy1kh56WWU7MtUR5")))
+	require.NoError(t, trailer.AppendPushData([]byte("SET")))
+	require.NoError(t, trailer.AppendPushData([]byte("app")))
+	require.NoError(t, trailer.AppendPushData([]byte("test")))
+	envelope := &script.Script{}
+	require.NoError(t, envelope.AppendOpcodes(script.OpFALSE, script.OpIF))
+	require.NoError(t, envelope.AppendPushData([]byte("ord")))
+	require.NoError(t, envelope.AppendOpcodes(script.OpENDIF))
+
+	for name, scr := range map[string]*script.Script{
+		"appended opcode": script.NewFromBytes(append(bytes.Clone(*valid), 0x00)),
+		"MAP trailer":     script.NewFromBytes(append(bytes.Clone(*valid), *trailer...)),
+		"envelope prefix": script.NewFromBytes(append(bytes.Clone(*envelope), *valid...)),
+	} {
+		t.Run(name, func(t *testing.T) {
+			got := DecodeV2(scr)
+			require.NotNil(t, got)
+			require.True(t, IsOrdLockV2(scr))
+			require.Equal(t, want.Seller.AddressString, got.Seller.AddressString)
+			require.Equal(t, want.Price, got.Price)
+			require.Equal(t, want.PayOut, got.PayOut)
 		})
 	}
 }

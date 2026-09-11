@@ -51,7 +51,7 @@ Decide which outputs to admit to a topic:
 | `tm_ecosystemalias` | `TopicManager` (BRC-169) | Valid six-field ecosystem-alias claims |
 | `tm_bsocial` | `TopicManager` (BSocial) | BSocial protocol outputs |
 | `tm_opns` | `TopicManager` (OPNS) | OPNS protocol outputs |
-| `tm_ordlock` | `TopicManager` (OrdLock) | OrdLock listing outputs |
+| `tm_ordlock_v2` | `TopicManagerV2` (OrdLock) | OrdLock v2 listing outputs (v1 deprecated, not registered) |
 
 ### Lookup Services (`pkg/lookup/`)
 
@@ -63,7 +63,7 @@ Index admitted outputs by adding custom schemas to the topic's database:
 | `OneSatLookup` | Uses shared events table | `own:`, `txid:`, tag-specific events |
 | `BAPLookup` | `bap_identity_addresses`, `bap_attestations` | Identity rotations, attestations |
 | `ls_ecosystemalias` | overlay events (`alias:`, `domain:`) | BRC-169 aliases and domains |
-| `OrdLockLookup` | `listings` | Marketplace listings |
+| `LookupServiceV2` (OrdLock) | `listings` | Marketplace listings (v2) |
 
 Lookup services access the topic database via `TopicStorage.DB()` and lazily create their custom tables on first use.
 
@@ -168,7 +168,7 @@ SQLite files created per topic:
 ├── tm_ecosystemalias.db # BRC-169 ecosystem-alias topic
 ├── tm_bsocial.db        # BSocial topic
 ├── tm_opns.db           # OPNS topic
-├── tm_ordlock.db        # OrdLock marketplace topic
+├── tm_ordlock_v2.db     # OrdLock v2 marketplace topic
 └── tx_topics.db         # Shared txid→topics index
 ```
 
