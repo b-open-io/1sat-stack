@@ -33,7 +33,6 @@ CREATE INDEX IF NOT EXISTS idx_listings_search ON listings(spend_type, content_t
 CREATE INDEX IF NOT EXISTS idx_listings_name ON listings(spend_type, name COLLATE NOCASE);
 CREATE INDEX IF NOT EXISTS idx_listings_origin ON listings(origin, spend_type);
 CREATE INDEX IF NOT EXISTS idx_listings_sales ON listings(spend_type, spend_score);
-CREATE INDEX IF NOT EXISTS idx_listings_seller ON listings(seller, spend_type);
 `
 
 const postgresSchema = `
@@ -54,7 +53,6 @@ CREATE TABLE IF NOT EXISTS listings (
 CREATE INDEX IF NOT EXISTS idx_listings_search ON listings(topic_id, spend_type, content_type, name, score);
 CREATE INDEX IF NOT EXISTS idx_listings_origin ON listings(topic_id, origin, spend_type);
 CREATE INDEX IF NOT EXISTS idx_listings_sales ON listings(topic_id, spend_type, spend_score);
-CREATE INDEX IF NOT EXISTS idx_listings_seller ON listings(topic_id, seller, spend_type);
 `
 
 type OrdLock struct {
@@ -223,8 +221,6 @@ func (o *OrdLock) DeleteListing(ctx context.Context, outpoint *transaction.Outpo
 
 const listingCols = `outpoint, origin, name, content_type, price, seller, spend_txid, spend_type, score, spend_score`
 
-// SearchListings queries the listing table. Public HTTP browse omits these
-// rows; owner and outpoint lookup remain the supported read paths.
 func (o *OrdLock) SearchListings(ctx context.Context, status, contentType, query string, limit int, from float64, rev bool) ([]*txo.IndexedOutput, error) {
 	if err := o.ensureSchema(); err != nil {
 		return nil, err
@@ -360,45 +356,6 @@ func (o *OrdLock) GetListingsByOrigins(ctx context.Context, origins []*transacti
 				results[origin] = out
 			}
 		}
-	}
-	return results, rows.Err()
-}
-
-// GetListingsBySeller returns listings for a seller address so wallets can
-// cancel, purchase, or migrate remaining inventory. Public market browse
-// does not use this path.
-func (o *OrdLock) GetListingsBySeller(ctx context.Context, seller, status string, limit int) ([]*txo.IndexedOutput, error) {
-	if err := o.ensureSchema(); err != nil {
-		return nil, err
-	}
-	qb := o.newQB()
-	query := fmt.Sprintf(`SELECT %s FROM listings WHERE %sseller = %s AND `, listingCols, qb.topicWhere(), qb.ph(seller))
-
-	switch status {
-	case "sale", "cancel":
-		query += fmt.Sprintf("spend_type = %s", qb.ph(status))
-	default:
-		query += "spend_type IS NULL"
-	}
-
-	query += " ORDER BY score DESC"
-	if limit > 0 {
-		query += fmt.Sprintf(" LIMIT %s", qb.ph(limit))
-	}
-
-	rows, err := o.db.QueryContext(ctx, query, qb.args...)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-
-	results := make([]*txo.IndexedOutput, 0)
-	for rows.Next() {
-		out, err := scanListing(rows)
-		if err != nil {
-			return nil, err
-		}
-		results = append(results, out)
 	}
 	return results, rows.Err()
 }

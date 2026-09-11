@@ -1,7 +1,6 @@
 package txo
 
 import (
-	"log/slog"
 	"strings"
 
 	"github.com/b-open-io/1sat-stack/pkg/spends"
@@ -252,7 +251,7 @@ func (r *Routes) TxosByTxid(c *fiber.Ctx) error {
 
 // Search searches outputs by one or more keys.
 // @Summary Search outputs by key(s)
-// @Description Search transaction outputs by indexed keys. Keys use type prefixes: "ev:" for events, "tp:" for topics. Without prefix, "ev:" is assumed. Public searches for deprecated listing events are omitted; owner-scoped keys still resolve remaining inventory.
+// @Description Search transaction outputs by indexed keys. Keys use type prefixes: "ev:" for events, "tp:" for topics. Without prefix, "ev:" is assumed.
 // @Tags txos
 // @Produce json
 // @Param key query []string true "Search key(s) (e.g., ev:own:address, tp:tm_bsv21, own:address)"
@@ -288,14 +287,6 @@ func (r *Routes) Search(c *fiber.Ctx) error {
 	for i, k := range keys {
 		cfg.Keys[i] = k
 	}
-
-	// Public search of deprecated listing events is omitted. Owner-scoped
-	// queries (own:...) still resolve remaining inventory for wallets.
-	if isPublicOrdLockSearch(cfg.Keys) {
-		slog.Info("deprecated listing index queried", "endpoint", "txo/search")
-		return c.JSON(make([]*IndexedOutput, 0))
-	}
-
 	cfg.Limit = uint32(c.QueryInt("limit", 100))
 	cfg.Reverse = c.QueryBool("rev", false)
 
