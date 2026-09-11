@@ -7,10 +7,9 @@ import (
 	"github.com/bsv-blockchain/go-sdk/transaction"
 )
 
-// IsOrdLockV2 reports whether a locking script is an OrdLock v2 listing,
-// recognised by its invariant prefix (arg-independent).
+// IsOrdLockV2 reports whether the complete locking script is an OrdLock v2 listing.
 func IsOrdLockV2(scr *script.Script) bool {
-	return scr != nil && bytes.HasPrefix(*scr, OrdLockV2Prefix)
+	return DecodeV2(scr) != nil
 }
 
 // DecodeV2 recovers the seller (cancel PKH) and payout from a deployed v2
@@ -18,7 +17,7 @@ func IsOrdLockV2(scr *script.Script) bool {
 // script in lockstep, reading one pushdata at each constructor slot. Returns
 // the same OrdLock shape as v1 so downstream code is uniform. nil if not v2.
 func DecodeV2(scr *script.Script) *OrdLock {
-	if !IsOrdLockV2(scr) {
+	if scr == nil || !bytes.HasPrefix(*scr, OrdLockV2Prefix) {
 		return nil
 	}
 	args, ok := decodeV2Slots(*scr)

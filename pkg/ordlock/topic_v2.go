@@ -12,8 +12,7 @@ import (
 )
 
 // TopicNameV2 is the overlay topic for OrdLock v2 (batch, tag-output) listings.
-// It lives in the same market module as v1 and shares the listings store
-// (scoped by topic_id); only the recognizer differs (IsOrdLockV2).
+// Listing storage is scoped to the v2 topic.
 const TopicNameV2 = "tm_ordlock_v2"
 
 type TopicManagerV2 struct{}

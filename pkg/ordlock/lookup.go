@@ -15,10 +15,8 @@ import (
 // ORDFS. Shared by the OrdLock v2 lookup (see lookup_v2.go). Returns nil for
 // bsv-20 (token) content, which is not a marketplace listing.
 //
-// (OrdLock v1's topic manager and lookup service were removed when the v1
-// overlay topic was deprecated; v1 is a vulnerable contract the stack no longer
-// admits or serves. v1 template.Decode is still used by pkg/parse for owner
-// indexing so wallets can find and cancel legacy listings via address sync.)
+// The deprecated v1 topic is no longer registered. Its template decoder remains
+// in pkg/parse for owner indexing and cancellation through address sync.
 func enrichListingData(ctx context.Context, ordfsClient *ordfs.Ordfs, outpoint *transaction.Outpoint, lockingScript *script.Script, ld *listingData) *listingData {
 	insc := inscription.Decode(lockingScript)
 	if insc != nil {
