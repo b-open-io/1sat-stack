@@ -1,6 +1,7 @@
 package ordlock
 
 import (
+	"bytes"
 	"testing"
 
 	"github.com/bsv-blockchain/go-sdk/script"
@@ -31,7 +32,7 @@ func TestDecodeV2(t *testing.T) {
 	// payout must be a standard P2PKH to 0x22.. (the property that keeps
 	// address-based discovery working)
 	payout := &transaction.TransactionOutput{}
-	_, err = payout.ReadFrom(sliceReader(ol.PayOut))
+	_, err = payout.ReadFrom(bytes.NewReader(ol.PayOut))
 	require.NoError(t, err)
 	require.Equal(t, uint64(1000), payout.Satoshis)
 	require.Equal(t, 25, len(*payout.LockingScript), "payout is a bare 25-byte P2PKH")
@@ -48,24 +49,22 @@ func TestDecodeV2RejectsV1AndP2PKH(t *testing.T) {
 	require.False(t, IsOrdLockV2(v1))
 }
 
-func sliceReader(b []byte) *byteReader { return &byteReader{b: b} }
-
-type byteReader struct {
-	b []byte
-	i int
-}
-
-func (r *byteReader) Read(p []byte) (int, error) {
-	if r.i >= len(r.b) {
-		return 0, errEOF
+func TestV2RecognitionRequiresCompleteTemplate(t *testing.T) {
+	valid, err := script.NewFromHex(v2ListingHex)
+	require.NoError(t, err)
+	changedEnd := bytes.Clone(*valid)
+	changedEnd[len(changedEnd)-1] = 0x00
+	for name, scr := range map[string]*script.Script{
+		"nil":              nil,
+		"prefix only":      script.NewFromBytes(OrdLockV2Prefix),
+		"template slots":   script.NewFromBytes(OrdLockV2Template),
+		"truncated ending": script.NewFromBytes((*valid)[:len(*valid)-1]),
+		"changed ending":   script.NewFromBytes(changedEnd),
+		"appended opcode":  script.NewFromBytes(append(bytes.Clone(*valid), 0x00)),
+	} {
+		t.Run(name, func(t *testing.T) {
+			require.Nil(t, DecodeV2(scr))
+			require.False(t, IsOrdLockV2(scr))
+		})
 	}
-	n := copy(p, r.b[r.i:])
-	r.i += n
-	return n, nil
 }
-
-var errEOF = &eofErr{}
-
-type eofErr struct{}
-
-func (e *eofErr) Error() string { return "EOF" }

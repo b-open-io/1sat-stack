@@ -13,15 +13,12 @@ import (
 const (
 	ModeDisabled = "disabled"
 	ModeEmbedded = "embedded"
-	TopicName    = "tm_ordlock"
-	QueueName    = "ordlock"
 )
 
 type Config struct {
-	Mode     string                     `mapstructure:"mode"`
-	LogLevel string                     `mapstructure:"log_level"` // debug, info, warn, error
-	Sync     *overlay.OverlaySyncConfig `mapstructure:"sync"`
-	Routes   RoutesConfig               `mapstructure:"routes"`
+	Mode     string       `mapstructure:"mode"`
+	LogLevel string       `mapstructure:"log_level"` // debug, info, warn, error
+	Routes   RoutesConfig `mapstructure:"routes"`
 }
 
 type RoutesConfig struct {
@@ -36,13 +33,6 @@ func (c *Config) SetDefaults(v *viper.Viper, prefix string) {
 	}
 
 	v.SetDefault(p+"mode", ModeDisabled)
-	v.SetDefault(p+"sync.enabled", false)
-	v.SetDefault(p+"sync.subscription_id", "")
-	v.SetDefault(p+"sync.queue_name", QueueName)
-	v.SetDefault(p+"sync.from_block", 783968)
-	v.SetDefault(p+"sync.concurrency", 8)
-	v.SetDefault(p+"sync.batch_size", 1000)
-	v.SetDefault(p+"sync.resolve_dependencies", false)
 	v.SetDefault(p+"routes.enabled", true)
 	v.SetDefault(p+"routes.prefix", "/market")
 }
@@ -52,7 +42,6 @@ type Services struct {
 	LookupV2       *LookupServiceV2
 	TopicManagerV2 *TopicManagerV2
 	OrdLockV2      *OrdLock
-	Sync           *overlay.OverlaySync
 	Routes         *Routes
 	OverlayRoutes  *overlay.Routes
 }
@@ -75,12 +64,8 @@ func (c *Config) Initialize(
 		if deps == nil || deps.Factory == nil {
 			return nil, fmt.Errorf("overlay ModuleDeps with Factory is required for OrdLock")
 		}
-		// OrdLock v1 is a VULNERABLE contract; its overlay topic is DEPRECATED
-		// and no longer registered here, so the stack does not admit, index, or
-		// serve v1 listings as a live market. (Cancellation discovery is
-		// unaffected: it runs off the owner/address index in pkg/parse/ordlock,
-		// which is independent of this topic.) Only OrdLock v2 (batch,
-		// tag-output) is served.
+		// The market module serves v2. Deprecated v1 listings remain in the
+		// independent owner/address index for wallet recovery.
 		tsV2, err := deps.Factory(TopicNameV2)
 		if err != nil {
 			return nil, fmt.Errorf("failed to get OrdLock v2 topic storage: %w", err)
@@ -121,9 +106,6 @@ func (c *Config) Initialize(
 }
 
 func (s *Services) Close() error {
-	if s.Sync != nil {
-		s.Sync.Stop()
-	}
 	if s.OrdLockV2 != nil {
 		return s.OrdLockV2.Close()
 	}
