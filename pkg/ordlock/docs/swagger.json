@@ -6,6 +6,7 @@
     "paths": {
         "/listing/{outpoint}": {
             "get": {
+                "description": "Outpoint lookup for remaining listings. Used by wallets to cancel, purchase, or migrate.",
                 "produces": [
                     "application/json"
                 ],
@@ -56,6 +57,7 @@
         },
         "/listings": {
             "get": {
+                "description": "Public market index. Deprecated listings are omitted; use outpoint or owner lookup for remaining inventory.",
                 "produces": [
                     "application/json"
                 ],
@@ -128,8 +130,77 @@
                 }
             }
         },
+        "/listings/owner/{address}": {
+            "get": {
+                "description": "Owner lookup for remaining listings. Used by wallets to cancel or migrate.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "market"
+                ],
+                "summary": "Get listings by owner address",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Seller address",
+                        "name": "address",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "default": "active",
+                        "description": "Listing status: active, sale, cancel",
+                        "name": "status",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "default": 20,
+                        "description": "Results limit",
+                        "name": "limit",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "type": "object"
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "type": "object",
+                            "properties": {
+                                "message": {
+                                    "type": "string"
+                                }
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "type": "object",
+                            "properties": {
+                                "message": {
+                                    "type": "string"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
         "/origin/{origin}": {
             "get": {
+                "description": "Public origin index. Deprecated listings are omitted; use outpoint or owner lookup for remaining inventory.",
                 "produces": [
                     "application/json"
                 ],
@@ -191,6 +262,7 @@
         },
         "/origins": {
             "post": {
+                "description": "Public origin index. Deprecated listings are omitted; use outpoint or owner lookup for remaining inventory.",
                 "consumes": [
                     "application/json"
                 ],
