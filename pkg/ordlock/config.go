@@ -48,13 +48,13 @@ func (c *Config) SetDefaults(v *viper.Viper, prefix string) {
 }
 
 type Services struct {
-	Engine        *engine.Engine
-	Lookup        *LookupService
-	TopicManager  *TopicManager
-	OrdLock       *OrdLock
-	Sync          *overlay.OverlaySync
-	Routes        *Routes
-	OverlayRoutes *overlay.Routes
+	Engine         *engine.Engine
+	LookupV2       *LookupServiceV2
+	TopicManagerV2 *TopicManagerV2
+	OrdLockV2      *OrdLock
+	Sync           *overlay.OverlaySync
+	Routes         *Routes
+	OverlayRoutes  *overlay.Routes
 }
 
 func (c *Config) Initialize(
@@ -75,30 +75,38 @@ func (c *Config) Initialize(
 		if deps == nil || deps.Factory == nil {
 			return nil, fmt.Errorf("overlay ModuleDeps with Factory is required for OrdLock")
 		}
-		ts, err := deps.Factory(TopicName)
+		// OrdLock v1 is a VULNERABLE contract; its overlay topic is DEPRECATED
+		// and no longer registered here, so the stack does not admit, index, or
+		// serve v1 listings as a live market. (Cancellation discovery is
+		// unaffected: it runs off the owner/address index in pkg/parse/ordlock,
+		// which is independent of this topic.) Only OrdLock v2 (batch,
+		// tag-output) is served.
+		tsV2, err := deps.Factory(TopicNameV2)
 		if err != nil {
-			return nil, fmt.Errorf("failed to get OrdLock topic storage: %w", err)
+			return nil, fmt.Errorf("failed to get OrdLock v2 topic storage: %w", err)
 		}
-
-		ol := New(ts.DB(), ts.TopicID(), nil, logger)
-
-		lookupSvc := NewLookupService(ol)
-		topicManager := &TopicManager{}
+		olV2 := New(tsV2.DB(), tsV2.TopicID(), nil, logger)
+		lookupSvcV2 := NewLookupServiceV2(olV2)
+		topicManagerV2 := &TopicManagerV2{}
 
 		eng := overlay.NewModuleEngine(deps,
-			map[string]engine.TopicManager{TopicName: topicManager},
-			map[string]engine.LookupService{"ordlock": lookupSvc},
+			map[string]engine.TopicManager{
+				TopicNameV2: topicManagerV2,
+			},
+			map[string]engine.LookupService{
+				"ordlock2": lookupSvcV2,
+			},
 		)
 
 		svc := &Services{
-			Engine:       eng,
-			Lookup:       lookupSvc,
-			TopicManager: topicManager,
-			OrdLock:      ol,
+			Engine:         eng,
+			LookupV2:       lookupSvcV2,
+			TopicManagerV2: topicManagerV2,
+			OrdLockV2:      olV2,
 		}
 
 		if c.Routes.Enabled {
-			svc.Routes = NewRoutes(ol, logger)
+			svc.Routes = NewRoutes(olV2, logger)
 		}
 
 		if deps.RoutesConfig != nil && deps.RoutesConfig.Enabled {
@@ -116,8 +124,8 @@ func (s *Services) Close() error {
 	if s.Sync != nil {
 		s.Sync.Stop()
 	}
-	if s.OrdLock != nil {
-		return s.OrdLock.Close()
+	if s.OrdLockV2 != nil {
+		return s.OrdLockV2.Close()
 	}
 	return nil
 }

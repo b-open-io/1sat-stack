@@ -7,86 +7,19 @@ import (
 
 	"github.com/b-open-io/1sat-stack/pkg/ordfs"
 	"github.com/b-open-io/1sat-stack/pkg/template/inscription"
-	"github.com/b-open-io/1sat-stack/pkg/template/ordlock"
-	"github.com/b-open-io/1sat-stack/pkg/types"
-	"github.com/bsv-blockchain/go-overlay-services/pkg/core/engine"
-	"github.com/bsv-blockchain/go-sdk/chainhash"
-	"github.com/bsv-blockchain/go-sdk/overlay"
-	"github.com/bsv-blockchain/go-sdk/overlay/lookup"
 	"github.com/bsv-blockchain/go-sdk/script"
 	"github.com/bsv-blockchain/go-sdk/transaction"
 )
 
-type LookupService struct {
-	ol *OrdLock
-}
-
-func NewLookupService(ol *OrdLock) *LookupService {
-	return &LookupService{ol: ol}
-}
-
-func (l *LookupService) OutputAdmittedByTopic(ctx context.Context, payload *engine.OutputAdmittedByTopic) error {
-	_, tx, txid, err := transaction.ParseBeef(payload.AtomicBEEF)
-	if err != nil {
-		return err
-	}
-	output := tx.Outputs[payload.OutputIndex]
-	outpoint := &transaction.Outpoint{Txid: *txid, Index: payload.OutputIndex}
-
-	ld := l.extractListingData(ctx, outpoint, output.LockingScript)
-	if ld == nil {
-		return nil
-	}
-
-	return l.ol.UpsertListing(ctx, outpoint, ld, types.ScoreFromTx(tx, txid))
-}
-
-func (l *LookupService) OutputSpent(ctx context.Context, payload *engine.OutputSpent) error {
-	spendScore := float64(0)
-	if payload.SpendingAtomicBEEF != nil {
-		if _, tx, txid, err := transaction.ParseBeef(payload.SpendingAtomicBEEF); err == nil {
-			spendScore = types.ScoreFromTx(tx, txid)
-		}
-	}
-
-	return l.ol.MarkSpent(ctx, payload.Outpoint, payload.SpendingTxid, classifySpend(payload.UnlockingScript), spendScore)
-}
-
-func (l *LookupService) OutputNoLongerRetainedInHistory(ctx context.Context, outpoint *transaction.Outpoint, topic string) error {
-	return nil
-}
-
-func (l *LookupService) OutputEvicted(ctx context.Context, outpoint *transaction.Outpoint) error {
-	return l.ol.DeleteListing(ctx, outpoint)
-}
-
-func (l *LookupService) OutputBlockHeightUpdated(ctx context.Context, txid *chainhash.Hash, blockHeight uint32, blockIndex uint64) error {
-	return nil
-}
-
-func (l *LookupService) Lookup(ctx context.Context, question *lookup.LookupQuestion) (*lookup.LookupAnswer, error) {
-	return &lookup.LookupAnswer{Type: lookup.AnswerTypeFreeform}, nil
-}
-
-func (l *LookupService) GetDocumentation() string {
-	return "OrdLock Lookup Service"
-}
-
-func (l *LookupService) GetMetaData() *overlay.MetaData {
-	return &overlay.MetaData{Name: "ordlock"}
-}
-
-func (l *LookupService) extractListingData(ctx context.Context, outpoint *transaction.Outpoint, lockingScript *script.Script) *listingData {
-	lock := ordlock.Decode(lockingScript)
-	if lock == nil || lock.Price > 2_100_000_000_000_000 {
-		return nil
-	}
-
-	ld := &listingData{
-		price:  lock.Price,
-		seller: lock.Seller.AddressString,
-	}
-
+// enrichListingData fills content-type / name / origin from the inscription or
+// ORDFS. Shared by the OrdLock v2 lookup (see lookup_v2.go). Returns nil for
+// bsv-20 (token) content, which is not a marketplace listing.
+//
+// (OrdLock v1's topic manager and lookup service were removed when the v1
+// overlay topic was deprecated; v1 is a vulnerable contract the stack no longer
+// admits or serves. v1 template.Decode is still used by pkg/parse for owner
+// indexing so wallets can find and cancel legacy listings via address sync.)
+func enrichListingData(ctx context.Context, ordfsClient *ordfs.Ordfs, outpoint *transaction.Outpoint, lockingScript *script.Script, ld *listingData) *listingData {
 	insc := inscription.Decode(lockingScript)
 	if insc != nil {
 		ld.contentType = insc.File.Type
@@ -110,9 +43,9 @@ func (l *LookupService) extractListingData(ctx context.Context, outpoint *transa
 		}
 	}
 
-	if insc == nil && l.ol.ordfs != nil {
+	if insc == nil && ordfsClient != nil {
 		seq := 0
-		resp, err := l.ol.ordfs.Load(ctx, &ordfs.Request{
+		resp, err := ordfsClient.Load(ctx, &ordfs.Request{
 			Outpoint: outpoint,
 			Seq:      &seq,
 			Content:  true,
@@ -148,8 +81,4 @@ func (l *LookupService) extractListingData(ctx context.Context, outpoint *transa
 	}
 
 	return ld
-}
-
-func (l *LookupService) SetOrdfs(o *ordfs.Ordfs) {
-	l.ol.ordfs = o
 }

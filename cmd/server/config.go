@@ -1244,9 +1244,9 @@ func (c *Config) Initialize(ctx context.Context, logger *slog.Logger) (*Services
 		}
 		svc.ORDFS = ordfsSvc
 
-		// Wire ORDFS into OrdLock for origin resolution on transferred ordinals
-		if svc.OrdLock != nil && svc.OrdLock.Lookup != nil {
-			svc.OrdLock.Lookup.SetOrdfs(ordfsSvc.Ordfs)
+		// Wire ORDFS into OrdLock v2 for origin resolution on transferred ordinals
+		if svc.OrdLock != nil && svc.OrdLock.LookupV2 != nil {
+			svc.OrdLock.LookupV2.SetOrdfs(ordfsSvc.Ordfs)
 		}
 
 		logger.Info("ordfs initialized", "duration", time.Since(start).Round(time.Millisecond))
@@ -1293,8 +1293,8 @@ func (c *Config) Initialize(ctx context.Context, logger *slog.Logger) (*Services
 			if svc.OPNS != nil {
 				lookups["tm_opns"] = svc.OPNS.Lookup
 			}
-			if svc.OrdLock != nil {
-				lookups[ordlockpkg.TopicName] = svc.OrdLock.Lookup
+			if svc.OrdLock != nil && svc.OrdLock.LookupV2 != nil {
+				lookups[ordlockpkg.TopicNameV2] = svc.OrdLock.LookupV2
 			}
 			if svc.BSV21 != nil {
 				lookups["bsv21"] = svc.BSV21.Lookup
