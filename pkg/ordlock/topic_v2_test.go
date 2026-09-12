@@ -17,7 +17,14 @@ func v2TestScript(t *testing.T) *script.Script {
 		t.Fatal(err)
 	}
 	payout := &transaction.TransactionOutput{Satoshis: 1000, LockingScript: p2pkh}
-	args := [][]byte{bytes.Repeat([]byte{0x11}, 20), payout.Bytes()}
+	return fillV2(t, bytes.Repeat([]byte{0x11}, 20), payout.Bytes())
+}
+
+// fillV2 fills the v2 template's constructor slots (seller PKH, serialized
+// payout output) exactly as the SDK's OrdLockV2.lockRaw does.
+func fillV2(t *testing.T, sellerPKH, payout []byte) *script.Script {
+	t.Helper()
+	args := [][]byte{sellerPKH, payout}
 	scr := script.NewFromBytes(nil)
 	from := 0
 	for _, slot := range template.OrdLockV2Slots {

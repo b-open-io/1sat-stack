@@ -11,7 +11,7 @@ import (
 	"github.com/bsv-blockchain/go-sdk/transaction"
 )
 
-// TopicNameV2 is the overlay topic for OrdLock v2 (batch, tag-output) listings.
+// TopicNameV2 is the overlay topic for OrdLock v2 (batch, SIGHASH_SINGLE) listings.
 // Listing storage is scoped to the v2 topic.
 const TopicNameV2 = "tm_ordlock_v2"
 

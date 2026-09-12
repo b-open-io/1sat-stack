@@ -14,7 +14,7 @@ const (
 	// a user's old listings by address.
 	TagOrdLock = "ordlock"
 	// TagOrdLockV2 is the parse tag, per-output data key AND public event for
-	// OrdLock v2 (batch, tag-output binding) listings. The event is what the
+	// OrdLock v2 (batch, SIGHASH_SINGLE) listings. The event is what the
 	// event bridge routes into the tm_ordlock_v2 overlay topic; spends follow
 	// automatically as spend:ordlock2.
 	TagOrdLockV2 = "ordlock2"
