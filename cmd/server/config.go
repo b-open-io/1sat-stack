@@ -2055,6 +2055,14 @@ func (svc *Services) StartSubscribers(ctx context.Context, logger *slog.Logger) 
 			if err := bridge.Start(ctx); err != nil {
 				logger.Error("failed to start OrdLock v2 event bridge", "error", err)
 			}
+			// Spends are recorded directly from the indexer's spend events as
+			// well: the engine drops OutputSpent for coins it has not admitted
+			// yet, so a spend ingested alongside its listing would otherwise
+			// leave the listing active.
+			spendSync := ordlockpkg.NewSpendSync(svc.PubSub.PubSub, svc.Beef.Storage, svc.OrdLock.LookupV2, logger)
+			if err := spendSync.Start(ctx); err != nil {
+				logger.Error("failed to start OrdLock v2 spend sync", "error", err)
+			}
 		}
 		if svc.OPNS != nil && svc.OPNS.Sync != nil {
 			bridge := overlay.NewEventBridge(&overlay.EventBridgeConfig{

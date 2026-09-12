@@ -2,6 +2,7 @@ package ordlock
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/b-open-io/1sat-stack/pkg/ordfs"
 	"github.com/b-open-io/1sat-stack/pkg/template/ordlock"
@@ -41,14 +42,53 @@ func (l *LookupServiceV2) OutputAdmittedByTopic(ctx context.Context, payload *en
 	return l.ol.UpsertListing(ctx, outpoint, ld, types.ScoreFromTx(tx, txid))
 }
 
+// OutputSpent records a spend the engine noticed. The spending BEEF carries
+// the listing transaction, so the row is upserted (see UpsertSpend) rather
+// than updated in place; MarkSpent is the fallback when the listing cannot be
+// read back out of the BEEF.
 func (l *LookupServiceV2) OutputSpent(ctx context.Context, payload *engine.OutputSpent) error {
-	spendScore := float64(0)
+	spendType := classifySpend(payload.UnlockingScript)
 	if payload.SpendingAtomicBEEF != nil {
-		if _, tx, txid, err := transaction.ParseBeef(payload.SpendingAtomicBEEF); err == nil {
-			spendScore = types.ScoreFromTx(tx, txid)
+		if beef, tx, txid, err := transaction.ParseBeef(payload.SpendingAtomicBEEF); err == nil {
+			spendScore := types.ScoreFromTx(tx, txid)
+			if listingTx := beef.FindTransaction(payload.Outpoint.Txid.String()); listingTx != nil &&
+				int(payload.Outpoint.Index) < len(listingTx.Outputs) {
+				lock := listingTx.Outputs[payload.Outpoint.Index].LockingScript
+				if ld := l.extractListingData(ctx, payload.Outpoint, lock); ld != nil {
+					return l.ol.UpsertSpend(ctx, payload.Outpoint, ld, types.ScoreFromTx(listingTx, &payload.Outpoint.Txid), payload.SpendingTxid, spendType, spendScore)
+				}
+			}
+			return l.ol.MarkSpent(ctx, payload.Outpoint, payload.SpendingTxid, spendType, spendScore)
 		}
 	}
-	return l.ol.MarkSpent(ctx, payload.Outpoint, payload.SpendingTxid, classifySpend(payload.UnlockingScript), spendScore)
+	return l.ol.MarkSpent(ctx, payload.Outpoint, payload.SpendingTxid, spendType, 0)
+}
+
+// RecordSpends scans a transaction's inputs for OrdLock v2 listings and
+// upserts each one as spent. Independent of the overlay engine: it does not
+// require the listing to have been admitted first, so a spend ingested
+// before (or concurrently with) its listing is still recorded. Inputs must
+// carry their source transactions (a full BEEF).
+func (l *LookupServiceV2) RecordSpends(ctx context.Context, tx *transaction.Transaction, txid *chainhash.Hash) (int, error) {
+	spendScore := types.ScoreFromTx(tx, txid)
+	recorded := 0
+	for _, input := range tx.Inputs {
+		src := input.SourceTxOutput()
+		if src == nil || src.Satoshis != 1 || !ordlock.IsOrdLockV2(src.LockingScript) {
+			continue
+		}
+		outpoint := &transaction.Outpoint{Txid: *input.SourceTXID, Index: input.SourceTxOutIndex}
+		ld := l.extractListingData(ctx, outpoint, src.LockingScript)
+		if ld == nil {
+			continue
+		}
+		listingScore := types.ScoreFromTx(input.SourceTransaction, input.SourceTXID)
+		if err := l.ol.UpsertSpend(ctx, outpoint, ld, listingScore, txid, classifySpend(input.UnlockingScript), spendScore); err != nil {
+			return recorded, fmt.Errorf("upsert spend %s: %w", outpoint.String(), err)
+		}
+		recorded++
+	}
+	return recorded, nil
 }
 
 func (l *LookupServiceV2) OutputNoLongerRetainedInHistory(ctx context.Context, outpoint *transaction.Outpoint, topic string) error {
