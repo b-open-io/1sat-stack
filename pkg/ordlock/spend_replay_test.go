@@ -1,49 +1,145 @@
 package ordlock
 
 import (
-	"encoding/hex"
-	"os"
-	"path/filepath"
+	"bytes"
 	"testing"
 
 	"github.com/b-open-io/1sat-stack/pkg/overlay"
 	overlaystorage "github.com/b-open-io/1sat-stack/pkg/overlay/storage"
+	template "github.com/b-open-io/1sat-stack/pkg/template/ordlock"
 	"github.com/bsv-blockchain/go-overlay-services/pkg/core/engine"
 	sdkoverlay "github.com/bsv-blockchain/go-sdk/overlay"
+	ec "github.com/bsv-blockchain/go-sdk/primitives/ec"
+	"github.com/bsv-blockchain/go-sdk/script"
 	"github.com/bsv-blockchain/go-sdk/script/interpreter"
 	"github.com/bsv-blockchain/go-sdk/spv"
 	"github.com/bsv-blockchain/go-sdk/transaction"
 	"github.com/bsv-blockchain/go-sdk/transaction/chaintracker"
+	sighash "github.com/bsv-blockchain/go-sdk/transaction/sighash"
+	"github.com/bsv-blockchain/go-sdk/transaction/template/p2pkh"
 	"github.com/spf13/viper"
 )
 
-// Mainnet fixtures from the 2026-09-12 live test: a v2 listing (Pixel Foxes
-// #144078, 1000 sats) and its purchase, plus each one's funding parent.
-const (
-	fxListingParent = "3291ce0ad5773503e0704244c7b039d52172ac126b977f53706079d60c5218c9"
-	fxListing       = "d9f450fb3b39d26cac51e75ae3f65fc387022d530fcf98f11ef266d94e46c3be"
-	fxBuyFunding    = "aa4998096fcd0e1e3642a4a2a820a4717b672beaae551df40b12d557fe5625c1"
-	fxPurchase      = "c3f3b272fa12be613483b0a13e90dc7ebf368168bc5459f5dead9982b4d10003"
-)
+// v2PurchaseFlag is the sighash the canonical purchase preimage is built
+// under: SINGLE|ANYONECANPAY|FORKID. SIGHASH_SINGLE binds listing input i to
+// the complete output i, which the contract requires to equal its payout.
+const v2PurchaseFlag = sighash.Flag(0xc3)
 
-func loadFixtureTx(t *testing.T, txid string) *transaction.Transaction {
+type fixtureParty struct {
+	key    *ec.PrivateKey
+	addr   *script.Address
+	lock   *script.Script
+	unlock *p2pkh.P2PKH
+}
+
+func newFixtureParty(t *testing.T, seed byte) fixtureParty {
 	t.Helper()
-	h, err := os.ReadFile(filepath.Join("testdata", txid+".hex"))
+	key, _ := ec.PrivateKeyFromBytes(bytes.Repeat([]byte{seed}, 32))
+	addr, err := script.NewAddressFromPublicKey(key.PubKey(), true)
 	if err != nil {
 		t.Fatal(err)
 	}
-	raw, err := hex.DecodeString(string(h))
+	lock, err := p2pkh.Lock(addr)
 	if err != nil {
 		t.Fatal(err)
 	}
-	tx, err := transaction.NewTransactionFromBytes(raw)
+	unlock, err := p2pkh.Unlock(key, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if tx.TxID().String() != txid {
-		t.Fatalf("fixture %s parsed as %s", txid, tx.TxID())
+	return fixtureParty{key, addr, lock, unlock}
+}
+
+// v2Fixture is a deterministic listing + purchase pair in the canonical batch
+// layout, standing in for the mainnet transactions of the earlier v2 draft.
+//
+//	purchase inputs:  0 front funding (F=1500) · 1 listing (1 sat) · 2 fee funding
+//	purchase outputs: 0 cushion (F-P=500)     · 1 seller payout (P=1000) · 2 buyer ordinal (1 sat) · 3 fee change
+//
+// Front funding before the listing reserves output 0 so the payout lands at
+// the listing's own index (SIGHASH_SINGLE), while first-sat ordering carries
+// the listed satoshi into output 2. Fee funding trails the listing so it
+// cannot shift that mapping.
+type v2Fixture struct {
+	listingParent, listing, buyFunding, purchase *transaction.Transaction
+}
+
+func dummyFundedTx(t *testing.T, outputs ...*transaction.TransactionOutput) *transaction.Transaction {
+	t.Helper()
+	tx := transaction.NewTransaction()
+	// The parent is attached to the BEEF with a merkle path, so its own input
+	// is never script-verified; any well-formed outpoint will do.
+	if err := tx.AddInputFrom("0000000000000000000000000000000000000000000000000000000000000001", 0, "76a914000000000000000000000000000000000000000088ac", 1, nil); err != nil {
+		t.Fatal(err)
+	}
+	tx.Inputs[0].UnlockingScript = &script.Script{}
+	for _, o := range outputs {
+		tx.AddOutput(o)
 	}
 	return tx
+}
+
+func buildV2Fixture(t *testing.T) *v2Fixture {
+	t.Helper()
+	seller, buyer := newFixtureParty(t, 0x01), newFixtureParty(t, 0x02)
+
+	payout := &transaction.TransactionOutput{Satoshis: 1000, LockingScript: seller.lock}
+	listingLock := fillV2(t, seller.addr.PublicKeyHash, payout.Bytes())
+
+	listingParent := dummyFundedTx(t,
+		&transaction.TransactionOutput{Satoshis: 1, LockingScript: seller.lock},
+		&transaction.TransactionOutput{Satoshis: 5000, LockingScript: seller.lock},
+	)
+	listing := transaction.NewTransaction()
+	listing.AddInputFromTx(listingParent, 0, seller.unlock)
+	listing.AddInputFromTx(listingParent, 1, seller.unlock)
+	listing.AddOutput(&transaction.TransactionOutput{Satoshis: 1, LockingScript: listingLock})
+	listing.AddOutput(&transaction.TransactionOutput{Satoshis: 4000, LockingScript: seller.lock})
+	if err := listing.Sign(); err != nil {
+		t.Fatal(err)
+	}
+
+	buyFunding := dummyFundedTx(t,
+		&transaction.TransactionOutput{Satoshis: 1500, LockingScript: buyer.lock},
+		&transaction.TransactionOutput{Satoshis: 2000, LockingScript: buyer.lock},
+	)
+	purchase := transaction.NewTransaction()
+	purchase.AddInputFromTx(buyFunding, 0, buyer.unlock) // 0 front funding
+	purchase.AddInputFromTx(listing, 0, nil)             // 1 listing
+	purchase.AddInputFromTx(buyFunding, 1, buyer.unlock) // 2 fee funding
+	purchase.AddOutput(&transaction.TransactionOutput{Satoshis: 500, LockingScript: buyer.lock})
+	purchase.AddOutput(payout)
+	purchase.AddOutput(&transaction.TransactionOutput{Satoshis: 1, LockingScript: buyer.lock})
+	purchase.AddOutput(&transaction.TransactionOutput{Satoshis: 1900, LockingScript: buyer.lock})
+	if err := purchase.Sign(); err != nil {
+		t.Fatal(err)
+	}
+	purchase.Inputs[1].UnlockingScript = v2PurchaseUnlock(t, purchase, 1)
+
+	return &v2Fixture{listingParent, listing, buyFunding, purchase}
+}
+
+// v2PurchaseUnlock builds `<preimage> OP_0` for the listing spent at vin,
+// hashing the scriptCode after the contract's OP_CODESEPARATOR.
+func v2PurchaseUnlock(t *testing.T, tx *transaction.Transaction, vin int) *script.Script {
+	t.Helper()
+	src := tx.Inputs[vin].SourceTxOutput()
+	lock := src.LockingScript
+	subscript := script.NewFromBytes((*lock)[template.OrdLockV2CodeSeparatorIndex+1:])
+	src.LockingScript = subscript
+	preimage, err := tx.CalcInputPreimage(uint32(vin), v2PurchaseFlag)
+	src.LockingScript = lock
+	if err != nil {
+		t.Fatal(err)
+	}
+	unlock := &script.Script{}
+	if err := unlock.AppendPushData(preimage); err != nil {
+		t.Fatal(err)
+	}
+	if err := unlock.AppendOpcodes(script.Op0); err != nil {
+		t.Fatal(err)
+	}
+	return unlock
 }
 
 // prove attaches a single-leaf merkle path so the BEEF treats tx as a proven
@@ -53,17 +149,6 @@ func prove(tx *transaction.Transaction, height uint32) {
 	tx.MerklePath = transaction.NewMerklePath(height, [][]*transaction.PathElement{{
 		{Offset: 0, Hash: tx.TxID(), Txid: &isTxid},
 	}})
-}
-
-// link sets SourceTransaction on every input of tx that spends one of parents.
-func link(tx *transaction.Transaction, parents ...*transaction.Transaction) {
-	for _, in := range tx.Inputs {
-		for _, p := range parents {
-			if in.SourceTXID.Equal(*p.TxID()) {
-				in.SourceTransaction = p
-			}
-		}
-	}
 }
 
 func submit(t *testing.T, eng *engine.Engine, tx *transaction.Transaction) sdkoverlay.Steak {
@@ -101,16 +186,11 @@ func TestV2PurchaseMarksListingSold(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	listingParent := loadFixtureTx(t, fxListingParent)
-	listing := loadFixtureTx(t, fxListing)
-	buyFunding := loadFixtureTx(t, fxBuyFunding)
-	purchase := loadFixtureTx(t, fxPurchase)
-	prove(listingParent, 965095)
-	prove(buyFunding, 966400)
-	link(listing, listingParent)
-	link(purchase, listing, buyFunding)
+	fx := buildV2Fixture(t)
+	prove(fx.listingParent, 965095)
+	prove(fx.buyFunding, 966400)
 
-	steak := submit(t, svc.Engine, listing)
+	steak := submit(t, svc.Engine, fx.listing)
 	if s := steak[TopicNameV2]; s == nil || len(s.OutputsToAdmit) != 1 || s.OutputsToAdmit[0] != 0 {
 		t.Fatalf("listing admission = %+v, want output 0", steak[TopicNameV2])
 	}
@@ -119,9 +199,9 @@ func TestV2PurchaseMarksListingSold(t *testing.T) {
 		t.Fatalf("active listings after listing = %d (%v), want 1", len(active), err)
 	}
 
-	steak = submit(t, svc.Engine, purchase)
-	if s := steak[TopicNameV2]; s == nil || len(s.CoinsToRetain) != 1 || s.CoinsToRetain[0] != 0 {
-		t.Fatalf("purchase admission = %+v, want input 0 retained", steak[TopicNameV2])
+	steak = submit(t, svc.Engine, fx.purchase)
+	if s := steak[TopicNameV2]; s == nil || len(s.CoinsToRetain) != 1 || s.CoinsToRetain[0] != 1 {
+		t.Fatalf("purchase admission = %+v, want input 1 retained", steak[TopicNameV2])
 	}
 	active, err = svc.OrdLockV2.SearchListings(t.Context(), "active", "", "", 10, 0, true)
 	if err != nil {
@@ -139,29 +219,40 @@ func TestV2PurchaseMarksListingSold(t *testing.T) {
 // The purchase must validate under BSV consensus (Chronicle active, so
 // OP_2MUL is enabled). The overlay engine runs go-sdk spv.Verify on every
 // Submit; before go-sdk PR #360 that verifier omitted the Chronicle flag and
-// rejected this transaction with "attempt to execute disabled opcode OP_2MUL".
+// rejected v2 purchases with "attempt to execute disabled opcode OP_2MUL".
 // This pins the fixed behaviour so a go-sdk downgrade is caught here.
 func TestV2PurchaseScriptsUnderSpvVerify(t *testing.T) {
-	listingParent := loadFixtureTx(t, fxListingParent)
-	listing := loadFixtureTx(t, fxListing)
-	buyFunding := loadFixtureTx(t, fxBuyFunding)
-	purchase := loadFixtureTx(t, fxPurchase)
-	prove(listingParent, 965095)
-	prove(buyFunding, 966400)
-	link(listing, listingParent)
-	link(purchase, listing, buyFunding)
+	fx := buildV2Fixture(t)
+	prove(fx.listingParent, 965095)
+	prove(fx.buyFunding, 966400)
 
-	// consensus rules (what the network applied when it accepted the tx)
+	// consensus rules (what the network applies)
 	if err := interpreter.NewEngine().Execute(
-		interpreter.WithTx(purchase, 0, listing.Outputs[0]),
+		interpreter.WithTx(fx.purchase, 1, fx.listing.Outputs[0]),
 		interpreter.WithForkID(), interpreter.WithAfterGenesis(), interpreter.WithAfterChronicle(),
 	); err != nil {
-		t.Fatalf("purchase input 0 must validate with Chronicle flags: %v", err)
+		t.Fatalf("purchase input 1 must validate with Chronicle flags: %v", err)
 	}
 
 	// what the overlay engine runs
-	ok, err := spv.Verify(t.Context(), purchase, &spv.GullibleHeadersClient{}, nil)
+	ok, err := spv.Verify(t.Context(), fx.purchase, &spv.GullibleHeadersClient{}, nil)
 	if err != nil || !ok {
 		t.Fatalf("spv.Verify must accept the purchase (go-sdk must include Chronicle in spv.Verify): ok=%v err=%v", ok, err)
+	}
+}
+
+// A purchase that pays the seller at the wrong index (the ordinal-first
+// layout of the withdrawn v2 draft) must be rejected by the canonical
+// contract: SIGHASH_SINGLE commits to output 1 for listing input 1.
+func TestV2PurchaseRejectsPayoutAtWrongIndex(t *testing.T) {
+	fx := buildV2Fixture(t)
+	tx := fx.purchase
+	tx.Outputs[0], tx.Outputs[1] = tx.Outputs[1], tx.Outputs[0]
+	tx.Inputs[1].UnlockingScript = v2PurchaseUnlock(t, tx, 1)
+	if err := interpreter.NewEngine().Execute(
+		interpreter.WithTx(tx, 1, fx.listing.Outputs[0]),
+		interpreter.WithForkID(), interpreter.WithAfterGenesis(), interpreter.WithAfterChronicle(),
+	); err == nil {
+		t.Fatal("payout at output 0 must not satisfy listing input 1")
 	}
 }

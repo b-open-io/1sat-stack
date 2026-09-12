@@ -79,7 +79,7 @@ func (c *Config) Initialize(
 		}
 		// OrdLock v1 is deprecated: its overlay topic is not registered, so the
 		// stack does not admit, index, or serve v1 listings as a live market.
-		// Only OrdLock v2 (batch, tag-output binding) is served. v1
+		// Only OrdLock v2 (batch, SIGHASH_SINGLE) is served. v1
 		// cancellation/recovery is unaffected: it runs off the per-output data
 		// + owner index written by pkg/parse/ordlock, independent of this topic.
 		tsV2, err := deps.Factory(TopicNameV2)
