@@ -79,7 +79,16 @@ gofmt -s -w . && go vet ./...  # format and vet (required before commit)
 ./build-docs.sh                # regenerate OpenAPI docs
 ```
 
-Additional binaries live in `cmd/`: `bsv21-reindex` and `fixproofs` for maintenance tasks.
+Additional binaries live in `cmd/`: `bsv21-reindex` and `fixproofs` for maintenance tasks, and `stack`, the operator command. `stack` loads the same config file, `ONESAT_*` environment and data dir as the server, so it needs no arguments to find the same config store and admin API:
+
+```bash
+go build -o stack ./cmd/stack
+./stack config list [prefix]        # read the config store (read-only)
+./stack config get <key>
+./stack config set <key> <value>    # through the running server's admin API; direct write if it is down
+./stack config unset <key>
+./stack restart                     # ask the running server to restart
+```
 
 ## Documentation
 

@@ -17,3 +17,6 @@ sweep/ui/.vite/
 cmd/server/*.db
 cmd/server/*.db-shm
 cmd/server/*.db-wal
+
+# cmd/stack is source; the ignore above targets the built binary
+!cmd/stack/
