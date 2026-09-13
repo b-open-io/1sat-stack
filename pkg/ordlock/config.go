@@ -42,7 +42,11 @@ func (c *Config) SetDefaults(v *viper.Viper, prefix string) {
 	v.SetDefault(p+"sync.subscription_id", "")
 	v.SetDefault(p+"sync.queue_name", QueueName)
 	v.SetDefault(p+"sync.from_block", 783968)
-	v.SetDefault(p+"sync.concurrency", 8)
+	// One worker: q:ordlock2 is the only path into the v2 topic and its
+	// members are ordered by arrival, so a listing is always applied before
+	// its spend. More workers reintroduce the race described in
+	// cmd/server/config.go where the ordlock bridge is wired.
+	v.SetDefault(p+"sync.concurrency", 1)
 	v.SetDefault(p+"sync.batch_size", 1000)
 	v.SetDefault(p+"sync.resolve_dependencies", false)
 	v.SetDefault(p+"routes.enabled", true)

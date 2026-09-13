@@ -2039,6 +2039,16 @@ func (svc *Services) StartSubscribers(ctx context.Context, logger *slog.Logger) 
 		// OrdLock v2: listing outputs (ordlock2) and their spends (spend:ordlock2)
 		// from the indexer route to the v2 topic. No GASP: admission only checks
 		// the script, so processDirect is sufficient.
+		//
+		// Queue only, no immediate-submit path (SubmitBuffer 0). The immediate
+		// path never dequeued what it submitted, so every live transaction was
+		// applied twice, once by it and once by the queue workers about a
+		// second later, and with the queue at concurrency 8 a spend could be
+		// applied while its listing was still in flight on the other path.
+		// The engine then saw no coin for the spend and recorded nothing
+		// (2026-09-12: listing 6f3cff09…, cancel c705a20c…). Live events carry
+		// arrival-time scores, so the single-threaded queue keeps listing
+		// before spend on its own.
 		if svc.OrdLock != nil && svc.OrdLock.Sync != nil {
 			bridge := overlay.NewEventBridge(&overlay.EventBridgeConfig{
 				PubSub:   svc.PubSub.PubSub,
@@ -2050,7 +2060,7 @@ func (svc *Services) StartSubscribers(ctx context.Context, logger *slog.Logger) 
 				Logger:       logger,
 				Engine:       svc.OrdLock.Engine,
 				BeefStorage:  svc.Beef.Storage,
-				SubmitBuffer: 64,
+				SubmitBuffer: 0,
 			})
 			if err := bridge.Start(ctx); err != nil {
 				logger.Error("failed to start OrdLock v2 event bridge", "error", err)
