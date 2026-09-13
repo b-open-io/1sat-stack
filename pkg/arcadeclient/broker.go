@@ -153,7 +153,21 @@ func (b *EventBroker) dispatch(ctx context.Context, evt *SSEEvent) {
 	if evt.ID != "" {
 		b.lastEventID = evt.ID
 	}
-	waiters := append([]chan *SSEEvent(nil), b.waiters[evt.Txid]...)
+	// Deliver to waiters while holding the lock: Wait's cleanup closes a
+	// waiter channel under the same lock, so a send outside it can hit a
+	// channel that was closed in between and panic the process ("send on
+	// closed channel", seen live on 2026-09-13). The sends never block (the
+	// channel is buffered and the default branch drops on a full buffer), so
+	// the lock is held only for a handful of channel operations.
+	waiters := len(b.waiters[evt.Txid])
+	for _, ch := range b.waiters[evt.Txid] {
+		select {
+		case ch <- evt:
+		default:
+			b.logger.Warn("arcade event broker: waiter buffer full, event dropped",
+				"txid", evt.Txid, "tx_status", evt.TxStatus)
+		}
+	}
 	handlers := append([]EventHandler(nil), b.handlers...)
 	cs := b.checkpointStore
 	key := b.checkpointKey
@@ -168,16 +182,7 @@ func (b *EventBroker) dispatch(ctx context.Context, evt *SSEEvent) {
 
 	b.logger.Info("arcade event dispatching",
 		"txid", evt.Txid, "tx_status", evt.TxStatus,
-		"waiters", len(waiters), "handlers", len(handlers))
-
-	for _, ch := range waiters {
-		select {
-		case ch <- evt:
-		default:
-			b.logger.Warn("arcade event broker: waiter buffer full, event dropped",
-				"txid", evt.Txid, "tx_status", evt.TxStatus)
-		}
-	}
+		"waiters", waiters, "handlers", len(handlers))
 
 	for _, h := range handlers {
 		b.invokeHandler(ctx, h, evt)
