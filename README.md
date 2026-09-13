@@ -88,6 +88,7 @@ go build -o stack ./cmd/stack
 ./stack config set <key> <value>    # through the running server's admin API; direct write if it is down
 ./stack config unset <key>
 ./stack restart                     # ask the running server to restart
+./stack queue add ordlock2 <txid>   # put a transaction back on a work queue for reprocessing
 ```
 
 ## Documentation

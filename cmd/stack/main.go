@@ -9,6 +9,7 @@
 //	stack config set <key> <value>
 //	stack config unset <key>
 //	stack restart
+//	stack queue add <queue> <txid|txid_vout>
 //
 // Reads go straight to the config store, read-only. Writes go through the
 // running server's admin API so the server stays the only writer of
@@ -39,6 +40,7 @@ commands:
   config set <key> <value>   set a value (via the running server, or directly if it is down)
   config unset <key>         delete a key
   restart                    ask the running server to restart
+  queue add <queue> <member> put a txid or txid_vout on a store queue for reprocessing
 
 The same config file, ONESAT_* environment and data dir the server uses are
 picked up automatically; --config and --data-dir override them exactly as
@@ -80,6 +82,10 @@ func main() {
 		}
 	case "restart":
 		if err := runRestart(ctx, env); err != nil {
+			fatal(err)
+		}
+	case "queue":
+		if err := runQueue(ctx, env, args[1:]); err != nil {
 			fatal(err)
 		}
 	case "help", "-h", "--help":
@@ -225,5 +231,22 @@ func runRestart(ctx context.Context, env *Env) error {
 		return err
 	}
 	fmt.Printf("restart requested via %s\n", env.AdminAPI())
+	return nil
+}
+
+func runQueue(ctx context.Context, env *Env, args []string) error {
+	if len(args) != 3 || args[0] != "add" {
+		return errors.New("queue: expected add <queue> <txid|txid_vout>")
+	}
+	apiKey := ""
+	if r, err := OpenReader(env.ConfigDB); err == nil {
+		apiKey, _ = r.Get(ctx, "auth.api_key")
+		r.Close()
+	}
+	out, err := NewAdminClient(env.AdminAPI(), apiKey).Enqueue(ctx, args[1], args[2])
+	if err != nil {
+		return err
+	}
+	fmt.Printf("%s\n", strings.TrimSpace(string(out)))
 	return nil
 }

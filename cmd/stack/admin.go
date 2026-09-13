@@ -81,3 +81,9 @@ func (c *AdminClient) Restart(ctx context.Context) error {
 	_, err := c.do(ctx, http.MethodPost, "/restart", nil)
 	return err
 }
+
+// Enqueue places a txid or outpoint on the named store queue
+// (POST /queue/:name) so its worker reprocesses it.
+func (c *AdminClient) Enqueue(ctx context.Context, queue, member string) ([]byte, error) {
+	return c.do(ctx, http.MethodPost, "/queue/"+queue, map[string]string{"member": member})
+}
