@@ -256,3 +256,145 @@ func TestV2PurchaseRejectsPayoutAtWrongIndex(t *testing.T) {
 		t.Fatal("payout at output 0 must not satisfy listing input 1")
 	}
 }
+
+// The engine only reports spends of coins it has already admitted, so a
+// purchase submitted before (or alongside) its listing never reaches
+// OutputSpent. RecordSpends works from the spending transaction alone: run
+// before the listing is admitted it inserts the row already sold, and the
+// later admission does not resurrect it.
+func TestV2SpendRecordedBeforeListingStaysSold(t *testing.T) {
+	factory, err := overlaystorage.NewSQLiteFactory(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = factory.Close() })
+	v := viper.New()
+	v.Set("mode", ModeEmbedded)
+	var cfg Config
+	if err := v.Unmarshal(&cfg); err != nil {
+		t.Fatal(err)
+	}
+	svc, err := cfg.Initialize(t.Context(), nil, &overlay.ModuleDeps{
+		Factory:      factory.Factory(),
+		ChainTracker: chaintracker.ChainTracker(&spv.GullibleHeadersClient{}),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	fx := buildV2Fixture(t)
+	prove(fx.listingParent, 965095)
+	prove(fx.buyFunding, 966400)
+
+	// Engine sees the purchase first. The topic manager still recognises
+	// the listing input from its script, but the engine has no such coin in
+	// storage, so no OutputSpent reaches the lookup and the market records
+	// nothing.
+	submit(t, svc.Engine, fx.purchase)
+	sold, err := svc.OrdLockV2.SearchListings(t.Context(), "sale", "", "", 10, 0, true)
+	if err != nil || len(sold) != 0 {
+		t.Fatalf("engine-only spend-first must record nothing, got %d (%v)", len(sold), err)
+	}
+
+	// Direct spend recording does not need the listing admitted.
+	n, err := svc.LookupV2.RecordSpends(t.Context(), fx.purchase, fx.purchase.TxID())
+	if err != nil || n != 1 {
+		t.Fatalf("RecordSpends = %d, %v; want 1 spend", n, err)
+	}
+	sold, err = svc.OrdLockV2.SearchListings(t.Context(), "sale", "", "", 10, 0, true)
+	if err != nil || len(sold) != 1 {
+		t.Fatalf("sale listings after spend-first = %d (%v), want 1", len(sold), err)
+	}
+
+	// The listing arrives afterwards and must not come back as active.
+	submit(t, svc.Engine, fx.listing)
+	active, err := svc.OrdLockV2.SearchListings(t.Context(), "active", "", "", 10, 0, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sold, err = svc.OrdLockV2.SearchListings(t.Context(), "sale", "", "", 10, 0, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(active) != 0 || len(sold) != 1 {
+		t.Fatalf("after late listing: active=%d sold=%d, want 0/1", len(active), len(sold))
+	}
+	if sold[0].Outpoint.String() != fx.listing.TxID().String()+"_0" && sold[0].Outpoint.String() != fx.listing.TxID().String()+".0" {
+		t.Fatalf("sold outpoint = %s, want listing output 0", sold[0].Outpoint.String())
+	}
+}
+
+// RecordSpends is idempotent with the engine path: running it after the
+// engine already marked the sale changes nothing, and classifies cancels.
+func TestV2RecordSpendsClassifiesCancel(t *testing.T) {
+	factory, err := overlaystorage.NewSQLiteFactory(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = factory.Close() })
+	v := viper.New()
+	v.Set("mode", ModeEmbedded)
+	var cfg Config
+	if err := v.Unmarshal(&cfg); err != nil {
+		t.Fatal(err)
+	}
+	svc, err := cfg.Initialize(t.Context(), nil, &overlay.ModuleDeps{
+		Factory:      factory.Factory(),
+		ChainTracker: chaintracker.ChainTracker(&spv.GullibleHeadersClient{}),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	seller := newFixtureParty(t, 0x01)
+	payout := &transaction.TransactionOutput{Satoshis: 1000, LockingScript: seller.lock}
+	listingLock := fillV2(t, seller.addr.PublicKeyHash, payout.Bytes())
+	parent := dummyFundedTx(t,
+		&transaction.TransactionOutput{Satoshis: 1, LockingScript: seller.lock},
+		&transaction.TransactionOutput{Satoshis: 5000, LockingScript: seller.lock},
+	)
+	listing := transaction.NewTransaction()
+	listing.AddInputFromTx(parent, 0, seller.unlock)
+	listing.AddInputFromTx(parent, 1, seller.unlock)
+	listing.AddOutput(&transaction.TransactionOutput{Satoshis: 1, LockingScript: listingLock})
+	listing.AddOutput(&transaction.TransactionOutput{Satoshis: 4000, LockingScript: seller.lock})
+	if err := listing.Sign(); err != nil {
+		t.Fatal(err)
+	}
+	// cancel: <"ol2:cancel"> <sig> <pubkey> OP_1 — only the trailing byte
+	// matters to classifySpend, so a stand-in signature is fine here.
+	cancel := transaction.NewTransaction()
+	cancel.AddInputFromTx(listing, 0, nil)
+	cancel.AddInputFromTx(listing, 1, seller.unlock)
+	cancel.AddOutput(&transaction.TransactionOutput{Satoshis: 1, LockingScript: seller.lock})
+	unlock := &script.Script{}
+	if err := unlock.AppendPushData([]byte("ol2:cancel")); err != nil {
+		t.Fatal(err)
+	}
+	if err := unlock.AppendPushData(bytes.Repeat([]byte{0x30}, 71)); err != nil {
+		t.Fatal(err)
+	}
+	if err := unlock.AppendPushData(seller.key.PubKey().Compressed()); err != nil {
+		t.Fatal(err)
+	}
+	if err := unlock.AppendOpcodes(script.OpTRUE); err != nil {
+		t.Fatal(err)
+	}
+	cancel.Inputs[0].UnlockingScript = unlock
+
+	if _, err := svc.LookupV2.RecordSpends(t.Context(), cancel, cancel.TxID()); err != nil {
+		t.Fatal(err)
+	}
+	cancelled, err := svc.OrdLockV2.SearchListings(t.Context(), "cancel", "", "", 10, 0, true)
+	if err != nil || len(cancelled) != 1 {
+		t.Fatalf("cancel listings = %d (%v), want 1", len(cancelled), err)
+	}
+	// Recording the same spend again is a no-op.
+	if _, err := svc.LookupV2.RecordSpends(t.Context(), cancel, cancel.TxID()); err != nil {
+		t.Fatal(err)
+	}
+	cancelled, _ = svc.OrdLockV2.SearchListings(t.Context(), "cancel", "", "", 10, 0, true)
+	if len(cancelled) != 1 {
+		t.Fatalf("cancel listings after repeat = %d, want 1", len(cancelled))
+	}
+}
