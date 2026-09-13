@@ -52,6 +52,7 @@ func (r *DataRoutes) Register(group fiber.Router) {
 	zset.Get("/card/:key", r.handleZSetCard)
 	zset.Get("/sum/:key", r.handleZSetSum)
 	zset.Delete("/rem/:key/:member", r.handleZSetRem)
+	zset.Post("/add/:key", r.handleZSetAdd)
 
 	// Key operations
 	group.Delete("/key/*", r.handleDeleteKey)
@@ -639,20 +640,7 @@ func (r *DataRoutes) handleZSetRem(c *fiber.Ctx) error {
 		})
 	}
 
-	// Try as txid (64-char hex, byte-reversed) first, then raw hex, then string
-	var memberBytes []byte
-	if len(member) == 64 {
-		if h, err := chainhash.NewHashFromHex(member); err == nil {
-			memberBytes = h[:]
-		}
-	}
-	if memberBytes == nil {
-		if b, err := hex.DecodeString(member); err == nil {
-			memberBytes = b
-		} else {
-			memberBytes = []byte(member)
-		}
-	}
+	memberBytes := decodeMember(member)
 
 	if err := r.store.ZRem(c.Context(), []byte(key), memberBytes); err != nil {
 		r.logger.Error("failed to remove member", "key", key, "member", member, "error", err)
@@ -891,4 +879,65 @@ func (r *DataRoutes) parseScoreRange(c *fiber.Ctx) store.ScoreRange {
 	}
 
 	return sr
+}
+
+// decodeMember turns a member given as text into store bytes: a "txid_vout"
+// outpoint (36 bytes, as the event bridge queues outputs), a 64-char txid
+// (byte-reversed, as queues and indexes store txids), raw hex, or else the
+// literal string.
+func decodeMember(member string) []byte {
+	if op, err := transaction.OutpointFromString(member); err == nil {
+		return op.Bytes()
+	}
+	if len(member) == 64 {
+		if h, err := chainhash.NewHashFromHex(member); err == nil {
+			return h[:]
+		}
+	}
+	if b, err := hex.DecodeString(member); err == nil {
+		return b
+	}
+	return []byte(member)
+}
+
+// ZSetAddRequest is the body for adding one member to a sorted set.
+type ZSetAddRequest struct {
+	Member string  `json:"member"`
+	Score  float64 `json:"score"`
+}
+
+// handleZSetAdd adds a member to a sorted set. On a work queue key
+// (q:<name>) this re-queues a transaction for its worker: the overlay
+// queues replay it through OverlaySync in historical mode.
+// @Summary Add sorted set member
+// @Tags admin-data
+// @Accept json
+// @Produce json
+// @Param key path string true "Sorted set key (e.g. q:ordlock2)"
+// @Param request body ZSetAddRequest true "member as txid, txid_vout, hex or string; score"
+// @Success 200 {object} map[string]any
+// @Failure 400 {object} map[string]string
+// @Router /data/zset/add/{key} [post]
+func (r *DataRoutes) handleZSetAdd(c *fiber.Ctx) error {
+	key := c.Params("key")
+	var req ZSetAddRequest
+	if err := c.BodyParser(&req); err != nil || key == "" || req.Member == "" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": "key and body {member, score} are required",
+		})
+	}
+	memberBytes := decodeMember(req.Member)
+	if err := r.store.ZAdd(c.Context(), []byte(key), store.ScoredMember{Member: memberBytes, Score: req.Score}); err != nil {
+		r.logger.Error("failed to add member", "key", key, "member", req.Member, "error", err)
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"error": "failed to add member",
+		})
+	}
+	r.logger.Info("zset member added", "key", key, "member", req.Member, "score", req.Score)
+	return c.JSON(fiber.Map{
+		"key":    key,
+		"member": renderValue(memberBytes),
+		"bytes":  len(memberBytes),
+		"score":  req.Score,
+	})
 }

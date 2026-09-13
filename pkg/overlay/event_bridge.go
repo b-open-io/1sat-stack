@@ -159,20 +159,12 @@ func (eb *EventBridge) submitWorker(ctx context.Context) {
 // parseEventMember converts an event member string to binary queue member.
 // Outpoint strings ("txid.vout") become 36 bytes, plain txid hex becomes 32 bytes.
 func parseEventMember(member string) ([]byte, error) {
-	return ParseQueueMember(member)
-}
-
-// ParseQueueMember converts a txid hex or "txid_vout" outpoint string into the
-// binary queue member OverlaySync consumes: 32 raw txid bytes, or 36 outpoint
-// bytes. Shared with the admin enqueue route so manual replays are encoded
-// exactly like bridged events.
-func ParseQueueMember(member string) ([]byte, error) {
 	if op, err := transaction.OutpointFromString(member); err == nil {
 		return op.Bytes(), nil
 	}
 	txid, err := chainhash.NewHashFromHex(member)
 	if err != nil {
-		return nil, fmt.Errorf("member must be a txid hex or txid_vout outpoint: %w", err)
+		return nil, err
 	}
 	return txid[:], nil
 }

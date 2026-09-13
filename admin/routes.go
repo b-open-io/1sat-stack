@@ -23,8 +23,6 @@ import (
 	"github.com/b-open-io/1sat-stack/pkg/logging"
 	"github.com/b-open-io/1sat-stack/pkg/overlay"
 	"github.com/b-open-io/1sat-stack/pkg/store"
-	"github.com/b-open-io/1sat-stack/pkg/txo"
-	"github.com/b-open-io/1sat-stack/pkg/types"
 	"github.com/bsv-blockchain/go-overlay-services/pkg/core/engine"
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/middleware/filesystem"
@@ -121,8 +119,6 @@ func (r *Routes) Register(guardedGroup fiber.Router, publicGroup fiber.Router, a
 	guardedGroup.Post("/opns/crawl", r.handleTriggerOpnsCrawl)
 
 	guardedGroup.Post("/restart", r.handleRestart)
-
-	guardedGroup.Post("/queue/:name", r.handleEnqueue)
 
 	guardedGroup.Get("/config", r.handleGetConfig)
 	guardedGroup.Put("/config", r.handleUpdateConfig)
@@ -1488,51 +1484,4 @@ func (r *Routes) handleRestart(c *fiber.Ctx) error {
 	return c.JSON(fiber.Map{
 		"status": "restarting",
 	})
-}
-
-// EnqueueRequest names one transaction (txid hex) or output ("txid_vout")
-// to place on a work queue.
-type EnqueueRequest struct {
-	Member string `json:"member"`
-}
-
-// handleEnqueue puts a member on the named store queue (q:<name>) so the
-// worker draining it reprocesses the transaction through its normal path —
-// for the overlay queues that is OverlaySync in historical mode. This is the
-// replay tool for transactions the live feed processed out of order: clear
-// the engine's applied row if it has one, then enqueue.
-//
-// @Summary Enqueue a transaction for reprocessing
-// @Tags admin
-// @Accept json
-// @Produce json
-// @Param name path string true "Queue name (e.g. ordlock2, bsv21)"
-// @Param request body EnqueueRequest true "txid hex or txid_vout outpoint"
-// @Success 200 {object} map[string]any
-// @Failure 400 {object} map[string]string
-// @Router /queue/{name} [post]
-func (r *Routes) handleEnqueue(c *fiber.Ctx) error {
-	name := c.Params("name")
-	if name == "" || strings.ContainsAny(name, " /") {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid queue name"})
-	}
-	var req EnqueueRequest
-	if err := c.BodyParser(&req); err != nil || req.Member == "" {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "body must be {\"member\": \"<txid>|<txid_vout>\"}"})
-	}
-	member, err := overlay.ParseQueueMember(req.Member)
-	if err != nil {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": err.Error()})
-	}
-	if r.store == nil {
-		return c.Status(fiber.StatusServiceUnavailable).JSON(fiber.Map{"error": "store not available"})
-	}
-	key := txo.KeyQueue(name)
-	score := types.HeightScore(0, 0)
-	if err := r.store.ZAdd(c.Context(), key, store.ScoredMember{Member: member, Score: score}); err != nil {
-		r.logger.Error("enqueue failed", "queue", name, "member", req.Member, "error", err)
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "enqueue failed"})
-	}
-	r.logger.Info("enqueued for reprocessing", "queue", name, "member", req.Member)
-	return c.JSON(fiber.Map{"queue": string(key), "member": req.Member, "bytes": len(member), "score": score})
 }

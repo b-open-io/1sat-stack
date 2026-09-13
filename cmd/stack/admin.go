@@ -82,8 +82,9 @@ func (c *AdminClient) Restart(ctx context.Context) error {
 	return err
 }
 
-// Enqueue places a txid or outpoint on the named store queue
-// (POST /queue/:name) so its worker reprocesses it.
+// Enqueue places a txid or outpoint on the named store queue by adding it to
+// the q:<name> sorted set through the admin data API, with the zero score
+// the event bridge uses for live events.
 func (c *AdminClient) Enqueue(ctx context.Context, queue, member string) ([]byte, error) {
-	return c.do(ctx, http.MethodPost, "/queue/"+queue, map[string]string{"member": member})
+	return c.do(ctx, http.MethodPost, "/data/zset/add/q:"+queue, map[string]any{"member": member, "score": 0})
 }
