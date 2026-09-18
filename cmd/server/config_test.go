@@ -10,6 +10,7 @@ import (
 	"github.com/b-open-io/1sat-stack/pkg/bsv21"
 	configpkg "github.com/b-open-io/1sat-stack/pkg/config"
 	"github.com/b-open-io/1sat-stack/pkg/ecosystemalias"
+	gibpkg "github.com/b-open-io/1sat-stack/pkg/gib"
 	"github.com/b-open-io/1sat-stack/pkg/ordfs"
 	"github.com/b-open-io/1sat-stack/pkg/overlay"
 	"github.com/b-open-io/1sat-stack/pkg/pubsub"
@@ -273,5 +274,42 @@ func TestApplyRuntimeConfigClearsEcosystemAliasSubscription(t *testing.T) {
 	}
 	if !cfg.EcosystemAlias.Sync.Enabled {
 		t.Fatal("clearing subscription disabled queue worker")
+	}
+}
+
+func TestApplyRuntimeConfigEnablesGib(t *testing.T) {
+	cfg := &Config{}
+	err := cfg.applyRuntimeConfig(&configpkg.RuntimeConfig{
+		SetupComplete:      true,
+		GibEnabled:         true,
+		GibSyncSubID:       "subscription-id",
+		GibSyncConcurrency: 2,
+		GibSyncBatchSize:   500,
+		GibLogLevel:        "debug",
+	})
+	if err != nil {
+		t.Fatalf("applyRuntimeConfig: %v", err)
+	}
+	if cfg.Gib.Mode != gibpkg.ModeEmbedded || cfg.Overlay.Mode != overlay.ModeEmbedded {
+		t.Fatalf("modes = gib:%q overlay:%q", cfg.Gib.Mode, cfg.Overlay.Mode)
+	}
+	if cfg.Gib.Sync == nil || !cfg.Gib.Sync.Enabled || cfg.Gib.Sync.SubscriptionID != "subscription-id" ||
+		cfg.Gib.Sync.Concurrency != 2 || cfg.Gib.Sync.BatchSize != 500 {
+		t.Fatalf("sync config = %+v", cfg.Gib.Sync)
+	}
+	if cfg.Gib.LogLevel != "debug" {
+		t.Fatalf("log level = %q, want debug", cfg.Gib.LogLevel)
+	}
+}
+
+func TestGibDefaultsDisabled(t *testing.T) {
+	cfg := &Config{}
+	v := viper.New()
+	cfg.SetDefaults(v)
+	if v.GetString("gib.mode") != gibpkg.ModeDisabled {
+		t.Fatalf("gib.mode = %q, want disabled", v.GetString("gib.mode"))
+	}
+	if v.GetString("gib.routes.prefix") != "/gib" || v.GetInt("gib.sync.concurrency") != 1 {
+		t.Fatalf("gib defaults: prefix=%q concurrency=%d", v.GetString("gib.routes.prefix"), v.GetInt("gib.sync.concurrency"))
 	}
 }
