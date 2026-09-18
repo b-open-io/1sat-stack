@@ -90,9 +90,6 @@ func (c *Config) Initialize(ctx context.Context, logger *slog.Logger, deps *over
 		if deps == nil || deps.Factory == nil {
 			return nil, fmt.Errorf("overlay ModuleDeps with Factory is required for gib")
 		}
-		if deps.BeefStorage == nil {
-			return nil, fmt.Errorf("overlay ModuleDeps with BEEF storage is required for gib")
-		}
 		topicStorage, err := deps.Factory(TopicName)
 		if err != nil {
 			return nil, fmt.Errorf("failed to get gib topic storage: %w", err)
