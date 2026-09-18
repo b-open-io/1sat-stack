@@ -21,6 +21,7 @@ require (
 	github.com/fxamacker/cbor/v2 v2.9.3
 	github.com/gen2brain/avif v0.6.0
 	github.com/gen2brain/webp v0.6.4
+	github.com/go-deltasync/vcdiff v0.0.0-20260806072942-2820a2b86a04
 	github.com/go-softwarelab/common v1.8.0
 	github.com/gofiber/fiber/v2 v2.52.15
 	github.com/jackc/pgx/v5 v5.10.0

@@ -52,7 +52,7 @@ Nested JSON fields `subTypeData` and `royalties` are parsed from their string re
 
 ### Directories
 
-An inscription with content type `ord-fs/json` is a directory. Its body is a JSON object mapping filenames to outpoint pointers:
+An inscription with content type `ord-fs/json` (legacy) or `ordfs/dir` (binary) is a directory. JSON bodies map filenames to outpoint pointers:
 
 ```json
 {
@@ -66,7 +66,11 @@ Directory behavior:
 - Empty path default: serve map key `"."` in place if present; else redirect to `index.html` if present
 - Path traversal resolves filenames against the directory mapping
 - SPA fallback: if the requested file isn't found, `index.html` is served instead (not `"."`)
-- `?raw` skips interpretation: no ordinal resolve and no directory default — the outpoint’s bytes only (for `ord-fs/json`, that is the directory JSON itself)
+- `?raw` skips interpretation: no ordinal resolve and no directory default — the outpoint’s bytes only (directory JSON/binary, or an `ordfs/patch` envelope)
+
+### Patches
+
+An inscription with content type `ordfs/patch` is a vcdiff (RFC 3284) against a base outpoint. HTTP serving applies the chain (max 8) and inherits the base content type. A patch of a directory can be path-walked. `Load()` returns the envelope unapplied.
 
 ### BRC-150 provenance
 
