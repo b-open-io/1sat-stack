@@ -66,7 +66,6 @@ The full 1sat-stack has distinct functional areas, each with different distribut
 |------|--------------|-----------------|
 | **REST routes** (per-module `routes.go`) | Call concrete LookupService methods directly, bypass `Lookup()` interface | Refactor to go through `LookupQuestion`/`LookupAnswer`. Then API modules become distributable too. |
 | **BSV21 fee/payment logic** (`pkg/bsv21/`) | Protocol-specific fee and payment calculation | Stays as host logic. The TokenManager is just dynamic topic activation — deploy overlay discovers token IDs, host spins up per-token engines with the standard BSV21 validation module. Per-token overlays are standard `TopicManager` + `LookupService`. |
-| **Paymail** (`pkg/paymail/`) | Chains OPNS lookup → ORDFS MAP resolution → BRC-29 derivation | Cross-module dependency chain. Could be a module that calls other modules through host functions. |
 | **Auth/Admin** (`pkg/auth/`) | BRC-103/104 verification, Sigma auth, session management | Security boundary. Stays as host infrastructure, never a WASM module. |
 | **Wallet** (`pkg/wallet/`) | BRC-100 wallet with GORM DB, fee model, Chaintracks, Arcade | Complex external dependencies. Likely stays as host service. |
 
@@ -269,7 +268,6 @@ Server-side:
 - REST routes bypass `Lookup()` interface, calling concrete DB methods directly
 - Script parsers are functions, not a formal interface — need a standard contract
 - BSV21 fee/payment calculation is host logic; per-token overlays are already standard
-- Paymail chains cross-module calls that would need host function mediation
 - Merkle service coupled to overlay storage adapter
 - No WASM runtime integration yet
 - Module configuration assumes compile-time registration — needs runtime discovery

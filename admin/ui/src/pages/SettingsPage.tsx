@@ -965,18 +965,12 @@ function EcosystemAliasPanel({
   );
 }
 
-interface OpnsPanelProps extends OverlayPanelProps {
-  paymailEnabled: boolean;
-  setPaymailEnabled: (v: boolean) => void;
-}
-
 function OpnsPanel({
   enabled, onToggle,
   subId, setSubId,
   concurrency, setConcurrency,
   batchSize, setBatchSize,
-  paymailEnabled, setPaymailEnabled,
-}: OpnsPanelProps) {
+}: OverlayPanelProps) {
   const [crawling, setCrawling] = useState(false);
   const [crawlError, setCrawlError] = useState<string | null>(null);
   const [crawlSuccess, setCrawlSuccess] = useState(false);
@@ -1042,20 +1036,6 @@ function OpnsPanel({
         </Button>
         {crawlError && <p className="text-xs text-destructive">{crawlError}</p>}
         {crawlSuccess && <p className="text-xs text-success">Crawl started successfully</p>}
-      </SectionCard>
-
-      <SectionCard>
-        <div className="flex items-center justify-between">
-          <div>
-            <span className="text-sm font-medium text-foreground">Paymail</span>
-            <p className="text-xs text-muted-foreground mt-0.5">
-              {enabled
-                ? "BSV Paymail protocol — requires OPNS for name resolution."
-                : "Enable OPNS first to use Paymail."}
-            </p>
-          </div>
-          <Toggle enabled={paymailEnabled} onChange={setPaymailEnabled} disabled={!enabled} />
-        </div>
       </SectionCard>
     </div>
   );
@@ -1582,7 +1562,6 @@ export default function SettingsPage() {
   const [opnsSubId, setOpnsSubId] = useState("");
   const [opnsConcurrency, setOpnsConcurrency] = useState("8");
   const [opnsBatchSize, setOpnsBatchSize] = useState("1000");
-  const [paymailEnabled, setPaymailEnabled] = useState(false);
 
   // BSV21 overlay
   const [bsv21SubId, setBsv21SubId] = useState("");
@@ -1694,7 +1673,6 @@ export default function SettingsPage() {
         setOpnsSubId(s("overlay.opns.sub_id", ""));
         setOpnsConcurrency(s("overlay.opns.concurrency", "8"));
         setOpnsBatchSize(s("overlay.opns.batch_size", "1000"));
-        setPaymailEnabled(b("overlay.opns.paymail"));
 
         // BSV21
         setBsv21SubId(s("overlay.bsv21.sub_id", ""));
@@ -1917,7 +1895,6 @@ export default function SettingsPage() {
         "overlay.opns.sub_id": opnsSubId,
         "overlay.opns.concurrency": opnsConcurrency,
         "overlay.opns.batch_size": opnsBatchSize,
-        "overlay.opns.paymail": String(paymailEnabled),
 
         // BSV21
         "overlay.bsv21.sub_id": bsv21SubId,
@@ -2146,7 +2123,6 @@ export default function SettingsPage() {
               subId={opnsSubId} setSubId={setOpnsSubId}
               concurrency={opnsConcurrency} setConcurrency={setOpnsConcurrency}
               batchSize={opnsBatchSize} setBatchSize={setOpnsBatchSize}
-              paymailEnabled={paymailEnabled} setPaymailEnabled={setPaymailEnabled}
             />
           )}
           {activeSection === "overlay-bsv21" && (

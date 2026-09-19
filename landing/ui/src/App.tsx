@@ -18,7 +18,6 @@ const DISPLAY_NAMES: Record<string, string> = {
   ordfs: "ORDFS",
   chaintracks: "Chaintracks",
   arcade: "Arcade",
-  paymail: "Paymail",
   pubsub: "PubSub",
   admin: "Admin",
   sweep: "Sweep",

@@ -46,13 +46,11 @@ import (
 	ordlockdocs "github.com/b-open-io/1sat-stack/pkg/ordlock/docs"
 	"github.com/b-open-io/1sat-stack/pkg/overlay"
 	ownerdocs "github.com/b-open-io/1sat-stack/pkg/owner/docs"
-	paymaildocs "github.com/b-open-io/1sat-stack/pkg/paymail/docs"
 	pubsubdocs "github.com/b-open-io/1sat-stack/pkg/pubsub/docs"
 	"github.com/b-open-io/1sat-stack/pkg/registrar"
 	txodocs "github.com/b-open-io/1sat-stack/pkg/txo/docs"
 
 	"github.com/b-open-io/1sat-stack/pkg/owner"
-	"github.com/b-open-io/1sat-stack/pkg/paymail"
 	"github.com/b-open-io/1sat-stack/pkg/pubsub"
 	"github.com/b-open-io/1sat-stack/pkg/spends"
 	"github.com/b-open-io/1sat-stack/pkg/store"
@@ -157,10 +155,7 @@ type Config struct {
 	// Auth middleware
 	Auth auth.Config `mapstructure:"auth"`
 
-	// Paymail service
-	Paymail paymail.Config `mapstructure:"paymail"`
-
-	// MessageBox URL for remote messagebox server (used by paymail)
+	// MessageBox URL for remote messagebox server
 	MessageBoxURL string `mapstructure:"messagebox_url"`
 }
 
@@ -262,7 +257,6 @@ type Services struct {
 	Sweep          *sweep.Services
 	Landing        *landing.Services
 	Wallet         *wallet.Services
-	Paymail        *paymail.Services
 
 	// ConfigStore for admin data (users, progress, settings)
 	ConfigStore configpkg.Store
@@ -364,7 +358,6 @@ func (c *Config) SetDefaults(v *viper.Viper) {
 	c.Landing.SetDefaults(v, "landing")
 	c.Wallet.SetDefaults(v, "wallet")
 	c.Auth.SetDefaults(v, "auth")
-	c.Paymail.SetDefaults(v, "paymail")
 	v.SetDefault("messagebox_url", "")
 }
 
@@ -395,7 +388,6 @@ func (c *Config) resolveAllPaths() {
 	c.Overlay.StoragePath = c.resolvePath(c.Overlay.StoragePath)
 	c.Overlay.P2P.StoragePath = c.resolvePath(c.Overlay.P2P.StoragePath)
 	c.P2P.StoragePath = c.resolvePath(c.P2P.StoragePath)
-	c.Paymail.DBPath = c.resolvePath(c.Paymail.DBPath)
 
 	for i := range c.Beef.Chain {
 		c.Beef.Chain[i].Filesystem.Path = c.resolvePath(c.Beef.Chain[i].Filesystem.Path)
@@ -676,9 +668,6 @@ func (c *Config) applyRuntimeConfig(rc *configpkg.RuntimeConfig) error {
 			c.OPNS.Sync.BatchSize = rc.OPNSSyncBatchSize
 		}
 	}
-	if rc.OPNSPaymail {
-		c.Paymail.Mode = "enabled"
-	}
 
 	// OrdLock overlay
 	if rc.OrdLockLogLevel != "" {
@@ -744,14 +733,6 @@ func (c *Config) applyRuntimeConfig(rc *configpkg.RuntimeConfig) error {
 	// Owner
 	if rc.OwnerMode != "" {
 		c.Owner.Mode = rc.OwnerMode
-	}
-
-	// Paymail
-	if rc.PaymailMode != "" {
-		c.Paymail.Mode = rc.PaymailMode
-	}
-	if rc.PaymailDBPath != "" {
-		c.Paymail.DBPath = rc.PaymailDBPath
 	}
 
 	// MongoDB
@@ -1460,31 +1441,6 @@ func (c *Config) Initialize(ctx context.Context, logger *slog.Logger) (*Services
 
 	}
 
-	// Initialize Paymail service (requires OpNS + ORDFS + BroadcastHandler, optionally remote MessageBox)
-	if c.Paymail.Mode != paymail.ModeDisabled && c.Paymail.Mode != "" {
-		paymailDeps := &paymail.InitializeDeps{}
-		if svc.OPNS != nil && svc.OPNS.Lookup != nil {
-			paymailDeps.OpnsLookup = svc.OPNS.Lookup
-		}
-		if svc.ORDFS != nil && svc.ORDFS.Ordfs != nil {
-			paymailDeps.Ordfs = svc.ORDFS.Ordfs
-		}
-		paymailDeps.BroadcastHandler = svc.BroadcastHandler
-		if svc.Beef != nil && svc.Beef.Storage != nil {
-			paymailDeps.BeefStorage = svc.Beef.Storage
-		}
-		if c.MessageBoxURL != "" && svc.Wallet != nil {
-			paymailDeps.MessageBoxClient = paymail.NewMessageBoxClient(
-				c.MessageBoxURL, svc.Wallet.Wallet, logger,
-			)
-		}
-		paymailSvc, err := c.Paymail.Initialize(ctx, logging.NewComponentLogger(logger, "paymail", ""), paymailDeps)
-		if err != nil {
-			return nil, fmt.Errorf("failed to initialize paymail: %w", err)
-		}
-		svc.Paymail = paymailSvc
-	}
-
 	// Initialize JungleBus subscribers from per-module subscription configs
 	if svc.Store != nil && svc.JungleBus != nil {
 		start = time.Now()
@@ -1752,22 +1708,6 @@ func (c *Config) RegisterRoutes(app *fiber.App, svc *Services) {
 		reg.Add(registrar.Registration{Capability: "sweep", Mounts: []registrar.Mount{
 			{Prefix: prefixOr(c.Sweep.Routes.Prefix, "/sweep"), Register: svc.Sweep.Routes.Register},
 		}})
-	}
-
-	if svc.Paymail != nil && svc.Paymail.Routes != nil {
-		prefix := prefixOr(c.Paymail.Routes.Prefix, "/bsvalias")
-		svc.Paymail.Routes.SetPathPrefix(c.Server.BasePath + prefix)
-		reg.Add(registrar.Registration{
-			Capability: "paymail",
-			Spec:       paymaildocs.Spec,
-			Mounts: []registrar.Mount{
-				{Prefix: prefix, Register: svc.Paymail.Routes.Register},
-			},
-			// /.well-known/bsvalias at app root for capability discovery
-			RootMounts: []registrar.Mount{
-				{Register: func(fiber.Router) { svc.Paymail.Routes.RegisterWellKnown(app) }},
-			},
-		})
 	}
 
 	reg.Add(registrar.Registration{Mounts: []registrar.Mount{{

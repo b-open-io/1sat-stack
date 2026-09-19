@@ -26,7 +26,6 @@ opns:routes.go
 ordlock:routes.go
 ordfs:routes.go
 chaintracks:swagger.go
-paymail:routes.go
 broadcast:routes.go
 "
 
