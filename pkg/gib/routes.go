@@ -1,6 +1,7 @@
 package gib
 
 import (
+	"context"
 	"database/sql"
 	"encoding/hex"
 	"errors"
@@ -19,7 +20,12 @@ import (
 type Routes struct {
 	store  *Store
 	logger *slog.Logger
+	fill   func(ctx context.Context, rec *HeadRecord) bool
 }
+
+// SetMetaFiller lets repository views backfill `.gib` metadata for heads
+// indexed before enrichment existed (or before the content was fetchable).
+func (r *Routes) SetMetaFiller(f func(ctx context.Context, rec *HeadRecord) bool) { r.fill = f }
 
 // NewRoutes creates the gib REST routes.
 func NewRoutes(store *Store, logger *slog.Logger) *Routes {
@@ -192,6 +198,14 @@ func (r *Routes) GetRepo(c *fiber.Ctx) error {
 	heads, err := r.store.ListHeads(c.Context(), HeadFilter{Origin: origin, Unspent: true, Limit: MaxLimit, Rev: true})
 	if err != nil {
 		return r.internalError(c, "failed to list branches", err)
+	}
+	if repo.Name == "" && r.fill != nil {
+		for i := range heads {
+			if r.fill(c.Context(), &heads[i]) {
+				repo.Name, repo.Description, repo.DefaultBranch = heads[i].Meta.Name, heads[i].Meta.Description, heads[i].Meta.DefaultBranch
+				break
+			}
+		}
 	}
 	return c.JSON(RepoResponse{RepoRecord: *repo, HeadsList: heads})
 }

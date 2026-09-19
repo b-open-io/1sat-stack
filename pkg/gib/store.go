@@ -130,6 +130,7 @@ type HeadRecord struct {
 	Commit   *gibtpl.Commit `json:"commit,omitempty"`
 	Prev     string         `json:"prev,omitempty"`
 	Spend    *Spend         `json:"spend,omitempty"`
+	Meta     *RepoMeta      `json:"meta,omitempty"`
 	Score    float64        `json:"score"`
 	Height   uint32         `json:"height"`
 }
@@ -142,6 +143,9 @@ type RepoRecord struct {
 	FirstOutpoint string  `json:"firstOutpoint"`
 	FirstScore    float64 `json:"firstScore"`
 	LastScore     float64 `json:"lastScore"`
+	Name          string  `json:"name,omitempty"`
+	Description   string  `json:"description,omitempty"`
+	DefaultBranch string  `json:"defaultBranch,omitempty"`
 	Heads         int     `json:"heads"`
 	Branches      int     `json:"branches"`
 }
@@ -185,6 +189,14 @@ func (s *Store) ensureSchema() error {
 			schema = postgresSchema
 		}
 		_, s.initErr = s.db.Exec(schema)
+		if s.initErr != nil {
+			return
+		}
+		// Columns added after the first deploy; SQLite has no IF NOT EXISTS
+		// for columns, so a "duplicate column" error is the expected no-op.
+		for _, col := range []string{"name TEXT", "description TEXT", "default_branch TEXT"} {
+			_, _ = s.db.Exec("ALTER TABLE gib_heads ADD COLUMN " + col)
+		}
 	})
 	return s.initErr
 }
@@ -253,6 +265,13 @@ func nullStr(s string) any {
 	return s
 }
 
+func nullMeta(m *RepoMeta, pick func(*RepoMeta) string) any {
+	if m == nil {
+		return nil
+	}
+	return nullStr(pick(m))
+}
+
 func nullSpendScore(sp *Spend) any {
 	if sp == nil {
 		return nil
@@ -298,8 +317,8 @@ func (s *Store) UpsertHead(ctx context.Context, rec *HeadRecord) error {
 	query := fmt.Sprintf(`INSERT INTO gib_heads (%soutpoint, txid, vout, origin, branch, root, identity,
 		commit_sha, tree_sha, parents, author_name, author_email, author_time, author_tz,
 		committer_name, committer_email, committer_time, committer_tz, message,
-		prev_outpoint, spend_txid, next_outpoint, spend_score, score)
-		VALUES (%s%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+		prev_outpoint, spend_txid, next_outpoint, spend_score, score, name, description, default_branch)
+		VALUES (%s%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
 		ON CONFLICT %s DO UPDATE SET
 			origin = EXCLUDED.origin,
 			branch = EXCLUDED.branch,
@@ -321,7 +340,10 @@ func (s *Store) UpsertHead(ctx context.Context, rec *HeadRecord) error {
 			spend_txid = COALESCE(EXCLUDED.spend_txid, gib_heads.spend_txid),
 			next_outpoint = COALESCE(EXCLUDED.next_outpoint, gib_heads.next_outpoint),
 			spend_score = COALESCE(EXCLUDED.spend_score, gib_heads.spend_score),
-			score = CASE WHEN EXCLUDED.score < gib_heads.score THEN EXCLUDED.score ELSE gib_heads.score END`,
+			score = CASE WHEN EXCLUDED.score < gib_heads.score THEN EXCLUDED.score ELSE gib_heads.score END,
+			name = COALESCE(EXCLUDED.name, gib_heads.name),
+			description = COALESCE(EXCLUDED.description, gib_heads.description),
+			default_branch = COALESCE(EXCLUDED.default_branch, gib_heads.default_branch)`,
 		q.topicCols(), q.topicVals(),
 		q.ph(rec.Outpoint), q.ph(rec.Txid), q.ph(rec.Vout), q.ph(rec.Origin), q.ph(rec.Branch), q.ph(rec.Root), q.ph(rec.Identity),
 		q.ph(sha), q.ph(tree), q.ph(parents), q.ph(aName), q.ph(aEmail), q.ph(aTime), q.ph(aTZ),
@@ -331,6 +353,9 @@ func (s *Store) UpsertHead(ctx context.Context, rec *HeadRecord) error {
 		q.ph(nullSpendField(rec.Spend, func(sp *Spend) string { return sp.Next })),
 		q.ph(nullSpendScore(rec.Spend)),
 		q.ph(rec.Score),
+		q.ph(nullMeta(rec.Meta, func(m *RepoMeta) string { return m.Name })),
+		q.ph(nullMeta(rec.Meta, func(m *RepoMeta) string { return m.Description })),
+		q.ph(nullMeta(rec.Meta, func(m *RepoMeta) string { return m.DefaultBranch })),
 		q.conflictTarget())
 	if _, err := s.db.ExecContext(ctx, query, q.args...); err != nil {
 		return err
@@ -444,7 +469,8 @@ func prefixedHeadColumns(prefix string) string {
 const headColumns = `outpoint, txid, vout, origin, branch, root, identity,
 	commit_sha, tree_sha, parents, author_name, author_email, author_time, author_tz,
 	committer_name, committer_email, committer_time, committer_tz, message,
-	prev_outpoint, spend_txid, next_outpoint, spend_score, score`
+	prev_outpoint, spend_txid, next_outpoint, spend_score, score,
+	name, description, default_branch`
 
 type rowScanner interface {
 	Scan(dest ...any) error
@@ -460,12 +486,16 @@ func scanHead(r rowScanner) (*HeadRecord, error) {
 		message               sql.NullString
 		prev, spendTxid, next sql.NullString
 		spendScore            sql.NullFloat64
+		name, desc, branch    sql.NullString
 	)
 	if err := r.Scan(&rec.Outpoint, &rec.Txid, &rec.Vout, &rec.Origin, &rec.Branch, &rec.Root, &rec.Identity,
 		&sha, &tree, &parents, &aName, &aEmail, &aTime, &aTZ,
 		&cName, &cEmail, &cTime, &cTZ, &message,
-		&prev, &spendTxid, &next, &spendScore, &rec.Score); err != nil {
+		&prev, &spendTxid, &next, &spendScore, &rec.Score, &name, &desc, &branch); err != nil {
 		return nil, err
+	}
+	if name.Valid || desc.Valid || branch.Valid {
+		rec.Meta = &RepoMeta{Name: name.String, Description: desc.String, DefaultBranch: branch.String}
 	}
 	// Mined scores are block heights; mempool scores are unix timestamps
 	// (see types.HeightScore), which carry no height.
@@ -564,17 +594,21 @@ func (s *Store) ListHeads(ctx context.Context, f HeadFilter) ([]HeadRecord, erro
 const repoSelect = `SELECT h.origin,
 	(SELECT h2.identity FROM gib_heads h2 WHERE %sh2.origin = h.origin ORDER BY h2.score ASC, h2.vout ASC LIMIT 1) AS owner,
 	(SELECT h3.outpoint FROM gib_heads h3 WHERE %sh3.origin = h.origin ORDER BY h3.score ASC, h3.vout ASC LIMIT 1) AS first_outpoint,
+	(SELECT h5.name FROM gib_heads h5 WHERE %sh5.origin = h.origin AND h5.name IS NOT NULL ORDER BY h5.score DESC, h5.vout DESC LIMIT 1) AS name,
+	(SELECT h6.description FROM gib_heads h6 WHERE %sh6.origin = h.origin AND h6.description IS NOT NULL ORDER BY h6.score DESC, h6.vout DESC LIMIT 1) AS description,
+	(SELECT h7.default_branch FROM gib_heads h7 WHERE %sh7.origin = h.origin AND h7.default_branch IS NOT NULL ORDER BY h7.score DESC, h7.vout DESC LIMIT 1) AS default_branch,
 	MIN(h.score), MAX(h.score), COUNT(*), COUNT(DISTINCT h.branch)
 	FROM gib_heads h`
 
 func scanRepo(r rowScanner) (*RepoRecord, error) {
 	var rec RepoRecord
-	var owner, first sql.NullString
-	if err := r.Scan(&rec.Origin, &owner, &first, &rec.FirstScore, &rec.LastScore, &rec.Heads, &rec.Branches); err != nil {
+	var owner, first, name, desc, branch sql.NullString
+	if err := r.Scan(&rec.Origin, &owner, &first, &name, &desc, &branch, &rec.FirstScore, &rec.LastScore, &rec.Heads, &rec.Branches); err != nil {
 		return nil, err
 	}
 	rec.Owner = owner.String
 	rec.FirstOutpoint = first.String
+	rec.Name, rec.Description, rec.DefaultBranch = name.String, desc.String, branch.String
 	return &rec, nil
 }
 
@@ -584,7 +618,7 @@ func (s *Store) GetRepo(ctx context.Context, origin string) (*RepoRecord, error)
 		return nil, err
 	}
 	q := s.newQB()
-	query := fmt.Sprintf(repoSelect, q.topicWhere("h2"), q.topicWhere("h3")) +
+	query := fmt.Sprintf(repoSelect, q.topicWhere("h2"), q.topicWhere("h3"), q.topicWhere("h5"), q.topicWhere("h6"), q.topicWhere("h7")) +
 		fmt.Sprintf(` WHERE %sh.origin = %s GROUP BY h.origin`, q.topicWhere("h"), q.ph(origin))
 	return scanRepo(s.db.QueryRowContext(ctx, query, q.args...))
 }
@@ -596,7 +630,7 @@ func (s *Store) ListRepos(ctx context.Context, identity string, from float64, li
 		return nil, err
 	}
 	q := s.newQB()
-	query := fmt.Sprintf(repoSelect, q.topicWhere("h2"), q.topicWhere("h3"))
+	query := fmt.Sprintf(repoSelect, q.topicWhere("h2"), q.topicWhere("h3"), q.topicWhere("h5"), q.topicWhere("h6"), q.topicWhere("h7"))
 	where := []string{}
 	if tw := q.topicWhere("h"); tw != "" {
 		where = append(where, strings.TrimSuffix(tw, " AND "))

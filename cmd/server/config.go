@@ -1249,6 +1249,19 @@ func (c *Config) Initialize(ctx context.Context, logger *slog.Logger) (*Services
 			return nil, fmt.Errorf("failed to initialize gib: %w", err)
 		}
 		svc.Gib = gibSvc
+		if svc.Gib != nil {
+			// `.gib` enrichment reads through this server's own ORDFS content
+			// route so patch chains and binary manifests resolve exactly as
+			// they do for clients.
+			host := c.Server.Host
+			if host == "" || host == "0.0.0.0" || host == "::" {
+				host = "127.0.0.1"
+			}
+			svc.Gib.Lookup.SetMetaFetcher(gibpkg.HTTPMetaFetcher(fmt.Sprintf("http://%s:%d", host, c.Server.Port), nil))
+			if svc.Gib.Routes != nil {
+				svc.Gib.Routes.SetMetaFiller(svc.Gib.Lookup.FillMeta)
+			}
+		}
 		// OverlaySync drains q:gib (fed by the gib event bridge and the
 		// optional JungleBus subscriber) into tm_gib via processDirect.
 		if svc.Gib != nil && svc.Beef != nil {

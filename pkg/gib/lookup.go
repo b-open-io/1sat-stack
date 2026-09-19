@@ -21,6 +21,28 @@ import (
 type LookupService struct {
 	store  *Store
 	logger *slog.Logger
+	meta   MetaFetcher
+}
+
+// SetMetaFetcher enables `.gib` enrichment (name, description, default
+// branch) at admission and on demand.
+func (l *LookupService) SetMetaFetcher(f MetaFetcher) { l.meta = f }
+
+// FillMeta fetches and stores `.gib` for a head that has none. Returns true
+// when metadata was found.
+func (l *LookupService) FillMeta(ctx context.Context, rec *HeadRecord) bool {
+	if rec == nil || rec.Meta != nil {
+		return rec != nil && rec.Meta != nil
+	}
+	m := l.fetchMeta(ctx, rec.Root)
+	if m == nil {
+		return false
+	}
+	rec.Meta = m
+	if err := l.store.UpsertHead(ctx, rec); err != nil {
+		l.logger.Warn("gib: store .gib metadata", "outpoint", rec.Outpoint, "error", err)
+	}
+	return true
 }
 
 var _ engine.LookupService = (*LookupService)(nil)
@@ -83,6 +105,7 @@ func (l *LookupService) OutputAdmittedByTopic(ctx context.Context, payload *engi
 	score := types.ScoreFromTx(tx, txid)
 	op := &transaction.Outpoint{Txid: *txid, Index: payload.OutputIndex}
 	rec := recordFromHead(op, head, score)
+	rec.Meta = l.fetchMeta(ctx, head.Root)
 
 	spent := gibInputs(tx)
 	for _, in := range spent {
