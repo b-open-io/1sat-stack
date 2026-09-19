@@ -44,6 +44,7 @@ var Parsers = map[string]ParserFunc{
 	TagCosign:      ParseCosign,
 	TagShrug:       ParseShrug,
 	TagOPNS:        ParseOPNS,
+	TagGib:         ParseGib,
 	TagBitcom:      ParseBitcom,
 	TagB:           ParseB,
 	TagMAP:         ParseMAP,
@@ -65,6 +66,7 @@ var DefaultTags = []string{
 	TagOrdLock,     // Ordinal lock listings
 	TagCosign,      // Cosign protocol
 	TagOPNS,        // OpNS mine outputs
+	TagGib,         // gib commit heads (branch pointers)
 	TagBitcom,      // Base bitcom parser (must come before B, MAP, etc.)
 	TagB,           // B:// protocol
 	TagMAP,         // MAP protocol

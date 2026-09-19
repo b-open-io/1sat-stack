@@ -47,6 +47,7 @@ Each module's bridge is wired up in `cmd/server/config.go` `StartSubscribers()`:
 | BSocial | `map:type:*` | `q:bsocial` | Fixed queue |
 | OPNS | `opns:mine` | `q:opns` | Fixed queue |
 | OrdLock v2 | `ordlock2`, `spend:ordlock2` | `q:ordlock2` | Includes spend events; topic `tm_ordlock_v2` |
+| gib | `gib`, `spend:gib` | `q:gib` | Includes spend events; topic `tm_gib`; burns also recorded by `gib.SpendSync` |
 | BSV21 | `bsv21:*` | `q:tm_{tokenId}` | Routes to per-token queues, bypasses dispatcher |
 
 Events are published by `OutputStore.SaveTransaction()` (`pkg/txo/output_store.go:249-273`) after the indexer parses a transaction. Each parser attaches events to its `ParseResult.Events` field.
@@ -55,7 +56,7 @@ The event bridge converts outpoint strings to 36-byte binary members via `parseE
 
 ## Module Strategies
 
-### Simple Modules: BAP, BSocial, OPNS, OrdLock
+### Simple Modules: BAP, BSocial, OPNS, OrdLock, gib
 
 These use `overlay.OverlaySync` — the generic sync worker. Key settings:
 
@@ -98,6 +99,7 @@ Each parser emits events that the event bridge routes:
 | MAP | `pkg/parse/bitcom.go` | `map:type:{type}`, `map:subType:{subType}` |
 | Collection | `pkg/parse/collection.go` | `map:collectionId:{id}` from `subTypeData` (after MAP; `_N` normalized) |
 | OPNS | `pkg/parse/opns.go` | `opns:mine` |
+| gib | `pkg/parse/gib.go` | `gib`, `gib:{origin}` |
 
 Spend events are generated automatically by `SaveTransaction()` as `spend:{event}` for each event on a spent output.
 

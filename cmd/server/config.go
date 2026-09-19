@@ -35,6 +35,8 @@ import (
 	bsocialdocs "github.com/b-open-io/1sat-stack/pkg/bsocial/docs"
 	bsv21docs "github.com/b-open-io/1sat-stack/pkg/bsv21/docs"
 	chaintracksdocs "github.com/b-open-io/1sat-stack/pkg/chaintracks/docs"
+	gibpkg "github.com/b-open-io/1sat-stack/pkg/gib"
+	gibdocs "github.com/b-open-io/1sat-stack/pkg/gib/docs"
 	"github.com/b-open-io/1sat-stack/pkg/indexer"
 	"github.com/b-open-io/1sat-stack/pkg/jbsync"
 	"github.com/b-open-io/1sat-stack/pkg/logging"
@@ -126,6 +128,9 @@ type Config struct {
 
 	// OrdLock marketplace overlay
 	OrdLock ordlockpkg.Config `mapstructure:"ordlock"`
+
+	// gib on-chain git commit-head overlay
+	Gib gibpkg.Config `mapstructure:"gib"`
 
 	// MongoDB (shared by BAP and BSocial)
 	MongoDB MongoDBConfig `mapstructure:"mongodb"`
@@ -254,6 +259,7 @@ type Services struct {
 	BSocial        *bsocial.Services
 	OPNS           *opns.Services
 	OrdLock        *ordlockpkg.Services
+	Gib            *gibpkg.Services
 	Overlay        *overlay.Services
 	Spends         *spends.Services
 	ORDFS          *ordfs.Services
@@ -355,6 +361,7 @@ func (c *Config) SetDefaults(v *viper.Viper) {
 	c.BSocial.SetDefaults(v, "bsocial")
 	c.OPNS.SetDefaults(v, "opns")
 	c.OrdLock.SetDefaults(v, "ordlock")
+	c.Gib.SetDefaults(v, "gib")
 	c.Overlay.SetDefaults(v, "overlay")
 	c.Spends.SetDefaults(v, "spends")
 	c.ORDFS.SetDefaults(v, "ordfs")
@@ -699,6 +706,28 @@ func (c *Config) applyRuntimeConfig(rc *configpkg.RuntimeConfig) error {
 		}
 		if rc.OrdLockSyncBatchSize > 0 {
 			c.OrdLock.Sync.BatchSize = rc.OrdLockSyncBatchSize
+		}
+	}
+
+	// gib overlay
+	if rc.GibLogLevel != "" {
+		c.Gib.LogLevel = rc.GibLogLevel
+	}
+	if rc.GibEnabled {
+		c.Gib.Mode = gibpkg.ModeEmbedded
+		c.Overlay.Mode = "embedded"
+		if c.Gib.Sync == nil {
+			c.Gib.Sync = &overlay.OverlaySyncConfig{}
+		}
+		if rc.GibSyncSubID != "" {
+			c.Gib.Sync.SubscriptionID = rc.GibSyncSubID
+			c.Gib.Sync.Enabled = true
+		}
+		if rc.GibSyncConcurrency > 0 {
+			c.Gib.Sync.Concurrency = rc.GibSyncConcurrency
+		}
+		if rc.GibSyncBatchSize > 0 {
+			c.Gib.Sync.BatchSize = rc.GibSyncBatchSize
 		}
 	}
 
@@ -1211,6 +1240,30 @@ func (c *Config) Initialize(ctx context.Context, logger *slog.Logger) (*Services
 		logger.Info("ordlock initialized", "duration", time.Since(start).Round(time.Millisecond))
 	}
 
+	// Initialize gib
+	if c.Gib.Mode != "" && c.Gib.Mode != gibpkg.ModeDisabled && moduleDeps != nil {
+		start = time.Now()
+		gibLogger := logging.NewComponentLogger(logger, "gib", c.Gib.LogLevel)
+		gibSvc, err := c.Gib.Initialize(ctx, gibLogger, moduleDeps)
+		if err != nil {
+			return nil, fmt.Errorf("failed to initialize gib: %w", err)
+		}
+		svc.Gib = gibSvc
+		// OverlaySync drains q:gib (fed by the gib event bridge and the
+		// optional JungleBus subscriber) into tm_gib via processDirect.
+		if svc.Gib != nil && svc.Beef != nil {
+			syncCfg := c.Gib.Sync
+			if syncCfg == nil {
+				syncCfg = &overlay.OverlaySyncConfig{}
+			}
+			if syncCfg.QueueName == "" {
+				syncCfg.QueueName = gibpkg.QueueName
+			}
+			svc.Gib.Sync = overlay.NewOverlaySync(syncCfg, gibpkg.TopicName, svc.Store.Store, svc.Beef.Storage, svc.Gib.Engine, gibLogger)
+		}
+		logger.Info("gib initialized", "duration", time.Since(start).Round(time.Millisecond))
+	}
+
 	// Initialize Spends
 	if c.Spends.Mode != spends.ModeDisabled && c.Spends.Mode != "" && svc.Store != nil {
 		start = time.Now()
@@ -1297,6 +1350,9 @@ func (c *Config) Initialize(ctx context.Context, logger *slog.Logger) (*Services
 			if svc.OrdLock != nil && svc.OrdLock.LookupV2 != nil {
 				lookups[ordlockpkg.TopicNameV2] = svc.OrdLock.LookupV2
 			}
+			if svc.Gib != nil {
+				lookups[gibpkg.TopicName] = svc.Gib.Lookup
+			}
 			if svc.BSV21 != nil {
 				lookups["bsv21"] = svc.BSV21.Lookup
 				lookups["tm_bsv21"] = svc.BSV21.Lookup
@@ -1363,6 +1419,9 @@ func (c *Config) Initialize(ctx context.Context, logger *slog.Logger) (*Services
 		}
 		if svc.OrdLock != nil {
 			engines["ordlock"] = svc.OrdLock.Engine
+		}
+		if svc.Gib != nil {
+			engines["gib"] = svc.Gib.Engine
 		}
 		if svc.BSV21 != nil {
 			engines["bsv21"] = svc.BSV21.Engine
@@ -1511,6 +1570,18 @@ func (c *Config) Initialize(ctx context.Context, logger *slog.Logger) (*Services
 			}
 			svc.JBSubscribers = append(svc.JBSubscribers, sub)
 			logger.Info("OrdLock v2 JungleBus subscriber initialized", "queue", subCfg.QueueName, "from_block", subCfg.FromBlock)
+		}
+
+		// gib subscriber (if subscription_id configured). The JungleBus
+		// subscription should filter on gib commit-head outputs and inputs.
+		if svc.Gib != nil && c.Gib.Sync != nil && c.Gib.Sync.SubscriptionID != "" {
+			subCfg := c.Gib.Sync.SubscriberConfig()
+			sub, err := jbsync.NewSubscriber(subCfg, svc.Store.Store, svc.ConfigStore, svc.Chaintracks, svc.JungleBus, logger)
+			if err != nil {
+				return nil, fmt.Errorf("failed to create gib subscriber: %w", err)
+			}
+			svc.JBSubscribers = append(svc.JBSubscribers, sub)
+			logger.Info("gib JungleBus subscriber initialized", "queue", subCfg.QueueName, "from_block", subCfg.FromBlock)
 		}
 
 		// BAP subscriber (if subscription_id configured)
@@ -1676,6 +1747,16 @@ func (c *Config) RegisterRoutes(app *fiber.App, svc *Services) {
 			Spec:       ordlockdocs.Spec,
 			Mounts: moduleMounts(prefixOr(c.OrdLock.Routes.Prefix, "/market"), "/market/overlay",
 				registerFunc(svc.OrdLock.Routes), svc.OrdLock.OverlayRoutes, overlayBodyLimit),
+		})
+	}
+
+	if svc.Gib != nil {
+		prefix := prefixOr(c.Gib.Routes.Prefix, "/gib")
+		reg.Add(registrar.Registration{
+			Capability: "gib",
+			Spec:       gibdocs.Spec,
+			Mounts: moduleMounts(prefix, prefix+"/overlay",
+				registerFunc(svc.Gib.Routes), svc.Gib.OverlayRoutes, overlayBodyLimit),
 		})
 	}
 
@@ -1913,6 +1994,12 @@ func (svc *Services) Close() error {
 		}
 	}
 
+	if svc.Gib != nil {
+		if err := svc.Gib.Close(); err != nil {
+			errs = append(errs, fmt.Errorf("gib close: %w", err))
+		}
+	}
+
 	if svc.BSocial != nil {
 		if err := svc.BSocial.Close(); err != nil {
 			errs = append(errs, fmt.Errorf("bsocial close: %w", err))
@@ -2074,6 +2161,32 @@ func (svc *Services) StartSubscribers(ctx context.Context, logger *slog.Logger) 
 				logger.Error("failed to start OrdLock v2 spend sync", "error", err)
 			}
 		}
+		// gib: heads and their spends (pushes, deletes) flow through one
+		// ordered queue so a head is applied before the push that spends it.
+		if svc.Gib != nil && svc.Gib.Sync != nil {
+			bridge := overlay.NewEventBridge(&overlay.EventBridgeConfig{
+				PubSub:   svc.PubSub.PubSub,
+				Store:    svc.Store.Store,
+				Patterns: []string{gibpkg.QueueName, "spend:" + gibpkg.QueueName},
+				QueueFunc: func(ev pubsub.Event) string {
+					return string(txo.KeyQueue(gibpkg.QueueName))
+				},
+				Logger:       logger,
+				Engine:       svc.Gib.Engine,
+				BeefStorage:  svc.Beef.Storage,
+				SubmitBuffer: 0,
+			})
+			if err := bridge.Start(ctx); err != nil {
+				logger.Error("failed to start gib event bridge", "error", err)
+			}
+			// Branch deletions (burns) create no successor head, so nothing is
+			// admitted; record those spends straight from the indexer's spend
+			// events instead of relying on the engine having seen the head.
+			spendSync := gibpkg.NewSpendSync(svc.PubSub.PubSub, svc.Beef.Storage, svc.Gib.Lookup, logger)
+			if err := spendSync.Start(ctx); err != nil {
+				logger.Error("failed to start gib spend sync", "error", err)
+			}
+		}
 		if svc.OPNS != nil && svc.OPNS.Sync != nil {
 			bridge := overlay.NewEventBridge(&overlay.EventBridgeConfig{
 				PubSub:   svc.PubSub.PubSub,
@@ -2162,6 +2275,14 @@ func (svc *Services) StartSubscribers(ctx context.Context, logger *slog.Logger) 
 			}
 		}()
 		logger.Info("started OrdLock v2 overlay sync")
+	}
+	if svc.Gib != nil && svc.Gib.Sync != nil {
+		go func() {
+			if err := svc.Gib.Sync.Start(ctx); err != nil {
+				logger.Error("gib sync error", "error", err)
+			}
+		}()
+		logger.Info("started gib overlay sync")
 	}
 	if svc.OPNS != nil && svc.OPNS.Sync != nil {
 		go func() {
