@@ -21,7 +21,7 @@ head names.
 | Push | Spending a head and creating the next one for the same origin and branch. |
 | Delete | Spending a head with no successor (burn). |
 | Owner | The identity that minted the earliest head for an origin. Anyone may mint heads for any origin; the API groups by identity. |
-| `.gib` | Optional JSON file at the tree root (`name`, `description`, `defaultBranch`). Read through the gateway at admission and stored on the head; repositories report the latest head's values. Labels, not identifiers. |
+| `.gib` | Optional JSON file in the genesis tree (`name`, `description`, `defaultBranch`). Read from the origin outpoint through the gateway at admission and stored on the head; fixed for the repository's life (rename = new origin). Labels, not identifiers. |
 
 Decoding lives in `pkg/template/gib` (`Decode`, `ParseCommit`, `Fields`,
 `LockingScript`). Outpoint fields may be 36 raw bytes or `txid_vout` strings;

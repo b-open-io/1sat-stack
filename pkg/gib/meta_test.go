@@ -28,9 +28,9 @@ func TestParseRepoMeta(t *testing.T) {
 	}
 }
 
-// Admission enriches heads with .gib from the tree root; repositories
-// report the latest head's metadata; the repo route backfills heads that
-// were indexed before their .gib was fetchable.
+// Admission enriches heads with .gib from the ORIGIN tree (genesis), so a
+// later commit cannot rename a repository; the repo route backfills heads
+// that were indexed before their .gib was fetchable.
 func TestMetaEnrichment(t *testing.T) {
 	f := newFixture(t)
 	ctx := t.Context()
@@ -42,20 +42,16 @@ func TestMetaEnrichment(t *testing.T) {
 		return nil, errNoMeta
 	})
 
-	// Genesis has no .gib yet.
+	// The genesis tree names the repository; a later root claiming another
+	// name is ignored.
+	served[testOrigin] = `{"name":"gib-test","description":"desc","defaultBranch":"dev"}`
+	served[testRoot2] = `{"name":"renamed"}`
 	mint := f.mintTx(testOrigin, "main", testRoot1)
 	f.admit(0, mint)
 	head, _ := f.store.GetHead(ctx, op(mint, 0))
-	if head.Meta != nil {
-		t.Fatalf("unexpected meta %+v", head.Meta)
+	if head.Meta == nil || head.Meta.Name != "gib-test" {
+		t.Fatalf("genesis meta = %+v", head.Meta)
 	}
-	repo, _ := f.store.GetRepo(ctx, testOrigin)
-	if repo.Name != "" {
-		t.Fatalf("unexpected name %q", repo.Name)
-	}
-
-	// Second push adds .gib.
-	served[testRoot2] = `{"name":"gib-test","description":"desc","defaultBranch":"dev"}`
 	push := f.spendTx(mint, f.headScript(testOrigin, "main", testRoot2, testCommit))
 	f.admit(0, mint, push)
 	head, _ = f.store.GetHead(ctx, op(push, 0))
@@ -74,7 +70,7 @@ func TestMetaEnrichment(t *testing.T) {
 	// Backfill: a repo whose only head predates enrichment.
 	other := f.mintTx(testOrigin2, "main", testRoot1)
 	f.admit(0, other)
-	served[testRoot1] = `{"name":"late"}`
+	served[testOrigin2] = `{"name":"late"}`
 	routes := NewRoutes(f.store, nil)
 	routes.SetMetaFiller(f.svc.FillMeta)
 	app := fiber.New()

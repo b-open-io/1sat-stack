@@ -11,8 +11,10 @@ import (
 	"time"
 )
 
-// RepoMeta is the committed `.gib` file at a tree root: display metadata
-// and the default branch. Labels, not identifiers; the origin stays the id.
+// RepoMeta is the committed `.gib` file in the repository's GENESIS tree:
+// display metadata and the default branch. It is read from the origin
+// outpoint only, so it is fixed for the life of the repository (renaming
+// means a new origin); edits in later commits are ignored by indexers.
 type RepoMeta struct {
 	Name          string `json:"name,omitempty"`
 	Description   string `json:"description,omitempty"`
@@ -63,7 +65,8 @@ func clip(s string, n int) string {
 }
 
 // MetaFetcher returns the raw `.gib` bytes for a tree root (txid_vout), or
-// an error when the tree has none or it cannot be read yet.
+// an error when the tree has none or it cannot be read yet. Callers pass
+// the repository origin, never a later root.
 type MetaFetcher func(ctx context.Context, root string) ([]byte, error)
 
 // HTTPMetaFetcher reads `.gib` through an ORDFS gateway's content route,

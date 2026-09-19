@@ -34,7 +34,7 @@ func (l *LookupService) FillMeta(ctx context.Context, rec *HeadRecord) bool {
 	if rec == nil || rec.Meta != nil {
 		return rec != nil && rec.Meta != nil
 	}
-	m := l.fetchMeta(ctx, rec.Root)
+	m := l.fetchMeta(ctx, rec.Origin)
 	if m == nil {
 		return false
 	}
@@ -105,7 +105,7 @@ func (l *LookupService) OutputAdmittedByTopic(ctx context.Context, payload *engi
 	score := types.ScoreFromTx(tx, txid)
 	op := &transaction.Outpoint{Txid: *txid, Index: payload.OutputIndex}
 	rec := recordFromHead(op, head, score)
-	rec.Meta = l.fetchMeta(ctx, head.Root)
+	rec.Meta = l.fetchMeta(ctx, head.Origin)
 
 	spent := gibInputs(tx)
 	for _, in := range spent {
