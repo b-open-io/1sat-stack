@@ -58,7 +58,7 @@ func TestMetaEnrichment(t *testing.T) {
 	if head.Meta == nil || head.Meta.Name != "gib-test" || head.Meta.DefaultBranch != "dev" {
 		t.Fatalf("meta = %+v", head.Meta)
 	}
-	repo, _ = f.store.GetRepo(ctx, testOrigin)
+	repo, _ := f.store.GetRepo(ctx, testOrigin)
 	if repo.Name != "gib-test" || repo.Description != "desc" || repo.DefaultBranch != "dev" {
 		t.Fatalf("repo = %+v", repo)
 	}
