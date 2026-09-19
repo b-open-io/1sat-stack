@@ -55,6 +55,13 @@ CREATE INDEX IF NOT EXISTS idx_gib_heads_identity ON gib_heads(identity, score);
 CREATE INDEX IF NOT EXISTS idx_gib_heads_score ON gib_heads(score);
 CREATE INDEX IF NOT EXISTS idx_gib_heads_txid ON gib_heads(txid);
 CREATE INDEX IF NOT EXISTS idx_gib_heads_spend ON gib_heads(spend_txid);
+CREATE INDEX IF NOT EXISTS idx_gib_heads_sha ON gib_heads(commit_sha);
+CREATE TABLE IF NOT EXISTS gib_commit_parents (
+    outpoint        TEXT NOT NULL,
+    parent          TEXT NOT NULL,
+    PRIMARY KEY (outpoint, parent)
+);
+CREATE INDEX IF NOT EXISTS idx_gib_parents_parent ON gib_commit_parents(parent);
 `
 
 const postgresSchema = `
@@ -91,6 +98,14 @@ CREATE INDEX IF NOT EXISTS idx_gib_heads_identity ON gib_heads(topic_id, identit
 CREATE INDEX IF NOT EXISTS idx_gib_heads_score ON gib_heads(topic_id, score);
 CREATE INDEX IF NOT EXISTS idx_gib_heads_txid ON gib_heads(topic_id, txid);
 CREATE INDEX IF NOT EXISTS idx_gib_heads_spend ON gib_heads(topic_id, spend_txid);
+CREATE INDEX IF NOT EXISTS idx_gib_heads_sha ON gib_heads(topic_id, commit_sha);
+CREATE TABLE IF NOT EXISTS gib_commit_parents (
+    topic_id        INTEGER NOT NULL,
+    outpoint        TEXT NOT NULL,
+    parent          TEXT NOT NULL,
+    PRIMARY KEY (topic_id, outpoint, parent)
+);
+CREATE INDEX IF NOT EXISTS idx_gib_parents_parent ON gib_commit_parents(topic_id, parent);
 `
 
 // Spend records how a head was spent: the spending txid and, for a push,
@@ -136,10 +151,13 @@ type HeadFilter struct {
 	Origin   string
 	Branch   string
 	Identity string
-	Unspent  bool    // only current heads
-	From     float64 // paging cursor on score; 0 = start
-	Limit    int
-	Rev      bool // newest first
+	// CommitSha selects heads publishing this git commit (forks and
+	// multi-branch pushes share one sha).
+	CommitSha string
+	Unspent   bool    // only current heads
+	From      float64 // paging cursor on score; 0 = start
+	Limit     int
+	Rev       bool // newest first
 }
 
 // Store persists commit heads in the module's topic database.
@@ -314,8 +332,23 @@ func (s *Store) UpsertHead(ctx context.Context, rec *HeadRecord) error {
 		q.ph(nullSpendScore(rec.Spend)),
 		q.ph(rec.Score),
 		q.conflictTarget())
-	_, err := s.db.ExecContext(ctx, query, q.args...)
-	return err
+	if _, err := s.db.ExecContext(ctx, query, q.args...); err != nil {
+		return err
+	}
+	if rec.Commit == nil {
+		return nil
+	}
+	// Parent edges make the DAG walkable across repositories: a fork's
+	// first commit names parents that live on another origin's heads.
+	for _, parent := range rec.Commit.Parents {
+		pq := s.newQB()
+		ins := fmt.Sprintf(`INSERT INTO gib_commit_parents (%soutpoint, parent) VALUES (%s%s, %s) ON CONFLICT DO NOTHING`,
+			pq.topicCols(), pq.topicVals(), pq.ph(rec.Outpoint), pq.ph(parent))
+		if _, err := s.db.ExecContext(ctx, ins, pq.args...); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // MarkSpent records the spend of a head. It returns the number of rows
@@ -364,8 +397,48 @@ func (s *Store) DeleteHead(ctx context.Context, outpoint string) error {
 	}
 	q := s.newQB()
 	query := fmt.Sprintf(`DELETE FROM gib_heads WHERE %soutpoint = %s`, q.topicWhere(""), q.ph(outpoint))
-	_, err := s.db.ExecContext(ctx, query, q.args...)
+	if _, err := s.db.ExecContext(ctx, query, q.args...); err != nil {
+		return err
+	}
+	pq := s.newQB()
+	del := fmt.Sprintf(`DELETE FROM gib_commit_parents WHERE %soutpoint = %s`, pq.topicWhere(""), pq.ph(outpoint))
+	_, err := s.db.ExecContext(ctx, del, pq.args...)
 	return err
+}
+
+// ChildrenOfCommit returns heads whose commit names sha as a parent: the
+// next step along every branch, fork, or repository that built on it.
+func (s *Store) ChildrenOfCommit(ctx context.Context, sha string, limit int) ([]HeadRecord, error) {
+	if err := s.ensureSchema(); err != nil {
+		return nil, err
+	}
+	q := s.newQB()
+	query := fmt.Sprintf(`SELECT %s FROM gib_heads h
+		WHERE %sh.outpoint IN (SELECT p.outpoint FROM gib_commit_parents p WHERE %sp.parent = %s)
+		ORDER BY h.score ASC, h.vout ASC LIMIT %s`,
+		prefixedHeadColumns("h."), q.topicWhere("h"), q.topicWhere("p"), q.ph(sha), q.ph(clampLimit(limit)))
+	rows, err := s.db.QueryContext(ctx, query, q.args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := []HeadRecord{}
+	for rows.Next() {
+		rec, err := scanHead(rows)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, *rec)
+	}
+	return out, rows.Err()
+}
+
+func prefixedHeadColumns(prefix string) string {
+	cols := strings.Split(headColumns, ",")
+	for i, c := range cols {
+		cols[i] = prefix + strings.TrimSpace(c)
+	}
+	return strings.Join(cols, ", ")
 }
 
 const headColumns = `outpoint, txid, vout, origin, branch, root, identity,
@@ -447,6 +520,9 @@ func (s *Store) ListHeads(ctx context.Context, f HeadFilter) ([]HeadRecord, erro
 	}
 	if f.Identity != "" {
 		where = append(where, "identity = "+q.ph(f.Identity))
+	}
+	if f.CommitSha != "" {
+		where = append(where, "commit_sha = "+q.ph(f.CommitSha))
 	}
 	if f.Unspent {
 		where = append(where, "spend_txid IS NULL")

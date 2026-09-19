@@ -40,6 +40,7 @@ type Query struct {
 	Origin       string `json:"origin,omitempty"`
 	Branch       string `json:"branch,omitempty"`
 	Identity     string `json:"identity,omitempty"`
+	Sha          string `json:"sha,omitempty"`
 	IncludeSpent bool   `json:"includeSpent,omitempty"`
 	Limit        int    `json:"limit,omitempty"`
 	Skip         int    `json:"skip,omitempty"`
@@ -232,12 +233,13 @@ func (l *LookupService) Lookup(ctx context.Context, question *lookup.LookupQuest
 		limit := clampLimit(q.Limit)
 		skip := max(q.Skip, 0)
 		all, err := l.store.ListHeads(ctx, HeadFilter{
-			Origin:   q.Origin,
-			Branch:   q.Branch,
-			Identity: q.Identity,
-			Unspent:  !q.IncludeSpent,
-			Limit:    min(skip+limit, MaxLimit),
-			Rev:      true,
+			Origin:    q.Origin,
+			Branch:    q.Branch,
+			Identity:  q.Identity,
+			CommitSha: q.Sha,
+			Unspent:   !q.IncludeSpent,
+			Limit:     min(skip+limit, MaxLimit),
+			Rev:       true,
 		})
 		if err != nil {
 			return nil, err

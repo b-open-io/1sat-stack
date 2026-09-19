@@ -52,8 +52,11 @@ queue for historical sync.
 Per-topic table `gib_heads` (SQLite or Postgres via the overlay storage
 factory): one row per head with decoded fields, the parsed commit (sha, tree,
 parents, author, committer, message), `prev_outpoint`, and spend info
-(`spend_txid`, `next_outpoint`, `spend_score`). Scores follow
-`types.HeightScore`; block-height updates restamp rows.
+(`spend_txid`, `next_outpoint`, `spend_score`), plus `gib_commit_parents`
+(head outpoint → parent sha) so the commit DAG is walkable across
+repositories: a fork republishes its forked commit verbatim, and its parents
+resolve through this index to whichever origin's heads hold them. Scores
+follow `types.HeightScore`; block-height updates restamp rows.
 
 ## Configuration
 
@@ -94,6 +97,10 @@ curl https://api.1sat.app/1sat/gib/repo/<origin>/branch/feature/x
 
 # One head
 curl https://api.1sat.app/1sat/gib/head/<outpoint>
+
+# A git commit as a DAG node: every head publishing it (any repo, any fork)
+# and every head whose commit names it as a parent
+curl https://api.1sat.app/1sat/gib/commit/<git-sha>
 
 # BRC-24 lookup: current heads for an origin, hydrated to output-list BEEF
 curl -X POST https://api.1sat.app/1sat/gib/overlay/lookup \

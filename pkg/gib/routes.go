@@ -5,7 +5,9 @@ import (
 	"encoding/hex"
 	"errors"
 	"log/slog"
+	"regexp"
 	"strconv"
+	"strings"
 
 	gibtpl "github.com/b-open-io/1sat-stack/pkg/template/gib"
 	"github.com/bsv-blockchain/go-sdk/transaction"
@@ -36,12 +38,22 @@ func (r *Routes) Register(router fiber.Router) {
 	router.Get("/identity/:identity/repos", r.IdentityRepos)
 	router.Get("/heads", r.ListHeads)
 	router.Get("/head/:outpoint", r.GetHead)
+	router.Get("/commit/:sha", r.GetCommit)
 }
 
 // RepoResponse is a repository summary with its current branch heads.
 type RepoResponse struct {
 	RepoRecord
 	HeadsList []HeadRecord `json:"branchHeads"`
+}
+
+// CommitResponse is one git commit as a node in the DAG: every head that
+// publishes it (across branches, repositories, and forks) and every head whose
+// commit names it as a parent.
+type CommitResponse struct {
+	Sha      string       `json:"sha"`
+	Heads    []HeadRecord `json:"heads"`
+	Children []HeadRecord `json:"children"`
 }
 
 // BranchResponse is a branch's current head plus its push history.
@@ -268,6 +280,7 @@ func (r *Routes) BranchHistory(c *fiber.Ctx) error {
 // @Produce json
 // @Param origin query string false "Origin (txid_vout or txid.vout)"
 // @Param branch query string false "Branch name"
+// @Param sha query string false "Git commit object id"
 // @Param identity query string false "Identity public key (hex)"
 // @Param unspent query bool false "Only current heads" default(false)
 // @Param limit query int false "Results limit" default(20)
@@ -282,7 +295,7 @@ func (r *Routes) ListHeads(c *fiber.Ctx) error {
 	if err != nil {
 		return badRequest(c, err.Error())
 	}
-	f := HeadFilter{Branch: c.Query("branch"), From: p.from, Limit: p.limit, Rev: p.rev, Unspent: c.QueryBool("unspent", false)}
+	f := HeadFilter{Branch: c.Query("branch"), CommitSha: strings.ToLower(c.Query("sha")), From: p.from, Limit: p.limit, Rev: p.rev, Unspent: c.QueryBool("unspent", false)}
 	if origin := c.Query("origin"); origin != "" {
 		if f.Origin, err = parseOutpointParam(origin); err != nil {
 			return badRequest(c, "invalid origin")
@@ -323,4 +336,35 @@ func (r *Routes) GetHead(c *fiber.Ctx) error {
 		return r.internalError(c, "failed to get head", err)
 	}
 	return c.JSON(head)
+}
+
+var shaRe = regexp.MustCompile(`^([0-9a-f]{40}|[0-9a-f]{64})$`)
+
+// GetCommit returns a git commit's DAG neighborhood.
+// @Summary Get commit by git sha
+// @Tags gib
+// @Produce json
+// @Param sha path string true "Git commit object id (40 or 64 hex)"
+// @Success 200 {object} CommitResponse
+// @Failure 400 {object} object{message=string}
+// @Failure 404 {object} object{message=string}
+// @Failure 500 {object} object{message=string}
+// @Router /commit/{sha} [get]
+func (r *Routes) GetCommit(c *fiber.Ctx) error {
+	sha := strings.ToLower(c.Params("sha"))
+	if !shaRe.MatchString(sha) {
+		return badRequest(c, "sha must be a 40 or 64 character hex git object id")
+	}
+	heads, err := r.store.ListHeads(c.Context(), HeadFilter{CommitSha: sha, Limit: MaxLimit, Rev: true})
+	if err != nil {
+		return r.internalError(c, "failed to list heads for commit", err)
+	}
+	children, err := r.store.ChildrenOfCommit(c.Context(), sha, MaxLimit)
+	if err != nil {
+		return r.internalError(c, "failed to list commit children", err)
+	}
+	if len(heads) == 0 && len(children) == 0 {
+		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"message": "commit not found"})
+	}
+	return c.JSON(CommitResponse{Sha: sha, Heads: heads, Children: children})
 }

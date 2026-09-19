@@ -4,6 +4,67 @@
         "contact": {}
     },
     "paths": {
+        "/commit/{sha}": {
+            "get": {
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "gib"
+                ],
+                "summary": "Get commit by git sha",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Git commit object id (40 or 64 hex)",
+                        "name": "sha",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/gib.CommitResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "type": "object",
+                            "properties": {
+                                "message": {
+                                    "type": "string"
+                                }
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "type": "object",
+                            "properties": {
+                                "message": {
+                                    "type": "string"
+                                }
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "type": "object",
+                            "properties": {
+                                "message": {
+                                    "type": "string"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
         "/head/{outpoint}": {
             "get": {
                 "produces": [
@@ -85,6 +146,12 @@
                         "type": "string",
                         "description": "Branch name",
                         "name": "branch",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Git commit object id",
+                        "name": "sha",
                         "in": "query"
                     },
                     {
@@ -548,6 +615,26 @@
                     "type": "string"
                 },
                 "tree": {
+                    "type": "string"
+                }
+            }
+        },
+        "gib.CommitResponse": {
+            "type": "object",
+            "properties": {
+                "children": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/gib.HeadRecord"
+                    }
+                },
+                "heads": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/gib.HeadRecord"
+                    }
+                },
+                "sha": {
                     "type": "string"
                 }
             }
