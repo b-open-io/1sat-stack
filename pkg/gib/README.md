@@ -59,9 +59,9 @@ the transactions its trees cite, without the host's REST root.
 | --- | --- | --- |
 | `heads` (or empty) | Heads by outpoint, repository origin, branch, identity, or commit sha | Formulas — see the caveat below |
 | `headsSince` | One branch's heads from a point forward, oldest first | Output list, one entry per head |
-| `txs` | Whole transactions by txid | Output list, one entry per transaction |
+| `txs` | Whole transactions by txid | Freeform: one merged BEEF |
 
-Both sync answers build their output list **in the lookup service**, not as
+`headsSince` builds its output list **in the lookup service**, not as
 formulas. `engine.hydrateOneFormula` loads each formula with
 `Storage.FindOutput(ctx, outpoint, nil, nil, true)` — a nil topic — and this
 stack's `EngineAdapter.FindOutput` rejects a nil topic with `topic is
@@ -69,10 +69,15 @@ required`, so a formula answer fails before it reaches a client. That is
 still true; `TestFormulaHydrationStillRejectsNilTopic` pins it, and the
 `heads` query above is still subject to it.
 
-Errors are reported in the answer's `result`, not as lookup errors: the
-overlay HTTP layer collapses every lookup error to an opaque 500, which a
-client cannot tell from any other failure. `result` arrives as a
-JSON-encoded string, per the BRC-24 response shape.
+`txs` is freeform rather than an output list because it asks for
+transactions, not outputs: an output list would have to give every entry a
+meaningless output index.
+
+Conditions a client must act on are reported in the answer's `result`, not
+as lookup errors: the overlay HTTP layer collapses every lookup error to an
+opaque 500, which a client cannot tell from any other failure. A lookup error
+is reserved for malformed input. `result` arrives as a JSON-encoded string,
+per the BRC-24 response shape.
 
 **`headsSince`** — `since` is exclusive, so a client resumes by passing the
 last outpoint it received; empty means from the branch's first head.
@@ -97,21 +102,26 @@ stopped at an indexed head whose transaction is no longer in the BEEF store,
 so the client repairs with `gib recover` rather than paging the same gap
 forever.
 
-**`txs`** — deduplicated at the txid, because that is the unit of exchange: a
-push writes many outputs in one transaction. At most **50** txids per
-request — every entry carries a whole transaction's BEEF, far heavier than an
-outpoint — and a request over the cap is rejected rather than truncated, so a
-short page never looks like a complete one. Transactions the overlay does not
-hold are named in `result.missing`; they do not fail the request. Each
-entry's `outputIndex` is `0` and carries no meaning: the entry is a whole
-transaction, not one of its outputs.
+**`txs`** — one merged BEEF holding every requested transaction the overlay
+holds, with their proofs. Merging carries shared ancestry once instead of
+repeating it per transaction. Requests are deduplicated at the txid, because
+that is the unit of exchange: a push writes many outputs in one transaction.
+At most **50** txids per request — the answer carries whole transactions, far
+heavier than outpoints — and a request over the cap is rejected rather than
+truncated, so a short answer never looks like a complete one.
 
 ```jsonc
 // query
 {"type":"txs","txids":["<txid>","<txid>"]}
-// result, beside outputs[] — txids is index-aligned with outputs
-{"query":"txs","txids":["<txid>"],"missing":["<txid>"]}
+// result (freeform); beef is BEEF V2, base64 in JSON
+{"query":"txs","beef":"<base64 BEEF V2>"}
 ```
+
+There is no list of what came back and what did not: the client parses the
+BEEF and sees for itself which txids are in it. Holding none of them is an
+empty BEEF V2 — six bytes, zero transactions — which parses normally. A
+failure is an HTTP error with no `result` at all, never an empty BEEF, so the
+two are never confused.
 
 The REST routes below are unchanged. `/1sat/beef/{txid}` stays the repair
 path for `gib recover`, which legitimately pulls raw transactions from an
@@ -179,7 +189,8 @@ curl -X POST https://api.1sat.app/1sat/gib/overlay/lookup \
   -d '{"service":"ls_gib","query":{"type":"headsSince","origin":"<origin>",
        "branch":"main","since":"<outpoint>"}}'
 
-# BRC-24 sync: whole transactions by txid (at most 50 per request)
+# BRC-24 sync: whole transactions by txid, returned as one merged BEEF
+# (at most 50 per request)
 curl -X POST https://api.1sat.app/1sat/gib/overlay/lookup \
   -H 'content-type: application/json' \
   -d '{"service":"ls_gib","query":{"type":"txs","txids":["<txid>"]}}'

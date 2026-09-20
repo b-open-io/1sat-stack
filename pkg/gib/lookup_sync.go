@@ -17,11 +17,13 @@ import (
 // declares in its BRC-180 manifest can follow a branch and fetch the
 // transactions its trees cite, without the host's REST root.
 //
-// Both answers are built here rather than returned as formulas. The engine
-// hydrates a formula with Storage.FindOutput(ctx, outpoint, nil, nil, true)
-// — a nil topic — and this stack's EngineAdapter.FindOutput rejects that
-// with "FindOutput: topic is required", so a formula answer fails in
-// production. See TestFormulaHydrationStillRejectsNilTopic.
+// headsSince answers with an output list, built here rather than returned as
+// formulas: the engine hydrates a formula with
+// Storage.FindOutput(ctx, outpoint, nil, nil, true) — a nil topic — and this
+// stack's EngineAdapter.FindOutput rejects that with "FindOutput: topic is
+// required", so a formula answer fails in production. See
+// TestFormulaHydrationStillRejectsNilTopic. txs answers freeform with one
+// merged BEEF, because it asks for transactions rather than outputs.
 const (
 	// QueryTypeHeads is the original head query (outpoint / repository
 	// origin / branch / identity / sha). It is also the empty default, so
@@ -29,17 +31,18 @@ const (
 	QueryTypeHeads = "heads"
 	// QueryTypeHeadsSince asks for one branch's heads from a point forward.
 	QueryTypeHeadsSince = "headsSince"
-	// QueryTypeTxs asks for whole transactions by txid.
+	// QueryTypeTxs asks for whole transactions by txid. Its answer is
+	// freeform — one merged BEEF — not an output list.
 	QueryTypeTxs = "txs"
 
 	// MaxHeadsSince caps one headsSince page. A client resumes by setting
 	// `since` to the last outpoint it received.
 	MaxHeadsSince = MaxLimit
-	// MaxTxids caps one txs request. Every entry carries a whole
-	// transaction's BEEF, which is far heavier than an outpoint, so this is
-	// deliberately lower than MaxLimit. A push writes many outputs in one
-	// transaction, so 50 transactions cover a large tree fetch; over the cap
-	// the request is rejected rather than silently truncated.
+	// MaxTxids caps one txs request. The answer carries whole transactions,
+	// far heavier than an outpoint, so this is deliberately lower than
+	// MaxLimit. A push writes many outputs in one transaction, so 50
+	// transactions cover a large tree fetch; over the cap the request is
+	// rejected rather than silently truncated.
 	MaxTxids = 50
 
 	// CodeUnknownSince marks a `since` outpoint this overlay does not hold
@@ -108,14 +111,22 @@ type TxsQuery struct {
 	Txids []string `json:"txids"`
 }
 
-// TxsResult is the `result` beside a txs output list. Txids is
-// index-aligned with the outputs; Missing names the requested transactions
-// this overlay does not hold. Each output's outputIndex is 0 and carries no
-// meaning: the entry is a whole transaction, not one of its outputs.
+// TxsResult is the freeform answer to a txs query: one BEEF carrying every
+// requested transaction this overlay holds, with their proofs. The answer is
+// freeform, not an output list, because the request is for transactions and
+// not for outputs — an output list would have to give each entry a
+// meaningless output index. Merging also carries shared ancestry once
+// instead of repeating it per transaction.
+//
+// Transactions the overlay does not hold are simply absent: the client
+// parses the BEEF and sees for itself what came back. Holding none of them
+// is an empty BEEF V2 (six bytes, zero transactions), which is a valid
+// answer and parses normally — a failure is an HTTP error with no result at
+// all, never an empty BEEF.
 type TxsResult struct {
-	Query   string   `json:"query"`
-	Txids   []string `json:"txids"`
-	Missing []string `json:"missing,omitempty"`
+	Query string `json:"query"`
+	// Beef is BEEF V2, base64 in JSON.
+	Beef []byte `json:"beef"`
 }
 
 // queryType peeks at the discriminator. A malformed body is left to the
@@ -228,7 +239,8 @@ func (l *LookupService) answerHeadsSince(ctx context.Context, raw json.RawMessag
 	return &lookup.LookupAnswer{Type: lookup.AnswerTypeOutputList, Outputs: outputs, Result: result}, nil
 }
 
-// answerTxs returns whole transactions, deduplicated at the txid.
+// answerTxs returns whole transactions, deduplicated at the txid, as one
+// merged BEEF.
 func (l *LookupService) answerTxs(ctx context.Context, raw json.RawMessage) (*lookup.LookupAnswer, error) {
 	var q TxsQuery
 	if err := json.Unmarshal(raw, &q); err != nil {
@@ -240,8 +252,8 @@ func (l *LookupService) answerTxs(ctx context.Context, raw json.RawMessage) (*lo
 	if len(q.Txids) == 0 {
 		return nil, fmt.Errorf("gib: txs requires at least one txid")
 	}
-	// Reject rather than truncate: a truncated page looks like a complete
-	// one, and the client would treat the dropped transactions as missing.
+	// Reject rather than truncate: a truncated answer looks like a complete
+	// one, and the client would take the dropped transactions for absent.
 	if len(q.Txids) > MaxTxids {
 		return nil, fmt.Errorf("gib: %d txids requested, at most %d per request", len(q.Txids), MaxTxids)
 	}
@@ -262,22 +274,40 @@ func (l *LookupService) answerTxs(ctx context.Context, raw json.RawMessage) (*lo
 		hashes = append(hashes, txid)
 	}
 
-	fetch := l.newBeefFetcher()
-	result := &TxsResult{Query: QueryTypeTxs, Txids: []string{}}
-	outputs := make([]*lookup.OutputListItem, 0, len(hashes))
+	merged := transaction.NewBeef()
 	for _, txid := range hashes {
-		beefBytes := fetch(ctx, txid)
-		if beefBytes == nil {
-			// Named, not fatal: the client asks elsewhere (or runs
-			// `gib recover`) for what this overlay never saw.
-			result.Missing = append(result.Missing, txid.String())
+		bf, err := l.beef.LoadBeef(ctx, txid)
+		if err != nil || bf == nil {
+			// Absent, not fatal: the client sees the gap in the BEEF and
+			// asks elsewhere (or runs `gib recover`) for what this overlay
+			// never saw.
+			l.logger.Debug("gib: BEEF not available", "txid", txid.String(), "error", err)
 			continue
 		}
-		outputs = append(outputs, &lookup.OutputListItem{Beef: beefBytes, OutputIndex: 0})
-		result.Txids = append(result.Txids, txid.String())
+		// Merge through bytes. The BEEF store may hand the same *Beef to two
+		// concurrent requests, and merging splices the source's BUMP and
+		// transaction pointers into the destination, where a later merge can
+		// mutate them. A fresh parse keeps this answer's BEEF its own.
+		individual, err := bf.Bytes()
+		if err == nil {
+			err = merged.MergeBeefBytes(individual)
+		}
+		if err != nil {
+			// A transaction that will not serialize or merge is one this
+			// overlay cannot hand over; treat it as absent rather than
+			// failing the whole request.
+			l.logger.Warn("gib: merge BEEF", "txid", txid.String(), "error", err)
+		}
 	}
 
-	return &lookup.LookupAnswer{Type: lookup.AnswerTypeOutputList, Outputs: outputs, Result: result}, nil
+	beefBytes, err := merged.Bytes()
+	if err != nil {
+		return nil, fmt.Errorf("gib: serialize merged BEEF: %w", err)
+	}
+	return &lookup.LookupAnswer{
+		Type:   lookup.AnswerTypeFreeform,
+		Result: &TxsResult{Query: QueryTypeTxs, Beef: beefBytes},
+	}, nil
 }
 
 // newBeefFetcher returns a per-request atomic-BEEF loader that reads each

@@ -1,6 +1,7 @@
 package gib
 
 import (
+	"context"
 	"encoding/hex"
 	"encoding/json"
 	"os"
@@ -12,6 +13,7 @@ import (
 	"github.com/b-open-io/1sat-stack/pkg/overlay"
 	overlaystorage "github.com/b-open-io/1sat-stack/pkg/overlay/storage"
 	gibtpl "github.com/b-open-io/1sat-stack/pkg/template/gib"
+	"github.com/bsv-blockchain/go-sdk/chainhash"
 	overlaylookup "github.com/bsv-blockchain/go-sdk/overlay/lookup"
 	ec "github.com/bsv-blockchain/go-sdk/primitives/ec"
 	"github.com/bsv-blockchain/go-sdk/script"
@@ -37,8 +39,9 @@ type syncEnv struct {
 
 func hexPub(k *ec.PublicKey) string { return hex.EncodeToString(k.Compressed()) }
 
-// ask puts a question to the engine, the way a BRC-24 client does.
-func (e *syncEnv) ask(query string) *overlaylookup.LookupAnswer {
+// ask puts a question to the engine, the way a BRC-24 client does, and
+// checks the answer arrived in the shape that question promises.
+func (e *syncEnv) ask(query string, want overlaylookup.AnswerType) *overlaylookup.LookupAnswer {
 	e.t.Helper()
 	ans, err := e.svc.Engine.Lookup(e.t.Context(), &overlaylookup.LookupQuestion{
 		Service: LookupName,
@@ -47,17 +50,42 @@ func (e *syncEnv) ask(query string) *overlaylookup.LookupAnswer {
 	if err != nil {
 		e.t.Fatalf("lookup %s: %v", query, err)
 	}
-	if ans.Type != overlaylookup.AnswerTypeOutputList {
-		e.t.Fatalf("answer type = %q, want output-list", ans.Type)
+	if ans.Type != want {
+		e.t.Fatalf("answer type = %q, want %q", ans.Type, want)
 	}
 	return ans
+}
+
+// txs asks a txs question and returns the txids the merged BEEF carries.
+// Reading the BEEF back is the whole client contract: there is no list of
+// what came and what did not, only the BEEF.
+func (e *syncEnv) txs(query string) map[string]bool {
+	e.t.Helper()
+	ans := e.ask(query, overlaylookup.AnswerTypeFreeform)
+	if len(ans.Outputs) != 0 {
+		e.t.Fatalf("freeform answer carries %d outputs", len(ans.Outputs))
+	}
+	var res TxsResult
+	decodeResult(e.t, ans.Result, &res)
+	if res.Query != QueryTypeTxs {
+		e.t.Fatalf("result query = %q", res.Query)
+	}
+	bf, err := transaction.NewBeefFromBytes(res.Beef)
+	if err != nil {
+		e.t.Fatalf("parse merged BEEF: %v", err)
+	}
+	got := map[string]bool{}
+	for txid := range bf.Transactions {
+		got[txid.String()] = true
+	}
+	return got
 }
 
 // headsSince decodes the answer into the outpoints it carries plus its
 // result envelope, checking the BEEF really is the head's transaction.
 func (e *syncEnv) headsSince(query string) ([]string, HeadsSinceResult) {
 	e.t.Helper()
-	ans := e.ask(query)
+	ans := e.ask(query, overlaylookup.AnswerTypeOutputList)
 	var res HeadsSinceResult
 	decodeResult(e.t, ans.Result, &res)
 	got := []string{}
@@ -101,6 +129,27 @@ func decodeResult(t *testing.T, result any, into any) {
 	if err := json.Unmarshal(b, into); err != nil {
 		t.Fatal(err)
 	}
+}
+
+// countingLoader records how many times each txid is read, so a test can
+// see deduplication that the merged BEEF hides.
+type countingLoader struct {
+	inner BeefLoader
+	loads map[string]int
+}
+
+func (c *countingLoader) LoadBeef(ctx context.Context, txid *chainhash.Hash) (*transaction.Beef, error) {
+	c.loads[txid.String()]++
+	return c.inner.LoadBeef(ctx, txid)
+}
+
+// countLoads wraps the module's BEEF source for the rest of the test.
+func (e *syncEnv) countLoads() *countingLoader {
+	e.t.Helper()
+	c := &countingLoader{inner: e.svc.Lookup.beef, loads: map[string]int{}}
+	e.svc.Lookup.SetBeefLoader(c)
+	e.t.Cleanup(func() { e.svc.Lookup.SetBeefLoader(c.inner) })
+	return c
 }
 
 func newSyncEnv(t *testing.T) *syncEnv {
@@ -307,57 +356,74 @@ func TestTxsLookup(t *testing.T) {
 	mint, push1 := e.mint.TxID().String(), e.push1.TxID().String()
 	unknown := "0000000000000000000000000000000000000000000000000000000000000abc"
 
-	txs := func(query string) ([]string, TxsResult) {
-		t.Helper()
-		ans := e.ask(query)
+	t.Run("returns whole transactions in one BEEF", func(t *testing.T) {
+		got := e.txs(`{"type":"txs","txids":["` + mint + `","` + push1 + `"]}`)
+		if !got[mint] || !got[push1] {
+			t.Fatalf("merged BEEF carries %v", got)
+		}
+	})
+
+	t.Run("one BEEF carries every transaction with its proof", func(t *testing.T) {
+		// The whole run in one payload, shared BUMPs merged rather than
+		// repeated per transaction as an output list would have done.
+		push2 := e.push2.TxID().String()
+		ans := e.ask(`{"type":"txs","txids":["`+mint+`","`+push1+`","`+push2+`"]}`,
+			overlaylookup.AnswerTypeFreeform)
 		var res TxsResult
 		decodeResult(t, ans.Result, &res)
-		got := []string{}
-		for i, item := range ans.Outputs {
-			_, _, txid, err := transaction.ParseBeef(item.Beef)
-			if err != nil {
-				t.Fatalf("output %d: parse BEEF: %v", i, err)
+		bf, err := transaction.NewBeefFromBytes(res.Beef)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, want := range []string{mint, push1, push2} {
+			tx := bf.FindTransaction(want)
+			if tx == nil {
+				t.Fatalf("merged BEEF is missing %s", want)
 			}
-			if item.OutputIndex != 0 {
-				t.Fatalf("output %d: index = %d, want 0 for a whole transaction", i, item.OutputIndex)
+			if tx.MerklePath == nil {
+				t.Fatalf("merged BEEF carries %s without its proof", want)
 			}
-			got = append(got, txid.String())
-		}
-		if len(got) != len(res.Txids) {
-			t.Fatalf("outputs %v and result txids %v are not aligned", got, res.Txids)
-		}
-		for i := range got {
-			if got[i] != res.Txids[i] {
-				t.Fatalf("output %d is %s, result says %s", i, got[i], res.Txids[i])
-			}
-		}
-		return got, res
-	}
-
-	t.Run("returns whole transactions", func(t *testing.T) {
-		got, res := txs(`{"type":"txs","txids":["` + mint + `","` + push1 + `"]}`)
-		if len(got) != 2 || got[0] != mint || got[1] != push1 {
-			t.Fatalf("txs = %v", got)
-		}
-		if len(res.Missing) != 0 {
-			t.Fatalf("missing = %v", res.Missing)
 		}
 	})
 
 	t.Run("deduplicates at the txid", func(t *testing.T) {
-		got, _ := txs(`{"type":"txs","txids":["` + mint + `","` + mint + `","` + push1 + `","` + mint + `"]}`)
-		if len(got) != 2 || got[0] != mint || got[1] != push1 {
-			t.Fatalf("txs = %v, want the two distinct transactions once each", got)
+		// Dedup is invisible in the merged BEEF, which is keyed by txid, so
+		// count the reads: a repeated txid must not be fetched twice.
+		counter := e.countLoads()
+		got := e.txs(`{"type":"txs","txids":["` + mint + `","` + mint + `","` + push1 + `","` + mint + `"]}`)
+		if !got[mint] || !got[push1] {
+			t.Fatalf("merged BEEF carries %v", got)
+		}
+		if n := counter.loads[mint]; n != 1 {
+			t.Fatalf("loaded %s %d times, want once", mint, n)
+		}
+		if n := counter.loads[push1]; n != 1 {
+			t.Fatalf("loaded %s %d times, want once", push1, n)
 		}
 	})
 
-	t.Run("unknown txids are reported not fatal", func(t *testing.T) {
-		got, res := txs(`{"type":"txs","txids":["` + unknown + `","` + mint + `"]}`)
-		if len(got) != 1 || got[0] != mint {
-			t.Fatalf("txs = %v", got)
+	t.Run("unknown txids are absent not fatal", func(t *testing.T) {
+		got := e.txs(`{"type":"txs","txids":["` + unknown + `","` + mint + `"]}`)
+		if !got[mint] {
+			t.Fatalf("merged BEEF carries %v, want the held transaction", got)
 		}
-		if len(res.Missing) != 1 || res.Missing[0] != unknown {
-			t.Fatalf("missing = %v", res.Missing)
+		if got[unknown] {
+			t.Fatalf("merged BEEF carries the unknown txid %s", unknown)
+		}
+	})
+
+	t.Run("holding none is a valid empty BEEF", func(t *testing.T) {
+		// Not an error and not an empty result: a parseable BEEF V2 with no
+		// transactions. A failure would be an HTTP error with no result.
+		ans := e.ask(`{"type":"txs","txids":["`+unknown+`"]}`, overlaylookup.AnswerTypeFreeform)
+		var res TxsResult
+		decodeResult(t, ans.Result, &res)
+		bf, err := transaction.NewBeefFromBytes(res.Beef)
+		if err != nil {
+			t.Fatalf("empty answer must still parse as BEEF: %v", err)
+		}
+		if len(bf.Transactions) != 0 {
+			t.Fatalf("merged BEEF carries %d transactions, want none", len(bf.Transactions))
 		}
 	})
 
@@ -460,11 +526,13 @@ func TestHeadsSinceStopsAtAMissingTransaction(t *testing.T) {
 		t.Fatalf("result = %+v", res)
 	}
 
-	// The same transaction is reported missing, not fatal, by the txs query.
-	ans := e.ask(`{"type":"txs","txids":["` + txid + `","` + e.push2.TxID().String() + `"]}`)
-	var txsRes TxsResult
-	decodeResult(t, ans.Result, &txsRes)
-	if len(ans.Outputs) != 1 || len(txsRes.Missing) != 1 || txsRes.Missing[0] != txid {
-		t.Fatalf("outputs = %d result = %+v", len(ans.Outputs), txsRes)
+	// The same transaction is simply absent from the txs answer, not fatal.
+	push2 := e.push2.TxID().String()
+	held := e.txs(`{"type":"txs","txids":["` + txid + `","` + push2 + `"]}`)
+	if held[txid] {
+		t.Fatalf("merged BEEF still carries the deleted %s", txid)
+	}
+	if !held[push2] {
+		t.Fatalf("merged BEEF dropped the transaction it does hold: %v", held)
 	}
 }
