@@ -100,6 +100,11 @@ func (c *Config) Initialize(ctx context.Context, logger *slog.Logger, deps *over
 
 		store := NewStore(topicStorage.DB(), topicStorage.TopicID(), logger)
 		lookup := NewLookupService(store, logger)
+		// The sync lookups hand out BEEF, so they read the shared BEEF store
+		// directly. Without it they refuse rather than answer partially.
+		if deps.BeefStorage != nil {
+			lookup.SetBeefLoader(deps.BeefStorage)
+		}
 		topicManager := &TopicManager{}
 		eng := overlay.NewModuleEngine(deps,
 			map[string]engine.TopicManager{TopicName: topicManager},
