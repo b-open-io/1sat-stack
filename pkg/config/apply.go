@@ -121,6 +121,13 @@ type RuntimeConfig struct {
 	OrdLockSyncBatchSize   int
 	OrdLockLogLevel        string
 
+	// gib overlay
+	GibEnabled         bool
+	GibSyncSubID       string
+	GibSyncConcurrency int
+	GibSyncBatchSize   int
+	GibLogLevel        string
+
 	// BSV21
 	BSV21Enabled         bool
 	BSV21SyncSubID       string
@@ -306,6 +313,13 @@ func LoadRuntimeConfig(ctx context.Context, cs Store, logger *slog.Logger) (*Run
 	rc.OrdLockSyncConcurrency = getInt(ctx, cs, "overlay.ordlock.concurrency")
 	rc.OrdLockSyncBatchSize = getInt(ctx, cs, "overlay.ordlock.batch_size")
 	rc.OrdLockLogLevel = getString(ctx, cs, "overlay.ordlock.log_level")
+
+	// gib
+	rc.GibEnabled = getBool(ctx, cs, "overlay.gib.enabled")
+	rc.GibSyncSubID = getString(ctx, cs, "overlay.gib.sub_id")
+	rc.GibSyncConcurrency = getInt(ctx, cs, "overlay.gib.concurrency")
+	rc.GibSyncBatchSize = getInt(ctx, cs, "overlay.gib.batch_size")
+	rc.GibLogLevel = getString(ctx, cs, "overlay.gib.log_level")
 
 	// BSV21
 	rc.BSV21Enabled = getBool(ctx, cs, "overlay.bsv21.enabled")

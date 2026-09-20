@@ -255,6 +255,7 @@ type SectionId =
   | "overlay-bsv21"
   | "overlay-bsocial"
   | "overlay-ordlock"
+  | "overlay-gib"
   | "faucet"
   | "sync"
   | "auth"
@@ -685,6 +686,7 @@ const PARSE_TAGS = [
   { id: "bsocial", label: "BSocial", description: "Social protocol (posts, likes, follows)" },
   { id: "opns", label: "OPNS", description: "Ordinal Public Name System" },
   { id: "ordlock", label: "OrdLock", description: "Ordinal listing/locking protocol" },
+  { id: "gib", label: "gib", description: "On-chain git commit heads (branch pointers)" },
   { id: "map", label: "MAP", description: "Magic Attribute Protocol metadata" },
   { id: "sigma", label: "Sigma", description: "Sigma signature protocol" },
   { id: "origin", label: "Origin", description: "Ordinal origin resolution and metadata via ORDFS" },
@@ -1218,6 +1220,44 @@ function OrdlockPanel({
   );
 }
 
+function GibPanel({
+  enabled, onToggle,
+  subId, setSubId,
+  concurrency, setConcurrency,
+  batchSize, setBatchSize,
+}: OverlayPanelProps) {
+  return (
+    <div className="space-y-4">
+      <PageHeader title="gib" description="On-chain git — indexes commit heads (branch pointers) per repository and publisher." />
+
+      <SectionCard>
+        <OverlayToggleHeader
+          title="gib overlay"
+          description="Admits gib PushDrop commit heads and tracks each branch's push history."
+          enabled={enabled}
+          onToggle={onToggle}
+        />
+        <MetricsRow metrics={[{ label: "heads", value: "—" }]} />
+      </SectionCard>
+
+      <SectionCard>
+        <SectionHeading>Configuration</SectionHeading>
+        <FieldRow label="JungleBus subscription ID">
+          <Input value={subId} onChange={(e) => setSubId(e.target.value)} placeholder="sub_..." className="font-mono text-xs h-8" />
+        </FieldRow>
+        <div className="grid grid-cols-2 gap-3">
+          <FieldRow label="Concurrency">
+            <Input value={concurrency} onChange={(e) => setConcurrency(e.target.value)} className="font-mono text-xs h-8" />
+          </FieldRow>
+          <FieldRow label="Batch size">
+            <Input value={batchSize} onChange={(e) => setBatchSize(e.target.value)} className="font-mono text-xs h-8" />
+          </FieldRow>
+        </div>
+      </SectionCard>
+    </div>
+  );
+}
+
 interface OverlayEnginePanelProps {
   engineStorage: "sqlite" | "postgres";
   setEngineStorage: (v: "sqlite" | "postgres") => void;
@@ -1517,6 +1557,7 @@ export default function SettingsPage() {
   const [bsv21Enabled, setBsv21Enabled] = useState(false);
   const [bsocialEnabled, setBsocialEnabled] = useState(false);
   const [ordlockEnabled, setOrdlockEnabled] = useState(false);
+  const [gibEnabled, setGibEnabled] = useState(false);
   const [ecosystemAliasEnabled, setEcosystemAliasEnabled] = useState(false);
 
   // Storage
@@ -1582,6 +1623,11 @@ export default function SettingsPage() {
   const [ordlockConcurrency, setOrdlockConcurrency] = useState("8");
   const [ordlockBatchSize, setOrdlockBatchSize] = useState("1000");
 
+  // gib overlay
+  const [gibSubId, setGibSubId] = useState("");
+  const [gibConcurrency, setGibConcurrency] = useState("1");
+  const [gibBatchSize, setGibBatchSize] = useState("1000");
+
   // Overlay engine
   const [engineStorage, setEngineStorage] = useState<"sqlite" | "postgres">("sqlite");
   const [engineStoragePath, setEngineStoragePath] = useState("overlay");
@@ -1625,6 +1671,7 @@ export default function SettingsPage() {
         setBsv21Enabled(b("overlay.bsv21.enabled"));
         setBsocialEnabled(b("overlay.bsocial.enabled"));
         setOrdlockEnabled(b("overlay.ordlock.enabled"));
+        setGibEnabled(b("overlay.gib.enabled"));
 
         // Storage
         if (cfg["store.provider"] === "badger" || cfg["store.provider"] === "redis") setStoreProvider(cfg["store.provider"]);
@@ -1697,6 +1744,11 @@ export default function SettingsPage() {
         setOrdlockConcurrency(s("overlay.ordlock.concurrency", "8"));
         setOrdlockBatchSize(s("overlay.ordlock.batch_size", "1000"));
 
+        // gib
+        setGibSubId(s("overlay.gib.sub_id", ""));
+        setGibConcurrency(s("overlay.gib.concurrency", "1"));
+        setGibBatchSize(s("overlay.gib.batch_size", "1000"));
+
         // Overlay engine
         if (cfg["overlay.engine.storage"] === "sqlite" || cfg["overlay.engine.storage"] === "postgres") setEngineStorage(cfg["overlay.engine.storage"]);
         setEngineStoragePath(s("overlay.engine.storage_path", "overlay"));
@@ -1733,7 +1785,7 @@ export default function SettingsPage() {
   // Keys that require a server restart when changed
   const RESTART_KEYS = new Set([
     "overlay.bap.enabled", "overlay.opns.enabled", "overlay.bsv21.enabled",
-    "overlay.bsocial.enabled", "overlay.ordlock.enabled",
+    "overlay.bsocial.enabled", "overlay.ordlock.enabled", "overlay.gib.enabled",
     "owner.enabled", "faucet.enabled",
     "store.provider", "store.badger.path", "pubsub.provider",
     "auth.mode", "chaintracks.path",
@@ -1750,6 +1802,7 @@ export default function SettingsPage() {
     "overlay.bsocial.sub_id", "overlay.bsocial.concurrency", "overlay.bsocial.batch_size",
     "overlay.bsocial.mongo_url",
     "overlay.ordlock.sub_id", "overlay.ordlock.concurrency", "overlay.ordlock.batch_size",
+    "overlay.gib.sub_id", "overlay.gib.concurrency", "overlay.gib.batch_size",
     "indexer.sync.subscription_ids", "indexer.sync.concurrency", "indexer.sync.batch_size",
   ]);
 
@@ -1760,6 +1813,7 @@ export default function SettingsPage() {
     "overlay.bsv21.enabled": String(bsv21Enabled),
     "overlay.bsocial.enabled": String(bsocialEnabled),
     "overlay.ordlock.enabled": String(ordlockEnabled),
+    "overlay.gib.enabled": String(gibEnabled),
     ...writeEcosystemAliasSettings({
       enabled: ecosystemAliasEnabled,
       syncEnabled: ecosystemAliasSyncEnabled,
@@ -1804,6 +1858,9 @@ export default function SettingsPage() {
     "overlay.ordlock.sub_id": ordlockSubId,
     "overlay.ordlock.concurrency": ordlockConcurrency,
     "overlay.ordlock.batch_size": ordlockBatchSize,
+    "overlay.gib.sub_id": gibSubId,
+    "overlay.gib.concurrency": gibConcurrency,
+    "overlay.gib.batch_size": gibBatchSize,
     "ordfs.cache.lru_size": ordfsLruSize,
     "ordfs.cache.redis_url": ordfsRedisUrl,
     "ordfs.cache.redis_ttl": ordfsRedisTtl,
@@ -1811,7 +1868,7 @@ export default function SettingsPage() {
     "indexer.sync.concurrency": indexerConcurrency,
     "indexer.sync.batch_size": indexerBatchSize,
   }), [
-    bapEnabled, opnsEnabled, bsv21Enabled, bsocialEnabled, ordlockEnabled, ecosystemAliasEnabled, ownerSync, faucetEnabled,
+    bapEnabled, opnsEnabled, bsv21Enabled, bsocialEnabled, ordlockEnabled, gibEnabled, ecosystemAliasEnabled, ownerSync, faucetEnabled,
     storeProvider, storePath, pubsubProvider, authMode,
     chaintracksPath, arcadeUrl, arcadeCallbackToken, arcadeWaitTimeout,
     engineStorage, engineStoragePath,
@@ -1823,6 +1880,7 @@ export default function SettingsPage() {
     bsv21SubId, bsv21Concurrency, bsv21TokenWorkers, bsv21BatchSize,
     bsocialSubId, bsocialConcurrency, bsocialBatchSize, bsocialMongoUrl,
     ordlockSubId, ordlockConcurrency, ordlockBatchSize,
+    gibSubId, gibConcurrency, gibBatchSize,
     ordfsLruSize, ordfsRedisUrl, ordfsRedisTtl,
     indexerSubIds, indexerConcurrency, indexerBatchSize,
   ]);
@@ -1863,6 +1921,7 @@ export default function SettingsPage() {
         "overlay.bsv21.enabled": String(bsv21Enabled),
         "overlay.bsocial.enabled": String(bsocialEnabled),
         "overlay.ordlock.enabled": String(ordlockEnabled),
+        "overlay.gib.enabled": String(gibEnabled),
         ...writeEcosystemAliasSettings(normalizedAliasSettings),
 
         // Storage
@@ -1915,6 +1974,11 @@ export default function SettingsPage() {
         "overlay.ordlock.concurrency": ordlockConcurrency,
         "overlay.ordlock.batch_size": ordlockBatchSize,
 
+        // gib
+        "overlay.gib.sub_id": gibSubId,
+        "overlay.gib.concurrency": gibConcurrency,
+        "overlay.gib.batch_size": gibBatchSize,
+
         // Overlay engine
         "overlay.engine.storage": engineStorage,
         "overlay.engine.storage_path": engineStoragePath,
@@ -1963,7 +2027,7 @@ export default function SettingsPage() {
     }
   }
 
-  const anyOverlayEnabled = bapEnabled || ecosystemAliasEnabled || opnsEnabled || bsv21Enabled || bsocialEnabled || ordlockEnabled;
+  const anyOverlayEnabled = bapEnabled || ecosystemAliasEnabled || opnsEnabled || bsv21Enabled || bsocialEnabled || ordlockEnabled || gibEnabled;
 
   type NavItem =
     | { type: "item"; id: SectionId; label: string; icon: React.ElementType; dot?: boolean }
@@ -1980,6 +2044,7 @@ export default function SettingsPage() {
     { type: "item", id: "overlay-bsv21", label: "BSV21", icon: Network, dot: bsv21Enabled },
     { type: "item", id: "overlay-bsocial", label: "BSocial", icon: Network, dot: bsocialEnabled },
     { type: "item", id: "overlay-ordlock", label: "OrdLock", icon: Network, dot: ordlockEnabled },
+    { type: "item", id: "overlay-gib", label: "gib", icon: Network, dot: gibEnabled },
     { type: "item", id: "faucet", label: "Faucet", icon: Droplets, dot: faucetEnabled },
     { type: "item", id: "sync", label: "Sync", icon: RefreshCw },
     { type: "item", id: "auth", label: "Auth", icon: Shield },
@@ -2151,6 +2216,14 @@ export default function SettingsPage() {
               subId={ordlockSubId} setSubId={setOrdlockSubId}
               concurrency={ordlockConcurrency} setConcurrency={setOrdlockConcurrency}
               batchSize={ordlockBatchSize} setBatchSize={setOrdlockBatchSize}
+            />
+          )}
+          {activeSection === "overlay-gib" && (
+            <GibPanel
+              enabled={gibEnabled} onToggle={setGibEnabled}
+              subId={gibSubId} setSubId={setGibSubId}
+              concurrency={gibConcurrency} setConcurrency={setGibConcurrency}
+              batchSize={gibBatchSize} setBatchSize={setGibBatchSize}
             />
           )}
           {activeSection === "sync" && (

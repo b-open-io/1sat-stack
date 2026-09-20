@@ -1,6 +1,6 @@
 module github.com/b-open-io/1sat-stack
 
-go 1.26.3
+go 1.26.4
 
 replace github.com/bsv-blockchain/go-messagebox-server => github.com/b-open-io/go-messagebox-server v0.0.0-20260406134028-ee4a55ff0f6e
 
