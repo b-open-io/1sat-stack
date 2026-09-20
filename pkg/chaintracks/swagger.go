@@ -1,9 +1,12 @@
 package chaintracks
 
 // The following are swagger documentation stubs for chaintracks routes.
-// The actual handlers are provided by the go-chaintracks library.
+// The actual handlers are provided by the go-chaintracks library; Client in
+// this package reads the same routes over HTTP, decoding them into Header.
 
-// BlockHeader represents a block header response.
+// BlockHeader is the swagger schema for a block header response. The hash
+// fields go out as big-endian hex strings; Header is the type that decodes
+// them.
 type BlockHeader struct {
 	Version      uint32 `json:"version"`      // 4 bytes - Block version
 	PreviousHash []byte `json:"previousHash"` // 32 bytes - Previous block hash
