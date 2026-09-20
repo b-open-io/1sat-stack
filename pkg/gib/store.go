@@ -682,3 +682,62 @@ func clampLimit(limit int) int {
 	}
 	return limit
 }
+
+// BranchCursor is an exclusive position in a branch's push history: the
+// score and vout of a head the caller already holds. Ordering is (score,
+// vout), the same order ListHeads uses, so a mined head always precedes an
+// unconfirmed one (see types.HeightScore).
+type BranchCursor struct {
+	Score float64
+	Vout  uint32
+}
+
+// ListBranchHeadsAfter returns one branch's heads in push order (oldest
+// first), starting strictly after the cursor. A nil cursor starts at the
+// branch's first head. An empty identity means every publisher on the
+// branch. limit must be positive; it is capped at MaxLimit+1 so a caller may
+// ask for one extra row to detect a further page.
+func (s *Store) ListBranchHeadsAfter(ctx context.Context, origin, branch, identity string, after *BranchCursor, limit int) ([]HeadRecord, error) {
+	if err := s.ensureSchema(); err != nil {
+		return nil, err
+	}
+	if limit <= 0 {
+		limit = DefaultLimit
+	}
+	if limit > MaxLimit+1 {
+		limit = MaxLimit + 1
+	}
+
+	q := s.newQB()
+	where := []string{}
+	if tw := q.topicWhere(""); tw != "" {
+		where = append(where, strings.TrimSuffix(tw, " AND "))
+	}
+	where = append(where, "origin = "+q.ph(origin))
+	where = append(where, "branch = "+q.ph(branch))
+	if identity != "" {
+		where = append(where, "identity = "+q.ph(identity))
+	}
+	if after != nil {
+		// Tuple cursor: score alone would skip a same-score sibling.
+		where = append(where, fmt.Sprintf("(score > %s OR (score = %s AND vout > %s))",
+			q.ph(after.Score), q.ph(after.Score), q.ph(after.Vout)))
+	}
+	query := fmt.Sprintf(`SELECT %s FROM gib_heads WHERE %s ORDER BY score ASC, vout ASC LIMIT %s`,
+		headColumns, strings.Join(where, " AND "), q.ph(limit))
+
+	rows, err := s.db.QueryContext(ctx, query, q.args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := []HeadRecord{}
+	for rows.Next() {
+		rec, err := scanHead(rows)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, *rec)
+	}
+	return out, rows.Err()
+}

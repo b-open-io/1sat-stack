@@ -22,6 +22,7 @@ type LookupService struct {
 	store  *Store
 	logger *slog.Logger
 	meta   MetaFetcher
+	beef   BeefLoader
 }
 
 // SetMetaFetcher enables `.gib` enrichment (name, description, default
@@ -56,8 +57,12 @@ func NewLookupService(store *Store, logger *slog.Logger) *LookupService {
 }
 
 // Query is the BRC-24 lookup query for ls_gib. All filters are optional;
-// outpoint short-circuits the rest.
+// outpoint short-circuits the rest. Origin is the repository origin: the
+// outpoint of the genesis `ordfs/dir` root that identifies the repository.
+// Type is empty or QueryTypeHeads for this query; see lookup_sync.go for
+// the headsSince and txs queries.
 type Query struct {
+	Type         string `json:"type,omitempty"`
 	Outpoint     string `json:"outpoint,omitempty"`
 	Origin       string `json:"origin,omitempty"`
 	Branch       string `json:"branch,omitempty"`
@@ -223,8 +228,10 @@ func (l *LookupService) OutputBlockHeightUpdated(ctx context.Context, txid *chai
 	return l.store.UpdateScoreForTxid(ctx, txid.String(), types.HeightScore(blockHeight, blockIndex))
 }
 
-// Lookup answers BRC-24 questions with output-list formulas for matching
-// heads (current heads only unless includeSpent is set).
+// Lookup answers BRC-24 questions. The default (typeless) question returns
+// formulas for matching heads, current heads only unless includeSpent is
+// set. QueryTypeHeadsSince and QueryTypeTxs are the sync queries and build
+// their output lists here; see lookup_sync.go.
 func (l *LookupService) Lookup(ctx context.Context, question *lookup.LookupQuestion) (*lookup.LookupAnswer, error) {
 	if question == nil {
 		return nil, fmt.Errorf("gib: lookup question must not be nil")
@@ -232,6 +239,16 @@ func (l *LookupService) Lookup(ctx context.Context, question *lookup.LookupQuest
 	if question.Service != LookupName {
 		return nil, fmt.Errorf("gib: unsupported lookup service %q", question.Service)
 	}
+	switch t := queryType(question.Query); t {
+	case "", QueryTypeHeads:
+	case QueryTypeHeadsSince:
+		return l.answerHeadsSince(ctx, question.Query)
+	case QueryTypeTxs:
+		return l.answerTxs(ctx, question.Query)
+	default:
+		return nil, fmt.Errorf("gib: unknown query type %q", t)
+	}
+
 	var q Query
 	if len(question.Query) > 0 {
 		if err := json.Unmarshal(question.Query, &q); err != nil {
@@ -285,7 +302,9 @@ func (l *LookupService) Lookup(ctx context.Context, question *lookup.LookupQuest
 
 // GetDocumentation returns documentation for this lookup service.
 func (l *LookupService) GetDocumentation() string {
-	return "gib commit heads by outpoint, origin, branch, or identity"
+	return "gib commit heads by outpoint, repository origin, branch, or identity; " +
+		`{"type":"headsSince"} for a branch's heads from a point forward and ` +
+		`{"type":"txs"} for whole transactions by txid, both as output-list BEEF`
 }
 
 // GetMetaData returns metadata for the lookup service.

@@ -14,7 +14,7 @@ head names.
 
 | Term | Meaning |
 | --- | --- |
-| Origin | Outpoint of the repository's genesis directory inscription. The repo id. |
+| Repository origin | Outpoint of the repository's genesis `ordfs/dir` root. The repo id; the `origin` field everywhere in this API. |
 | Root | Outpoint of the root directory manifest a branch currently points at. |
 | Commit head | 1-sat PushDrop coin: fields `["gib", origin, branch, root, identity]`, git commit object inscribed on the same output. |
 | Identity | The publisher's BRC-100 identity key (compressed hex). |
@@ -47,6 +47,75 @@ the same transaction, so a push's predecessor is linked even if the engine
 never admitted it. `SpendSync` records deletions (burns) straight from the
 indexer's spend events. An optional JungleBus subscription can feed the same
 queue for historical sync.
+
+### BRC-24 lookups (`ls_gib`)
+
+Three queries, chosen by the `type` field. Empty or `heads` is the original
+head query; the two sync queries let a client that knows only the overlay
+endpoint a domain declares in its BRC-180 manifest follow a branch and fetch
+the transactions its trees cite, without the host's REST root.
+
+| `type` | Asks for | Answer |
+| --- | --- | --- |
+| `heads` (or empty) | Heads by outpoint, repository origin, branch, identity, or commit sha | Formulas — see the caveat below |
+| `headsSince` | One branch's heads from a point forward, oldest first | Output list, one entry per head |
+| `txs` | Whole transactions by txid | Output list, one entry per transaction |
+
+Both sync answers build their output list **in the lookup service**, not as
+formulas. `engine.hydrateOneFormula` loads each formula with
+`Storage.FindOutput(ctx, outpoint, nil, nil, true)` — a nil topic — and this
+stack's `EngineAdapter.FindOutput` rejects a nil topic with `topic is
+required`, so a formula answer fails before it reaches a client. That is
+still true; `TestFormulaHydrationStillRejectsNilTopic` pins it, and the
+`heads` query above is still subject to it.
+
+Errors are reported in the answer's `result`, not as lookup errors: the
+overlay HTTP layer collapses every lookup error to an opaque 500, which a
+client cannot tell from any other failure. `result` arrives as a
+JSON-encoded string, per the BRC-24 response shape.
+
+**`headsSince`** — `since` is exclusive, so a client resumes by passing the
+last outpoint it received; empty means from the branch's first head.
+`identity` is optional, and when it is set the heads returned are a
+subsequence of the spend chain rather than a contiguous run. At most 100
+heads per page (`limit`, default 20); `more` says the page stopped short of
+the tip.
+
+```jsonc
+// query
+{"type":"headsSince","origin":"<repository origin>","branch":"main",
+ "identity":"02…","since":"txid_0","limit":100}
+// result, beside outputs[] — outpoints is index-aligned with outputs
+{"query":"headsSince","origin":"…_0","branch":"main","identity":"02…",
+ "since":"txid_0","outpoints":["txid_0","txid_0"],"more":false}
+```
+
+`result.code` is empty on success. `unknown-since` means `since` names no
+head this overlay holds on that branch (a client must not read an empty
+answer as "nothing new" without checking it); `missing-beef` means the page
+stopped at an indexed head whose transaction is no longer in the BEEF store,
+so the client repairs with `gib recover` rather than paging the same gap
+forever.
+
+**`txs`** — deduplicated at the txid, because that is the unit of exchange: a
+push writes many outputs in one transaction. At most **50** txids per
+request — every entry carries a whole transaction's BEEF, far heavier than an
+outpoint — and a request over the cap is rejected rather than truncated, so a
+short page never looks like a complete one. Transactions the overlay does not
+hold are named in `result.missing`; they do not fail the request. Each
+entry's `outputIndex` is `0` and carries no meaning: the entry is a whole
+transaction, not one of its outputs.
+
+```jsonc
+// query
+{"type":"txs","txids":["<txid>","<txid>"]}
+// result, beside outputs[] — txids is index-aligned with outputs
+{"query":"txs","txids":["<txid>"],"missing":["<txid>"]}
+```
+
+The REST routes below are unchanged. `/1sat/beef/{txid}` stays the repair
+path for `gib recover`, which legitimately pulls raw transactions from an
+upstream.
 
 ### Storage
 
@@ -103,10 +172,17 @@ curl https://api.1sat.app/1sat/gib/head/<outpoint>
 # and every head whose commit names it as a parent
 curl https://api.1sat.app/1sat/gib/commit/<git-sha>
 
-# BRC-24 lookup: current heads for an origin, hydrated to output-list BEEF
+# BRC-24 sync: a branch's heads from a point forward, oldest first,
+# each carrying its own BEEF
 curl -X POST https://api.1sat.app/1sat/gib/overlay/lookup \
   -H 'content-type: application/json' \
-  -d '{"service":"ls_gib","query":{"origin":"<origin>"}}'
+  -d '{"service":"ls_gib","query":{"type":"headsSince","origin":"<origin>",
+       "branch":"main","since":"<outpoint>"}}'
+
+# BRC-24 sync: whole transactions by txid (at most 50 per request)
+curl -X POST https://api.1sat.app/1sat/gib/overlay/lookup \
+  -H 'content-type: application/json' \
+  -d '{"service":"ls_gib","query":{"type":"txs","txids":["<txid>"]}}'
 ```
 
 Head JSON:
