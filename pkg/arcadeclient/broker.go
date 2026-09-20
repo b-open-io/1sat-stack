@@ -205,7 +205,7 @@ type StopCondition int
 const (
 	// StopOnAccepted breaks the wait once the tx reaches an "accepted" tier
 	// (SENT_TO_NETWORK / ACCEPTED_BY_NETWORK / SEEN_ON_NETWORK / SEEN_MULTIPLE_NODES)
-	// or any terminal state. This is the default; matches what /1sat/tx and paymail want.
+	// or any terminal state. This is the default; matches what /1sat/tx wants.
 	StopOnAccepted StopCondition = iota
 
 	// StopOnTerminal breaks the wait only on a terminal state

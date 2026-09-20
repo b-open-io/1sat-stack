@@ -112,7 +112,6 @@ type RuntimeConfig struct {
 	OPNSSyncSubID        string
 	OPNSCrawlConcurrency int
 	OPNSSyncBatchSize    int
-	OPNSPaymail          bool
 	OPNSLogLevel         string
 
 	// OrdLock overlay
@@ -138,10 +137,6 @@ type RuntimeConfig struct {
 
 	// Owner
 	OwnerMode string // "embedded" or "disabled"
-
-	// Paymail
-	PaymailMode   string // "enabled" or "disabled"
-	PaymailDBPath string
 
 	// MongoDB
 	MongoDBURL string
@@ -303,7 +298,6 @@ func LoadRuntimeConfig(ctx context.Context, cs Store, logger *slog.Logger) (*Run
 	rc.OPNSSyncSubID = getString(ctx, cs, "overlay.opns.sub_id")
 	rc.OPNSCrawlConcurrency = getInt(ctx, cs, "overlay.opns.concurrency")
 	rc.OPNSSyncBatchSize = getInt(ctx, cs, "overlay.opns.batch_size")
-	rc.OPNSPaymail = getBool(ctx, cs, "overlay.opns.paymail")
 	rc.OPNSLogLevel = getString(ctx, cs, "overlay.opns.log_level")
 
 	// OrdLock
@@ -334,10 +328,6 @@ func LoadRuntimeConfig(ctx context.Context, cs Store, logger *slog.Logger) (*Run
 	case "false":
 		rc.OwnerMode = "disabled"
 	}
-
-	// Paymail
-	rc.PaymailMode = getString(ctx, cs, "paymail.mode")
-	rc.PaymailDBPath = getString(ctx, cs, "paymail.db_path")
 
 	// MongoDB
 	rc.MongoDBURL = getString(ctx, cs, "overlay.bsocial.mongo_url")

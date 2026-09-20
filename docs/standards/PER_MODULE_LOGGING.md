@@ -36,7 +36,6 @@ Every module receives a tagged logger via `logging.NewComponentLogger()`. Tags a
 | `wallet` | pkg/wallet/service.go | — |
 | `faucet` | config.go call site | — |
 | `messagebox` | config.go call site | — |
-| `paymail` | config.go call site | — |
 
 ## Adding Per-Module Log Level Override
 

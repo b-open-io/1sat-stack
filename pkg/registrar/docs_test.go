@@ -20,12 +20,12 @@ func TestMergedSpec(t *testing.T) {
 		},
 		"definitions": {"Outpoint": {"type": "string"}}
 	}`)
-	paymailFrag := []byte(`{
+	aliasFrag := []byte(`{
 		"swagger": "2.0",
-		"tags": [{"name": "paymail"}, {"name": "opns"}],
+		"tags": [{"name": "alias"}, {"name": "opns"}],
 		"paths": {
-			"/id/{paymail}": {"get": {"tags": ["paymail"]}},
-			"/.well-known/bsvalias": {"get": {"tags": ["paymail"]}}
+			"/id/{alias}": {"get": {"tags": ["alias"]}},
+			"/.well-known/alias": {"get": {"tags": ["alias"]}}
 		},
 		"definitions": {"Outpoint": {"type": "string"}}
 	}`)
@@ -54,15 +54,15 @@ func TestMergedSpec(t *testing.T) {
 		{
 			name: "root-anchored paths are not rebased",
 			build: func(r *Registrar) {
-				r.Add(Registration{Capability: "paymail", Spec: paymailFrag, Mounts: []Mount{
-					{Prefix: "/bsvalias", Register: func(fiber.Router) {}},
+				r.Add(Registration{Capability: "alias", Spec: aliasFrag, Mounts: []Mount{
+					{Prefix: "/alias", Register: func(fiber.Router) {}},
 				}})
 			},
 			check: func(t *testing.T, doc swaggerFragment) {
-				if _, ok := doc.Paths["/.well-known/bsvalias"]; !ok {
+				if _, ok := doc.Paths["/.well-known/alias"]; !ok {
 					t.Errorf("well-known path was rebased: %v", pathKeys(doc))
 				}
-				if _, ok := doc.Paths["/1sat/bsvalias/id/{paymail}"]; !ok {
+				if _, ok := doc.Paths["/1sat/alias/id/{alias}"]; !ok {
 					t.Errorf("id path not rebased: %v", pathKeys(doc))
 				}
 			},
@@ -73,8 +73,8 @@ func TestMergedSpec(t *testing.T) {
 				r.Add(Registration{Capability: "opns", Spec: opnsFrag, Mounts: []Mount{
 					{Prefix: "/opns", Register: func(fiber.Router) {}},
 				}})
-				r.Add(Registration{Capability: "paymail", Spec: paymailFrag, Mounts: []Mount{
-					{Prefix: "/bsvalias", Register: func(fiber.Router) {}},
+				r.Add(Registration{Capability: "alias", Spec: aliasFrag, Mounts: []Mount{
+					{Prefix: "/alias", Register: func(fiber.Router) {}},
 				}})
 			},
 			check: func(t *testing.T, doc swaggerFragment) {
@@ -82,7 +82,7 @@ func TestMergedSpec(t *testing.T) {
 					t.Errorf("definitions = %d, want 1 (deduped)", len(doc.Definitions))
 				}
 				if len(doc.Tags) != 2 {
-					t.Errorf("tags = %d, want 2 (opns, paymail deduped)", len(doc.Tags))
+					t.Errorf("tags = %d, want 2 (opns, alias deduped)", len(doc.Tags))
 				}
 			},
 		},

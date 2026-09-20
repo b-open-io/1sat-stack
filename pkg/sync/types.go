@@ -8,7 +8,7 @@ type AddressDerivation struct {
 }
 
 // PaymentMessage is the body format for wallet payment messages
-// in the message box. Marshaled by 1sat-stack's paymail service.
+// in the message box.
 type PaymentMessage struct {
 	Beef              string `json:"beef"`
 	OutputIndex       uint32 `json:"outputIndex"`
