@@ -14,8 +14,14 @@ import (
 )
 
 // The sync lookups. A client that knows only the overlay endpoint a domain
-// declares in its BRC-180 manifest can follow a branch and fetch the
-// transactions its trees cite, without the host's REST root.
+// declares in its BRC-180 manifest can enumerate a repository's branches,
+// follow one forward, and fetch the transactions its trees cite, without the
+// host's REST root.
+//
+// They answer in the order a clone needs them: `branches` to find out what
+// there is to sync and which branch is the default, `headsSince` to walk one
+// branch from wherever the client left off, `txs` to fetch the content those
+// heads name.
 //
 // headsSince answers with an output list, built here rather than returned as
 // formulas: the engine hydrates a formula with
@@ -25,10 +31,9 @@ import (
 // TestFormulaHydrationStillRejectsNilTopic. txs answers freeform with one
 // merged BEEF, because it asks for transactions rather than outputs.
 const (
-	// QueryTypeHeads is the original head query (outpoint / repository
-	// origin / branch / identity / sha). It is also the empty default, so
-	// clients written before the sync queries are unaffected.
-	QueryTypeHeads = "heads"
+	// QueryTypeBranches asks for a repository's branches: where a client
+	// that has only the repository origin starts.
+	QueryTypeBranches = "branches"
 	// QueryTypeHeadsSince asks for one branch's heads from a point forward.
 	QueryTypeHeadsSince = "headsSince"
 	// QueryTypeTxs asks for whole transactions by txid. Its answer is
@@ -38,6 +43,9 @@ const (
 	// MaxHeadsSince caps one headsSince page. A client resumes by setting
 	// `since` to the last outpoint it received.
 	MaxHeadsSince = MaxLimit
+	// MaxBranches caps one branches page. A repository is one branch per
+	// name per publisher, so a popular one can have many.
+	MaxBranches = MaxLimit
 	// MaxTxids caps one txs request. The answer carries whole transactions,
 	// far heavier than an outpoint, so this is deliberately lower than
 	// MaxLimit. A push writes many outputs in one transaction, so 50
@@ -69,6 +77,55 @@ type BeefLoader interface {
 // it both sync queries fail: the module cannot hand out transactions it has
 // no way to read.
 func (l *LookupService) SetBeefLoader(b BeefLoader) { l.beef = b }
+
+// BranchPage is a position in a repository's branch list: the last entry a
+// client received. A client pages by echoing the result's `next` back as the
+// next query's `since`, so it never has to know how the list is ordered.
+type BranchPage struct {
+	Branch   string `json:"branch"`
+	Identity string `json:"identity,omitempty"`
+}
+
+// BranchesQuery asks for a repository's branches. Origin is the repository
+// origin: the outpoint of the genesis `ordfs/dir` root that identifies the
+// repository. Since is exclusive — the entry it names is not returned.
+type BranchesQuery struct {
+	Type   string      `json:"type"`
+	Origin string      `json:"origin"`
+	Since  *BranchPage `json:"since,omitempty"`
+	Limit  int         `json:"limit,omitempty"`
+}
+
+// BranchesResult is the freeform answer to a branches query.
+//
+// Freeform, not an output list: a branch is not an output. It is a
+// (repository origin, branch, identity) triple, and what a client wants from
+// it is a name to sync and a point to sync to — the tip head's outpoint,
+// which it then passes to `headsSince`, the query whose job is handing over
+// heads with their BEEF. Answering with the tip outputs would make
+// enumerating a repository depend on the BEEF store: one tip whose
+// transaction had gone missing would truncate the page (the `missing-beef`
+// convention headsSince has to use), and a client would be unable to learn a
+// repository's branches for a reason that has nothing to do with the
+// question it asked. This answer is built from the index alone and is always
+// complete to the page boundary.
+type BranchesResult struct {
+	Query  string `json:"query"`
+	Origin string `json:"origin"`
+	// DefaultBranch is the branch of the earliest head this overlay holds
+	// for the repository — the genesis push — and Owner is the identity that
+	// published it. Together they name the branch a clone starts from,
+	// whether or not it is on this page. Empty when the overlay holds no
+	// head for the repository.
+	DefaultBranch string `json:"defaultBranch,omitempty"`
+	Owner         string `json:"owner,omitempty"`
+	// Branches is the page, ordered by branch name then identity.
+	Branches []BranchRecord `json:"branches"`
+	// More is true when the page stopped short of the last branch; Next is
+	// the cursor to resume from, and is nil when More is false.
+	More bool        `json:"more"`
+	Next *BranchPage `json:"next,omitempty"`
+}
 
 // HeadsSinceQuery asks for one branch's heads from a point forward, oldest
 // first. Origin is the repository origin: the outpoint of the genesis
@@ -142,6 +199,72 @@ func queryType(raw json.RawMessage) string {
 		return ""
 	}
 	return envelope.Type
+}
+
+// answerBranches enumerates a repository's branches: where a client with
+// nothing but the repository origin begins.
+//
+// What a client does with it: take DefaultBranch and Owner, and sync that
+// branch with headsSince from nothing; then, for each other branch it wants,
+// headsSince again with that entry's branch and identity. Each entry's Tip
+// is the head this overlay currently has, so a client that already holds a
+// branch can compare before asking for anything.
+func (l *LookupService) answerBranches(ctx context.Context, raw json.RawMessage) (*lookup.LookupAnswer, error) {
+	var q BranchesQuery
+	if err := json.Unmarshal(raw, &q); err != nil {
+		return nil, fmt.Errorf("gib: invalid branches query: %w", err)
+	}
+	if q.Origin == "" {
+		return nil, fmt.Errorf("gib: branches requires a repository origin")
+	}
+	origin, err := parseOutpointParam(q.Origin)
+	if err != nil {
+		return nil, fmt.Errorf("gib: invalid repository origin: %w", err)
+	}
+
+	var after *BranchKey
+	if q.Since != nil {
+		if q.Since.Branch == "" {
+			return nil, fmt.Errorf("gib: the since cursor needs a branch")
+		}
+		identity := ""
+		if q.Since.Identity != "" {
+			if identity, err = parseIdentityParam(q.Since.Identity); err != nil {
+				return nil, fmt.Errorf("gib: invalid since cursor: %w", err)
+			}
+		}
+		after = &BranchKey{Branch: q.Since.Branch, Identity: identity}
+	}
+
+	// clampLimit caps at MaxLimit, which MaxBranches is defined as. One
+	// extra row tells us whether the page stopped short.
+	limit := clampLimit(q.Limit)
+	recs, err := l.store.ListBranches(ctx, origin, after, limit+1)
+	if err != nil {
+		return nil, err
+	}
+	result := &BranchesResult{Query: QueryTypeBranches, Origin: origin, Branches: []BranchRecord{}}
+	if len(recs) > limit {
+		recs = recs[:limit]
+		result.More = true
+		last := recs[len(recs)-1]
+		result.Next = &BranchPage{Branch: last.Branch, Identity: last.Identity}
+	}
+	result.Branches = recs
+
+	// The repository's default branch is the genesis push's, whatever page
+	// it lands on — the client is told it outright so it never has to page
+	// looking for it, and never has to guess from `.gib`.
+	genesis, err := l.store.GenesisHead(ctx, origin)
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return nil, err
+	}
+	if genesis != nil {
+		result.DefaultBranch = genesis.Branch
+		result.Owner = genesis.Identity
+	}
+
+	return &lookup.LookupAnswer{Type: lookup.AnswerTypeFreeform, Result: result}, nil
 }
 
 // answerHeadsSince walks a branch forward from `since` to the tip.

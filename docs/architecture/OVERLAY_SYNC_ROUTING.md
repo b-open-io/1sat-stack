@@ -47,7 +47,7 @@ Each module's bridge is wired up in `cmd/server/config.go` `StartSubscribers()`:
 | BSocial | `map:type:*` | `q:bsocial` | Fixed queue |
 | OPNS | `opns:mine` | `q:opns` | Fixed queue |
 | OrdLock v2 | `ordlock2`, `spend:ordlock2` | `q:ordlock2` | Includes spend events; topic `tm_ordlock_v2` |
-| gib | `gib`, `spend:gib` | `q:gib` | Includes spend events; topic `tm_gib`; burns also recorded by `gib.SpendSync` |
+| gib | — | — | **No bridge, and nothing subscribed.** gib has no queue and ingests nothing from the feed; heads arrive only by direct submission. Its `gib` / `gib:{origin}` events are a reader's feed |
 | BSV21 | `bsv21:*` | `q:tm_{tokenId}` | Routes to per-token queues, bypasses dispatcher |
 
 Events are published by `OutputStore.SaveTransaction()` (`pkg/txo/output_store.go:249-273`) after the indexer parses a transaction. Each parser attaches events to its `ParseResult.Events` field.
@@ -56,7 +56,7 @@ The event bridge converts outpoint strings to 36-byte binary members via `parseE
 
 ## Module Strategies
 
-### Simple Modules: BAP, BSocial, OPNS, OrdLock, gib
+### Simple Modules: BAP, BSocial, OPNS, OrdLock
 
 These use `overlay.OverlaySync` — the generic sync worker. Key settings:
 
@@ -65,6 +65,26 @@ These use `overlay.OverlaySync` — the generic sync worker. Key settings:
 - **JungleBus subscriber optional** — can operate solely from the indexer's JungleBus subscription via the event bridge path. If a module-specific JungleBus subscription ID is configured, it provides a dedicated feed.
 
 The topic managers for these modules don't require inputs to be pre-existing in the overlay. OrdLock v2's `IdentifyAdmissibleOutputs` checks if the output matches the compiled v2 template — it doesn't verify input balances. This is why `processDirect` (no GASP) works.
+
+### gib: Submission Only
+
+gib is the exception, deliberately. It has **no queue, no event bridge and no
+sync worker**: a head enters `tm_gib` only when a client submits it through
+the overlay's BRC-22 route, together with the content transactions that prove
+the push it publishes (see `pkg/gib/README.md`). `processDirect` could not
+serve it anyway — it builds the submission from the head transaction's own
+ancestry, and a push's content transactions are not ancestors of the head.
+
+gib is a far more explicit push than anything else here: the client holds the
+repository, so the overlay never has to discover one. Repository exchange
+between overlays is peer to peer, not a chain feed.
+
+Nor does gib listen for spends. The only spend it records is the one the
+engine observes when it is handed the transaction that made it: a push
+taking the branch's previous head as an input, which is what orders the
+branch's history. A publisher who spends its own head to stop extending a
+branch retracts nothing — the history and the content are on chain either
+way — so there is nothing for the overlay to watch for.
 
 ### BSV21: Per-Token Queues
 
@@ -99,7 +119,7 @@ Each parser emits events that the event bridge routes:
 | MAP | `pkg/parse/bitcom.go` | `map:type:{type}`, `map:subType:{subType}` |
 | Collection | `pkg/parse/collection.go` | `map:collectionId:{id}` from `subTypeData` (after MAP; `_N` normalized) |
 | OPNS | `pkg/parse/opns.go` | `opns:mine` |
-| gib | `pkg/parse/gib.go` | `gib`, `gib:{origin}` |
+| gib | `pkg/parse/gib.go` | `gib`, `gib:{origin}` (a reader's feed — no bridge routes these to a queue; `gib:{origin}` is the per-repository SSE subscription) |
 
 Spend events are generated automatically by `SaveTransaction()` as `spend:{event}` for each event on a spent output.
 

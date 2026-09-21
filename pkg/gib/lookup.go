@@ -2,9 +2,6 @@ package gib
 
 import (
 	"context"
-	"database/sql"
-	"encoding/json"
-	"errors"
 	"fmt"
 	"log/slog"
 
@@ -56,23 +53,6 @@ func NewLookupService(store *Store, logger *slog.Logger) *LookupService {
 	return &LookupService{store: store, logger: logger}
 }
 
-// Query is the BRC-24 lookup query for ls_gib. All filters are optional;
-// outpoint short-circuits the rest. Origin is the repository origin: the
-// outpoint of the genesis `ordfs/dir` root that identifies the repository.
-// Type is empty or QueryTypeHeads for this query; see lookup_sync.go for
-// the headsSince and txs queries.
-type Query struct {
-	Type         string `json:"type,omitempty"`
-	Outpoint     string `json:"outpoint,omitempty"`
-	Origin       string `json:"origin,omitempty"`
-	Branch       string `json:"branch,omitempty"`
-	Identity     string `json:"identity,omitempty"`
-	Sha          string `json:"sha,omitempty"`
-	IncludeSpent bool   `json:"includeSpent,omitempty"`
-	Limit        int    `json:"limit,omitempty"`
-	Skip         int    `json:"skip,omitempty"`
-}
-
 type spentHead struct {
 	outpoint *transaction.Outpoint
 	head     *gibtpl.Head
@@ -87,15 +67,21 @@ func (l *LookupService) OutputAdmittedByTopic(ctx context.Context, payload *engi
 	if payload == nil || payload.Topic != TopicName {
 		return nil
 	}
-	beef, txid, err := transaction.NewBeefFromAtomicBytes(payload.AtomicBEEF)
+	// A push submits the content transactions alongside the head, so the
+	// BEEF is not always atomic: ParseBeef takes either, and picks the same
+	// subject transaction the engine did.
+	beef, _, txid, err := transaction.ParseBeef(payload.AtomicBEEF)
 	if err != nil {
-		return fmt.Errorf("gib: parse atomic BEEF: %w", err)
+		return fmt.Errorf("gib: parse submitted BEEF: %w", err)
+	}
+	if beef == nil || txid == nil {
+		return fmt.Errorf("gib: submitted BEEF has no subject transaction")
 	}
 	// FindTransactionForSigning links each input's source transaction from
 	// the BEEF so the spent heads can be decoded.
 	tx := beef.FindTransactionForSigningByHash(txid)
 	if tx == nil {
-		return fmt.Errorf("gib: atomic BEEF does not contain %s", txid.String())
+		return fmt.Errorf("gib: submitted BEEF does not contain %s", txid.String())
 	}
 	if int(payload.OutputIndex) >= len(tx.Outputs) {
 		return fmt.Errorf("gib: output index %d out of range for %s", payload.OutputIndex, txid.String())
@@ -112,6 +98,18 @@ func (l *LookupService) OutputAdmittedByTopic(ctx context.Context, payload *engi
 	rec := recordFromHead(op, head, score)
 	rec.Meta = l.fetchMeta(ctx, head.Origin)
 
+	// The commits come from the root's `.git` store, read out of the same
+	// submission the topic manager admitted the head from. A head that got
+	// past admission has one; if this read fails the head is still indexed,
+	// because the branch pointer is true whatever the content says.
+	push, err := ReadPush(beef, head, txid)
+	if err != nil {
+		l.logger.Warn("gib: admitted head without a readable push",
+			"outpoint", rec.Outpoint, "root", head.Root, "error", err)
+	} else {
+		rec.Commit = tipCommit(push)
+	}
+
 	spent := gibInputs(tx)
 	for _, in := range spent {
 		if in.head.Origin == head.Origin && in.head.Branch == head.Branch {
@@ -122,21 +120,61 @@ func (l *LookupService) OutputAdmittedByTopic(ctx context.Context, payload *engi
 	if err := l.store.UpsertHead(ctx, rec); err != nil {
 		return fmt.Errorf("gib: upsert head %s: %w", rec.Outpoint, err)
 	}
+	if push != nil {
+		if err := l.store.UpsertCommits(ctx, commitRecords(rec.Outpoint, push, score)); err != nil {
+			return fmt.Errorf("gib: index commits of %s: %w", rec.Outpoint, err)
+		}
+	}
 	if _, err := l.recordSpends(ctx, tx, txid, spent, score); err != nil {
 		return err
 	}
 	return nil
 }
 
-// RecordSpends scans a transaction's inputs for commit heads and records
-// each as spent, naming the successor head (same origin and branch) created
-// by the transaction when there is one. Independent of the overlay engine:
-// the head need not have been admitted first. Inputs must carry their
-// source transactions (a full BEEF).
-func (l *LookupService) RecordSpends(ctx context.Context, tx *transaction.Transaction, txid *chainhash.Hash) (int, error) {
-	return l.recordSpends(ctx, tx, txid, gibInputs(tx), types.ScoreFromTx(tx, txid))
+// tipCommit is what a head record carries in place of the commit that used
+// to be inscribed on it: the tip commit object of the root's `.git` store.
+// When the push cited that object instead of republishing it, only the sha
+// is known — which is still the answer to "what does this head publish".
+func tipCommit(push *Push) *gibtpl.Commit {
+	if push == nil {
+		return nil
+	}
+	if push.Tip != nil {
+		return push.Tip
+	}
+	if push.TipSha == "" {
+		return nil
+	}
+	return &gibtpl.Commit{SHA: push.TipSha, Parents: []string{}}
 }
 
+// commitRecords turns a push's object store into index rows: one per
+// commit it names, held or only cited.
+func commitRecords(outpoint string, push *Push, score float64) []CommitRecord {
+	recs := make([]CommitRecord, 0, len(push.Objects))
+	for _, obj := range push.Objects {
+		recs = append(recs, CommitRecord{
+			Sha:      obj.Sha,
+			Outpoint: outpoint,
+			Ref:      obj.Ref.OrdinalString(),
+			Held:     obj.Held(),
+			Commit:   obj.Commit,
+			Score:    score,
+		})
+	}
+	return recs
+}
+
+// recordSpends records every commit head a submitted transaction takes as an
+// input as spent, naming the successor head (same origin and branch) the
+// transaction creates when there is one. This is the spend the engine
+// observes at admission — a push taking the branch's previous head — and it
+// is what orders a branch's history. Inputs must carry their source
+// transactions (a full BEEF).
+//
+// Nothing outside admission writes a spend any more: the overlay learns a
+// head was spent when it is handed the transaction that spent it, and never
+// by watching the chain.
 func (l *LookupService) recordSpends(ctx context.Context, tx *transaction.Transaction, txid *chainhash.Hash, spent []spentHead, spendScore float64) (int, error) {
 	if len(spent) == 0 {
 		return 0, nil
@@ -228,10 +266,19 @@ func (l *LookupService) OutputBlockHeightUpdated(ctx context.Context, txid *chai
 	return l.store.UpdateScoreForTxid(ctx, txid.String(), types.HeightScore(blockHeight, blockIndex))
 }
 
-// Lookup answers BRC-24 questions. The default (typeless) question returns
-// formulas for matching heads, current heads only unless includeSpent is
-// set. QueryTypeHeadsSince and QueryTypeTxs are the sync queries and build
-// their output lists here; see lookup_sync.go.
+// Lookup answers BRC-24 questions. Every question names its type; the three
+// are branches, headsSince and txs, and each builds its own answer here (see
+// lookup_sync.go).
+//
+// There was a fourth, the typeless `heads` query, which answered with
+// formulas for matching heads. It is gone. A formula answer has never
+// reached a client from this stack: the engine hydrates one with
+// Storage.FindOutput(ctx, outpoint, nil, nil, true) — a nil topic — and this
+// stack's EngineAdapter rejects that with "topic is required", so the
+// question failed in production however it was asked. Its one real use was
+// enumerating a repository, which `branches` now does properly. Removing it
+// turns an answer that always failed into a refusal that says so; the same
+// filters are served over REST by /1sat/gib/heads, which works.
 func (l *LookupService) Lookup(ctx context.Context, question *lookup.LookupQuestion) (*lookup.LookupAnswer, error) {
 	if question == nil {
 		return nil, fmt.Errorf("gib: lookup question must not be nil")
@@ -240,71 +287,29 @@ func (l *LookupService) Lookup(ctx context.Context, question *lookup.LookupQuest
 		return nil, fmt.Errorf("gib: unsupported lookup service %q", question.Service)
 	}
 	switch t := queryType(question.Query); t {
-	case "", QueryTypeHeads:
+	case QueryTypeBranches:
+		return l.answerBranches(ctx, question.Query)
 	case QueryTypeHeadsSince:
 		return l.answerHeadsSince(ctx, question.Query)
 	case QueryTypeTxs:
 		return l.answerTxs(ctx, question.Query)
+	case "":
+		return nil, fmt.Errorf("gib: a lookup query must name its type: %q, %q or %q",
+			QueryTypeBranches, QueryTypeHeadsSince, QueryTypeTxs)
 	default:
-		return nil, fmt.Errorf("gib: unknown query type %q", t)
+		return nil, fmt.Errorf("gib: unknown query type %q; the types are %q, %q and %q",
+			t, QueryTypeBranches, QueryTypeHeadsSince, QueryTypeTxs)
 	}
-
-	var q Query
-	if len(question.Query) > 0 {
-		if err := json.Unmarshal(question.Query, &q); err != nil {
-			return nil, fmt.Errorf("gib: invalid query: %w", err)
-		}
-	}
-
-	var recs []HeadRecord
-	if q.Outpoint != "" {
-		op, err := transaction.OutpointFromString(q.Outpoint)
-		if err != nil {
-			return nil, fmt.Errorf("gib: invalid outpoint: %w", err)
-		}
-		rec, err := l.store.GetHead(ctx, op.OrdinalString())
-		if err != nil && !errors.Is(err, sql.ErrNoRows) {
-			return nil, err
-		}
-		if rec != nil {
-			recs = []HeadRecord{*rec}
-		}
-	} else {
-		limit := clampLimit(q.Limit)
-		skip := max(q.Skip, 0)
-		all, err := l.store.ListHeads(ctx, HeadFilter{
-			Origin:    q.Origin,
-			Branch:    q.Branch,
-			Identity:  q.Identity,
-			CommitSha: q.Sha,
-			Unspent:   !q.IncludeSpent,
-			Limit:     min(skip+limit, MaxLimit),
-			Rev:       true,
-		})
-		if err != nil {
-			return nil, err
-		}
-		if skip < len(all) {
-			recs = all[skip:]
-		}
-	}
-
-	formulas := make([]lookup.LookupFormula, 0, len(recs))
-	for i := range recs {
-		op, err := transaction.OutpointFromString(recs[i].Outpoint)
-		if err != nil {
-			continue
-		}
-		formulas = append(formulas, lookup.LookupFormula{Outpoint: op})
-	}
-	return &lookup.LookupAnswer{Type: lookup.AnswerTypeFormula, Formulas: formulas}, nil
 }
 
 // GetDocumentation returns documentation for this lookup service.
 func (l *LookupService) GetDocumentation() string {
-	return "gib commit heads by outpoint, repository origin, branch, or identity; " +
-		`{"type":"headsSince"} for a branch's heads from a point forward and ` +
-		`{"type":"txs"} for whole transactions by txid, both as output-list BEEF`
+	return `gib repository sync: {"type":"branches"} enumerates a ` +
+		"repository's branches with each one's tip head and the default " +
+		`branch to clone from; {"type":"headsSince"} walks one branch ` +
+		"forward from a head the client already has, as an output list of " +
+		`heads with their BEEF; {"type":"txs"} returns whole transactions ` +
+		"by txid as one merged BEEF"
 }
 
 // GetMetaData returns metadata for the lookup service.
@@ -316,17 +321,22 @@ func (l *LookupService) GetMetaData() *overlay.MetaData {
 	}
 }
 
+// recordFromHead is the head as its token alone tells it. The commit is not
+// in the token any more, so it is filled in by the caller that has the
+// submission to read the root's `.git` store from; the spend paths, which
+// see only the spent output, leave it empty and the store keeps whatever
+// admission already indexed.
 func recordFromHead(op *transaction.Outpoint, head *gibtpl.Head, score float64) *HeadRecord {
 	return &HeadRecord{
-		Outpoint: op.OrdinalString(),
-		Txid:     op.Txid.String(),
-		Vout:     op.Index,
-		Origin:   head.Origin,
-		Branch:   head.Branch,
-		Root:     head.Root,
-		Identity: head.Identity,
-		Commit:   head.Commit,
-		Score:    score,
+		Outpoint:     op.OrdinalString(),
+		Txid:         op.Txid.String(),
+		Vout:         op.Index,
+		Origin:       head.Origin,
+		Branch:       head.Branch,
+		Root:         head.Root,
+		Identity:     head.Identity,
+		BranchedFrom: head.BranchedFrom,
+		Score:        score,
 	}
 }
 

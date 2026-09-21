@@ -1,8 +1,14 @@
 // Package gib is the overlay module that indexes gib commit heads: the
-// PushDrop coins that name a repository's branch tips. It admits every valid
-// head into tm_gib, keeps the full push history (spend chain) per branch in
-// its own table, and serves REST and BRC-24 lookups by repository, branch,
-// and publisher identity.
+// PushDrop coins that name a repository's branch tips. It admits a head into
+// tm_gib only with the push it publishes, keeps the full push history (spend
+// chain) per branch in its own table, and serves REST and BRC-24 lookups by
+// repository, branch, and publisher identity.
+//
+// Heads enter one way: a client submits them. gib is a far more explicit
+// push than anything else in this stack — the client holds the repository
+// and sends the head together with the content transactions that prove it —
+// so there is no queue, no chain-feed sync and no discovery here. Repository
+// exchange between overlays is peer to peer.
 package gib
 
 import (
@@ -23,19 +29,16 @@ const (
 	TopicName = "tm_gib"
 	// LookupName is the BRC-24 lookup service name.
 	LookupName = "ls_gib"
-	// QueueName is the overlay work queue (q:gib) fed by the event bridge
-	// and the optional JungleBus subscriber.
-	QueueName = "gib"
 	// ProtocolVersion is reported in topic/lookup metadata.
 	ProtocolVersion = "1"
 )
 
-// Config holds gib overlay configuration.
+// Config holds gib overlay configuration. There is no sync section: this
+// module has no queue and ingests nothing from a chain feed.
 type Config struct {
-	Mode     string                     `mapstructure:"mode"`
-	LogLevel string                     `mapstructure:"log_level"`
-	Sync     *overlay.OverlaySyncConfig `mapstructure:"sync"`
-	Routes   RoutesConfig               `mapstructure:"routes"`
+	Mode     string       `mapstructure:"mode"`
+	LogLevel string       `mapstructure:"log_level"`
+	Routes   RoutesConfig `mapstructure:"routes"`
 }
 
 // RoutesConfig controls the module's REST surface.
@@ -51,16 +54,6 @@ func (c *Config) SetDefaults(v *viper.Viper, prefix string) {
 		p = prefix + "."
 	}
 	v.SetDefault(p+"mode", ModeDisabled)
-	v.SetDefault(p+"sync.enabled", false)
-	v.SetDefault(p+"sync.subscription_id", "")
-	v.SetDefault(p+"sync.queue_name", QueueName)
-	v.SetDefault(p+"sync.from_block", 0)
-	// One worker: q:gib members are ordered by arrival, so a head is applied
-	// before the push that spends it (same reasoning as ordlock).
-	v.SetDefault(p+"sync.concurrency", 1)
-	v.SetDefault(p+"sync.batch_size", 1000)
-	v.SetDefault(p+"sync.reorg_depth", 6)
-	v.SetDefault(p+"sync.resolve_dependencies", false)
 	v.SetDefault(p+"routes.enabled", true)
 	v.SetDefault(p+"routes.prefix", "/gib")
 }
@@ -71,7 +64,6 @@ type Services struct {
 	Lookup        *LookupService
 	TopicManager  *TopicManager
 	Store         *Store
-	Sync          *overlay.OverlaySync
 	Routes        *Routes
 	OverlayRoutes *overlay.Routes
 }
@@ -105,7 +97,7 @@ func (c *Config) Initialize(ctx context.Context, logger *slog.Logger, deps *over
 		if deps.BeefStorage != nil {
 			lookup.SetBeefLoader(deps.BeefStorage)
 		}
-		topicManager := &TopicManager{}
+		topicManager := &TopicManager{Logger: logger}
 		eng := overlay.NewModuleEngine(deps,
 			map[string]engine.TopicManager{TopicName: topicManager},
 			map[string]engine.LookupService{LookupName: lookup},
@@ -130,13 +122,9 @@ func (c *Config) Initialize(ctx context.Context, logger *slog.Logger, deps *over
 	}
 }
 
-// Close stops background work. The topic database is owned by ModuleDeps.
+// Close releases the module's own resources. There are none: the topic
+// database is owned by ModuleDeps, and the module runs no background work
+// of its own — heads arrive by submission, on the caller's goroutine.
 func (s *Services) Close() error {
-	if s == nil {
-		return nil
-	}
-	if s.Sync != nil {
-		s.Sync.Stop()
-	}
 	return nil
 }

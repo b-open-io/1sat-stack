@@ -217,7 +217,7 @@ func (r *Routes) handleDirectory(c *fiber.Ctx, resp *Response, pp *pointerPath, 
 	directory, err := parseDirectory(resp.ContentType, resp.Content)
 	if err != nil {
 		msg := "invalid directory format"
-		if errors.Is(err, errInvalidDirectory) {
+		if errors.Is(err, ErrInvalidDirectory) {
 			msg = "invalid directory manifest"
 		}
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
@@ -297,7 +297,7 @@ func (r *Routes) resolveDirectoryPath(
 		subdir, err := parseDirectory(fileResp.ContentType, fileResp.Content)
 		if err != nil {
 			msg := "invalid subdirectory format"
-			if errors.Is(err, errInvalidDirectory) {
+			if errors.Is(err, ErrInvalidDirectory) {
 				msg = "invalid directory manifest"
 			}
 			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{

@@ -46,14 +46,17 @@ func TestMetaEnrichment(t *testing.T) {
 	// name is ignored.
 	served[testOrigin] = `{"name":"gib-test","description":"desc","defaultBranch":"dev"}`
 	served[testRoot2] = `{"name":"renamed"}`
-	mint := f.mintTx(testOrigin, "main", testRoot1)
-	f.admit(0, mint)
+	first := publish(t, 0x81, []string{testCommit}, nil, testCommit)
+	mint := f.mintTx(testOrigin, "main", first.root)
+	f.admit(0, first.tx, mint)
 	head, _ := f.store.GetHead(ctx, op(mint, 0))
 	if head.Meta == nil || head.Meta.Name != "gib-test" {
 		t.Fatalf("genesis meta = %+v", head.Meta)
 	}
-	push := f.spendTx(mint, f.headScript(testOrigin, "main", testRoot2, testCommit))
-	f.admit(0, mint, push)
+	second := commitObject("second", sha(testCommit))
+	next := publish(t, 0x82, []string{second}, map[string]string{sha(testCommit): first.objects[sha(testCommit)]}, second)
+	push := f.spendTx(mint, f.headScript(testOrigin, "main", next.root, ""))
+	f.admit(0, next.tx, mint, push)
 	head, _ = f.store.GetHead(ctx, op(push, 0))
 	if head.Meta == nil || head.Meta.Name != "gib-test" || head.Meta.DefaultBranch != "dev" {
 		t.Fatalf("meta = %+v", head.Meta)
@@ -68,8 +71,9 @@ func TestMetaEnrichment(t *testing.T) {
 	}
 
 	// Backfill: a repo whose only head predates enrichment.
-	other := f.mintTx(testOrigin2, "main", testRoot1)
-	f.admit(0, other)
+	forked := publish(t, 0x83, []string{testCommit}, nil, testCommit)
+	other := f.mintTx(testOrigin2, "main", forked.root)
+	f.admit(0, forked.tx, other)
 	served[testOrigin2] = `{"name":"late"}`
 	routes := NewRoutes(f.store, nil)
 	routes.SetMetaFiller(f.svc.FillMeta)

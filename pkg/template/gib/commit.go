@@ -10,7 +10,7 @@ import (
 	"strings"
 )
 
-// ErrNotCommit is returned when inscription bytes are not a git commit object.
+// ErrNotCommit is returned when the bytes are not a git commit object.
 var ErrNotCommit = errors.New("gib: content is not a git commit object")
 
 // Signature is a git author/committer line.
@@ -33,7 +33,7 @@ type Commit struct {
 }
 
 // ParseCommit parses the raw (uncompressed, header-less) bytes of a git
-// commit object as inscribed on a commit head.
+// commit object, as published in a tree's `.git` object store.
 func ParseCommit(raw []byte) (*Commit, error) {
 	if !bytes.HasPrefix(raw, []byte("tree ")) {
 		return nil, ErrNotCommit
@@ -83,6 +83,13 @@ func ObjectID(objType string, raw []byte) string {
 	fmt.Fprintf(h, "%s %d\x00", objType, len(raw))
 	h.Write(raw)
 	return hex.EncodeToString(h.Sum(nil))
+}
+
+// IsObjectID reports whether s is a git object id: 40 hex characters
+// (SHA-1) or 64 (SHA-256). `.git` entries are named by one, so a name is
+// proof of content.
+func IsObjectID(s string) bool {
+	return isObjectID(s)
 }
 
 func isObjectID(s string) bool {

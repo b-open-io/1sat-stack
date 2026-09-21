@@ -628,11 +628,20 @@
                         "$ref": "#/definitions/gib.HeadRecord"
                     }
                 },
+                "commit": {
+                    "$ref": "#/definitions/gib.Commit"
+                },
                 "heads": {
                     "type": "array",
                     "items": {
                         "$ref": "#/definitions/gib.HeadRecord"
                     }
+                },
+                "held": {
+                    "type": "boolean"
+                },
+                "ref": {
+                    "type": "string"
                 },
                 "sha": {
                     "type": "string"
@@ -643,6 +652,9 @@
             "type": "object",
             "properties": {
                 "branch": {
+                    "type": "string"
+                },
+                "branchedFrom": {
                     "type": "string"
                 },
                 "commit": {

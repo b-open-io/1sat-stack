@@ -6,8 +6,9 @@ import (
 )
 
 // TagGib is the parse tag, per-output data key, and public event for gib
-// commit heads. The event bridge routes `gib` (and `spend:gib`) into the
-// tm_gib overlay topic; `gib:{origin}` gives a per-repository SSE feed.
+// commit heads. These events are a reader's feed, not an ingestion path:
+// nothing routes them into the tm_gib topic, which only takes heads a
+// client submits. `gib:{origin}` gives a per-repository SSE feed.
 const TagGib = gib.EventName
 
 // ParseGib parses a gib commit head from the parse context. Returns nil if

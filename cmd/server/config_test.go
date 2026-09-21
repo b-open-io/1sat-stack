@@ -277,25 +277,20 @@ func TestApplyRuntimeConfigClearsEcosystemAliasSubscription(t *testing.T) {
 	}
 }
 
+// gib is enabled by the runtime config like any other overlay, but it has
+// no sync settings to carry: the module has no queue and reads no feed.
 func TestApplyRuntimeConfigEnablesGib(t *testing.T) {
 	cfg := &Config{}
 	err := cfg.applyRuntimeConfig(&configpkg.RuntimeConfig{
-		SetupComplete:      true,
-		GibEnabled:         true,
-		GibSyncSubID:       "subscription-id",
-		GibSyncConcurrency: 2,
-		GibSyncBatchSize:   500,
-		GibLogLevel:        "debug",
+		SetupComplete: true,
+		GibEnabled:    true,
+		GibLogLevel:   "debug",
 	})
 	if err != nil {
 		t.Fatalf("applyRuntimeConfig: %v", err)
 	}
 	if cfg.Gib.Mode != gibpkg.ModeEmbedded || cfg.Overlay.Mode != overlay.ModeEmbedded {
 		t.Fatalf("modes = gib:%q overlay:%q", cfg.Gib.Mode, cfg.Overlay.Mode)
-	}
-	if cfg.Gib.Sync == nil || !cfg.Gib.Sync.Enabled || cfg.Gib.Sync.SubscriptionID != "subscription-id" ||
-		cfg.Gib.Sync.Concurrency != 2 || cfg.Gib.Sync.BatchSize != 500 {
-		t.Fatalf("sync config = %+v", cfg.Gib.Sync)
 	}
 	if cfg.Gib.LogLevel != "debug" {
 		t.Fatalf("log level = %q, want debug", cfg.Gib.LogLevel)
@@ -309,7 +304,12 @@ func TestGibDefaultsDisabled(t *testing.T) {
 	if v.GetString("gib.mode") != gibpkg.ModeDisabled {
 		t.Fatalf("gib.mode = %q, want disabled", v.GetString("gib.mode"))
 	}
-	if v.GetString("gib.routes.prefix") != "/gib" || v.GetInt("gib.sync.concurrency") != 1 {
-		t.Fatalf("gib defaults: prefix=%q concurrency=%d", v.GetString("gib.routes.prefix"), v.GetInt("gib.sync.concurrency"))
+	if v.GetString("gib.routes.prefix") != "/gib" {
+		t.Fatalf("gib routes prefix = %q", v.GetString("gib.routes.prefix"))
+	}
+	// No sync section at all: nothing sets a queue name, so nothing drains
+	// one.
+	if v.IsSet("gib.sync.queue_name") || v.IsSet("gib.sync.concurrency") {
+		t.Fatal("gib still has sync defaults; it has no queue")
 	}
 }
