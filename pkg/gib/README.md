@@ -60,7 +60,9 @@ submitted BEEF alone** with no network fetch:
   output at that index decodes as an `ordfs/dir`;
 - that directory has a `.git` entry, readable here, and every commit object
   in the store that the submission carries hashes to the sha it is filed
-  under — the store is keyed by sha, so a name is proof of content;
+  under — the store is keyed by sha, so a name is proof of content. gib
+  hashes with SHA-1, so an entry under a 64-character name is one this
+  reader cannot check: it is left alone rather than passed off as verified;
 - when the branched-from field is set, the transaction holding that head is
   in the submission too, and that output decodes as a head.
 

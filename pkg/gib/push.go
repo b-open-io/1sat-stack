@@ -1,6 +1,7 @@
 package gib
 
 import (
+	"encoding/hex"
 	"errors"
 	"fmt"
 
@@ -174,8 +175,11 @@ func ReadPush(beef *transaction.Beef, head *gibtpl.Head, headTxid *chainhash.Has
 			continue
 		}
 		// Names that are not object ids belong to whatever the store grows
-		// next; a reader that does not know them leaves them alone.
-		if e.IsDir || !gibtpl.IsObjectID(e.Name) {
+		// next; a reader that does not know them leaves them alone. So does
+		// a 64-character name: gib hashes objects with SHA-1 (gib-cli's
+		// gitHash), so a SHA-256 repository's store is one this reader
+		// cannot check, and it will not pass content off as verified.
+		if e.IsDir || !isCommitName(e.Name) {
 			continue
 		}
 		ref := e.Target(store)
@@ -232,6 +236,16 @@ func ReadPush(beef *transaction.Beef, head *gibtpl.Head, headTxid *chainhash.Has
 	}
 
 	return p, nil
+}
+
+// isCommitName reports whether a `.git` entry is named by a git object id
+// this reader can verify: 40 hex characters, the SHA-1 gib hashes with.
+func isCommitName(name string) bool {
+	if len(name) != 40 {
+		return false
+	}
+	_, err := hex.DecodeString(name)
+	return err == nil
 }
 
 // outputContent reads an output's published content out of the BEEF. ok is
