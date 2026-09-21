@@ -83,6 +83,12 @@ type ModuleDeps struct {
 // NewModuleEngine creates an engine.Engine for a single overlay module.
 func NewModuleEngine(deps *ModuleDeps, managers map[string]engine.TopicManager, lookups map[string]engine.LookupService) *engine.Engine {
 	adapter := overlaystorage.NewEngineAdapter(deps.Factory, deps.BeefStorage, deps.TxTopicIndex)
+	// Formula hydration omits a topic. Bind it only when this engine owns one.
+	if len(managers) == 1 {
+		for name := range managers {
+			adapter.LookupTopic = &name
+		}
+	}
 	if deps.IngestTx != nil {
 		adapter.IngestTx = deps.IngestTx
 	}

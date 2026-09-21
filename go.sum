@@ -108,6 +108,8 @@ github.com/bsv-blockchain/go-lockfree-queue v1.2.0 h1:VSD75MVVU63idFvcBDiL0BHcYZ
 github.com/bsv-blockchain/go-lockfree-queue v1.2.0/go.mod h1:kqhncPNlNQZ1nP4m/ZF+Xa9+MOSRMLGnnIn9d/Wc/JY=
 github.com/bsv-blockchain/go-overlay-services v1.3.5-0.20260822035934-e40042674b7d h1:Oy67K2SimSI6vKBJsui/G2xoOO3YH0VCONjqXuTfIjs=
 github.com/bsv-blockchain/go-overlay-services v1.3.5-0.20260822035934-e40042674b7d/go.mod h1:v6SV474GK26/qtDWKxPJtklt1VvXih4WFzEi1bhGPUY=
+github.com/bsv-blockchain/go-overlay-services v1.3.5-0.20260906191948-e58da23b6c44 h1:vLGoKR8wFrJnL6rn4pyA1VxK7VhGG5yKu6gvif/w9pU=
+github.com/bsv-blockchain/go-overlay-services v1.3.5-0.20260906191948-e58da23b6c44/go.mod h1:v6SV474GK26/qtDWKxPJtklt1VvXih4WFzEi1bhGPUY=
 github.com/bsv-blockchain/go-p2p-message-bus v0.1.23 h1:JitBGy9N/lRXaixGneo+UCmVR+nw+zbTWAQsv2CiLVM=
 github.com/bsv-blockchain/go-p2p-message-bus v0.1.23/go.mod h1:ysf6HtQ+6CFM3R97H6OcOtrcfc28iL/ZUVdHijchu2M=
 github.com/bsv-blockchain/go-safe-conversion v1.2.0 h1:HwLWaxqm2OyU5/2BRQ8kwdn25QyX2HXr0JkfSyTG3DU=
