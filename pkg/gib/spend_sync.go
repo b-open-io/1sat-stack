@@ -6,12 +6,13 @@ import (
 
 	"github.com/b-open-io/1sat-stack/pkg/beef"
 	"github.com/b-open-io/1sat-stack/pkg/pubsub"
+	gibtpl "github.com/b-open-io/1sat-stack/pkg/template/gib"
 	"github.com/bsv-blockchain/go-sdk/transaction"
 )
 
 // SpendEvent is the indexer's spend event for commit heads. Its member is
 // "<spending txid>_<source vout>" (see pkg/txo output_store).
-const SpendEvent = "spend:" + QueueName
+const SpendEvent = "spend:" + gibtpl.EventName
 
 // SpendSync records head spends straight from the indexer's spend events,
 // bypassing the overlay engine. The engine only notifies OutputSpent for
@@ -19,6 +20,10 @@ const SpendEvent = "spend:" + QueueName
 // successor head) that reaches it before its head would be dropped and the
 // head would stay "current" forever. Pushes are covered by admission of the
 // successor; this path covers everything else.
+//
+// This is not an ingestion path: it subscribes to an event, submits nothing
+// to the engine, and never admits a head. It only closes out heads the
+// index already knows about when their spend is seen.
 type SpendSync struct {
 	pubsub pubsub.PubSub
 	beef   *beef.Storage

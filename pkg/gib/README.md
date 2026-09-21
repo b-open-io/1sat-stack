@@ -46,8 +46,8 @@ both read back as absent. Reading a push out of a submission lives in
 | --- | --- |
 | Topic manager | `tm_gib` |
 | Lookup service | `ls_gib` |
-| Parser tag / event | `gib`, plus `gib:{origin}` per repository |
-| Queue | `q:gib` |
+| Parser tag / event | `gib`, plus `gib:{origin}` per repository (a reader's feed; see **Ingestion**) |
+| Queue | none — submission only |
 | REST prefix | `/1sat/gib` |
 | Overlay routes | `/1sat/gib/overlay` |
 
@@ -83,28 +83,36 @@ a branch fork from another publisher's head without copying anything. A
 the overlay records (sha and outpoint, `held: false`) and may not hold: one
 hop verified, every hop named. There is no completeness rule.
 
-### Ingestion
+### Ingestion: submission only
 
-Broadcasts through the stack are parsed by `pkg/parse/gib.go`, which emits
-`gib` and `gib:{origin}` events. The event bridge routes `gib` and `spend:gib`
-into `q:gib`; a single OverlaySync worker submits them to the engine in arrival
-order. Admission stores the head and records the spend of every gib input in
-the same transaction, so a push's predecessor is linked even if the engine
-never admitted it. `SpendSync` records deletions (burns) straight from the
-indexer's spend events. An optional JungleBus subscription can feed the same
-queue for historical sync.
+A head enters `tm_gib` one way — a client submits it, through the overlay's
+BRC-22 route at `/1sat/gib/overlay/submit`, with the content transactions
+that prove the push in the same BEEF. There is **no queue, no event bridge,
+no sync worker and no JungleBus subscription** for this module, and that is
+deliberate.
 
-> **Open: the indexer path submits a head without its push.** `OverlaySync`
-> builds the submission with `beefStorage.BuildFullBeef(headTxid)`, which
-> carries the head transaction and its ancestry. A push's content
-> transactions are not ancestors of the head — the head spends the previous
-> head and a funding output, not the content — so a head arriving that way
-> now fails admission. A client submitting its own push (gib's `git push`,
-> which sends content and head together) is unaffected. Closing this means
-> the sync worker naming the root transaction in the submission it builds,
-> which it cannot know without decoding the head: a per-module hook on
-> `OverlaySync`, not something admission can fix, since admission is
-> deliberately fetch-free.
+gib is a far more explicit push than anything else in this stack. The client
+holds the repository and knows exactly what it is publishing, so the overlay
+never has to discover a head or reconstruct a repository from the chain: it
+accepts what it is handed, checks it against itself, and keeps it.
+Repositories travel between overlays peer to peer, not down a feed. There
+will be no full-repository syncing from a chain feed.
+
+It could not have worked the other way round in any case. `OverlaySync`
+builds its submission with `beefStorage.BuildFullBeef(headTxid)`, which
+carries the head transaction and its ancestry — the previous head and a
+funding output. A push's content transactions are not ancestors of the head,
+so a head ingested from the feed would arrive without the push it publishes
+and be refused by admission, which is fetch-free by design.
+
+**What stays.** `pkg/parse/gib.go` still parses every commit head the
+indexer sees and still emits `gib` and `gib:{origin}`. Those are a reader's
+feed — `gib:{origin}` is the per-repository SSE subscription gibhub.net uses
+for live updates — not an ingestion path: nothing routes them to a queue any
+more. `SpendSync` still subscribes to `spend:gib` so a branch deletion (a
+spend with no successor head, which admits nothing and which the engine will
+not report for a head it never saw) closes out a head the index already
+holds. It submits nothing to the engine and admits nothing.
 
 ### BRC-24 lookups (`ls_gib`)
 
@@ -224,16 +232,11 @@ gib:
   routes:
     enabled: true
     prefix: /gib
-  sync:
-    enabled: false
-    subscription_id: ""   # optional JungleBus subscription
-    queue_name: gib
-    concurrency: 1        # keep 1: heads must apply before the push that spends them
-    batch_size: 1000
 ```
 
-Admin runtime keys: `overlay.gib.enabled`, `overlay.gib.sub_id`,
-`overlay.gib.concurrency`, `overlay.gib.batch_size`, `overlay.gib.log_level`.
+There is no `sync` section: no queue, no subscription, no worker to tune.
+
+Admin runtime keys: `overlay.gib.enabled`, `overlay.gib.log_level`.
 
 ## Examples
 

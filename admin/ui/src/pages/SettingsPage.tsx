@@ -1220,12 +1220,10 @@ function OrdlockPanel({
   );
 }
 
-function GibPanel({
-  enabled, onToggle,
-  subId, setSubId,
-  concurrency, setConcurrency,
-  batchSize, setBatchSize,
-}: OverlayPanelProps) {
+// gib has no sync settings: it has no queue and reads no chain feed. A head
+// enters the overlay only when a client submits it with the content that
+// proves it, so there is nothing here but the toggle.
+function GibPanel({ enabled, onToggle }: Pick<OverlayPanelProps, "enabled" | "onToggle">) {
   return (
     <div className="space-y-4">
       <PageHeader title="gib" description="On-chain git — indexes commit heads (branch pointers) per repository and publisher." />
@@ -1233,7 +1231,7 @@ function GibPanel({
       <SectionCard>
         <OverlayToggleHeader
           title="gib overlay"
-          description="Admits gib PushDrop commit heads and tracks each branch's push history."
+          description="Admits gib PushDrop commit heads, with the push each one publishes, and tracks every branch's history."
           enabled={enabled}
           onToggle={onToggle}
         />
@@ -1241,18 +1239,12 @@ function GibPanel({
       </SectionCard>
 
       <SectionCard>
-        <SectionHeading>Configuration</SectionHeading>
-        <FieldRow label="JungleBus subscription ID">
-          <Input value={subId} onChange={(e) => setSubId(e.target.value)} placeholder="sub_..." className="font-mono text-xs h-8" />
-        </FieldRow>
-        <div className="grid grid-cols-2 gap-3">
-          <FieldRow label="Concurrency">
-            <Input value={concurrency} onChange={(e) => setConcurrency(e.target.value)} className="font-mono text-xs h-8" />
-          </FieldRow>
-          <FieldRow label="Batch size">
-            <Input value={batchSize} onChange={(e) => setBatchSize(e.target.value)} className="font-mono text-xs h-8" />
-          </FieldRow>
-        </div>
+        <SectionHeading>Ingestion</SectionHeading>
+        <p className="text-xs text-muted-foreground">
+          Submission only. Clients push heads to this overlay directly, with
+          the content transactions that prove them; nothing is ingested from
+          the chain feed and repositories are exchanged peer to peer.
+        </p>
       </SectionCard>
     </div>
   );
@@ -1623,10 +1615,6 @@ export default function SettingsPage() {
   const [ordlockConcurrency, setOrdlockConcurrency] = useState("8");
   const [ordlockBatchSize, setOrdlockBatchSize] = useState("1000");
 
-  // gib overlay
-  const [gibSubId, setGibSubId] = useState("");
-  const [gibConcurrency, setGibConcurrency] = useState("1");
-  const [gibBatchSize, setGibBatchSize] = useState("1000");
 
   // Overlay engine
   const [engineStorage, setEngineStorage] = useState<"sqlite" | "postgres">("sqlite");
@@ -1744,10 +1732,6 @@ export default function SettingsPage() {
         setOrdlockConcurrency(s("overlay.ordlock.concurrency", "8"));
         setOrdlockBatchSize(s("overlay.ordlock.batch_size", "1000"));
 
-        // gib
-        setGibSubId(s("overlay.gib.sub_id", ""));
-        setGibConcurrency(s("overlay.gib.concurrency", "1"));
-        setGibBatchSize(s("overlay.gib.batch_size", "1000"));
 
         // Overlay engine
         if (cfg["overlay.engine.storage"] === "sqlite" || cfg["overlay.engine.storage"] === "postgres") setEngineStorage(cfg["overlay.engine.storage"]);
@@ -1802,7 +1786,6 @@ export default function SettingsPage() {
     "overlay.bsocial.sub_id", "overlay.bsocial.concurrency", "overlay.bsocial.batch_size",
     "overlay.bsocial.mongo_url",
     "overlay.ordlock.sub_id", "overlay.ordlock.concurrency", "overlay.ordlock.batch_size",
-    "overlay.gib.sub_id", "overlay.gib.concurrency", "overlay.gib.batch_size",
     "indexer.sync.subscription_ids", "indexer.sync.concurrency", "indexer.sync.batch_size",
   ]);
 
@@ -1858,9 +1841,6 @@ export default function SettingsPage() {
     "overlay.ordlock.sub_id": ordlockSubId,
     "overlay.ordlock.concurrency": ordlockConcurrency,
     "overlay.ordlock.batch_size": ordlockBatchSize,
-    "overlay.gib.sub_id": gibSubId,
-    "overlay.gib.concurrency": gibConcurrency,
-    "overlay.gib.batch_size": gibBatchSize,
     "ordfs.cache.lru_size": ordfsLruSize,
     "ordfs.cache.redis_url": ordfsRedisUrl,
     "ordfs.cache.redis_ttl": ordfsRedisTtl,
@@ -1880,7 +1860,6 @@ export default function SettingsPage() {
     bsv21SubId, bsv21Concurrency, bsv21TokenWorkers, bsv21BatchSize,
     bsocialSubId, bsocialConcurrency, bsocialBatchSize, bsocialMongoUrl,
     ordlockSubId, ordlockConcurrency, ordlockBatchSize,
-    gibSubId, gibConcurrency, gibBatchSize,
     ordfsLruSize, ordfsRedisUrl, ordfsRedisTtl,
     indexerSubIds, indexerConcurrency, indexerBatchSize,
   ]);
@@ -1974,10 +1953,6 @@ export default function SettingsPage() {
         "overlay.ordlock.concurrency": ordlockConcurrency,
         "overlay.ordlock.batch_size": ordlockBatchSize,
 
-        // gib
-        "overlay.gib.sub_id": gibSubId,
-        "overlay.gib.concurrency": gibConcurrency,
-        "overlay.gib.batch_size": gibBatchSize,
 
         // Overlay engine
         "overlay.engine.storage": engineStorage,
@@ -2219,12 +2194,7 @@ export default function SettingsPage() {
             />
           )}
           {activeSection === "overlay-gib" && (
-            <GibPanel
-              enabled={gibEnabled} onToggle={setGibEnabled}
-              subId={gibSubId} setSubId={setGibSubId}
-              concurrency={gibConcurrency} setConcurrency={setGibConcurrency}
-              batchSize={gibBatchSize} setBatchSize={setGibBatchSize}
-            />
+            <GibPanel enabled={gibEnabled} onToggle={setGibEnabled} />
           )}
           {activeSection === "sync" && (
             <SyncPanel

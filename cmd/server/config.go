@@ -705,19 +705,6 @@ func (c *Config) applyRuntimeConfig(rc *configpkg.RuntimeConfig) error {
 	if rc.GibEnabled {
 		c.Gib.Mode = gibpkg.ModeEmbedded
 		c.Overlay.Mode = "embedded"
-		if c.Gib.Sync == nil {
-			c.Gib.Sync = &overlay.OverlaySyncConfig{}
-		}
-		if rc.GibSyncSubID != "" {
-			c.Gib.Sync.SubscriptionID = rc.GibSyncSubID
-			c.Gib.Sync.Enabled = true
-		}
-		if rc.GibSyncConcurrency > 0 {
-			c.Gib.Sync.Concurrency = rc.GibSyncConcurrency
-		}
-		if rc.GibSyncBatchSize > 0 {
-			c.Gib.Sync.BatchSize = rc.GibSyncBatchSize
-		}
 	}
 
 	// BSV21
@@ -1243,18 +1230,9 @@ func (c *Config) Initialize(ctx context.Context, logger *slog.Logger) (*Services
 				svc.Gib.Routes.SetMetaFiller(svc.Gib.Lookup.FillMeta)
 			}
 		}
-		// OverlaySync drains q:gib (fed by the gib event bridge and the
-		// optional JungleBus subscriber) into tm_gib via processDirect.
-		if svc.Gib != nil && svc.Beef != nil {
-			syncCfg := c.Gib.Sync
-			if syncCfg == nil {
-				syncCfg = &overlay.OverlaySyncConfig{}
-			}
-			if syncCfg.QueueName == "" {
-				syncCfg.QueueName = gibpkg.QueueName
-			}
-			svc.Gib.Sync = overlay.NewOverlaySync(syncCfg, gibpkg.TopicName, svc.Store.Store, svc.Beef.Storage, svc.Gib.Engine, gibLogger)
-		}
+		// No sync worker: gib has no queue. A head enters tm_gib only when a
+		// client submits it with the content transactions that prove it, so
+		// there is nothing to drain and nothing to discover.
 		logger.Info("gib initialized", "duration", time.Since(start).Round(time.Millisecond))
 	}
 
@@ -1539,18 +1517,6 @@ func (c *Config) Initialize(ctx context.Context, logger *slog.Logger) (*Services
 			}
 			svc.JBSubscribers = append(svc.JBSubscribers, sub)
 			logger.Info("OrdLock v2 JungleBus subscriber initialized", "queue", subCfg.QueueName, "from_block", subCfg.FromBlock)
-		}
-
-		// gib subscriber (if subscription_id configured). The JungleBus
-		// subscription should filter on gib commit-head outputs and inputs.
-		if svc.Gib != nil && c.Gib.Sync != nil && c.Gib.Sync.SubscriptionID != "" {
-			subCfg := c.Gib.Sync.SubscriberConfig()
-			sub, err := jbsync.NewSubscriber(subCfg, svc.Store.Store, svc.ConfigStore, svc.Chaintracks, svc.JungleBus, logger)
-			if err != nil {
-				return nil, fmt.Errorf("failed to create gib subscriber: %w", err)
-			}
-			svc.JBSubscribers = append(svc.JBSubscribers, sub)
-			logger.Info("gib JungleBus subscriber initialized", "queue", subCfg.QueueName, "from_block", subCfg.FromBlock)
 		}
 
 		// BAP subscriber (if subscription_id configured)
@@ -2114,27 +2080,16 @@ func (svc *Services) StartSubscribers(ctx context.Context, logger *slog.Logger) 
 				logger.Error("failed to start OrdLock v2 spend sync", "error", err)
 			}
 		}
-		// gib: heads and their spends (pushes, deletes) flow through one
-		// ordered queue so a head is applied before the push that spends it.
-		if svc.Gib != nil && svc.Gib.Sync != nil {
-			bridge := overlay.NewEventBridge(&overlay.EventBridgeConfig{
-				PubSub:   svc.PubSub.PubSub,
-				Store:    svc.Store.Store,
-				Patterns: []string{gibpkg.QueueName, "spend:" + gibpkg.QueueName},
-				QueueFunc: func(ev pubsub.Event) string {
-					return string(txo.KeyQueue(gibpkg.QueueName))
-				},
-				Logger:       logger,
-				Engine:       svc.Gib.Engine,
-				BeefStorage:  svc.Beef.Storage,
-				SubmitBuffer: 0,
-			})
-			if err := bridge.Start(ctx); err != nil {
-				logger.Error("failed to start gib event bridge", "error", err)
-			}
-			// Branch deletions (burns) create no successor head, so nothing is
-			// admitted; record those spends straight from the indexer's spend
-			// events instead of relying on the engine having seen the head.
+		// gib has no event bridge: heads are not ingested from the indexer's
+		// events, only submitted. The `gib` and `gib:{origin}` events stay —
+		// they are the per-repository feed readers subscribe to.
+		//
+		// Branch deletions (burns) create no successor head, so nothing is
+		// admitted and the engine has no OutputSpent to report for a head it
+		// never saw; record those spends straight from the indexer's spend
+		// events. This closes out heads the index already holds; it submits
+		// nothing and admits nothing.
+		if svc.Gib != nil && svc.Beef != nil {
 			spendSync := gibpkg.NewSpendSync(svc.PubSub.PubSub, svc.Beef.Storage, svc.Gib.Lookup, logger)
 			if err := spendSync.Start(ctx); err != nil {
 				logger.Error("failed to start gib spend sync", "error", err)
@@ -2228,14 +2183,6 @@ func (svc *Services) StartSubscribers(ctx context.Context, logger *slog.Logger) 
 			}
 		}()
 		logger.Info("started OrdLock v2 overlay sync")
-	}
-	if svc.Gib != nil && svc.Gib.Sync != nil {
-		go func() {
-			if err := svc.Gib.Sync.Start(ctx); err != nil {
-				logger.Error("gib sync error", "error", err)
-			}
-		}()
-		logger.Info("started gib overlay sync")
 	}
 	if svc.OPNS != nil && svc.OPNS.Sync != nil {
 		go func() {
