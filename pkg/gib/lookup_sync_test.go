@@ -58,6 +58,16 @@ func (e *syncEnv) ask(query string, want overlaylookup.AnswerType) *overlaylooku
 	return ans
 }
 
+// branches asks a branches question through the engine and decodes the
+// freeform answer the way a client does.
+func (e *syncEnv) branches(query string) *BranchesResult {
+	e.t.Helper()
+	ans := e.ask(query, overlaylookup.AnswerTypeFreeform)
+	var res BranchesResult
+	decodeResult(e.t, ans.Result, &res)
+	return &res
+}
+
 // txs asks a txs question and returns the txids the merged BEEF carries.
 // Reading the BEEF back is the whole client contract: there is no list of
 // what came and what did not, only the BEEF.
@@ -462,46 +472,110 @@ func TestTxsLookup(t *testing.T) {
 // topic, which this stack's EngineAdapter refuses, so a formula answer never
 // reaches a client. If this test starts failing the defect is fixed and the
 // head query below could return formulas again.
+// Why this service never answers with formulas. The engine hydrates one with
+// Storage.FindOutput(ctx, outpoint, nil, nil, true) — a nil topic — and this
+// stack's adapter refuses that, so a formula answer would fail on its way to
+// the client however the question was asked. The typeless `heads` query that
+// used to produce them is gone for that reason; this pins the defect it died
+// of, so nobody reintroduces one.
 func TestFormulaHydrationStillRejectsNilTopic(t *testing.T) {
 	e := newSyncEnv(t)
 
-	// The typeless head query still answers with formulas, and the engine
-	// fails to hydrate them.
-	_, err := e.svc.Engine.Lookup(t.Context(), &overlaylookup.LookupQuestion{
-		Service: LookupName,
-		Query:   json.RawMessage(`{"origin":"` + testOrigin + `"}`),
-	})
+	_, err := e.svc.Engine.Storage.FindOutput(t.Context(),
+		&transaction.Outpoint{Txid: *e.push2.TxID(), Index: 0}, nil, nil, true)
 	if err == nil {
-		t.Fatal("formula hydration succeeded; the nil-topic defect is fixed")
+		t.Fatal("FindOutput accepted a nil topic; formulas could work again")
 	}
 	if !strings.Contains(err.Error(), "topic is required") {
-		t.Fatalf("formula hydration failed for another reason: %v", err)
+		t.Fatalf("FindOutput failed for another reason: %v", err)
+	}
+	// Named with a topic, the same output is there: it is the nil topic
+	// formula hydration passes that is the problem, not the storage.
+	topic := TopicName
+	if out, err := e.svc.Engine.Storage.FindOutput(t.Context(),
+		&transaction.Outpoint{Txid: *e.push2.TxID(), Index: 0}, &topic, nil, true); err != nil || out == nil {
+		t.Fatalf("FindOutput with a topic = %+v, %v", out, err)
 	}
 
-	// The lookup service itself does still produce the formulas: the break
-	// is in hydration, not in the query.
-	ans, err := e.svc.Lookup.Lookup(t.Context(), &overlaylookup.LookupQuestion{
-		Service: LookupName,
-		Query:   json.RawMessage(`{"origin":"` + testOrigin + `"}`),
-	})
+	// Every query this service answers builds its own answer, so all three
+	// come back through the engine intact.
+	if got, _ := e.headsSince(`{"type":"headsSince","origin":"` + testOrigin + `","branch":"main"}`); len(got) != 3 {
+		t.Fatalf("headsSince through the engine = %v", got)
+	}
+	if res := e.branches(`{"type":"branches","origin":"` + testOrigin + `"}`); len(res.Branches) != 2 {
+		t.Fatalf("branches through the engine = %+v", res.Branches)
+	}
+}
+
+// The branches query, driven the way a client drives it: through
+// engine.Lookup, then headsSince for each branch it wants.
+func TestBranchesLookupThroughEngine(t *testing.T) {
+	e := newSyncEnv(t)
+
+	res := e.branches(`{"type":"branches","origin":"` + testOrigin + `"}`)
+	if res.Query != QueryTypeBranches || res.Origin != testOrigin || res.More || res.Next != nil {
+		t.Fatalf("result = %+v", res)
+	}
+	if res.DefaultBranch != "main" || res.Owner != hexPub(e.identity) {
+		t.Fatalf("default = %q by %q", res.DefaultBranch, res.Owner)
+	}
+	if len(res.Branches) != 2 || res.Branches[0].Branch != "dev" || res.Branches[1].Branch != "main" {
+		t.Fatalf("branches = %+v", res.Branches)
+	}
+	// main's tip is the newest head on the chain, not the genesis one.
+	if res.Branches[1].Tip != op(e.push2, 0) || res.Branches[1].Spent {
+		t.Fatalf("main = %+v, want the tip %s unspent", res.Branches[1], op(e.push2, 0))
+	}
+	if res.Branches[0].Tip != op(e.mint, 1) {
+		t.Fatalf("dev = %+v, want the minted head %s", res.Branches[0], op(e.mint, 1))
+	}
+
+	// What a client does with it: sync each branch the answer named.
+	for _, b := range res.Branches {
+		got, since := e.headsSince(`{"type":"headsSince","origin":"` + res.Origin +
+			`","branch":"` + b.Branch + `","identity":"` + b.Identity + `"}`)
+		if len(got) == 0 || since.Code != "" {
+			t.Fatalf("syncing %s: %v %+v", b.Branch, got, since)
+		}
+		// The last head the branch hands over is the tip the list named.
+		if got[len(got)-1] != b.Tip {
+			t.Fatalf("branch %s ends at %s, listed tip %s", b.Branch, got[len(got)-1], b.Tip)
+		}
+	}
+
+	// Paging through the engine, one branch at a time.
+	page := e.branches(`{"type":"branches","origin":"` + testOrigin + `","limit":1}`)
+	if len(page.Branches) != 1 || !page.More || page.Next == nil || page.Next.Branch != "dev" {
+		t.Fatalf("first page = %+v", page)
+	}
+	cursor, err := json.Marshal(page.Next)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if ans.Type != overlaylookup.AnswerTypeFormula || len(ans.Formulas) == 0 {
-		t.Fatalf("service answer = %+v", ans)
-	}
-
-	// The sync queries go through the same engine entry point and answer.
-	if got, _ := e.headsSince(`{"type":"headsSince","origin":"` + testOrigin + `","branch":"main"}`); len(got) != 3 {
-		t.Fatalf("headsSince through the engine = %v", got)
+	rest := e.branches(`{"type":"branches","origin":"` + testOrigin + `","since":` + string(cursor) + `}`)
+	if len(rest.Branches) != 1 || rest.Branches[0].Branch != "main" || rest.More {
+		t.Fatalf("second page = %+v", rest)
 	}
 }
 
 // TestSyncLookupsWithoutBeefLoader covers a module wired without the shared
-// BEEF store: the sync queries must refuse rather than answer empty, which a
-// client would read as "nothing to fetch".
+// BEEF store: the queries that hand over transactions must refuse rather
+// than answer empty, which a client would read as "nothing to fetch".
+// `branches` is the exception and answers anyway — it is built from the
+// index alone, and a client must be able to learn what a repository holds
+// even when this overlay cannot yet hand the content over.
 func TestSyncLookupsWithoutBeefLoader(t *testing.T) {
 	f := newFixture(t)
+	ans, err := f.svc.Lookup(t.Context(), &overlaylookup.LookupQuestion{
+		Service: LookupName,
+		Query:   json.RawMessage(`{"type":"branches","origin":"` + testOrigin + `"}`),
+	})
+	if err != nil {
+		t.Fatalf("branches needs no BEEF loader: %v", err)
+	}
+	if ans.Type != overlaylookup.AnswerTypeFreeform {
+		t.Fatalf("branches answer = %+v", ans)
+	}
 	for name, query := range map[string]string{
 		"headsSince": `{"type":"headsSince","origin":"` + testOrigin + `","branch":"main"}`,
 		"txs":        `{"type":"txs","txids":["` + strings.Repeat("0", 63) + `1"]}`,

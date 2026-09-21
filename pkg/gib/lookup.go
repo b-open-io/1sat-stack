@@ -2,9 +2,6 @@ package gib
 
 import (
 	"context"
-	"database/sql"
-	"encoding/json"
-	"errors"
 	"fmt"
 	"log/slog"
 
@@ -54,23 +51,6 @@ func NewLookupService(store *Store, logger *slog.Logger) *LookupService {
 		logger = slog.Default()
 	}
 	return &LookupService{store: store, logger: logger}
-}
-
-// Query is the BRC-24 lookup query for ls_gib. All filters are optional;
-// outpoint short-circuits the rest. Origin is the repository origin: the
-// outpoint of the genesis `ordfs/dir` root that identifies the repository.
-// Type is empty or QueryTypeHeads for this query; see lookup_sync.go for
-// the headsSince and txs queries.
-type Query struct {
-	Type         string `json:"type,omitempty"`
-	Outpoint     string `json:"outpoint,omitempty"`
-	Origin       string `json:"origin,omitempty"`
-	Branch       string `json:"branch,omitempty"`
-	Identity     string `json:"identity,omitempty"`
-	Sha          string `json:"sha,omitempty"`
-	IncludeSpent bool   `json:"includeSpent,omitempty"`
-	Limit        int    `json:"limit,omitempty"`
-	Skip         int    `json:"skip,omitempty"`
 }
 
 type spentHead struct {
@@ -286,10 +266,19 @@ func (l *LookupService) OutputBlockHeightUpdated(ctx context.Context, txid *chai
 	return l.store.UpdateScoreForTxid(ctx, txid.String(), types.HeightScore(blockHeight, blockIndex))
 }
 
-// Lookup answers BRC-24 questions. The default (typeless) question returns
-// formulas for matching heads, current heads only unless includeSpent is
-// set. QueryTypeHeadsSince and QueryTypeTxs are the sync queries and build
-// their output lists here; see lookup_sync.go.
+// Lookup answers BRC-24 questions. Every question names its type; the three
+// are branches, headsSince and txs, and each builds its own answer here (see
+// lookup_sync.go).
+//
+// There was a fourth, the typeless `heads` query, which answered with
+// formulas for matching heads. It is gone. A formula answer has never
+// reached a client from this stack: the engine hydrates one with
+// Storage.FindOutput(ctx, outpoint, nil, nil, true) — a nil topic — and this
+// stack's EngineAdapter rejects that with "topic is required", so the
+// question failed in production however it was asked. Its one real use was
+// enumerating a repository, which `branches` now does properly. Removing it
+// turns an answer that always failed into a refusal that says so; the same
+// filters are served over REST by /1sat/gib/heads, which works.
 func (l *LookupService) Lookup(ctx context.Context, question *lookup.LookupQuestion) (*lookup.LookupAnswer, error) {
 	if question == nil {
 		return nil, fmt.Errorf("gib: lookup question must not be nil")
@@ -298,71 +287,29 @@ func (l *LookupService) Lookup(ctx context.Context, question *lookup.LookupQuest
 		return nil, fmt.Errorf("gib: unsupported lookup service %q", question.Service)
 	}
 	switch t := queryType(question.Query); t {
-	case "", QueryTypeHeads:
+	case QueryTypeBranches:
+		return l.answerBranches(ctx, question.Query)
 	case QueryTypeHeadsSince:
 		return l.answerHeadsSince(ctx, question.Query)
 	case QueryTypeTxs:
 		return l.answerTxs(ctx, question.Query)
+	case "":
+		return nil, fmt.Errorf("gib: a lookup query must name its type: %q, %q or %q",
+			QueryTypeBranches, QueryTypeHeadsSince, QueryTypeTxs)
 	default:
-		return nil, fmt.Errorf("gib: unknown query type %q", t)
+		return nil, fmt.Errorf("gib: unknown query type %q; the types are %q, %q and %q",
+			t, QueryTypeBranches, QueryTypeHeadsSince, QueryTypeTxs)
 	}
-
-	var q Query
-	if len(question.Query) > 0 {
-		if err := json.Unmarshal(question.Query, &q); err != nil {
-			return nil, fmt.Errorf("gib: invalid query: %w", err)
-		}
-	}
-
-	var recs []HeadRecord
-	if q.Outpoint != "" {
-		op, err := transaction.OutpointFromString(q.Outpoint)
-		if err != nil {
-			return nil, fmt.Errorf("gib: invalid outpoint: %w", err)
-		}
-		rec, err := l.store.GetHead(ctx, op.OrdinalString())
-		if err != nil && !errors.Is(err, sql.ErrNoRows) {
-			return nil, err
-		}
-		if rec != nil {
-			recs = []HeadRecord{*rec}
-		}
-	} else {
-		limit := clampLimit(q.Limit)
-		skip := max(q.Skip, 0)
-		all, err := l.store.ListHeads(ctx, HeadFilter{
-			Origin:    q.Origin,
-			Branch:    q.Branch,
-			Identity:  q.Identity,
-			CommitSha: q.Sha,
-			Unspent:   !q.IncludeSpent,
-			Limit:     min(skip+limit, MaxLimit),
-			Rev:       true,
-		})
-		if err != nil {
-			return nil, err
-		}
-		if skip < len(all) {
-			recs = all[skip:]
-		}
-	}
-
-	formulas := make([]lookup.LookupFormula, 0, len(recs))
-	for i := range recs {
-		op, err := transaction.OutpointFromString(recs[i].Outpoint)
-		if err != nil {
-			continue
-		}
-		formulas = append(formulas, lookup.LookupFormula{Outpoint: op})
-	}
-	return &lookup.LookupAnswer{Type: lookup.AnswerTypeFormula, Formulas: formulas}, nil
 }
 
 // GetDocumentation returns documentation for this lookup service.
 func (l *LookupService) GetDocumentation() string {
-	return "gib commit heads by outpoint, repository origin, branch, or identity; " +
-		`{"type":"headsSince"} for a branch's heads from a point forward and ` +
-		`{"type":"txs"} for whole transactions by txid, both as output-list BEEF`
+	return `gib repository sync: {"type":"branches"} enumerates a ` +
+		"repository's branches with each one's tip head and the default " +
+		`branch to clone from; {"type":"headsSince"} walks one branch ` +
+		"forward from a head the client already has, as an output list of " +
+		`heads with their BEEF; {"type":"txs"} returns whole transactions ` +
+		"by txid as one merged BEEF"
 }
 
 // GetMetaData returns metadata for the lookup service.

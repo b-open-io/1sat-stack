@@ -901,6 +901,120 @@ func clampLimit(limit int) int {
 	return limit
 }
 
+// BranchRecord is one branch of a repository: a (repository origin, branch,
+// identity) triple and the newest head this overlay holds for it. The same
+// branch name published by two identities is two branches, which is why the
+// identity is part of what names one.
+type BranchRecord struct {
+	Branch   string `json:"branch"`
+	Identity string `json:"identity"`
+	// Tip is the newest head for this branch: what a client syncs up to,
+	// and where it resumes from.
+	Tip string `json:"tip"`
+	// Sha is the commit that head publishes, when this overlay read it.
+	Sha string `json:"sha,omitempty"`
+	// Root is the published root directory the tip head names.
+	Root string `json:"root"`
+	// Spent is true when the tip coin has been spent without a successor:
+	// the publisher has stopped extending this branch. Its history is still
+	// served and anyone may branch from it — see the README.
+	Spent bool `json:"spent,omitempty"`
+	// Score orders the tip in the chain (block height, or a timestamp while
+	// unconfirmed); it is not the paging cursor, which is the name.
+	Score float64 `json:"score"`
+}
+
+// BranchKey is an exclusive position in a repository's branch list: the
+// (branch, identity) of the last entry a caller received. Branches are
+// ordered by name then identity rather than by activity, so a push landing
+// between pages cannot move an entry from one page to another.
+type BranchKey struct {
+	Branch   string
+	Identity string
+}
+
+// ListBranches returns a repository's branches, ordered by branch name then
+// identity, starting strictly after the cursor. A nil cursor starts at the
+// first. Each entry carries the newest head for that branch, spent or not:
+// a branch nobody extends any more is still a branch, and the overlay goes
+// on serving it.
+func (s *Store) ListBranches(ctx context.Context, origin string, after *BranchKey, limit int) ([]BranchRecord, error) {
+	if err := s.ensureSchema(); err != nil {
+		return nil, err
+	}
+	if limit <= 0 {
+		limit = DefaultLimit
+	}
+	if limit > MaxLimit+1 {
+		limit = MaxLimit + 1
+	}
+
+	q := s.newQB()
+	where := []string{}
+	if tw := q.topicWhere("h"); tw != "" {
+		where = append(where, strings.TrimSuffix(tw, " AND "))
+	}
+	where = append(where, "h.origin = "+q.ph(origin))
+	if after != nil {
+		// Tuple cursor on the same ordering the rows come back in.
+		where = append(where, fmt.Sprintf("(h.branch > %s OR (h.branch = %s AND h.identity > %s))",
+			q.ph(after.Branch), q.ph(after.Branch), q.ph(after.Identity)))
+	}
+	// The newest head of each (branch, identity): the one no sibling
+	// outranks. Ordering is (score, vout, outpoint) — the last is only a
+	// tie-break, so exactly one row per branch survives.
+	where = append(where, fmt.Sprintf(`NOT EXISTS (
+		SELECT 1 FROM gib_heads n WHERE %sn.origin = h.origin AND n.branch = h.branch AND n.identity = h.identity
+			AND (n.score > h.score
+				OR (n.score = h.score AND n.vout > h.vout)
+				OR (n.score = h.score AND n.vout = h.vout AND n.outpoint > h.outpoint)))`, q.topicWhere("n")))
+
+	query := fmt.Sprintf(`SELECT h.branch, h.identity, h.outpoint, h.commit_sha, h.root, h.spend_txid, h.next_outpoint, h.score
+		FROM gib_heads h WHERE %s ORDER BY h.branch ASC, h.identity ASC LIMIT %s`,
+		strings.Join(where, " AND "), q.ph(limit))
+
+	rows, err := s.db.QueryContext(ctx, query, q.args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := []BranchRecord{}
+	for rows.Next() {
+		var (
+			rec              BranchRecord
+			sha, spend, next sql.NullString
+		)
+		if err := rows.Scan(&rec.Branch, &rec.Identity, &rec.Tip, &sha, &rec.Root, &spend, &next, &rec.Score); err != nil {
+			return nil, err
+		}
+		rec.Sha = sha.String
+		// A spend with a successor cannot reach here — the successor is the
+		// newer head, and would have outranked this one — so a spend on the
+		// newest head means the publisher stopped extending the branch.
+		rec.Spent = spend.Valid && next.String == ""
+		out = append(out, rec)
+	}
+	return out, rows.Err()
+}
+
+// GenesisHead returns the earliest head this overlay holds for a repository:
+// the one whose branch is the repository's default and whose identity is its
+// owner. It returns sql.ErrNoRows when the repository has no indexed head.
+//
+// "Earliest this overlay holds" is the honest reading: an overlay that never
+// saw the genesis push names the oldest head it did see. It is still a
+// better answer than the client guessing from `.gib`, which is a label the
+// publisher writes rather than anything the chain attests.
+func (s *Store) GenesisHead(ctx context.Context, origin string) (*HeadRecord, error) {
+	if err := s.ensureSchema(); err != nil {
+		return nil, err
+	}
+	q := s.newQB()
+	query := fmt.Sprintf(`SELECT %s FROM gib_heads WHERE %sorigin = %s ORDER BY score ASC, vout ASC LIMIT 1`,
+		headColumns, q.topicWhere(""), q.ph(origin))
+	return scanHead(s.db.QueryRowContext(ctx, query, q.args...))
+}
+
 // BranchCursor is an exclusive position in a branch's push history: the
 // score and vout of a head the caller already holds. Ordering is (score,
 // vout), the same order ListHeads uses, so a mined head always precedes an

@@ -84,6 +84,24 @@ func (f *fixture) mintTx(origin, branch, root string) *transaction.Transaction {
 	return tx
 }
 
+// mintAsTx creates a head published by another identity: a second publisher
+// on the same repository, whose branches are their own even when the name
+// collides.
+func (f *fixture) mintAsTx(identity *ec.PublicKey, origin, branch, root string) *transaction.Transaction {
+	f.t.Helper()
+	fields, err := gibtpl.Fields(origin, branch, root, identity, "")
+	if err != nil {
+		f.t.Fatal(err)
+	}
+	s, err := gibtpl.LockingScript(f.lockKey, fields)
+	if err != nil {
+		f.t.Fatal(err)
+	}
+	tx := transaction.NewTransaction()
+	tx.AddOutput(&transaction.TransactionOutput{Satoshis: 1, LockingScript: s})
+	return tx
+}
+
 // spendTx spends output 0 of prev and adds the given head outputs
 // (nil script = no successor, i.e. a burn).
 func (f *fixture) spendTx(prev *transaction.Transaction, outputs ...*script.Script) *transaction.Transaction {
@@ -459,51 +477,138 @@ func TestBlockHeightRestampAndEviction(t *testing.T) {
 	}
 }
 
-func TestLookupQueries(t *testing.T) {
+// The branches query is where a client with nothing but a repository origin
+// starts: every branch, who publishes it, and the head to sync up to.
+func TestBranchesLookup(t *testing.T) {
 	f := newFixture(t)
-	first := publish(t, 0x09, []string{testCommit}, nil, testCommit)
+	ctx := t.Context()
+
+	// The genesis push: its branch is the repository's default and its
+	// publisher is the owner.
+	first := publish(t, 0x91, []string{testCommit}, nil, testCommit)
 	mint := f.mintTx(testOrigin, "main", first.root)
 	f.admit(0, first.tx, mint)
 
 	second := commitObject("second", sha(testCommit))
-	next := publish(t, 0x0a, []string{second}, nil, second)
+	next := publish(t, 0x92, []string{second}, map[string]string{sha(testCommit): first.objects[sha(testCommit)]}, second)
 	push := f.spendTx(mint, f.headScript(testOrigin, "main", next.root, ""))
 	f.admit(0, next.tx, mint, push)
 
-	forked := publish(t, 0x0b, []string{testCommit}, nil, testCommit)
-	other := f.mintTx(testOrigin2, "main", forked.root)
-	f.admit(0, forked.tx, other)
+	// A second branch by the same publisher, and the same name by another:
+	// a branch is per (repository origin, branch, identity).
+	feature := f.mintTx(testOrigin, "feature/x", first.root)
+	f.admit(0, first.tx, feature)
+	other, _ := ec.PrivateKeyFromHex("0000000000000000000000000000000000000000000000000000000000000004")
+	rival := f.mintAsTx(other.PubKey(), testOrigin, "main", first.root)
+	f.admit(0, first.tx, rival)
 
-	ask := func(query string) []string {
+	ask := func(query string) *BranchesResult {
 		t.Helper()
-		ans, err := f.svc.Lookup(t.Context(), &overlaylookup.LookupQuestion{Service: LookupName, Query: json.RawMessage(query)})
+		ans, err := f.svc.Lookup(ctx, &overlaylookup.LookupQuestion{Service: LookupName, Query: json.RawMessage(query)})
 		if err != nil {
 			t.Fatal(err)
 		}
-		out := []string{}
-		for _, formula := range ans.Formulas {
-			out = append(out, formula.Outpoint.OrdinalString())
+		if ans.Type != overlaylookup.AnswerTypeFreeform {
+			t.Fatalf("answer type = %q, want freeform", ans.Type)
 		}
-		return out
+		res, ok := ans.Result.(*BranchesResult)
+		if !ok {
+			t.Fatalf("result = %T", ans.Result)
+		}
+		return res
 	}
 
-	if got := ask(`{}`); len(got) != 2 {
-		t.Fatalf("all current = %v", got)
+	res := ask(`{"type":"branches","origin":"` + testOrigin + `"}`)
+	if res.Origin != testOrigin || res.More || res.Next != nil {
+		t.Fatalf("result = %+v", res)
 	}
-	if got := ask(`{"origin":"` + testOrigin + `"}`); len(got) != 1 || got[0] != op(push, 0) {
-		t.Fatalf("by origin = %v", got)
+	// The default is the genesis push's branch and publisher — the client
+	// never has to guess it from `.gib`.
+	if res.DefaultBranch != "main" || res.Owner != f.identityHex() {
+		t.Fatalf("default = %q by %q", res.DefaultBranch, res.Owner)
 	}
-	if got := ask(`{"origin":"` + testOrigin + `","includeSpent":true}`); len(got) != 2 {
-		t.Fatalf("with spent = %v", got)
+	if len(res.Branches) != 3 {
+		t.Fatalf("branches = %+v", res.Branches)
 	}
-	if got := ask(`{"outpoint":"` + op(mint, 0) + `"}`); len(got) != 1 || got[0] != op(mint, 0) {
-		t.Fatalf("by outpoint = %v", got)
+	// Ordered by name, then by publisher.
+	if res.Branches[0].Branch != "feature/x" || res.Branches[1].Branch != "main" || res.Branches[2].Branch != "main" {
+		t.Fatalf("order = %+v", res.Branches)
 	}
-	if got := ask(`{"sha":"` + sha(second) + `","includeSpent":true}`); len(got) != 1 || got[0] != op(push, 0) {
-		t.Fatalf("by sha = %v", got)
+	if res.Branches[1].Identity == res.Branches[2].Identity {
+		t.Fatalf("the two main branches share a publisher: %+v", res.Branches)
 	}
-	if got := ask(`{"identity":"` + f.identityHex() + `","limit":1}`); len(got) != 1 {
-		t.Fatalf("by identity limit 1 = %v", got)
+	// Each entry names the head to sync up to, and what it publishes.
+	var mine BranchRecord
+	for _, b := range res.Branches {
+		if b.Branch == "main" && b.Identity == f.identityHex() {
+			mine = b
+		}
+	}
+	if mine.Tip != op(push, 0) || mine.Root != next.root || mine.Sha != sha(second) || mine.Spent {
+		t.Fatalf("main by the owner = %+v", mine)
+	}
+
+	// A publisher who stops extending a branch retracts nothing: the branch
+	// is still listed, with its tip marked spent.
+	burn := f.spendTx(feature)
+	if err := f.svc.OutputSpent(ctx, &engine.OutputSpent{
+		Outpoint:           &transaction.Outpoint{Txid: *feature.TxID(), Index: 0},
+		Topic:              TopicName,
+		SpendingTxid:       burn.TxID(),
+		SpendingAtomicBEEF: atomicBeef(t, feature, burn),
+	}); err != nil {
+		t.Fatal(err)
+	}
+	res = ask(`{"type":"branches","origin":"` + testOrigin + `"}`)
+	if len(res.Branches) != 3 || res.Branches[0].Branch != "feature/x" || !res.Branches[0].Spent {
+		t.Fatalf("abandoned branch = %+v", res.Branches)
+	}
+
+	// Paging: the cursor is the last entry, echoed back.
+	page := ask(`{"type":"branches","origin":"` + testOrigin + `","limit":2}`)
+	if len(page.Branches) != 2 || !page.More || page.Next == nil {
+		t.Fatalf("first page = %+v", page)
+	}
+	if page.Next.Branch != page.Branches[1].Branch || page.Next.Identity != page.Branches[1].Identity {
+		t.Fatalf("cursor = %+v, last entry = %+v", page.Next, page.Branches[1])
+	}
+	cursor, err := json.Marshal(page.Next)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rest := ask(`{"type":"branches","origin":"` + testOrigin + `","since":` + string(cursor) + `}`)
+	if len(rest.Branches) != 1 || rest.More || rest.Branches[0].Branch != res.Branches[2].Branch {
+		t.Fatalf("second page = %+v", rest)
+	}
+	// The default branch is on every page, wherever the entry itself falls.
+	if rest.DefaultBranch != "main" || rest.Owner != f.identityHex() {
+		t.Fatalf("default on page two = %q by %q", rest.DefaultBranch, rest.Owner)
+	}
+
+	// A repository this overlay has never seen is an empty list, not an
+	// error: the client can tell "nothing here" from "I cannot answer".
+	empty := ask(`{"type":"branches","origin":"` + testOrigin2 + `"}`)
+	if len(empty.Branches) != 0 || empty.DefaultBranch != "" || empty.More {
+		t.Fatalf("unknown repository = %+v", empty)
+	}
+}
+
+func TestLookupRejects(t *testing.T) {
+	f := newFixture(t)
+	for name, query := range map[string]string{
+		"no type":        `{"origin":"` + testOrigin + `"}`,
+		"unknown type":   `{"type":"heads","origin":"` + testOrigin + `"}`,
+		"no origin":      `{"type":"branches"}`,
+		"bad origin":     `{"type":"branches","origin":"nope"}`,
+		"bad cursor":     `{"type":"branches","origin":"` + testOrigin + `","since":{"branch":"main","identity":"zz"}}`,
+		"cursor no name": `{"type":"branches","origin":"` + testOrigin + `","since":{"identity":"` + f.identityHex() + `"}}`,
+		"malformed":      `{"type":"branches","origin":"` + testOrigin + `","limit":"two"}`,
+	} {
+		if _, err := f.svc.Lookup(t.Context(), &overlaylookup.LookupQuestion{
+			Service: LookupName, Query: json.RawMessage(query),
+		}); err == nil {
+			t.Fatalf("%s: expected an error", name)
+		}
 	}
 	if _, err := f.svc.Lookup(t.Context(), &overlaylookup.LookupQuestion{Service: "ls_other"}); err == nil {
 		t.Fatal("expected error for wrong service")

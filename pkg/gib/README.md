@@ -141,34 +141,87 @@ before. This is the blockchain; there is no deleting.
 
 ### BRC-24 lookups (`ls_gib`)
 
-Three queries, chosen by the `type` field. Empty or `heads` is the original
-head query; the two sync queries let a client that knows only the overlay
-endpoint a domain declares in its BRC-180 manifest follow a branch and fetch
-the transactions its trees cite, without the host's REST root.
+Three queries, each naming its `type`. Together they are the whole of what a
+client that knows only the overlay endpoint a domain declares in its BRC-180
+manifest needs to clone a repository and keep it up to date, without the
+host's REST root. They answer in the order a clone needs them:
 
 | `type` | Asks for | Answer |
 | --- | --- | --- |
-| `heads` (or empty) | Heads by outpoint, repository origin, branch, identity, or commit sha | Formulas — see the caveat below |
+| `branches` | A repository's branches, with each one's tip and the branch to clone from | Freeform: a plain list |
 | `headsSince` | One branch's heads from a point forward, oldest first | Output list, one entry per head |
 | `txs` | Whole transactions by txid | Freeform: one merged BEEF |
 
-`headsSince` builds its output list **in the lookup service**, not as
-formulas. `engine.hydrateOneFormula` loads each formula with
-`Storage.FindOutput(ctx, outpoint, nil, nil, true)` — a nil topic — and this
-stack's `EngineAdapter.FindOutput` rejects a nil topic with `topic is
-required`, so a formula answer fails before it reaches a client. That is
-still true; `TestFormulaHydrationStillRejectsNilTopic` pins it, and the
-`heads` query above is still subject to it.
+**A query must name its type.** There was a fourth, the typeless `heads`
+query, which answered by outpoint / origin / branch / identity / sha with
+BRC-24 *formulas*. It is gone. `engine.hydrateOneFormula` loads each formula
+with `Storage.FindOutput(ctx, outpoint, nil, nil, true)` — a nil topic — and
+this stack's `EngineAdapter.FindOutput` rejects a nil topic with `topic is
+required`, so a formula answer never reached a client however the question
+was asked. Its one real use was enumerating a repository, which `branches`
+now does properly; the same filters are served over REST by
+`/1sat/gib/heads`, which works. `TestFormulaHydrationStillRejectsNilTopic`
+pins the defect so nobody builds a formula answer here again. Every query
+above builds its own answer inside the lookup service.
 
-`txs` is freeform rather than an output list because it asks for
-transactions, not outputs: an output list would have to give every entry a
-meaningless output index.
+Neither `branches` nor `txs` is an output list, because neither asks for
+outputs. `txs` asks for transactions; an output list would have to give each
+entry a meaningless output index. `branches` asks for branches — a branch is
+a (repository origin, branch, identity) triple, and what a client wants from
+it is a name to sync and a head to sync up to, which it then hands to
+`headsSince`, the query whose job is delivering heads with their BEEF.
 
 Conditions a client must act on are reported in the answer's `result`, not
 as lookup errors: the overlay HTTP layer collapses every lookup error to an
 opaque 500, which a client cannot tell from any other failure. A lookup error
 is reserved for malformed input. `result` arrives as a JSON-encoded string,
 per the BRC-24 response shape.
+
+**`branches`** — every branch of one repository, ordered by branch name then
+publisher. A branch is per (repository origin, branch, identity), so the same
+name published by two identities is two entries; that is also why each entry
+carries the identity a client must pass back to `headsSince`.
+
+`defaultBranch` and `owner` are the branch and publisher of the **genesis
+push** — the earliest head this overlay holds for the repository — which is
+the branch a clone starts from. They are on every page, whichever page the
+entry itself falls on, so a client never pages looking for the default and
+never has to guess it from the `.gib` metadata file. (`.gib`'s
+`defaultBranch` is a label the publisher wrote; this is what the chain
+shows.)
+
+`tip` is the newest head this overlay holds for that branch: a client that
+already has the branch compares before asking for anything, and one that
+does not passes the branch and identity to `headsSince`, whose last head is
+that tip. `spent` marks a branch whose publisher has stopped extending it —
+still listed, still served, still forkable; see **A published branch is
+permanent**.
+
+At most 100 branches per page (`limit`, default 20). `more` says the page
+stopped short, and `next` is the cursor to echo back as `since`; ordering is
+by name rather than by activity, so a push landing between pages cannot move
+an entry from one page to another. The answer is built from the index alone
+and never touches the BEEF store, so enumerating a repository cannot fail or
+truncate for want of a transaction — unlike `headsSince`, which must hand
+over BEEF and says so when it cannot.
+
+```jsonc
+// query
+{"type":"branches","origin":"<repository origin>","limit":100,
+ "since":{"branch":"main","identity":"02…"}}
+// result (freeform)
+{"query":"branches","origin":"…_0","defaultBranch":"main","owner":"02…",
+ "branches":[
+   {"branch":"feature/x","identity":"02…","tip":"txid_0","sha":"…",
+    "root":"…_3","score":900002.000000001},
+   {"branch":"main","identity":"03…","tip":"txid_0","sha":"…","root":"…_7",
+    "spent":true,"score":900001.000000004}],
+ "more":true,"next":{"branch":"main","identity":"03…"}}
+```
+
+A repository this overlay holds nothing for is an empty `branches` list with
+no `defaultBranch`, not an error: "nothing here" and "I cannot answer" stay
+distinguishable.
 
 **`headsSince`** — `since` is exclusive, so a client resumes by passing the
 last outpoint it received; empty means from the branch's first head.
@@ -288,6 +341,12 @@ curl https://api.1sat.app/1sat/gib/head/<outpoint>
 # A git commit as a DAG node: the commit object itself, every head whose tip
 # it is (any repo, any fork), and every head whose tip names it as a parent
 curl https://api.1sat.app/1sat/gib/commit/<git-sha>
+
+# BRC-24 sync: a repository's branches, and the one to clone from — where a
+# client with nothing but the repository origin starts
+curl -X POST https://api.1sat.app/1sat/gib/overlay/lookup \
+  -H 'content-type: application/json' \
+  -d '{"service":"ls_gib","query":{"type":"branches","origin":"<origin>"}}'
 
 # BRC-24 sync: a branch's heads from a point forward, oldest first,
 # each carrying its own BEEF
