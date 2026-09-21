@@ -377,7 +377,8 @@ func TestSpendBeforeAdmitAndBurn(t *testing.T) {
 	}
 
 	// Burn: spend the push head with no successor. Nothing is admitted, so
-	// the engine's OutputSpent (or SpendSync.RecordSpends) is the only path.
+	// the engine's OutputSpent — the client handing over the transaction
+	// that spent it — is the only way the overlay hears about it.
 	burn := f.spendTx(push)
 	if err := f.svc.OutputSpent(ctx, &engine.OutputSpent{
 		Outpoint:           &transaction.Outpoint{Txid: *push.TxID(), Index: 0},
@@ -399,11 +400,25 @@ func TestSpendBeforeAdmitAndBurn(t *testing.T) {
 		t.Fatalf("current after burn = %+v", current)
 	}
 
-	// RecordSpends is idempotent and independent of admission.
-	beef, txid, _ := transaction.NewBeefFromAtomicBytes(atomicBeef(t, mint, push, burn))
-	n, err := f.svc.RecordSpends(ctx, beef.FindTransactionForSigningByHash(txid), txid)
-	if err != nil || n != 1 {
-		t.Fatalf("RecordSpends = %d, %v", n, err)
+	// A replayed spend event is idempotent.
+	if err := f.svc.OutputSpent(ctx, &engine.OutputSpent{
+		Outpoint:           &transaction.Outpoint{Txid: *push.TxID(), Index: 0},
+		Topic:              TopicName,
+		SpendingTxid:       burn.TxID(),
+		SpendingAtomicBEEF: atomicBeef(t, mint, push, burn),
+	}); err != nil {
+		t.Fatal(err)
+	}
+	again, _ := f.store.GetHead(ctx, op(push, 0))
+	if again.Spend == nil || again.Spend.Txid != burn.TxID().String() || again.Spend.Next != "" {
+		t.Fatalf("burned after replay = %+v", again.Spend)
+	}
+	// And the head it spent is still there, with its commit and its place in
+	// the branch: a spend ends the publisher's claim on the tip, not the
+	// history.
+	kept, err := f.store.GetHead(ctx, op(mint, 0))
+	if err != nil || kept.Commit == nil || kept.Commit.SHA != sha(testCommit) {
+		t.Fatalf("head before the burn = %+v, %v", kept, err)
 	}
 }
 

@@ -245,8 +245,11 @@ func TestEngineRoundTrip(t *testing.T) {
 		t.Fatalf("minted spend = %+v", minted.Spend)
 	}
 
-	// Delete: spend the head with no successor. The engine sees no admissible
-	// output; production also feeds spend events to SpendSync.RecordSpends.
+	// A publisher stops extending the branch by spending its own head, which
+	// creates no successor. The overlay learns of it only because the client
+	// hands it the spending transaction: nothing watches the chain for one.
+	// The branch's history stays exactly as it was — this only takes the
+	// head off the list of current ones.
 	burn := transaction.NewTransaction()
 	burn.AddInputFromTx(push, 0, nil)
 	burn.AddInputFromTx(push, 1, e.party.unlock)
@@ -256,12 +259,14 @@ func TestEngineRoundTrip(t *testing.T) {
 	}
 	signHeadInput(t, burn, 0, e.lockKey)
 	submitTx(t, svc.Engine, burn)
-	if n, err := svc.Lookup.RecordSpends(ctx, burn, burn.TxID()); err != nil || n != 1 {
-		t.Fatalf("RecordSpends = %d, %v", n, err)
-	}
 	burned, _ := svc.Store.GetHead(ctx, op(push, 0))
 	if burned.Spend == nil || burned.Spend.Txid != burn.TxID().String() || burned.Spend.Next != "" {
 		t.Fatalf("burned spend = %+v", burned.Spend)
+	}
+	// The history is not retracted: both heads are still served.
+	history, err := svc.Store.ListHeads(ctx, HeadFilter{Origin: testOrigin, Branch: "main", Rev: true})
+	if err != nil || len(history) != 2 {
+		t.Fatalf("history after the burn = %+v, %v", history, err)
 	}
 
 	// REST view of the same state.

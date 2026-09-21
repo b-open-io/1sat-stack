@@ -2080,21 +2080,10 @@ func (svc *Services) StartSubscribers(ctx context.Context, logger *slog.Logger) 
 				logger.Error("failed to start OrdLock v2 spend sync", "error", err)
 			}
 		}
-		// gib has no event bridge: heads are not ingested from the indexer's
-		// events, only submitted. The `gib` and `gib:{origin}` events stay —
-		// they are the per-repository feed readers subscribe to.
-		//
-		// Branch deletions (burns) create no successor head, so nothing is
-		// admitted and the engine has no OutputSpent to report for a head it
-		// never saw; record those spends straight from the indexer's spend
-		// events. This closes out heads the index already holds; it submits
-		// nothing and admits nothing.
-		if svc.Gib != nil && svc.Beef != nil {
-			spendSync := gibpkg.NewSpendSync(svc.PubSub.PubSub, svc.Beef.Storage, svc.Gib.Lookup, logger)
-			if err := spendSync.Start(ctx); err != nil {
-				logger.Error("failed to start gib spend sync", "error", err)
-			}
-		}
+		// gib subscribes to nothing. Heads are submitted, never ingested,
+		// and a spend is only of interest when the engine sees it at
+		// admission — a push taking the branch's previous head as an input.
+		// Its `gib` and `gib:{origin}` events stay for readers.
 		if svc.OPNS != nil && svc.OPNS.Sync != nil {
 			bridge := overlay.NewEventBridge(&overlay.EventBridgeConfig{
 				PubSub:   svc.PubSub.PubSub,

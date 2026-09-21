@@ -47,7 +47,7 @@ Each module's bridge is wired up in `cmd/server/config.go` `StartSubscribers()`:
 | BSocial | `map:type:*` | `q:bsocial` | Fixed queue |
 | OPNS | `opns:mine` | `q:opns` | Fixed queue |
 | OrdLock v2 | `ordlock2`, `spend:ordlock2` | `q:ordlock2` | Includes spend events; topic `tm_ordlock_v2` |
-| gib | — | — | **No bridge.** gib has no queue and ingests nothing from the feed; heads arrive only by direct submission. Its `gib` / `gib:{origin}` events are a reader's feed, and `gib.SpendSync` subscribes to `spend:gib` to close out heads whose branch was deleted |
+| gib | — | — | **No bridge, and nothing subscribed.** gib has no queue and ingests nothing from the feed; heads arrive only by direct submission. Its `gib` / `gib:{origin}` events are a reader's feed |
 | BSV21 | `bsv21:*` | `q:tm_{tokenId}` | Routes to per-token queues, bypasses dispatcher |
 
 Events are published by `OutputStore.SaveTransaction()` (`pkg/txo/output_store.go:249-273`) after the indexer parses a transaction. Each parser attaches events to its `ParseResult.Events` field.
@@ -79,9 +79,12 @@ gib is a far more explicit push than anything else here: the client holds the
 repository, so the overlay never has to discover one. Repository exchange
 between overlays is peer to peer, not a chain feed.
 
-`gib.SpendSync` still subscribes to the `spend:gib` event so a branch
-deletion (a spend with no successor head) closes out a head the index
-already holds. It submits nothing to the engine and admits nothing.
+Nor does gib listen for spends. The only spend it records is the one the
+engine observes when it is handed the transaction that made it: a push
+taking the branch's previous head as an input, which is what orders the
+branch's history. A publisher who spends its own head to stop extending a
+branch retracts nothing — the history and the content are on chain either
+way — so there is nothing for the overlay to watch for.
 
 ### BSV21: Per-Token Queues
 

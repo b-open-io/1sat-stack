@@ -185,15 +185,16 @@ func commitRecords(outpoint string, push *Push, score float64) []CommitRecord {
 	return recs
 }
 
-// RecordSpends scans a transaction's inputs for commit heads and records
-// each as spent, naming the successor head (same origin and branch) created
-// by the transaction when there is one. Independent of the overlay engine:
-// the head need not have been admitted first. Inputs must carry their
-// source transactions (a full BEEF).
-func (l *LookupService) RecordSpends(ctx context.Context, tx *transaction.Transaction, txid *chainhash.Hash) (int, error) {
-	return l.recordSpends(ctx, tx, txid, gibInputs(tx), types.ScoreFromTx(tx, txid))
-}
-
+// recordSpends records every commit head a submitted transaction takes as an
+// input as spent, naming the successor head (same origin and branch) the
+// transaction creates when there is one. This is the spend the engine
+// observes at admission — a push taking the branch's previous head — and it
+// is what orders a branch's history. Inputs must carry their source
+// transactions (a full BEEF).
+//
+// Nothing outside admission writes a spend any more: the overlay learns a
+// head was spent when it is handed the transaction that spent it, and never
+// by watching the chain.
 func (l *LookupService) recordSpends(ctx context.Context, tx *transaction.Transaction, txid *chainhash.Hash, spent []spentHead, spendScore float64) (int, error) {
 	if len(spent) == 0 {
 		return 0, nil

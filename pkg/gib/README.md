@@ -30,7 +30,7 @@ be admitted at all. See **Admission**.
 | Branched-from | The head this one branched from or merged in — the second parent. Empty on an ordinary push, whose only parent is the head it spends; set on a branch's first head, and on a merge *alongside* the spend. A head's parents mirror its commit's parents. |
 | Identity | The publisher's BRC-100 identity key (compressed hex). |
 | Push | Spending a head and creating the next one for the same origin and branch. |
-| Delete | Spending a head with no successor (burn). |
+| Delete | Spending a head with no successor (burn). A wallet operation, not a protocol event: it stops the publisher extending that branch and reclaims the satoshi. It retracts nothing — see **A published branch is permanent**. |
 | Owner | The identity that minted the earliest head for an origin. Anyone may mint heads for any origin; the API groups by identity. |
 | `.gib` | Optional JSON file in the genesis tree (`name`, `description`, `defaultBranch`). Read from the origin outpoint through the gateway at admission and stored on the head; fixed for the repository's life (rename = new origin). Labels, not identifiers. |
 
@@ -105,14 +105,39 @@ funding output. A push's content transactions are not ancestors of the head,
 so a head ingested from the feed would arrive without the push it publishes
 and be refused by admission, which is fetch-free by design.
 
-**What stays.** `pkg/parse/gib.go` still parses every commit head the
-indexer sees and still emits `gib` and `gib:{origin}`. Those are a reader's
-feed — `gib:{origin}` is the per-repository SSE subscription gibhub.net uses
-for live updates — not an ingestion path: nothing routes them to a queue any
-more. `SpendSync` still subscribes to `spend:gib` so a branch deletion (a
-spend with no successor head, which admits nothing and which the engine will
-not report for a head it never saw) closes out a head the index already
-holds. It submits nothing to the engine and admits nothing.
+**Nothing listens to the chain feed.** `pkg/parse/gib.go` still parses every
+commit head the indexer sees and still emits `gib` and `gib:{origin}`, but
+those are a reader's feed — `gib:{origin}` is the per-repository SSE
+subscription gibhub.net uses for live updates — and nothing in this module
+subscribes to them or to `spend:gib`. The only spend it records is the one
+the engine observes when it is handed the transaction that made it: a push
+taking the branch's previous head as an input, which is what orders a
+branch's history.
+
+### A published branch is permanent
+
+A publisher can stop extending a branch — spend its own head, and no further
+push can continue that chain — but it cannot retract one. The heads are on
+chain, the trees and commit objects they name are on chain, and the overlay
+goes on serving every one of them. Anyone can still branch from a head whose
+publisher has moved on: nothing about the history or the content changes
+when the tip coin is spent.
+
+So deleting is not a protocol event here. It is a wallet operation: you
+spend your own token to stop tracking it and reclaim the satoshi, and nobody
+else needs to hear about it. The overlay hears about it only if someone
+hands it the spending transaction, and all that does is take the head off
+the list of *current* ones — the branch's history is served exactly as
+before. This is the blockchain; there is no deleting.
+
+> **A consequence for the client, not for this module.** git expects
+> `git push gib :branch` to stick. The client burns its token and git
+> reports the branch gone, but the overlay has not forgotten anything, and a
+> later fetch will advertise that branch again from the heads it holds. That
+> is a client-side concern — how gib's remote helper presents a branch its
+> publisher has abandoned — and a property of publishing to a chain, not a
+> bug in this module. Branch accumulation is a commercialisation question,
+> not a design one.
 
 ### BRC-24 lookups (`ls_gib`)
 
@@ -199,7 +224,11 @@ Per-topic tables (SQLite or Postgres via the overlay storage factory).
 
 `gib_heads`: one row per head with its decoded fields, `branched_from`,
 `prev_outpoint`, spend info (`spend_txid`, `next_outpoint`, `spend_score`) —
-and the head's **tip commit**. The commit is no longer on the token: it is
+and the head's **tip commit**. The spend columns are written only where the
+engine sees a spend: the next push takes the head as an input, or someone
+submits the transaction that spent it. They say which head a branch's tip is
+now (`spend_txid IS NULL`) and which head succeeded which; they never mean a
+head was withdrawn. The commit is no longer on the token: it is
 the `.` entry of the root's `.git` store, read out of the submission at
 admission. When a push cited that object instead of republishing it (a fork
 of a commit already on chain) only its sha is known, which is still the
