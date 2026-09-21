@@ -53,13 +53,23 @@ type RepoResponse struct {
 	HeadsList []HeadRecord `json:"branchHeads"`
 }
 
-// CommitResponse is one git commit as a node in the DAG: every head that
-// publishes it (across branches, repositories, and forks) and every head whose
-// commit names it as a parent.
+// CommitResponse is one git commit as a node in the DAG: the commit object
+// itself when a push published it, every head whose tip it is (across
+// branches, repositories, and forks), and every head whose tip commit names
+// it as a parent.
+//
+// Commit comes from the `.git` object store of whichever root first
+// published it, so a commit deep in a repository's history is here even
+// though no head's tip it ever was. Held is false when every store that
+// named it cited an outpoint the overlay does not hold: the hop is named,
+// not kept, and Ref says where it lives.
 type CommitResponse struct {
-	Sha      string       `json:"sha"`
-	Heads    []HeadRecord `json:"heads"`
-	Children []HeadRecord `json:"children"`
+	Sha      string         `json:"sha"`
+	Commit   *gibtpl.Commit `json:"commit,omitempty"`
+	Ref      string         `json:"ref,omitempty"`
+	Held     bool           `json:"held"`
+	Heads    []HeadRecord   `json:"heads"`
+	Children []HeadRecord   `json:"children"`
 }
 
 // BranchResponse is a branch's current head plus its push history.
@@ -377,8 +387,16 @@ func (r *Routes) GetCommit(c *fiber.Ctx) error {
 	if err != nil {
 		return r.internalError(c, "failed to list commit children", err)
 	}
-	if len(heads) == 0 && len(children) == 0 {
+	commit, err := r.store.GetCommit(c.Context(), sha)
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return r.internalError(c, "failed to get commit", err)
+	}
+	if len(heads) == 0 && len(children) == 0 && commit == nil {
 		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"message": "commit not found"})
 	}
-	return c.JSON(CommitResponse{Sha: sha, Heads: heads, Children: children})
+	resp := CommitResponse{Sha: sha, Heads: heads, Children: children}
+	if commit != nil {
+		resp.Commit, resp.Ref, resp.Held = commit.Commit, commit.Ref, commit.Held
+	}
+	return c.JSON(resp)
 }

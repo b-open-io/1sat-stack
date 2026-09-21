@@ -36,12 +36,16 @@ func get(t *testing.T, app *fiber.App, path string, into any) int {
 
 func TestRoutes(t *testing.T) {
 	f := newFixture(t)
-	mint := f.mintTx(testOrigin, "main", testRoot1)
-	f.admit(0, mint)
-	push := f.spendTx(mint, f.headScript(testOrigin, "main", testRoot2, testCommit))
-	f.admit(0, mint, push)
-	feature := f.mintTx(testOrigin, "feature/x", testRoot1)
-	f.admit(0, feature)
+	first := publish(t, 0x71, []string{testCommit}, nil, testCommit)
+	second := commitObject("second", sha(testCommit))
+	next := publish(t, 0x72, []string{second}, map[string]string{sha(testCommit): first.objects[sha(testCommit)]}, second)
+
+	mint := f.mintTx(testOrigin, "main", first.root)
+	f.admit(0, first.tx, mint)
+	push := f.spendTx(mint, f.headScript(testOrigin, "main", next.root, ""))
+	f.admit(0, next.tx, mint, push)
+	feature := f.mintTx(testOrigin, "feature/x", first.root)
+	f.admit(0, first.tx, feature)
 	app := routesApp(t, f)
 
 	var repos []RepoRecord

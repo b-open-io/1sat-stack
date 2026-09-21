@@ -3,20 +3,31 @@
 ## Purpose
 
 `gib` is the overlay module for gib, on-chain git on BSV. It indexes **commit
-heads**: 1-satoshi PushDrop coins that name a repository's branch tip. A coin's
-spend chain is the branch's push history, so the module records every head it
-sees, links each head to the one it spent, and serves repository, branch, and
-publisher views for gibhub.net and other clients. Content (directory manifests,
-files, patches) is not indexed here; ORDFS resolves it from the root outpoint a
-head names.
+heads**: bare 1-satoshi PushDrop coins that name a repository's branch tip. A
+coin's spend chain is the branch's push history, so the module records every
+head it sees, links each head to the one it spent, and serves repository,
+branch, and publisher views for gibhub.net and other clients. Content
+(directory manifests, files, patches) is not served here; ORDFS resolves it
+from the root outpoint a head names.
+
+Nothing is inscribed on a head. The commits a push publishes live in the
+`.git` object store inside the root it points at, and the module reads them
+out of the submission at admission — which is also what a head must carry to
+be admitted at all. See **Admission**.
+
+> **A clean break.** The five-field head with the commit inscribed on the
+> same output is a different format and no longer decodes. The heads
+> published before this fall out of the topic; there is no migration.
 
 ## Concepts
 
 | Term | Meaning |
 | --- | --- |
 | Repository origin | Outpoint of the repository's genesis `ordfs/dir` root. The repo id; the `origin` field everywhere in this API. |
-| Root | Outpoint of the root directory manifest a branch currently points at. |
-| Commit head | 1-sat PushDrop coin: fields `["gib", origin, branch, root, identity]`, git commit object inscribed on the same output. |
+| Root | Outpoint of the root directory manifest a branch currently points at: git's tree for the tip commit, plus `.git`. |
+| Commit head | Bare 1-sat PushDrop coin, nothing inscribed: fields `["gib", repository origin, branch, root, identity, branched-from]`. |
+| `.git` | The object store gib adds to a published root: every commit object reachable from the tip, named by its sha, plus a `.` entry pointing at the tip commit. gib strips `.git` before hashing, so the tree still verifies against what git computed. git itself refuses a `.git` entry in a tree, so the name can never collide with a real file. |
+| Branched-from | The head this one branched from or merged in — the second parent. Empty on an ordinary push, whose only parent is the head it spends; set on a branch's first head, and on a merge *alongside* the spend. A head's parents mirror its commit's parents. |
 | Identity | The publisher's BRC-100 identity key (compressed hex). |
 | Push | Spending a head and creating the next one for the same origin and branch. |
 | Delete | Spending a head with no successor (burn). |
@@ -26,7 +37,10 @@ head names.
 Decoding lives in `pkg/template/gib` (`Decode`, `ParseCommit`, `Fields`,
 `LockingScript`). Outpoint fields may be 36 raw bytes or `txid_vout` strings;
 the identity may be 33 raw bytes or hex. The lock may precede or follow the
-fields and the inscription may precede or follow the lock.
+fields. An absent branched-from field is an empty push, which PushDrop
+encodes as `OP_FALSE` — the same opcode a single zero byte encodes to, so
+both read back as absent. Reading a push out of a submission lives in
+`push.go` (`ReadPush`).
 
 | Token | Value |
 | --- | --- |
@@ -36,6 +50,36 @@ fields and the inscription may precede or follow the lock.
 | Queue | `q:gib` |
 | REST prefix | `/1sat/gib` |
 | Overlay routes | `/1sat/gib/overlay` |
+
+### Admission
+
+A head is admitted only with the push it publishes, judged **from the
+submitted BEEF alone** with no network fetch:
+
+- the transaction holding the head's `root` is in the submission, and its
+  output at that index decodes as an `ordfs/dir`;
+- that directory has a `.git` entry, readable here, and every commit object
+  in the store that the submission carries hashes to the sha it is filed
+  under — the store is keyed by sha, so a name is proof of content;
+- when the branched-from field is set, the transaction holding that head is
+  in the submission too, and that output decodes as a head.
+
+So a client submits its content transactions alongside the head, in one
+BEEF. An atomic BEEF would prune everything the head does not spend, so the
+submission is a BEEF V2 with the head transaction last.
+
+Every transaction the reading relied on comes back as an **ancillary txid**,
+which the engine records against the admitted output: the content a push
+published is retained with the head instead of discarded once the submission
+is over.
+
+What admission deliberately does **not** require is that the overlay hold the
+whole history. Because `.git` is keyed by sha, an object already on chain is
+cited at the outpoint holding it rather than republished — which is what lets
+a branch fork from another publisher's head without copying anything. A
+`.git` entry citing a commit object in an earlier transaction is a reference
+the overlay records (sha and outpoint, `held: false`) and may not hold: one
+hop verified, every hop named. There is no completeness rule.
 
 ### Ingestion
 
@@ -47,6 +91,18 @@ the same transaction, so a push's predecessor is linked even if the engine
 never admitted it. `SpendSync` records deletions (burns) straight from the
 indexer's spend events. An optional JungleBus subscription can feed the same
 queue for historical sync.
+
+> **Open: the indexer path submits a head without its push.** `OverlaySync`
+> builds the submission with `beefStorage.BuildFullBeef(headTxid)`, which
+> carries the head transaction and its ancestry. A push's content
+> transactions are not ancestors of the head — the head spends the previous
+> head and a funding output, not the content — so a head arriving that way
+> now fails admission. A client submitting its own push (gib's `git push`,
+> which sends content and head together) is unaffected. Closing this means
+> the sync worker naming the root transaction in the submission it builds,
+> which it cannot know without decoding the head: a per-module hook on
+> `OverlaySync`, not something admission can fix, since admission is
+> deliberately fetch-free.
 
 ### BRC-24 lookups (`ls_gib`)
 
@@ -129,14 +185,31 @@ upstream.
 
 ### Storage
 
-Per-topic table `gib_heads` (SQLite or Postgres via the overlay storage
-factory): one row per head with decoded fields, the parsed commit (sha, tree,
-parents, author, committer, message), `prev_outpoint`, and spend info
-(`spend_txid`, `next_outpoint`, `spend_score`), plus `gib_commit_parents`
-(head outpoint → parent sha) so the commit DAG is walkable across
+Per-topic tables (SQLite or Postgres via the overlay storage factory).
+
+`gib_heads`: one row per head with its decoded fields, `branched_from`,
+`prev_outpoint`, spend info (`spend_txid`, `next_outpoint`, `spend_score`) —
+and the head's **tip commit**. The commit is no longer on the token: it is
+the `.` entry of the root's `.git` store, read out of the submission at
+admission. When a push cited that object instead of republishing it (a fork
+of a commit already on chain) only its sha is known, which is still the
+answer to "what does this head publish". `gib_commit_parents` (head outpoint
+→ parent sha of that tip commit) keeps the commit DAG walkable across
 repositories: a fork republishes its forked commit verbatim, and its parents
-resolve through this index to whichever origin's heads hold them. Scores
-follow `types.HeightScore`; block-height updates restamp rows.
+resolve through this index to whichever origin's heads hold them.
+
+`gib_commits`: one row per commit any push's `.git` store names, keyed by
+sha alone because a commit is content-addressed — the head that first
+published or named it keeps the credit, however many later pushes cite it.
+`ref_outpoint` says where the object lives and `held` whether the overlay
+read it: a cited hop is recorded without a body, and a later push that
+carries the bytes fills it in. Keying by sha is also what keeps the index
+linear: every push's store names the whole reachable history, so a row per
+push and commit would grow with the square of it.
+
+Scores follow `types.HeightScore`; block-height updates restamp rows.
+Eviction of a head (reorg) takes the commits it published with it: a
+transaction the chain unmade published nothing.
 
 ## Configuration
 
@@ -178,8 +251,8 @@ curl https://api.1sat.app/1sat/gib/repo/<origin>/branch/feature/x
 # One head
 curl https://api.1sat.app/1sat/gib/head/<outpoint>
 
-# A git commit as a DAG node: every head publishing it (any repo, any fork)
-# and every head whose commit names it as a parent
+# A git commit as a DAG node: the commit object itself, every head whose tip
+# it is (any repo, any fork), and every head whose tip names it as a parent
 curl https://api.1sat.app/1sat/gib/commit/<git-sha>
 
 # BRC-24 sync: a branch's heads from a point forward, oldest first,
@@ -204,6 +277,7 @@ Head JSON:
   "txid": "…", "vout": 0,
   "origin": "…_0", "branch": "main", "root": "…_3",
   "identity": "02…",
+  "branchedFrom": "txid_0",
   "commit": { "sha": "…", "tree": "…", "parents": ["…"],
               "author": {"name": "…", "email": "…", "time": 1700000000, "tz": "+0000"},
               "committer": {…}, "message": "…" },
@@ -213,9 +287,13 @@ Head JSON:
 }
 ```
 
+`commit` is the head's tip commit, read from the root's `.git` store, and
+`branchedFrom` is present only when the head names a second parent.
+
 Resolve content with ORDFS: `/content/{root}/path/to/file` for any head's
 tree, and `/content/{outpoint}:-1` to follow a head coin to the branch's
-current tip.
+current tip. A published root also carries `.git`, so
+`/content/{root}/.git/{sha}` is the commit object itself.
 
 ## See Also
 

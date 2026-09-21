@@ -105,7 +105,7 @@ func (c *Config) Initialize(ctx context.Context, logger *slog.Logger, deps *over
 		if deps.BeefStorage != nil {
 			lookup.SetBeefLoader(deps.BeefStorage)
 		}
-		topicManager := &TopicManager{}
+		topicManager := &TopicManager{Logger: logger}
 		eng := overlay.NewModuleEngine(deps,
 			map[string]engine.TopicManager{TopicName: topicManager},
 			map[string]engine.LookupService{LookupName: lookup},

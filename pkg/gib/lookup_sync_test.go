@@ -35,6 +35,8 @@ type syncEnv struct {
 	beefDir  string
 	// mint carries the main and dev heads; push1 and push2 advance main.
 	mint, push1, push2 *transaction.Transaction
+	// The content transactions those heads point at.
+	root1, root2 *push
 }
 
 func hexPub(k *ec.PublicKey) string { return hex.EncodeToString(k.Compressed()) }
@@ -186,16 +188,23 @@ func newSyncEnv(t *testing.T) *syncEnv {
 	identity, _ := ec.PrivateKeyFromHex("0000000000000000000000000000000000000000000000000000000000000002")
 	lockKey := newParty(t, 0x13).key
 	head := func(branch, root string) *script.Script {
-		fields, err := gibtpl.Fields(testOrigin, branch, root, identity.PubKey())
+		fields, err := gibtpl.Fields(testOrigin, branch, root, identity.PubKey(), "")
 		if err != nil {
 			t.Fatal(err)
 		}
-		s, err := gibtpl.LockingScript(lockKey.PubKey(), fields, []byte(testCommit), "application/x-git-commit")
+		s, err := gibtpl.LockingScript(lockKey.PubKey(), fields)
 		if err != nil {
 			t.Fatal(err)
 		}
 		return s
 	}
+
+	// Two published roots. Every submission below carries the content
+	// transaction its head points at: admission reads the push out of the
+	// submission, so a head on its own is refused.
+	second := commitObject("second", sha(testCommit))
+	root1 := publish(t, 0x61, []string{testCommit}, nil, testCommit)
+	root2 := publish(t, 0x62, []string{second}, map[string]string{sha(testCommit): root1.objects[sha(testCommit)]}, second)
 
 	funding := fundingTx(t, publisher, 5000)
 	prove(funding, 900000)
@@ -204,43 +213,43 @@ func newSyncEnv(t *testing.T) *syncEnv {
 	// separated only by vout, which is what the branch cursor must survive.
 	mint := transaction.NewTransaction()
 	mint.AddInputFromTx(funding, 0, publisher.unlock)
-	mint.AddOutput(&transaction.TransactionOutput{Satoshis: 1, LockingScript: head("main", testRoot1)})
-	mint.AddOutput(&transaction.TransactionOutput{Satoshis: 1, LockingScript: head("dev", testRoot1)})
+	mint.AddOutput(&transaction.TransactionOutput{Satoshis: 1, LockingScript: head("main", root1.root)})
+	mint.AddOutput(&transaction.TransactionOutput{Satoshis: 1, LockingScript: head("dev", root1.root)})
 	mint.AddOutput(&transaction.TransactionOutput{Satoshis: 4000, LockingScript: publisher.lock})
 	if err := mint.Sign(); err != nil {
 		t.Fatal(err)
 	}
 	prove(mint, 900001)
-	submitTx(t, svc.Engine, mint)
+	submitTx(t, svc.Engine, mint, root1.tx)
 
 	// Two pushes on main. Heights are explicit so push order is the score
 	// order the store pages by.
 	push1 := transaction.NewTransaction()
 	push1.AddInputFromTx(mint, 0, nil)
 	push1.AddInputFromTx(mint, 2, publisher.unlock)
-	push1.AddOutput(&transaction.TransactionOutput{Satoshis: 1, LockingScript: head("main", testRoot2)})
+	push1.AddOutput(&transaction.TransactionOutput{Satoshis: 1, LockingScript: head("main", root2.root)})
 	push1.AddOutput(&transaction.TransactionOutput{Satoshis: 3000, LockingScript: publisher.lock})
 	if err := push1.Sign(); err != nil {
 		t.Fatal(err)
 	}
 	signHeadInput(t, push1, 0, lockKey)
 	prove(push1, 900002)
-	submitTx(t, svc.Engine, push1)
+	submitTx(t, svc.Engine, push1, root2.tx)
 
 	push2 := transaction.NewTransaction()
 	push2.AddInputFromTx(push1, 0, nil)
 	push2.AddInputFromTx(push1, 1, publisher.unlock)
-	push2.AddOutput(&transaction.TransactionOutput{Satoshis: 1, LockingScript: head("main", testRoot1)})
+	push2.AddOutput(&transaction.TransactionOutput{Satoshis: 1, LockingScript: head("main", root1.root)})
 	push2.AddOutput(&transaction.TransactionOutput{Satoshis: 2000, LockingScript: publisher.lock})
 	if err := push2.Sign(); err != nil {
 		t.Fatal(err)
 	}
 	signHeadInput(t, push2, 0, lockKey)
 	prove(push2, 900003)
-	submitTx(t, svc.Engine, push2)
+	submitTx(t, svc.Engine, push2, root1.tx)
 
 	return &syncEnv{t: t, svc: svc, identity: identity.PubKey(), beefDir: beefDir,
-		mint: mint, push1: push1, push2: push2}
+		mint: mint, push1: push1, push2: push2, root1: root1, root2: root2}
 }
 
 func TestHeadsSinceLookup(t *testing.T) {
@@ -534,5 +543,38 @@ func TestHeadsSinceStopsAtAMissingTransaction(t *testing.T) {
 	}
 	if !held[push2] {
 		t.Fatalf("merged BEEF dropped the transaction it does hold: %v", held)
+	}
+}
+
+// A push's content is retained with the head that published it: the topic
+// manager returns the transactions it read as ancillary txids, so they are
+// recorded against the admitted output and stay fetchable afterwards
+// instead of being discarded once the submission is over.
+func TestPushContentIsRetained(t *testing.T) {
+	e := newSyncEnv(t)
+	topic := TopicName
+	// The branch tip: a spent head is not retained by this topic, so ask
+	// about the one the engine still holds.
+	out, err := e.svc.Engine.Storage.FindOutput(t.Context(),
+		&transaction.Outpoint{Txid: *e.push2.TxID(), Index: 0}, &topic, nil, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if out == nil {
+		t.Fatal("the branch tip is not in the engine's storage")
+	}
+	want := e.root1.tx.TxID()
+	found := false
+	for _, h := range out.AncillaryTxids {
+		found = found || *h == *want
+	}
+	if !found {
+		t.Fatalf("ancillary txids of the head = %v, want %s", out.AncillaryTxids, want)
+	}
+
+	// And the overlay hands the content back like any transaction it holds.
+	held := e.txs(`{"type":"txs","txids":["` + want.String() + `"]}`)
+	if !held[want.String()] {
+		t.Fatalf("content transaction %s was not retained", want)
 	}
 }

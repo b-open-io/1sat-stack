@@ -32,6 +32,7 @@ CREATE TABLE IF NOT EXISTS gib_heads (
     branch          TEXT NOT NULL,
     root            TEXT NOT NULL,
     identity        TEXT NOT NULL,
+    branched_from   TEXT,
     commit_sha      TEXT,
     tree_sha        TEXT,
     parents         TEXT,
@@ -62,6 +63,25 @@ CREATE TABLE IF NOT EXISTS gib_commit_parents (
     PRIMARY KEY (outpoint, parent)
 );
 CREATE INDEX IF NOT EXISTS idx_gib_parents_parent ON gib_commit_parents(parent);
+CREATE TABLE IF NOT EXISTS gib_commits (
+    sha             TEXT PRIMARY KEY,
+    outpoint        TEXT NOT NULL,
+    ref_outpoint    TEXT NOT NULL,
+    held            INTEGER NOT NULL,
+    tree_sha        TEXT,
+    parents         TEXT,
+    author_name     TEXT,
+    author_email    TEXT,
+    author_time     INTEGER,
+    author_tz       TEXT,
+    committer_name  TEXT,
+    committer_email TEXT,
+    committer_time  INTEGER,
+    committer_tz    TEXT,
+    message         TEXT,
+    score           REAL NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_gib_commits_outpoint ON gib_commits(outpoint);
 `
 
 const postgresSchema = `
@@ -74,6 +94,7 @@ CREATE TABLE IF NOT EXISTS gib_heads (
     branch          TEXT NOT NULL,
     root            TEXT NOT NULL,
     identity        TEXT NOT NULL,
+    branched_from   TEXT,
     commit_sha      TEXT,
     tree_sha        TEXT,
     parents         TEXT,
@@ -106,6 +127,27 @@ CREATE TABLE IF NOT EXISTS gib_commit_parents (
     PRIMARY KEY (topic_id, outpoint, parent)
 );
 CREATE INDEX IF NOT EXISTS idx_gib_parents_parent ON gib_commit_parents(topic_id, parent);
+CREATE TABLE IF NOT EXISTS gib_commits (
+    topic_id        INTEGER NOT NULL,
+    sha             TEXT NOT NULL,
+    outpoint        TEXT NOT NULL,
+    ref_outpoint    TEXT NOT NULL,
+    held            INTEGER NOT NULL,
+    tree_sha        TEXT,
+    parents         TEXT,
+    author_name     TEXT,
+    author_email    TEXT,
+    author_time     BIGINT,
+    author_tz       TEXT,
+    committer_name  TEXT,
+    committer_email TEXT,
+    committer_time  BIGINT,
+    committer_tz    TEXT,
+    message         TEXT,
+    score           DOUBLE PRECISION NOT NULL,
+    PRIMARY KEY (topic_id, sha)
+);
+CREATE INDEX IF NOT EXISTS idx_gib_commits_outpoint ON gib_commits(topic_id, outpoint);
 `
 
 // Spend records how a head was spent: the spending txid and, for a push,
@@ -119,20 +161,44 @@ type Spend struct {
 
 // HeadRecord is one indexed commit head: a branch pointer at one moment.
 // Outpoints are txid_vout strings; identity is a compressed pubkey in hex.
+//
+// Nothing is inscribed on a head any more, so Commit is not read from the
+// token: it is the tip commit of the root's `.git` object store — the `.`
+// entry — when the submission carried it. When the tip was cited rather
+// than republished (a fork of a head whose commit is already on chain),
+// only its sha is known and the rest of Commit is empty. The commits the
+// push publishes are indexed separately; see CommitRecord.
 type HeadRecord struct {
+	Outpoint string `json:"outpoint"`
+	Txid     string `json:"txid"`
+	Vout     uint32 `json:"vout"`
+	Origin   string `json:"origin"`
+	Branch   string `json:"branch"`
+	Root     string `json:"root"`
+	Identity string `json:"identity"`
+	// BranchedFrom is the head this one branched from or merged in: the
+	// second parent, empty on an ordinary push.
+	BranchedFrom string         `json:"branchedFrom,omitempty"`
+	Commit       *gibtpl.Commit `json:"commit,omitempty"`
+	Prev         string         `json:"prev,omitempty"`
+	Spend        *Spend         `json:"spend,omitempty"`
+	Meta         *RepoMeta      `json:"meta,omitempty"`
+	Score        float64        `json:"score"`
+	Height       uint32         `json:"height"`
+}
+
+// CommitRecord is one git commit a published root's `.git` store names.
+// Outpoint is the head that published it and Ref the output holding the
+// object. Held is false for a hop the overlay records but does not have:
+// an entry citing a commit object in an earlier transaction, which the
+// push did not republish. Commit is nil exactly when Held is false.
+type CommitRecord struct {
+	Sha      string         `json:"sha"`
 	Outpoint string         `json:"outpoint"`
-	Txid     string         `json:"txid"`
-	Vout     uint32         `json:"vout"`
-	Origin   string         `json:"origin"`
-	Branch   string         `json:"branch"`
-	Root     string         `json:"root"`
-	Identity string         `json:"identity"`
+	Ref      string         `json:"ref"`
+	Held     bool           `json:"held"`
 	Commit   *gibtpl.Commit `json:"commit,omitempty"`
-	Prev     string         `json:"prev,omitempty"`
-	Spend    *Spend         `json:"spend,omitempty"`
-	Meta     *RepoMeta      `json:"meta,omitempty"`
 	Score    float64        `json:"score"`
-	Height   uint32         `json:"height"`
 }
 
 // RepoRecord summarizes one repository (origin) from its indexed heads.
@@ -194,7 +260,7 @@ func (s *Store) ensureSchema() error {
 		}
 		// Columns added after the first deploy; SQLite has no IF NOT EXISTS
 		// for columns, so a "duplicate column" error is the expected no-op.
-		for _, col := range []string{"name TEXT", "description TEXT", "default_branch TEXT"} {
+		for _, col := range []string{"name TEXT", "description TEXT", "default_branch TEXT", "branched_from TEXT"} {
 			_, _ = s.db.Exec("ALTER TABLE gib_heads ADD COLUMN " + col)
 		}
 	})
@@ -314,16 +380,17 @@ func (s *Store) UpsertHead(ctx context.Context, rec *HeadRecord) error {
 	}
 
 	q := s.newQB()
-	query := fmt.Sprintf(`INSERT INTO gib_heads (%soutpoint, txid, vout, origin, branch, root, identity,
+	query := fmt.Sprintf(`INSERT INTO gib_heads (%soutpoint, txid, vout, origin, branch, root, identity, branched_from,
 		commit_sha, tree_sha, parents, author_name, author_email, author_time, author_tz,
 		committer_name, committer_email, committer_time, committer_tz, message,
 		prev_outpoint, spend_txid, next_outpoint, spend_score, score, name, description, default_branch)
-		VALUES (%s%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+		VALUES (%s%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
 		ON CONFLICT %s DO UPDATE SET
 			origin = EXCLUDED.origin,
 			branch = EXCLUDED.branch,
 			root = EXCLUDED.root,
 			identity = EXCLUDED.identity,
+			branched_from = COALESCE(EXCLUDED.branched_from, gib_heads.branched_from),
 			commit_sha = COALESCE(EXCLUDED.commit_sha, gib_heads.commit_sha),
 			tree_sha = COALESCE(EXCLUDED.tree_sha, gib_heads.tree_sha),
 			parents = COALESCE(EXCLUDED.parents, gib_heads.parents),
@@ -346,6 +413,7 @@ func (s *Store) UpsertHead(ctx context.Context, rec *HeadRecord) error {
 			default_branch = COALESCE(EXCLUDED.default_branch, gib_heads.default_branch)`,
 		q.topicCols(), q.topicVals(),
 		q.ph(rec.Outpoint), q.ph(rec.Txid), q.ph(rec.Vout), q.ph(rec.Origin), q.ph(rec.Branch), q.ph(rec.Root), q.ph(rec.Identity),
+		q.ph(nullStr(rec.BranchedFrom)),
 		q.ph(sha), q.ph(tree), q.ph(parents), q.ph(aName), q.ph(aEmail), q.ph(aTime), q.ph(aTZ),
 		q.ph(cName), q.ph(cEmail), q.ph(cTime), q.ph(cTZ), q.ph(message),
 		q.ph(nullStr(rec.Prev)),
@@ -415,20 +483,168 @@ func (s *Store) UpdateScoreForTxid(ctx context.Context, txid string, score float
 	return err
 }
 
-// DeleteHead removes a head (engine eviction, e.g. reorg).
+// DeleteHead removes a head (engine eviction, e.g. reorg), along with the
+// commits it published: a transaction the chain unmade never published
+// them, whatever their content says.
 func (s *Store) DeleteHead(ctx context.Context, outpoint string) error {
 	if err := s.ensureSchema(); err != nil {
 		return err
 	}
-	q := s.newQB()
-	query := fmt.Sprintf(`DELETE FROM gib_heads WHERE %soutpoint = %s`, q.topicWhere(""), q.ph(outpoint))
-	if _, err := s.db.ExecContext(ctx, query, q.args...); err != nil {
+	for _, table := range []string{"gib_heads", "gib_commit_parents", "gib_commits"} {
+		q := s.newQB()
+		del := fmt.Sprintf(`DELETE FROM %s WHERE %soutpoint = %s`, table, q.topicWhere(""), q.ph(outpoint))
+		if _, err := s.db.ExecContext(ctx, del, q.args...); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// UpsertCommits indexes the commits one push's `.git` store names. A commit
+// is content-addressed: the row is keyed by sha alone, and the first head to
+// publish it keeps the credit however many later pushes cite or republish
+// it. A push that carries the bytes for a sha only cited before fills the
+// body in and takes the row over, because a hop the overlay holds beats one
+// it merely named.
+func (s *Store) UpsertCommits(ctx context.Context, recs []CommitRecord) error {
+	if len(recs) == 0 {
+		return nil
+	}
+	if err := s.ensureSchema(); err != nil {
 		return err
 	}
-	pq := s.newQB()
-	del := fmt.Sprintf(`DELETE FROM gib_commit_parents WHERE %soutpoint = %s`, pq.topicWhere(""), pq.ph(outpoint))
-	_, err := s.db.ExecContext(ctx, del, pq.args...)
-	return err
+	for _, rec := range recs {
+		var (
+			tree, parents             any
+			aName, aEmail, aTime, aTZ any
+			cName, cEmail, cTime, cTZ any
+			message                   any
+		)
+		if c := rec.Commit; c != nil {
+			tree, message = c.Tree, c.Message
+			if b, err := json.Marshal(c.Parents); err == nil {
+				parents = string(b)
+			}
+			if c.Author != nil {
+				aName, aEmail, aTime, aTZ = c.Author.Name, c.Author.Email, c.Author.Time, c.Author.TZ
+			}
+			if c.Committer != nil {
+				cName, cEmail, cTime, cTZ = c.Committer.Name, c.Committer.Email, c.Committer.Time, c.Committer.TZ
+			}
+		}
+		held := 0
+		if rec.Held {
+			held = 1
+		}
+		q := s.newQB()
+		query := fmt.Sprintf(`INSERT INTO gib_commits (%ssha, outpoint, ref_outpoint, held,
+			tree_sha, parents, author_name, author_email, author_time, author_tz,
+			committer_name, committer_email, committer_time, committer_tz, message, score)
+			VALUES (%s%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+			ON CONFLICT %s DO UPDATE SET
+				ref_outpoint = CASE WHEN gib_commits.held = 0 AND EXCLUDED.held = 1 THEN EXCLUDED.ref_outpoint ELSE gib_commits.ref_outpoint END,
+				held = CASE WHEN EXCLUDED.held = 1 THEN 1 ELSE gib_commits.held END,
+				tree_sha = COALESCE(gib_commits.tree_sha, EXCLUDED.tree_sha),
+				parents = COALESCE(gib_commits.parents, EXCLUDED.parents),
+				author_name = COALESCE(gib_commits.author_name, EXCLUDED.author_name),
+				author_email = COALESCE(gib_commits.author_email, EXCLUDED.author_email),
+				author_time = COALESCE(gib_commits.author_time, EXCLUDED.author_time),
+				author_tz = COALESCE(gib_commits.author_tz, EXCLUDED.author_tz),
+				committer_name = COALESCE(gib_commits.committer_name, EXCLUDED.committer_name),
+				committer_email = COALESCE(gib_commits.committer_email, EXCLUDED.committer_email),
+				committer_time = COALESCE(gib_commits.committer_time, EXCLUDED.committer_time),
+				committer_tz = COALESCE(gib_commits.committer_tz, EXCLUDED.committer_tz),
+				message = COALESCE(gib_commits.message, EXCLUDED.message),
+				score = CASE WHEN EXCLUDED.score < gib_commits.score THEN EXCLUDED.score ELSE gib_commits.score END`,
+			q.topicCols(), q.topicVals(),
+			q.ph(rec.Sha), q.ph(rec.Outpoint), q.ph(rec.Ref), q.ph(held),
+			q.ph(tree), q.ph(parents), q.ph(aName), q.ph(aEmail), q.ph(aTime), q.ph(aTZ),
+			q.ph(cName), q.ph(cEmail), q.ph(cTime), q.ph(cTZ), q.ph(message), q.ph(rec.Score),
+			s.commitConflictTarget())
+		if _, err := s.db.ExecContext(ctx, query, q.args...); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (s *Store) commitConflictTarget() string {
+	if s.topicID > 0 {
+		return "(topic_id, sha)"
+	}
+	return "(sha)"
+}
+
+const commitColumns = `sha, outpoint, ref_outpoint, held,
+	tree_sha, parents, author_name, author_email, author_time, author_tz,
+	committer_name, committer_email, committer_time, committer_tz, message, score`
+
+func scanCommit(r rowScanner) (*CommitRecord, error) {
+	var (
+		rec                    CommitRecord
+		held                   int
+		tree, parents, message sql.NullString
+		aName, aEmail, aTZ     sql.NullString
+		cName, cEmail, cTZ     sql.NullString
+		aTime, cTime           sql.NullInt64
+	)
+	if err := r.Scan(&rec.Sha, &rec.Outpoint, &rec.Ref, &held,
+		&tree, &parents, &aName, &aEmail, &aTime, &aTZ,
+		&cName, &cEmail, &cTime, &cTZ, &message, &rec.Score); err != nil {
+		return nil, err
+	}
+	rec.Held = held == 1
+	if !tree.Valid && !message.Valid && !parents.Valid {
+		return &rec, nil
+	}
+	commit := &gibtpl.Commit{SHA: rec.Sha, Tree: tree.String, Message: message.String, Parents: []string{}}
+	if parents.Valid && parents.String != "" {
+		_ = json.Unmarshal([]byte(parents.String), &commit.Parents)
+	}
+	if aName.Valid || aEmail.Valid {
+		commit.Author = &gibtpl.Signature{Name: aName.String, Email: aEmail.String, Time: aTime.Int64, TZ: aTZ.String}
+	}
+	if cName.Valid || cEmail.Valid {
+		commit.Committer = &gibtpl.Signature{Name: cName.String, Email: cEmail.String, Time: cTime.Int64, TZ: cTZ.String}
+	}
+	rec.Commit = commit
+	return &rec, nil
+}
+
+// GetCommit returns one indexed commit by sha, or sql.ErrNoRows.
+func (s *Store) GetCommit(ctx context.Context, sha string) (*CommitRecord, error) {
+	if err := s.ensureSchema(); err != nil {
+		return nil, err
+	}
+	q := s.newQB()
+	query := fmt.Sprintf(`SELECT %s FROM gib_commits WHERE %ssha = %s`, commitColumns, q.topicWhere(""), q.ph(sha))
+	return scanCommit(s.db.QueryRowContext(ctx, query, q.args...))
+}
+
+// ListCommitsForHead returns the commits one head's push named, newest
+// rows last. It is the push's own view of the object store: what it
+// republished and what it only cited.
+func (s *Store) ListCommitsForHead(ctx context.Context, outpoint string, limit int) ([]CommitRecord, error) {
+	if err := s.ensureSchema(); err != nil {
+		return nil, err
+	}
+	q := s.newQB()
+	query := fmt.Sprintf(`SELECT %s FROM gib_commits WHERE %soutpoint = %s ORDER BY sha ASC LIMIT %s`,
+		commitColumns, q.topicWhere(""), q.ph(outpoint), q.ph(clampLimit(limit)))
+	rows, err := s.db.QueryContext(ctx, query, q.args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := []CommitRecord{}
+	for rows.Next() {
+		rec, err := scanCommit(rows)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, *rec)
+	}
+	return out, rows.Err()
 }
 
 // ChildrenOfCommit returns heads whose commit names sha as a parent: the
@@ -466,7 +682,7 @@ func prefixedHeadColumns(prefix string) string {
 	return strings.Join(cols, ", ")
 }
 
-const headColumns = `outpoint, txid, vout, origin, branch, root, identity,
+const headColumns = `outpoint, txid, vout, origin, branch, root, identity, branched_from,
 	commit_sha, tree_sha, parents, author_name, author_email, author_time, author_tz,
 	committer_name, committer_email, committer_time, committer_tz, message,
 	prev_outpoint, spend_txid, next_outpoint, spend_score, score,
@@ -479,6 +695,7 @@ type rowScanner interface {
 func scanHead(r rowScanner) (*HeadRecord, error) {
 	var (
 		rec                   HeadRecord
+		branchedFrom          sql.NullString
 		sha, tree, parents    sql.NullString
 		aName, aEmail, aTZ    sql.NullString
 		cName, cEmail, cTZ    sql.NullString
@@ -489,7 +706,7 @@ func scanHead(r rowScanner) (*HeadRecord, error) {
 		name, desc, branch    sql.NullString
 	)
 	if err := r.Scan(&rec.Outpoint, &rec.Txid, &rec.Vout, &rec.Origin, &rec.Branch, &rec.Root, &rec.Identity,
-		&sha, &tree, &parents, &aName, &aEmail, &aTime, &aTZ,
+		&branchedFrom, &sha, &tree, &parents, &aName, &aEmail, &aTime, &aTZ,
 		&cName, &cEmail, &cTime, &cTZ, &message,
 		&prev, &spendTxid, &next, &spendScore, &rec.Score, &name, &desc, &branch); err != nil {
 		return nil, err
@@ -503,6 +720,7 @@ func scanHead(r rowScanner) (*HeadRecord, error) {
 		rec.Height = uint32(math.Floor(rec.Score))
 	}
 	rec.Prev = prev.String
+	rec.BranchedFrom = branchedFrom.String
 	if sha.Valid {
 		commit := &gibtpl.Commit{SHA: sha.String, Tree: tree.String, Message: message.String, Parents: []string{}}
 		if parents.Valid && parents.String != "" {

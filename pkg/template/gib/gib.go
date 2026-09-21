@@ -1,18 +1,35 @@
 // Package gib decodes gib commit-head outputs.
 //
-// A commit head is a 1-satoshi PushDrop coin whose fields name a repository
-// (its origin: the genesis directory outpoint), a branch, and the root
-// directory outpoint that branch currently points at. The git commit object
-// for that state rides the same output as an ordinal inscription. The coin's
-// spend chain is the branch history: each push spends the previous head and
-// creates the next one.
+// A commit head is a bare 1-satoshi PushDrop coin — nothing is inscribed on
+// it — whose fields name a repository (its repository origin: the genesis
+// `ordfs/dir` outpoint), a branch, the root directory outpoint that branch
+// now points at, the publisher, and the head this one branched from or
+// merged in. The coin's spend chain is the branch history: each push spends
+// the previous head and creates the next one.
 //
-//	fields = ["gib", origin, branch, root, identity pubkey (, signature)]
+//	fields = ["gib", repository origin, branch, root, identity pubkey,
+//	          branched-from (, signature)]
+//
+// The commit objects themselves are no longer on the head. The published
+// root is git's tree for the tip commit plus a `.git` directory holding
+// every commit object reachable from it, named by sha; gib strips `.git`
+// before hashing so the tree still verifies against what git computed. A
+// head is therefore read in two steps: the token from its own output, the
+// commits from the root it names.
+//
+// The branched-from field is empty on an ordinary push, which has only the
+// head it spends. It is set on a branch's first head (naming the head it
+// forked from) and on a merge, alongside the spend: the spend is the first
+// parent's lineage and this field is the other one, so a head's parents
+// mirror its commit's parents.
 //
 // The decoder accepts outpoints as 36 raw bytes (txid || vout LE) or as a
 // "txid_vout" / "txid.vout" string, and the identity as 33 raw bytes or 66
-// hex characters. The PushDrop lock may sit before or after the fields and
-// the inscription envelope may precede or follow the lock.
+// hex characters. The PushDrop lock may sit before or after the fields.
+//
+// The five-field heads with a commit inscription that gib published before
+// this are a different format and do not decode here. That is deliberate:
+// there is no compatibility path and no migration.
 package gib
 
 import (
@@ -21,7 +38,6 @@ import (
 	"fmt"
 	"unicode/utf8"
 
-	"github.com/b-open-io/1sat-stack/pkg/template/inscription"
 	ec "github.com/bsv-blockchain/go-sdk/primitives/ec"
 	"github.com/bsv-blockchain/go-sdk/script"
 	"github.com/bsv-blockchain/go-sdk/transaction"
@@ -32,17 +48,19 @@ const (
 	// ProtocolName is PushDrop field 0.
 	ProtocolName = "gib"
 	// EventName is the parser event emitted for every commit head. Per-repo
-	// events are EventName + ":" + origin.
+	// events are EventName + ":" + repository origin.
 	EventName = "gib"
 
-	FieldProtocol = 0
-	FieldOrigin   = 1
-	FieldBranch   = 2
-	FieldRoot     = 3
-	FieldIdentity = 4
-	// FieldCount is the minimum field count. A sealed token carries one
-	// trailing signature field, which is ignored.
-	FieldCount = 5
+	FieldProtocol     = 0
+	FieldOrigin       = 1
+	FieldBranch       = 2
+	FieldRoot         = 3
+	FieldIdentity     = 4
+	FieldBranchedFrom = 5
+	// FieldCount is the number of fields a head carries. A sealed token adds
+	// one trailing signature field, which is ignored; nothing else may
+	// follow.
+	FieldCount = 6
 
 	// MaxBranchBytes bounds the branch name (git refname component limit).
 	MaxBranchBytes = 255
@@ -53,26 +71,27 @@ const (
 )
 
 var (
-	ErrNotOneSat   = errors.New("gib: commit head must carry exactly 1 satoshi")
-	ErrNotPushDrop = errors.New("gib: locking script is not a PushDrop token")
-	ErrFieldCount  = errors.New("gib: token needs at least 5 fields")
-	ErrProtocol    = errors.New("gib: first field is not \"gib\"")
-	ErrOrigin      = errors.New("gib: invalid origin field")
-	ErrBranch      = errors.New("gib: invalid branch field")
-	ErrRoot        = errors.New("gib: invalid root field")
-	ErrIdentity    = errors.New("gib: invalid identity field")
+	ErrNotOneSat    = errors.New("gib: commit head must carry exactly 1 satoshi")
+	ErrNotPushDrop  = errors.New("gib: locking script is not a PushDrop token")
+	ErrFieldCount   = errors.New("gib: token needs 6 fields and an optional signature")
+	ErrProtocol     = errors.New("gib: first field is not \"gib\"")
+	ErrOrigin       = errors.New("gib: invalid repository origin field")
+	ErrBranch       = errors.New("gib: invalid branch field")
+	ErrRoot         = errors.New("gib: invalid root field")
+	ErrIdentity     = errors.New("gib: invalid identity field")
+	ErrBranchedFrom = errors.New("gib: invalid branched-from field")
 )
 
 // Head is a decoded commit head. Outpoints are in ordinal form (txid_vout)
 // and keys are compressed hex, so the struct serializes directly.
+// BranchedFrom is empty on an ordinary push.
 type Head struct {
-	Origin      string  `json:"origin"`
-	Branch      string  `json:"branch"`
-	Root        string  `json:"root"`
-	Identity    string  `json:"identity"`
-	LockingKey  string  `json:"lockingKey"`
-	ContentType string  `json:"contentType,omitempty"`
-	Commit      *Commit `json:"commit,omitempty"`
+	Origin       string `json:"origin"`
+	Branch       string `json:"branch"`
+	Root         string `json:"root"`
+	Identity     string `json:"identity"`
+	BranchedFrom string `json:"branchedFrom,omitempty"`
+	LockingKey   string `json:"lockingKey"`
 }
 
 // Decode validates and decodes a gib commit head. It returns an error for
@@ -85,29 +104,8 @@ func Decode(lockingScript *script.Script, satoshis uint64) (*Head, error) {
 		return nil, ErrNotPushDrop
 	}
 
-	insc := inscription.Decode(lockingScript)
-	candidates := []*script.Script{lockingScript}
-	if insc != nil {
-		candidates = candidates[:0]
-		if len(insc.ScriptPrefix) > 0 {
-			candidates = append(candidates, script.NewFromBytes(insc.ScriptPrefix))
-		}
-		if len(insc.ScriptSuffix) > 0 {
-			candidates = append(candidates, script.NewFromBytes(insc.ScriptSuffix))
-		}
-	}
-
-	var (
-		lockKey *ec.PublicKey
-		fields  [][]byte
-	)
-	for _, candidate := range candidates {
-		if key, f, ok := decodePushDrop(candidate); ok {
-			lockKey, fields = key, f
-			break
-		}
-	}
-	if lockKey == nil {
+	lockKey, fields, ok := decodePushDrop(lockingScript)
+	if !ok {
 		return nil, ErrNotPushDrop
 	}
 
@@ -116,13 +114,6 @@ func Decode(lockingScript *script.Script, satoshis uint64) (*Head, error) {
 		return nil, err
 	}
 	head.LockingKey = hex.EncodeToString(lockKey.Compressed())
-
-	if insc != nil && len(insc.File.Content) > 0 {
-		head.ContentType = insc.File.Type
-		if commit, err := ParseCommit(insc.File.Content); err == nil {
-			head.Commit = commit
-		}
-	}
 	return head, nil
 }
 
@@ -133,7 +124,9 @@ func IsHead(lockingScript *script.Script, satoshis uint64) bool {
 }
 
 func headFromFields(fields [][]byte) (*Head, error) {
-	if len(fields) < FieldCount {
+	// Six fields, or six and the signature the wallet seals with. Anything
+	// else is another token that happens to start with "gib".
+	if len(fields) < FieldCount || len(fields) > FieldCount+1 {
 		return nil, ErrFieldCount
 	}
 	if string(fields[FieldProtocol]) != ProtocolName {
@@ -155,12 +148,29 @@ func headFromFields(fields [][]byte) (*Head, error) {
 	if err != nil {
 		return nil, fmt.Errorf("%w: %v", ErrIdentity, err)
 	}
-	return &Head{
+	head := &Head{
 		Origin:   origin.OrdinalString(),
 		Branch:   string(branch),
 		Root:     root.OrdinalString(),
 		Identity: hex.EncodeToString(identity.Compressed()),
-	}, nil
+	}
+	if raw := fields[FieldBranchedFrom]; !isAbsentField(raw) {
+		from, err := parseOutpointField(raw)
+		if err != nil {
+			return nil, fmt.Errorf("%w: %v", ErrBranchedFrom, err)
+		}
+		head.BranchedFrom = from.OrdinalString()
+	}
+	return head, nil
+}
+
+// isAbsentField reports whether an optional field is absent. PushDrop
+// encodes an empty push minimally as OP_FALSE, which is the same opcode a
+// single zero byte encodes to, so the two cannot be told apart once on
+// chain: both read back as absent. (The SDK's PushDrop decoder reports
+// OP_FALSE as a one-byte zero; the lock-after reader reports it as empty.)
+func isAbsentField(b []byte) bool {
+	return len(b) == 0 || (len(b) == 1 && b[0] == 0)
 }
 
 func validBranch(b []byte) bool {

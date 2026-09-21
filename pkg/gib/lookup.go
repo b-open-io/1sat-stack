@@ -87,15 +87,21 @@ func (l *LookupService) OutputAdmittedByTopic(ctx context.Context, payload *engi
 	if payload == nil || payload.Topic != TopicName {
 		return nil
 	}
-	beef, txid, err := transaction.NewBeefFromAtomicBytes(payload.AtomicBEEF)
+	// A push submits the content transactions alongside the head, so the
+	// BEEF is not always atomic: ParseBeef takes either, and picks the same
+	// subject transaction the engine did.
+	beef, _, txid, err := transaction.ParseBeef(payload.AtomicBEEF)
 	if err != nil {
-		return fmt.Errorf("gib: parse atomic BEEF: %w", err)
+		return fmt.Errorf("gib: parse submitted BEEF: %w", err)
+	}
+	if beef == nil || txid == nil {
+		return fmt.Errorf("gib: submitted BEEF has no subject transaction")
 	}
 	// FindTransactionForSigning links each input's source transaction from
 	// the BEEF so the spent heads can be decoded.
 	tx := beef.FindTransactionForSigningByHash(txid)
 	if tx == nil {
-		return fmt.Errorf("gib: atomic BEEF does not contain %s", txid.String())
+		return fmt.Errorf("gib: submitted BEEF does not contain %s", txid.String())
 	}
 	if int(payload.OutputIndex) >= len(tx.Outputs) {
 		return fmt.Errorf("gib: output index %d out of range for %s", payload.OutputIndex, txid.String())
@@ -112,6 +118,18 @@ func (l *LookupService) OutputAdmittedByTopic(ctx context.Context, payload *engi
 	rec := recordFromHead(op, head, score)
 	rec.Meta = l.fetchMeta(ctx, head.Origin)
 
+	// The commits come from the root's `.git` store, read out of the same
+	// submission the topic manager admitted the head from. A head that got
+	// past admission has one; if this read fails the head is still indexed,
+	// because the branch pointer is true whatever the content says.
+	push, err := ReadPush(beef, head, txid)
+	if err != nil {
+		l.logger.Warn("gib: admitted head without a readable push",
+			"outpoint", rec.Outpoint, "root", head.Root, "error", err)
+	} else {
+		rec.Commit = tipCommit(push)
+	}
+
 	spent := gibInputs(tx)
 	for _, in := range spent {
 		if in.head.Origin == head.Origin && in.head.Branch == head.Branch {
@@ -122,10 +140,49 @@ func (l *LookupService) OutputAdmittedByTopic(ctx context.Context, payload *engi
 	if err := l.store.UpsertHead(ctx, rec); err != nil {
 		return fmt.Errorf("gib: upsert head %s: %w", rec.Outpoint, err)
 	}
+	if push != nil {
+		if err := l.store.UpsertCommits(ctx, commitRecords(rec.Outpoint, push, score)); err != nil {
+			return fmt.Errorf("gib: index commits of %s: %w", rec.Outpoint, err)
+		}
+	}
 	if _, err := l.recordSpends(ctx, tx, txid, spent, score); err != nil {
 		return err
 	}
 	return nil
+}
+
+// tipCommit is what a head record carries in place of the commit that used
+// to be inscribed on it: the tip commit object of the root's `.git` store.
+// When the push cited that object instead of republishing it, only the sha
+// is known — which is still the answer to "what does this head publish".
+func tipCommit(push *Push) *gibtpl.Commit {
+	if push == nil {
+		return nil
+	}
+	if push.Tip != nil {
+		return push.Tip
+	}
+	if push.TipSha == "" {
+		return nil
+	}
+	return &gibtpl.Commit{SHA: push.TipSha, Parents: []string{}}
+}
+
+// commitRecords turns a push's object store into index rows: one per
+// commit it names, held or only cited.
+func commitRecords(outpoint string, push *Push, score float64) []CommitRecord {
+	recs := make([]CommitRecord, 0, len(push.Objects))
+	for _, obj := range push.Objects {
+		recs = append(recs, CommitRecord{
+			Sha:      obj.Sha,
+			Outpoint: outpoint,
+			Ref:      obj.Ref.OrdinalString(),
+			Held:     obj.Held(),
+			Commit:   obj.Commit,
+			Score:    score,
+		})
+	}
+	return recs
 }
 
 // RecordSpends scans a transaction's inputs for commit heads and records
@@ -316,17 +373,22 @@ func (l *LookupService) GetMetaData() *overlay.MetaData {
 	}
 }
 
+// recordFromHead is the head as its token alone tells it. The commit is not
+// in the token any more, so it is filled in by the caller that has the
+// submission to read the root's `.git` store from; the spend paths, which
+// see only the spent output, leave it empty and the store keeps whatever
+// admission already indexed.
 func recordFromHead(op *transaction.Outpoint, head *gibtpl.Head, score float64) *HeadRecord {
 	return &HeadRecord{
-		Outpoint: op.OrdinalString(),
-		Txid:     op.Txid.String(),
-		Vout:     op.Index,
-		Origin:   head.Origin,
-		Branch:   head.Branch,
-		Root:     head.Root,
-		Identity: head.Identity,
-		Commit:   head.Commit,
-		Score:    score,
+		Outpoint:     op.OrdinalString(),
+		Txid:         op.Txid.String(),
+		Vout:         op.Index,
+		Origin:       head.Origin,
+		Branch:       head.Branch,
+		Root:         head.Root,
+		Identity:     head.Identity,
+		BranchedFrom: head.BranchedFrom,
+		Score:        score,
 	}
 }
 
