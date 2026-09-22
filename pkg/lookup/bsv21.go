@@ -4,6 +4,8 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"math/bits"
+	"sort"
 	"strconv"
 	"sync"
 
@@ -40,6 +42,7 @@ CREATE TABLE IF NOT EXISTS token_outputs (
 CREATE INDEX IF NOT EXISTS idx_token_utxos ON token_outputs(token_id, lock_type, address, score) WHERE spend_txid IS NULL;
 CREATE INDEX IF NOT EXISTS idx_token_history ON token_outputs(token_id, lock_type, address, score);
 CREATE INDEX IF NOT EXISTS idx_token_deploy ON token_outputs(token_id) WHERE op IN ('deploy+mint', 'deploy+auth');
+CREATE INDEX IF NOT EXISTS idx_token_score ON token_outputs(score);
 `
 
 // BSV21Lookup implements the LookupService interface for BSV21.
@@ -243,6 +246,167 @@ func (l *BSV21Lookup) ListTokens(ctx context.Context) ([]*TokenInfo, error) {
 		tokens = append(tokens, t)
 	}
 	return tokens, rows.Err()
+}
+
+// Holder is an address balance aggregated from unspent token outputs.
+type Holder struct {
+	LockType  string `json:"lockType"`
+	Address   string `json:"address"`
+	Balance   string `json:"balance"`
+	UtxoCount int    `json:"utxoCount"`
+}
+
+// TokenRow is one indexed token output, for browsing activity.
+type TokenRow struct {
+	Outpoint string  `json:"outpoint"`
+	Op       string  `json:"op"`
+	LockType string  `json:"lockType,omitempty"`
+	Address  string  `json:"address,omitempty"`
+	Amount   string  `json:"amount"`
+	Spend    string  `json:"spend,omitempty"`
+	Score    float64 `json:"score"`
+}
+
+// ListHolders aggregates unspent balances for a token. limit <= 0 returns every holder.
+// Balances are summed in process so amounts above int64 stay exact.
+func (l *BSV21Lookup) ListHolders(ctx context.Context, tokenId string, limit int) ([]*Holder, error) {
+	ts, err := l.tokenDB(tokenId)
+	if err != nil {
+		return nil, err
+	}
+
+	rows, err := ts.DB().QueryContext(ctx,
+		`SELECT lock_type, address, amount FROM token_outputs WHERE token_id = ? AND spend_txid IS NULL AND address != ''`,
+		tokenId,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	type acc struct {
+		balance uint64
+		count   int
+	}
+	byKey := make(map[[2]string]*acc)
+	for rows.Next() {
+		var lockType, address, amtStr string
+		if err := rows.Scan(&lockType, &address, &amtStr); err != nil {
+			return nil, err
+		}
+		amt, err := strconv.ParseUint(amtStr, 10, 64)
+		if err != nil {
+			return nil, fmt.Errorf("invalid amount %q: %w", amtStr, err)
+		}
+		key := [2]string{lockType, address}
+		a := byKey[key]
+		if a == nil {
+			a = &acc{}
+			byKey[key] = a
+		}
+		sum, carry := bits.Add64(a.balance, amt, 0)
+		if carry != 0 {
+			a.balance = ^uint64(0)
+		} else {
+			a.balance = sum
+		}
+		a.count++
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	type ranked struct {
+		lockType, address string
+		balance           uint64
+		count             int
+	}
+	list := make([]ranked, 0, len(byKey))
+	for key, a := range byKey {
+		list = append(list, ranked{key[0], key[1], a.balance, a.count})
+	}
+	sort.Slice(list, func(i, j int) bool {
+		if list[i].balance != list[j].balance {
+			return list[i].balance > list[j].balance
+		}
+		if list[i].address != list[j].address {
+			return list[i].address < list[j].address
+		}
+		return list[i].lockType < list[j].lockType
+	})
+	if limit > 0 && len(list) > limit {
+		list = list[:limit]
+	}
+
+	holders := make([]*Holder, len(list))
+	for i, h := range list {
+		holders[i] = &Holder{
+			LockType:  h.lockType,
+			Address:   h.address,
+			Balance:   strconv.FormatUint(h.balance, 10),
+			UtxoCount: h.count,
+		}
+	}
+	return holders, nil
+}
+
+// ListActivity returns token outputs ordered by score. reverse lists newest first.
+// limit <= 0 returns every row.
+func (l *BSV21Lookup) ListActivity(ctx context.Context, tokenId string, limit int, reverse bool) ([]*TokenRow, error) {
+	ts, err := l.tokenDB(tokenId)
+	if err != nil {
+		return nil, err
+	}
+
+	query := `SELECT outpoint, op, lock_type, address, amount, spend_txid, score FROM token_outputs WHERE token_id = ? ORDER BY score `
+	if reverse {
+		query += "DESC"
+	} else {
+		query += "ASC"
+	}
+	args := []any{tokenId}
+	if limit > 0 {
+		query += " LIMIT ?"
+		args = append(args, limit)
+	}
+
+	rows, err := ts.DB().QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var results []*TokenRow
+	for rows.Next() {
+		var opBytes, spendBytes []byte
+		var op, lockType, address, amtStr string
+		var score float64
+		if err := rows.Scan(&opBytes, &op, &lockType, &address, &amtStr, &spendBytes, &score); err != nil {
+			return nil, err
+		}
+		outpoint := transaction.NewOutpointFromBytes(opBytes)
+		if outpoint == nil {
+			return nil, fmt.Errorf("invalid outpoint bytes: %x", opBytes)
+		}
+		row := &TokenRow{
+			Outpoint: outpoint.String(),
+			Op:       op,
+			LockType: lockType,
+			Address:  address,
+			Amount:   amtStr,
+			Score:    score,
+		}
+		if len(spendBytes) == 32 {
+			var spend chainhash.Hash
+			copy(spend[:], spendBytes)
+			row.Spend = spend.String()
+		}
+		results = append(results, row)
+	}
+	if results == nil {
+		results = []*TokenRow{}
+	}
+	return results, rows.Err()
 }
 
 // CountOutputs returns the count of every output ever indexed into a topic's

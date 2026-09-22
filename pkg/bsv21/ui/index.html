@@ -1,0 +1,585 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>BSV21</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        --bg: #0d1117;
+        --card: #161b22;
+        --text: #e6edf3;
+        --muted: #8b949e;
+        --faint: #484f58;
+        --line: #21262d;
+        --link: #58a6ff;
+      }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        background: var(--bg);
+        color: var(--text);
+        font: 15px/1.45 ui-sans-serif, system-ui, sans-serif;
+      }
+      a { color: var(--link); text-decoration: none; }
+      a:hover { text-decoration: underline; }
+      main { max-width: 1080px; margin: 0 auto; padding: 24px 20px 48px; }
+      header {
+        display: flex;
+        align-items: baseline;
+        justify-content: space-between;
+        gap: 16px;
+        margin-bottom: 20px;
+      }
+      h1 { font-size: 20px; margin: 0; font-weight: 650; }
+      h1 a { color: inherit; }
+      h2 { font-size: 14px; font-weight: 600; color: var(--muted); margin: 28px 0 12px; }
+      .status { color: var(--muted); font-size: 14px; }
+      .live { color: #3fb950; }
+      .grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+        gap: 12px;
+      }
+      .card {
+        display: block;
+        background: var(--card);
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        overflow: hidden;
+        color: inherit;
+      }
+      .card:hover { text-decoration: none; border-color: #30363d; }
+      .thumb {
+        aspect-ratio: 1;
+        background: var(--line);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 28px;
+        font-weight: 650;
+        color: var(--muted);
+        position: relative;
+      }
+      .thumb img {
+        position: absolute;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+      }
+      .meta { padding: 8px 10px 10px; }
+      .name {
+        font-size: 14px;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+      .sub { color: var(--muted); font-size: 12px; margin-top: 2px; }
+      .detail {
+        display: grid;
+        grid-template-columns: 160px 1fr;
+        gap: 20px;
+        margin-bottom: 8px;
+      }
+      .hero {
+        width: 100%;
+        aspect-ratio: 1;
+        background: var(--line);
+        border-radius: 8px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 42px;
+        font-weight: 650;
+        color: var(--muted);
+        position: relative;
+        overflow: hidden;
+      }
+      .hero img {
+        position: absolute;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+      }
+      .facts { color: var(--muted); font-size: 13px; display: flex; flex-wrap: wrap; gap: 8px 16px; }
+      .facts code, code { color: var(--text); font-size: 12px; }
+      form, .tools {
+        display: flex;
+        gap: 8px;
+        flex-wrap: wrap;
+        margin: 0 0 16px;
+      }
+      input, select, button {
+        background: var(--card);
+        color: var(--text);
+        border: 1px solid var(--line);
+        border-radius: 6px;
+        padding: 8px 10px;
+        font: inherit;
+      }
+      input { flex: 1; min-width: 180px; }
+      button { cursor: pointer; }
+      button:hover { border-color: #30363d; }
+      table { width: 100%; border-collapse: collapse; font-size: 13px; }
+      th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--line); vertical-align: top; }
+      th { color: var(--muted); font-weight: 600; font-size: 12px; }
+      td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
+      .spent { color: var(--faint); }
+      .crumb { color: var(--muted); font-size: 14px; }
+      .crumb a { color: var(--link); }
+      @media (max-width: 640px) {
+        .detail { grid-template-columns: 1fr; }
+        .hero { max-width: 180px; }
+        table { display: block; overflow-x: auto; }
+      }
+    </style>
+  </head>
+  <body>
+    <main id="app"></main>
+    <script>
+      const PAGE = 100
+
+      function apiBase() {
+        const path = location.pathname
+        const i = path.indexOf("/browse")
+        return i >= 0 ? path.slice(0, i) : ""
+      }
+
+      function uiBase() {
+        return apiBase() + "/browse/"
+      }
+
+      function contentUrl(outpoint) {
+        return "/content/" + encodeURIComponent(outpoint)
+      }
+
+      function route() {
+        const path = location.pathname.replace(/\/+$/, "")
+        const marker = "/browse/"
+        const i = path.indexOf(marker)
+        if (i < 0) return { page: "index" }
+        const parts = path.slice(i + marker.length).split("/").filter(Boolean).map(decodeURIComponent)
+        if (!parts.length) return { page: "index" }
+        if (parts.length >= 3 && parts[1] === "tx") return { page: "tx", tokenId: parts[0], txid: parts[2] }
+        if (parts.length >= 3) return { page: "address", tokenId: parts[0], lockType: parts[1], address: parts[2] }
+        return { page: "token", tokenId: parts[0] }
+      }
+
+      async function getJSON(url) {
+        const res = await fetch(url)
+        const body = await res.json().catch(() => ({}))
+        if (!res.ok) throw new Error(body.message || body.error || res.statusText || "request failed")
+        return body
+      }
+
+      function short(s) {
+        if (!s) return ""
+        return s.length > 18 ? s.slice(0, 8) + "…" + s.slice(-6) : s
+      }
+
+      function when(score) {
+        if (!score) return ""
+        if (score > 1e9) return "unconfirmed"
+        return "block " + Math.floor(score).toLocaleString()
+      }
+
+      function decimalsOf(token) {
+        if (!token) return 0
+        const n = Number(token.dec != null ? token.dec : token.decimals)
+        return Number.isFinite(n) ? n : 0
+      }
+
+      function formatAmt(raw, dec) {
+        if (raw == null || raw === "") return ""
+        let n
+        try { n = BigInt(raw) } catch { return String(raw) }
+        const d = Number(dec || 0)
+        const neg = n < 0n
+        if (neg) n = -n
+        if (!d) return (neg ? "-" : "") + n.toLocaleString("en-US")
+        const base = 10n ** BigInt(d)
+        const whole = n / base
+        const frac = (n % base).toString().padStart(d, "0").replace(/0+$/, "")
+        return (neg ? "-" : "") + whole.toLocaleString("en-US") + (frac ? "." + frac : "")
+      }
+
+      function symbolOf(token, fallback) {
+        return (token && (token.sym || token.symbol)) || fallback || "token"
+      }
+
+      function iconOf(token) {
+        if (!token) return ""
+        return token.icon || token.Icon || ""
+      }
+
+      function iconSrc(icon) {
+        if (!icon) return ""
+        if (/^https?:\/\//i.test(icon)) return icon
+        if (/^[a-f0-9]{64}[_.]\d+$/i.test(icon)) return contentUrl(icon)
+        return ""
+      }
+
+      function txidOf(outpoint) {
+        if (!outpoint) return ""
+        const i = Math.max(outpoint.lastIndexOf("_"), outpoint.lastIndexOf("."))
+        return i > 0 ? outpoint.slice(0, i) : outpoint
+      }
+
+      function el(tag, attrs, children) {
+        const node = document.createElement(tag)
+        if (attrs) {
+          for (const [k, v] of Object.entries(attrs)) {
+            if (k === "class") node.className = v
+            else if (k === "text") node.textContent = v
+            else if (v != null) node.setAttribute(k, v)
+          }
+        }
+        for (const child of children || []) {
+          if (child) node.append(child)
+        }
+        return node
+      }
+
+      function iconBox(icon, letter, className) {
+        const box = el("div", { class: className || "thumb", text: (letter || "?").slice(0, 1).toUpperCase() })
+        const src = iconSrc(icon)
+        if (!src) return box
+        const img = el("img", { alt: "", src })
+        img.addEventListener("error", () => img.remove())
+        box.append(img)
+        return box
+      }
+
+      function statusLine(status) {
+        if (!status) return ""
+        const bits = []
+        if (status.is_whitelisted) bits.push("whitelisted")
+        else if (status.is_blacklisted) bits.push("blacklisted")
+        else if (status.balance > 0) bits.push("funded")
+        else bits.push("unfunded")
+        bits.push(status.is_active ? "active" : "inactive")
+        if (status.output_count != null) bits.push(Number(status.output_count).toLocaleString() + " indexed")
+        if (status.balance != null) bits.push("fee " + Number(status.balance).toLocaleString() + " sats")
+        return bits.join(" · ")
+      }
+
+      function header(extra) {
+        return el("header", null, [
+          el("h1", null, [el("a", { href: uiBase(), text: "BSV21" })]),
+          extra || null,
+        ])
+      }
+
+      function amountCell(raw, dec) {
+        return el("td", { class: "num", text: formatAmt(raw, dec) })
+      }
+
+      function addressLink(tokenId, lockType, address) {
+        if (!address) return el("td", { class: "status", text: "—" })
+        const href = uiBase() + encodeURIComponent(tokenId) + "/" + encodeURIComponent(lockType || "p2pkh") + "/" + encodeURIComponent(address)
+        return el("td", null, [el("a", { href, text: short(address), title: address })])
+      }
+
+      function renderIndex(tokens) {
+        document.title = "BSV21"
+        const app = document.getElementById("app")
+        const count = el("div", { class: "status", text: tokens.length ? String(tokens.length) : "" })
+        app.replaceChildren(header(count))
+
+        const search = el("input", { type: "search", placeholder: "Filter by symbol or token id", autocomplete: "off" })
+        const grid = el("div", { class: "grid" })
+        const empty = el("p", { class: "status", text: tokens.length ? "" : "No tokens indexed." })
+
+        function paint() {
+          const q = search.value.trim().toLowerCase()
+          const shown = tokens.filter((t) => {
+            if (!q) return true
+            return (t.symbol || "").toLowerCase().includes(q) || (t.token_id || "").toLowerCase().includes(q)
+          })
+          grid.replaceChildren()
+          for (const token of shown) {
+            const name = token.symbol || short(token.token_id)
+            const bits = []
+            if (token.output_count != null) bits.push(Number(token.output_count).toLocaleString() + " indexed")
+            const link = el("a", { class: "card", href: uiBase() + encodeURIComponent(token.token_id) })
+            link.append(
+              iconBox(token.icon, name),
+              el("div", { class: "meta" }, [
+                el("div", { class: "name", text: name }),
+                bits.length ? el("div", { class: "sub", text: bits.join(" · ") }) : null,
+                token.is_active ? el("div", { class: "sub live", text: "active" }) : null,
+              ]),
+            )
+            grid.append(link)
+          }
+          empty.textContent = shown.length ? "" : (tokens.length ? "No matches." : "No tokens indexed.")
+          count.textContent = shown.length ? String(shown.length) : ""
+        }
+
+        search.addEventListener("input", paint)
+        search.addEventListener("keydown", (ev) => {
+          if (ev.key !== "Enter") return
+          const q = search.value.trim()
+          if (/^[a-f0-9]{64}[_.]\d+$/i.test(q)) {
+            location.href = uiBase() + encodeURIComponent(q.replace(".", "_"))
+          }
+        })
+        const form = el("form", null, [search])
+        form.addEventListener("submit", (ev) => ev.preventDefault())
+        app.append(form, empty, grid)
+        paint()
+      }
+
+      function renderToken(detail, holders, activity) {
+        const token = (detail && detail.token) || {}
+        const name = symbolOf(token, short(detail.tokenId))
+        document.title = name + " · BSV21"
+        const dec = decimalsOf(token)
+        const facts = []
+        if (token.op === "deploy+auth") facts.push(el("span", { text: "auth mint" }))
+        else if (token.amt) facts.push(el("span", { text: formatAmt(token.amt, dec) + " supply" }))
+        if (token.op) facts.push(el("span", { text: token.op }))
+        if (dec) facts.push(el("span", { text: dec + " decimals" }))
+        facts.push(el("span", null, [el("code", { text: detail.tokenId || token.id || "" })]))
+        const funding = statusLine(detail.status)
+        if (funding) facts.push(el("span", { class: detail.status && detail.status.is_active ? "live" : "", text: funding }))
+
+        const copy = el("div")
+        copy.append(el("h1", { text: name }))
+        copy.append(el("div", { class: "facts" }, facts))
+
+        const lookup = el("form")
+        const lock = el("select")
+        for (const opt of ["p2pkh", "cos"]) lock.append(el("option", { value: opt, text: opt }))
+        const addr = el("input", { placeholder: "Look up an address", autocomplete: "off" })
+        lookup.append(lock, addr, el("button", { type: "submit", text: "Balance" }))
+        lookup.addEventListener("submit", (ev) => {
+          ev.preventDefault()
+          const address = addr.value.trim()
+          if (!address) return
+          location.href = uiBase() + encodeURIComponent(detail.tokenId) + "/" + encodeURIComponent(lock.value) + "/" + encodeURIComponent(address)
+        })
+
+        const app = document.getElementById("app")
+        app.replaceChildren(
+          header(),
+          el("section", { class: "detail" }, [iconBox(iconOf(token), name, "hero"), copy]),
+          lookup,
+          el("h2", { text: "Holders" }),
+        )
+        if (!holders.length) {
+          const waiting = detail.status && detail.status.is_active
+          app.append(el("p", { class: "status", text: waiting ? "Active. No holders indexed yet." : "No holders indexed." }))
+        } else {
+          app.append(holdersTable(detail.tokenId, holders, dec))
+        }
+        app.append(el("h2", { text: "Activity" }))
+        if (!activity.length) {
+          app.append(el("p", { class: "status", text: "No outputs indexed." }))
+          return
+        }
+        app.append(activityTable(detail.tokenId, activity, dec))
+      }
+
+      function holdersTable(tokenId, holders, dec) {
+        const body = el("tbody")
+        for (const h of holders) {
+          body.append(el("tr", null, [
+            addressLink(tokenId, h.lockType, h.address),
+            el("td", { text: h.lockType || "" }),
+            amountCell(h.balance, dec),
+            el("td", { class: "num", text: Number(h.utxoCount || 0).toLocaleString() }),
+          ]))
+        }
+        return el("table", null, [
+          el("thead", null, [el("tr", null, [
+            el("th", { text: "Address" }),
+            el("th", { text: "Lock" }),
+            el("th", { class: "num", text: "Balance" }),
+            el("th", { class: "num", text: "UTXOs" }),
+          ])]),
+          body,
+        ])
+      }
+
+      function activityTable(tokenId, rows, dec) {
+        const body = el("tbody")
+        for (const row of rows) {
+          const txHref = uiBase() + encodeURIComponent(tokenId) + "/tx/" + encodeURIComponent(txidOf(row.outpoint))
+          body.append(el("tr", { class: row.spend ? "spent" : "" }, [
+            el("td", { text: when(row.score) }),
+            el("td", { text: row.op || "" }),
+            amountCell(row.amount, dec),
+            addressLink(tokenId, row.lockType, row.address),
+            el("td", null, [el("a", { href: txHref, text: short(row.outpoint), title: row.outpoint })]),
+          ]))
+        }
+        return el("table", null, [
+          el("thead", null, [el("tr", null, [
+            el("th", { text: "When" }),
+            el("th", { text: "Op" }),
+            el("th", { class: "num", text: "Amount" }),
+            el("th", { text: "Address" }),
+            el("th", { text: "Output" }),
+          ])]),
+          body,
+        ])
+      }
+
+      function outputRows(tokenId, outputs, dec) {
+        const body = el("tbody")
+        for (const out of outputs || []) {
+          const data = out.data && out.data.bsv21 || {}
+          const txHref = uiBase() + encodeURIComponent(tokenId) + "/tx/" + encodeURIComponent(txidOf(out.outpoint))
+          body.append(el("tr", { class: out.spend ? "spent" : "" }, [
+            el("td", { text: when(out.score) }),
+            el("td", { text: data.op || "" }),
+            amountCell(data.amt, dec),
+            el("td", null, [el("a", { href: txHref, text: short(out.outpoint), title: out.outpoint })]),
+          ]))
+        }
+        return el("table", null, [
+          el("thead", null, [el("tr", null, [
+            el("th", { text: "When" }),
+            el("th", { text: "Op" }),
+            el("th", { class: "num", text: "Amount" }),
+            el("th", { text: "Output" }),
+          ])]),
+          body,
+        ])
+      }
+
+      function renderAddress(detail, balance, unspent, history) {
+        const token = (detail && detail.token) || {}
+        const name = symbolOf(token, short(detail.tokenId))
+        const address = route().address
+        document.title = short(address) + " · " + name
+        const dec = decimalsOf(token)
+        const facts = [
+          el("span", null, [el("code", { text: address })]),
+          el("span", { text: formatAmt(balance.balance, dec) + " balance" }),
+          el("span", { text: Number(balance.utxoCount || 0).toLocaleString() + " UTXOs" }),
+        ]
+        const app = document.getElementById("app")
+        app.replaceChildren(
+          header(),
+          el("p", { class: "crumb" }, [
+            el("a", { href: uiBase() + encodeURIComponent(detail.tokenId), text: name }),
+            document.createTextNode(" · " + (route().lockType || "")),
+          ]),
+          el("h1", { text: short(address) }),
+          el("div", { class: "facts" }, facts),
+          el("h2", { text: "Unspent" }),
+        )
+        app.append(unspent.length ? outputRows(detail.tokenId, unspent, dec) : el("p", { class: "status", text: "No unspent outputs." }))
+        app.append(el("h2", { text: "History" }))
+        app.append(history.length ? outputRows(detail.tokenId, history, dec) : el("p", { class: "status", text: "No history." }))
+      }
+
+      function sideTable(title, rows, dec, tokenId) {
+        const body = el("tbody")
+        for (const row of rows || []) {
+          const data = row.data && row.data.bsv21 || {}
+          const label = row.txid ? short(row.txid) + ":" + row.vout : "vout " + row.vout
+          const cells = [
+            el("td", { text: label }),
+            el("td", { text: data.op || "" }),
+            amountCell(data.amt, dec),
+          ]
+          if (row.spend) cells.push(el("td", { class: "spent", text: "spent" }))
+          else if (row.txid) cells.push(el("td", null, [
+            el("a", { href: uiBase() + encodeURIComponent(tokenId) + "/tx/" + encodeURIComponent(row.txid), text: "tx" }),
+          ]))
+          body.append(el("tr", null, cells))
+        }
+        return el("section", null, [
+          el("h2", { text: title }),
+          rows && rows.length ? el("table", null, [
+            el("thead", null, [el("tr", null, [
+              el("th", { text: "Outpoint" }),
+              el("th", { text: "Op" }),
+              el("th", { class: "num", text: "Amount" }),
+              el("th", { text: "" }),
+            ])]),
+            body,
+          ]) : el("p", { class: "status", text: "None indexed." }),
+        ])
+      }
+
+      function renderTx(detail, tx) {
+        const token = (detail && detail.token) || {}
+        const name = symbolOf(token, short(detail.tokenId))
+        document.title = short(tx.txid) + " · " + name
+        const dec = decimalsOf(token)
+        const app = document.getElementById("app")
+        app.replaceChildren(
+          header(),
+          el("p", { class: "crumb" }, [
+            el("a", { href: uiBase() + encodeURIComponent(detail.tokenId), text: name }),
+          ]),
+          el("h1", { text: "Transaction" }),
+          el("div", { class: "facts" }, [el("code", { text: tx.txid })]),
+        )
+        app.append(sideTable("Inputs", tx.inputs, dec, detail.tokenId))
+        app.append(sideTable("Outputs", tx.outputs, dec, detail.tokenId))
+      }
+
+      function renderError(message) {
+        document.getElementById("app").replaceChildren(
+          header(),
+          el("p", { class: "status", text: message }),
+        )
+      }
+
+      async function main() {
+        const r = route()
+        const api = apiBase()
+        try {
+          if (r.page === "index") {
+            const tokens = await getJSON(api + "/tokens?all=true")
+            const list = Array.isArray(tokens) ? tokens : []
+            list.sort((a, b) => {
+              if (!!a.is_active !== !!b.is_active) return a.is_active ? -1 : 1
+              return (a.symbol || a.token_id || "").localeCompare(b.symbol || b.token_id || "")
+            })
+            renderIndex(list)
+            return
+          }
+          const id = encodeURIComponent(r.tokenId)
+          if (r.page === "token") {
+            const [detail, holders, activity] = await Promise.all([
+              getJSON(api + "/" + id),
+              getJSON(api + "/" + id + "/holders?limit=" + PAGE),
+              getJSON(api + "/" + id + "/activity?limit=" + PAGE + "&rev=true"),
+            ])
+            renderToken(detail, Array.isArray(holders) ? holders : [], Array.isArray(activity) ? activity : [])
+            return
+          }
+          if (r.page === "address") {
+            const base = api + "/" + id + "/" + encodeURIComponent(r.lockType) + "/" + encodeURIComponent(r.address)
+            const [detail, balance, unspent, history] = await Promise.all([
+              getJSON(api + "/" + id),
+              getJSON(base + "/balance"),
+              getJSON(base + "/unspent?limit=" + PAGE + "&rev=true"),
+              getJSON(base + "/history?limit=" + PAGE + "&rev=true"),
+            ])
+            renderAddress(detail, balance || {}, Array.isArray(unspent) ? unspent : [], Array.isArray(history) ? history : [])
+            return
+          }
+          const [detail, tx] = await Promise.all([
+            getJSON(api + "/" + id),
+            getJSON(api + "/" + id + "/tx/" + encodeURIComponent(r.txid)),
+          ])
+          renderTx(detail, tx)
+        } catch (err) {
+          renderError(err.message || "failed to load")
+        }
+      }
+
+      main()
+    </script>
+  </body>
+</html>

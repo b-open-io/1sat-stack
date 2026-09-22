@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"strings"
 	"sync"
 
 	overlaystorage "github.com/b-open-io/1sat-stack/pkg/overlay/storage"
@@ -17,10 +18,9 @@ import (
 	"github.com/bsv-blockchain/go-sdk/transaction"
 )
 
-// Shared mint schema used in every collection-related topic DB.
-// Discovery topic stores collections; tm_col_{id} stores items for that id.
-// Role is implied by topic — there is no kind column.
-const entrySchema = `
+// SQLite keeps one database per topic. Postgres keeps one table and scopes
+// every row by topic_id. Role is implied by topic — there is no kind column.
+const sqliteEntrySchema = `
 CREATE TABLE IF NOT EXISTS collection_entries (
     outpoint       BLOB PRIMARY KEY,
     collection_id  TEXT NOT NULL,
@@ -35,10 +35,29 @@ CREATE TABLE IF NOT EXISTS collection_entries (
 CREATE INDEX IF NOT EXISTS idx_collection_entries_id ON collection_entries(collection_id, score);
 `
 
-// LookupService indexes admitted collections and items into per-topic DBs.
+const postgresEntrySchema = `
+CREATE TABLE IF NOT EXISTS collection_entries (
+    topic_id       INTEGER NOT NULL,
+    outpoint       BYTEA NOT NULL,
+    collection_id  TEXT NOT NULL,
+    name           TEXT,
+    signer         TEXT NOT NULL,
+    content_type   TEXT,
+    mint_number    INTEGER,
+    rank           INTEGER,
+    map_json       TEXT,
+    score          DOUBLE PRECISION NOT NULL,
+    PRIMARY KEY (topic_id, outpoint)
+);
+CREATE INDEX IF NOT EXISTS idx_collection_entries_id ON collection_entries(topic_id, collection_id, score);
+`
+
+// LookupService indexes admitted collections and items into topic storage.
 type LookupService struct {
 	topicDB overlaystorage.Factory
-	ready   sync.Map
+	ready   sync.Map // sqlite topic -> schema created
+	pgOnce  sync.Once
+	pgErr   error
 }
 
 // NewLookupService creates a collection lookup backed by the overlay topic factory.
@@ -51,8 +70,17 @@ func (l *LookupService) db(topic string) (overlaystorage.TopicStorage, error) {
 	if err != nil {
 		return nil, err
 	}
+	if ts.TopicID() > 0 {
+		l.pgOnce.Do(func() {
+			_, l.pgErr = ts.DB().Exec(postgresEntrySchema)
+		})
+		if l.pgErr != nil {
+			return nil, fmt.Errorf("create collection_entries schema: %w", l.pgErr)
+		}
+		return ts, nil
+	}
 	if _, ok := l.ready.Load(topic); !ok {
-		if _, err := ts.DB().Exec(entrySchema); err != nil {
+		if _, err := ts.DB().Exec(sqliteEntrySchema); err != nil {
 			return nil, fmt.Errorf("create collection_entries schema for %s: %w", topic, err)
 		}
 		l.ready.Store(topic, true)
@@ -124,12 +152,39 @@ func (l *LookupService) OutputAdmittedByTopic(ctx context.Context, payload *engi
 		rank = *fields.Rank
 	}
 
-	_, err = ts.DB().ExecContext(ctx, `
+	return l.upsertEntry(ctx, ts, entryWrite{
+		outpoint:     outpoint.Bytes(),
+		collectionID: collectionID,
+		name:         nullStr(fields.Name),
+		signer:       sigma.SignerAddress,
+		contentType:  nullStr(ContentType(out.LockingScript)),
+		mintNumber:   mintNumber,
+		rank:         rank,
+		mapJSON:      nullStr(mapJSON),
+		score:        score,
+	})
+}
+
+type entryWrite struct {
+	outpoint     []byte
+	collectionID string
+	name         any
+	signer       string
+	contentType  any
+	mintNumber   any
+	rank         any
+	mapJSON      any
+	score        float64
+}
+
+func (l *LookupService) upsertEntry(ctx context.Context, ts overlaystorage.TopicStorage, row entryWrite) error {
+	b := newSQL(ts.TopicID())
+	q := `
 		INSERT INTO collection_entries(
-			outpoint, collection_id, name, signer, content_type,
+			` + b.topicCols() + `outpoint, collection_id, name, signer, content_type,
 			mint_number, rank, map_json, score
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-		ON CONFLICT(outpoint) DO UPDATE SET
+		) VALUES (` + b.topicVals() + b.ph(row.outpoint) + `, ` + b.ph(row.collectionID) + `, ` + b.ph(row.name) + `, ` + b.ph(row.signer) + `, ` + b.ph(row.contentType) + `, ` + b.ph(row.mintNumber) + `, ` + b.ph(row.rank) + `, ` + b.ph(row.mapJSON) + `, ` + b.ph(row.score) + `)
+		ON CONFLICT ` + b.conflict() + ` DO UPDATE SET
 			collection_id=excluded.collection_id,
 			name=excluded.name,
 			signer=excluded.signer,
@@ -137,9 +192,8 @@ func (l *LookupService) OutputAdmittedByTopic(ctx context.Context, payload *engi
 			mint_number=excluded.mint_number,
 			rank=excluded.rank,
 			map_json=excluded.map_json,
-			score=excluded.score
-	`, outpoint.Bytes(), collectionID, nullStr(fields.Name), sigma.SignerAddress,
-		nullStr(ContentType(out.LockingScript)), mintNumber, rank, nullStr(mapJSON), score)
+			score=excluded.score`
+	_, err := ts.DB().ExecContext(ctx, q, b.args...)
 	return err
 }
 
@@ -200,16 +254,30 @@ type Entry struct {
 
 const selectCols = `outpoint, collection_id, name, signer, content_type, mint_number, rank, map_json, score`
 
+// Count returns the number of entries stored in a topic database.
+func (l *LookupService) Count(ctx context.Context, topic string) (int64, error) {
+	ts, err := l.db(topic)
+	if err != nil {
+		return 0, err
+	}
+	b := newSQL(ts.TopicID())
+	q := `SELECT COUNT(*) FROM collection_entries`
+	if ts.TopicID() > 0 {
+		q += ` WHERE topic_id = $1`
+	}
+	var n int64
+	err = ts.DB().QueryRowContext(ctx, q, b.args...).Scan(&n)
+	return n, err
+}
+
 // ListCollections returns collections from the discovery topic.
 func (l *LookupService) ListCollections(ctx context.Context, limit int, reverse bool) ([]*Entry, error) {
-	return l.queryEntries(ctx, DiscoveryTopic,
-		`SELECT `+selectCols+` FROM collection_entries ORDER BY score `+orderSQL(reverse)+limitSQL(limit))
+	return l.queryEntries(ctx, DiscoveryTopic, entryFilter{order: orderSQL(reverse), limit: limit})
 }
 
 // GetCollection returns a collection by collectionId (its outpoint) from discovery storage.
 func (l *LookupService) GetCollection(ctx context.Context, collectionID string) (*Entry, error) {
-	entries, err := l.queryEntries(ctx, DiscoveryTopic,
-		`SELECT `+selectCols+` FROM collection_entries WHERE collection_id = ? LIMIT 1`, collectionID)
+	entries, err := l.queryEntries(ctx, DiscoveryTopic, entryFilter{collectionID: collectionID, limit: 1})
 	if err != nil {
 		return nil, err
 	}
@@ -221,10 +289,11 @@ func (l *LookupService) GetCollection(ctx context.Context, collectionID string) 
 
 // ListItems returns items for a collection from its item topic DB.
 func (l *LookupService) ListItems(ctx context.Context, collectionID string, limit int, reverse bool) ([]*Entry, error) {
-	topic := ItemTopic(collectionID)
-	return l.queryEntries(ctx, topic,
-		`SELECT `+selectCols+` FROM collection_entries WHERE collection_id = ? ORDER BY score `+orderSQL(reverse)+limitSQL(limit),
-		collectionID)
+	return l.queryEntries(ctx, ItemTopic(collectionID), entryFilter{
+		collectionID: collectionID,
+		order:        orderSQL(reverse),
+		limit:        limit,
+	})
 }
 
 // GetItem returns a single item by outpoint within a collection topic.
@@ -234,9 +303,10 @@ func (l *LookupService) GetItem(ctx context.Context, collectionID, outpointStr s
 	if err != nil {
 		return nil, fmt.Errorf("invalid outpoint: %w", err)
 	}
-	topic := ItemTopic(collectionID)
-	entries, err := l.queryEntries(ctx, topic,
-		`SELECT `+selectCols+` FROM collection_entries WHERE outpoint = ? LIMIT 1`, op.Bytes())
+	entries, err := l.queryEntries(ctx, ItemTopic(collectionID), entryFilter{
+		outpoint: op.Bytes(),
+		limit:    1,
+	})
 	if err != nil {
 		return nil, err
 	}
@@ -270,12 +340,85 @@ func limitSQL(limit int) string {
 	return fmt.Sprintf(" LIMIT %d", limit)
 }
 
-func (l *LookupService) queryEntries(ctx context.Context, topic, q string, args ...any) ([]*Entry, error) {
+// sqlb numbers placeholders and scopes rows by topic_id on Postgres.
+// TopicID 0 is SQLite: one database per topic, "?" placeholders.
+type sqlb struct {
+	topicID int
+	args    []any
+	n       int
+}
+
+func newSQL(topicID int) *sqlb {
+	b := &sqlb{topicID: topicID}
+	if topicID > 0 {
+		b.args = append(b.args, topicID)
+		b.n = 1
+	}
+	return b
+}
+
+func (b *sqlb) ph(val any) string {
+	b.n++
+	b.args = append(b.args, val)
+	if b.topicID > 0 {
+		return fmt.Sprintf("$%d", b.n)
+	}
+	return "?"
+}
+
+func (b *sqlb) topicCols() string {
+	if b.topicID > 0 {
+		return "topic_id, "
+	}
+	return ""
+}
+
+func (b *sqlb) topicVals() string {
+	if b.topicID > 0 {
+		return "$1, "
+	}
+	return ""
+}
+
+func (b *sqlb) conflict() string {
+	if b.topicID > 0 {
+		return "(topic_id, outpoint)"
+	}
+	return "(outpoint)"
+}
+
+type entryFilter struct {
+	collectionID string
+	outpoint     []byte
+	order        string
+	limit        int
+}
+
+func (l *LookupService) queryEntries(ctx context.Context, topic string, f entryFilter) ([]*Entry, error) {
 	ts, err := l.db(topic)
 	if err != nil {
 		return nil, err
 	}
-	rows, err := ts.DB().QueryContext(ctx, q, args...)
+	b := newSQL(ts.TopicID())
+	var where []string
+	if ts.TopicID() > 0 {
+		where = append(where, "topic_id = $1")
+	}
+	if f.collectionID != "" {
+		where = append(where, "collection_id = "+b.ph(f.collectionID))
+	}
+	if len(f.outpoint) > 0 {
+		where = append(where, "outpoint = "+b.ph(f.outpoint))
+	}
+	q := `SELECT ` + selectCols + ` FROM collection_entries`
+	if len(where) > 0 {
+		q += ` WHERE ` + strings.Join(where, " AND ")
+	}
+	if f.order != "" {
+		q += ` ORDER BY score ` + f.order
+	}
+	q += limitSQL(f.limit)
+	rows, err := ts.DB().QueryContext(ctx, q, b.args...)
 	if err != nil {
 		return nil, err
 	}

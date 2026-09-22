@@ -28,6 +28,10 @@ type Config struct {
 	// at Initialize time. Additional collections can be registered via
 	// Services.RegisterCollection.
 	CollectionIDs []string `mapstructure:"collection_ids"`
+
+	// Sync is the JungleBus ingest pipeline. Disabled leaves the topics
+	// registered but does not subscribe or dispatch.
+	Sync *SyncConfig `mapstructure:"sync"`
 }
 
 // RoutesConfig holds HTTP route configuration.
@@ -46,6 +50,17 @@ func (c *Config) SetDefaults(v *viper.Viper, prefix string) {
 	v.SetDefault(p+"routes.enabled", true)
 	v.SetDefault(p+"routes.prefix", "/collection")
 	v.SetDefault(p+"collection_ids", []string{})
+	v.SetDefault(p+"sync.enabled", false)
+	v.SetDefault(p+"sync.subscription_id", "")
+	v.SetDefault(p+"sync.from_block", 783968)
+	v.SetDefault(p+"sync.batch_size", 1000)
+	v.SetDefault(p+"sync.reorg_depth", 6)
+	v.SetDefault(p+"sync.enable_mempool", false)
+	v.SetDefault(p+"sync.dispatch_workers", 2)
+	v.SetDefault(p+"sync.item_workers", 2)
+	v.SetDefault(p+"sync.fee_per_output", FeePerOutput)
+	v.SetDefault(p+"sync.index_all", false)
+	v.SetDefault(p+"sync.lifecycle_interval", "5m")
 }
 
 // Services holds initialized collection overlay services.
@@ -55,6 +70,7 @@ type Services struct {
 	DiscoveryManager *DiscoveryTopicManager
 	Routes           *Routes
 	OverlayRoutes    *overlay.Routes
+	Sync             *SyncServices
 	logger           *slog.Logger
 
 	items sync.Map // collectionId -> *ItemTopicManager
@@ -66,6 +82,7 @@ func (c *Config) Initialize(
 	ctx context.Context,
 	logger *slog.Logger,
 	deps *overlay.ModuleDeps,
+	syncDeps *SyncDeps,
 ) (*Services, error) {
 	if c.Mode == ModeDisabled {
 		return nil, nil
@@ -120,6 +137,16 @@ func (c *Config) Initialize(
 		}
 		if deps.RoutesConfig != nil && deps.RoutesConfig.Enabled {
 			svc.OverlayRoutes = overlay.NewRoutes(eng, deps.RoutesConfig, logger)
+		}
+		if c.Sync != nil && c.Sync.Enabled {
+			syncSvc, err := NewSyncServices(c.Sync, syncDeps, eng, lookupSvc, logger)
+			if err != nil {
+				return nil, fmt.Errorf("collection sync: %w", err)
+			}
+			svc.Sync = syncSvc
+			if svc.Routes != nil {
+				svc.Routes.SetManager(syncSvc.GetManager())
+			}
 		}
 
 		return svc, nil

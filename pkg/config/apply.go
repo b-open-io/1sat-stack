@@ -133,6 +133,14 @@ type RuntimeConfig struct {
 	BSV21TokenWorkers    int
 	BSV21LogLevel        string
 
+	// Collection overlay
+	CollectionEnabled         bool
+	CollectionSyncSubID       string
+	CollectionSyncConcurrency int
+	CollectionSyncBatchSize   int
+	CollectionItemWorkers     int
+	CollectionLogLevel        string
+
 	// ORDFS
 	ORDFSEnabled  bool
 	ORDFSLRUSize  int
@@ -322,6 +330,14 @@ func LoadRuntimeConfig(ctx context.Context, cs Store, logger *slog.Logger) (*Run
 	rc.BSV21SyncBatchSize = getInt(ctx, cs, "overlay.bsv21.batch_size")
 	rc.BSV21TokenWorkers = getInt(ctx, cs, "overlay.bsv21.token_workers")
 	rc.BSV21LogLevel = getString(ctx, cs, "overlay.bsv21.log_level")
+
+	// Collection
+	rc.CollectionEnabled = getBool(ctx, cs, "overlay.collection.enabled")
+	rc.CollectionSyncSubID = getString(ctx, cs, "overlay.collection.sub_id")
+	rc.CollectionSyncConcurrency = getInt(ctx, cs, "overlay.collection.concurrency")
+	rc.CollectionSyncBatchSize = getInt(ctx, cs, "overlay.collection.batch_size")
+	rc.CollectionItemWorkers = getInt(ctx, cs, "overlay.collection.item_workers")
+	rc.CollectionLogLevel = getString(ctx, cs, "overlay.collection.log_level")
 
 	// ORDFS
 	rc.ORDFSEnabled = getBool(ctx, cs, "ordfs.enabled")

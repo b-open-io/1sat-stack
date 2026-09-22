@@ -1,0 +1,72 @@
+# Local dev stack. One host directory holds every volume:
+#   ~/.1sat/data     -> server --data-dir /data
+#   ~/.1sat/kvrocks  -> Kvrocks RocksDB (BEEF bytes)
+#   ~/.1sat/postgres -> PostgreSQL (shared overlay topic storage)
+#
+# The server joins the host network and listens on 18080. Docker is not
+# forwarding that port, so the tailnet firewall rule for 18080 is enough.
+# Kvrocks and Postgres publish only on 127.0.0.1.
+
+name: 1sat-dev
+
+services:
+  kvrocks:
+    image: apache/kvrocks:2.14.0
+    user: "${HOST_UID:-1000}:${HOST_GID:-1000}"
+    entrypoint:
+      - kvrocks
+      - -c
+      - /var/lib/kvrocks/kvrocks.conf
+      - --dir
+      - /kvrocks-data
+      - --pidfile
+      - /kvrocks-data/kvrocks.pid
+      - --bind
+      - 0.0.0.0
+    ports:
+      - "127.0.0.1:6666:6666"
+    volumes:
+      - ${ONESAT_ROOT:?set ONESAT_ROOT}/kvrocks:/kvrocks-data
+    healthcheck:
+      test: ["CMD", "redis-cli", "-p", "6666", "PING"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
+
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: onesat
+      POSTGRES_PASSWORD: onesat
+      POSTGRES_DB: onesat
+    ports:
+      - "127.0.0.1:5432:5432"
+    volumes:
+      - ${ONESAT_ROOT:?set ONESAT_ROOT}/postgres:/var/lib/postgresql/data
+    shm_size: 128mb
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "onesat", "-d", "onesat"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
+
+  stack:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+    user: "${HOST_UID:-1000}:${HOST_GID:-1000}"
+    network_mode: host
+    depends_on:
+      kvrocks:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+    working_dir: /data
+    command: ["/app/server", "--data-dir", "/data", "--config", "/config.yaml"]
+    volumes:
+      - ${ONESAT_ROOT}/data:/data
+      - ./config.yaml:/config.yaml:ro
+    mem_limit: 16g
+    restart: unless-stopped

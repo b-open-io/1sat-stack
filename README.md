@@ -57,7 +57,8 @@ Routes mount under the base path (default `/1sat`):
 
 | Prefix | Service |
 |--------|---------|
-| `/bsv21`, `/bap`, `/ecosystemalias`, `/bsocial`, `/opns`, `/market` | Overlay module APIs, plus `/{module}/overlay` for standard overlay endpoints |
+| `/bsv21`, `/bap`, `/ecosystemalias`, `/bsocial`, `/opns`, `/market` | Overlay module APIs, plus `/{module}/overlay` for standard overlay endpoints. `/bsv21/` redirects to the token browser at `/bsv21/browse` |
+| `/collections` | Collections browser |
 | `/txo`, `/owner` | Indexed outputs and address history |
 | `/beef` | BEEF transaction retrieval |
 | `/content` | ORDFS ordinal content |

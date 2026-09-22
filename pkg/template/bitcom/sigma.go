@@ -11,6 +11,7 @@ import (
 	bsm "github.com/bsv-blockchain/go-sdk/compat/bsm"
 	"github.com/bsv-blockchain/go-sdk/script"
 	"github.com/bsv-blockchain/go-sdk/transaction"
+	"github.com/bsv-blockchain/go-sdk/util"
 )
 
 // SIGMAPrefix is another recognized prefix in some implementations
@@ -215,7 +216,8 @@ func (s *Sigma) VerifyTransactionSignature() error {
 		return err
 	}
 
-	// Construct message hash from transaction data according to Sigma protocol
+	// Message is a single SHA256 of inputHash || dataHash, matching 1sat-indexer.
+	// go-sigma SHA256d's that digest and does not verify on-chain signatures.
 	msgHash := s.getMessageHash()
 	if msgHash == nil {
 		return fmt.Errorf("failed to generate message hash from transaction")
@@ -262,8 +264,9 @@ func (s *Sigma) getInputHash() []byte {
 		return nil
 	}
 
-	// Create outpoint bytes (txid + vout in little-endian)
-	txidBytes := input.SourceTXID.CloneBytes() // Already in correct order
+	// Txid in display byte order, then vout as 4 little-endian bytes.
+	// CloneBytes is internal order; the indexer reverses it before hashing.
+	txidBytes := util.ReverseBytes(input.SourceTXID.CloneBytes())
 
 	// Add vout as 4 bytes (little-endian)
 	voutBytes := make([]byte, 4)
@@ -307,7 +310,7 @@ func (s *Sigma) getDataHash() []byte {
 		}
 
 		// Check for OP_RETURN or | (separator)
-		if op.Op == script.OpRETURN || (op.Op == script.OpPUSHDATA1 && len(op.Data) == 1 && op.Data[0] == '|') {
+		if op.Op == script.OpRETURN || (op.Op == script.OpDATA1 && len(op.Data) > 0 && op.Data[0] == '|') {
 			// Try to read the next op to check if it's SIGMA
 			nextOp, err := output.LockingScript.ReadOp(&pos)
 			if err != nil {
@@ -337,10 +340,9 @@ func hash(data []byte) []byte {
 	return h[:]
 }
 
-// getMessageHash creates the final message hash for verification
-// This follows the approach used in go-sigma
+// getMessageHash creates the final message hash for verification.
+// One SHA256 of inputHash || dataHash, as in 1sat-indexer. Not SHA256d.
 func (s *Sigma) getMessageHash() []byte {
-	// Get hashes from transaction data
 	inputHash := s.getInputHash()
 	dataHash := s.getDataHash()
 
@@ -348,16 +350,8 @@ func (s *Sigma) getMessageHash() []byte {
 		return nil
 	}
 
-	// Concatenate the input hash and data hash
-	combinedBytes := append(inputHash, dataHash...)
-
-	// In go-sigma, we use double SHA256 (Sha256d)
-	// First SHA256
-	firstHash := sha256.Sum256(combinedBytes)
-	// Second SHA256
-	secondHash := sha256.Sum256(firstHash[:])
-
-	return secondHash[:]
+	sum := sha256.Sum256(append(inputHash, dataHash...))
+	return sum[:]
 }
 
 // DecodeFromTransaction decodes Sigma signatures from a transaction

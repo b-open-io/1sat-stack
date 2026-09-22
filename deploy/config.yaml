@@ -1,0 +1,41 @@
+# Dev server config for deploy/compose.yaml.
+# All on-disk state is under the container data dir (/data), which is
+# mounted from ~/.1sat/data. BEEF bytes live in Kvrocks. Overlay topics
+# share one Postgres database, not a SQLite file per collection.
+
+server:
+  host: 0.0.0.0
+  port: 18080
+
+junglebus:
+  url: https://junglebus.gorillapool.io
+
+beef:
+  chain:
+    - provider: redis
+      redis:
+        url: redis://127.0.0.1:6666
+        ttl: "0"
+    - provider: junglebus
+
+chaintracks:
+  mode: embedded
+  bootstrap_url: https://mainnet.gorillanode.io/api/v1
+  bootstrap_mode: api
+
+overlay:
+  mode: embedded
+  storage_backend: postgres
+  storage_url: postgres://onesat:onesat@127.0.0.1:5432/onesat?sslmode=disable
+  p2p:
+    enabled: false
+
+collection:
+  mode: embedded
+  sync:
+    enabled: true
+    subscription_id: "45c2c785401daf359a3810ab439db604a3253a830654e6d2cd43623b4421baf5"
+    from_block: 783968
+    dispatch_workers: 4
+    item_workers: 2
+    index_all: true

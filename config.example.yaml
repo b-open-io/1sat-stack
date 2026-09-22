@@ -97,6 +97,22 @@ arcade:
 # ecosystemalias:
 #   mode: embedded
 
+# Collection overlay. One JungleBus subscription feeds q:collection.
+# The dispatcher submits roots to tm_1sat_collection and queues items on
+# q:tm_col_{collectionId}. Item workers start only when whitelisted
+# (collection.whitelist:{id}) or paid. Set the subscription id via env
+# ONESAT_COLLECTION_SYNC_SUBSCRIPTION_ID or overlay.collection.sub_id.
+# collection:
+#   mode: embedded
+#   sync:
+#     enabled: true
+#     subscription_id: ""
+#     from_block: 783968
+
+# Collections browser. Served at {base_path}/collections.
+# collections:
+#   mode: enabled
+
 # Auth
 # auth:
 #   api_key: ""            # ONESAT_AUTH_API_KEY — static key for agent/dev access

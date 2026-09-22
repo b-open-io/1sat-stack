@@ -33,13 +33,11 @@ func (t *JunglebusBeefStorage) Get(ctx context.Context, txid *chainhash.Hash) ([
 		}
 		return nil, err
 	}
-
-	// Validate the BEEF data
-	_, _, _, err = transaction.ParseBeef(beefBytes)
-	if err != nil {
-		return nil, err
+	if len(beefBytes) == 0 {
+		return nil, ErrNotFound
 	}
-
+	// Do not parse here. The caller parses once. A validity check would
+	// build and discard a full transaction graph for every download.
 	return beefBytes, nil
 }
 
@@ -47,8 +45,57 @@ func (t *JunglebusBeefStorage) Put(ctx context.Context, txid *chainhash.Hash, be
 	return nil // JungleBus is read-only
 }
 
+// UpdateMerklePath builds a single-transaction BEEF from the raw transaction
+// and the JungleBus proof route. It does not download /transaction/beef.
 func (t *JunglebusBeefStorage) UpdateMerklePath(ctx context.Context, txid *chainhash.Hash) ([]byte, error) {
-	return t.Get(ctx, txid)
+	if t.client == nil {
+		return nil, ErrNotFound
+	}
+	id := txid.String()
+	raw, err := t.client.GetRawTransaction(ctx, id)
+	if err != nil {
+		if errors.Is(err, transports.ErrNotFound) {
+			return nil, ErrNotFound
+		}
+		return nil, err
+	}
+	proof, err := t.client.GetProof(ctx, id)
+	if err != nil {
+		if errors.Is(err, transports.ErrNotFound) {
+			return nil, ErrNotFound
+		}
+		return nil, err
+	}
+	tx, err := transaction.NewTransactionFromBytes(raw)
+	if err != nil {
+		return nil, err
+	}
+	path, err := transaction.NewMerklePathFromBinary(proof)
+	if err != nil {
+		return nil, err
+	}
+	tx.MerklePath = path
+	return singleTxBeef(txid, tx)
+}
+
+func singleTxBeef(txid *chainhash.Hash, tx *transaction.Transaction) ([]byte, error) {
+	beef := &transaction.Beef{
+		Version:      transaction.BEEF_V2,
+		BUMPs:        []*transaction.MerklePath{},
+		Transactions: map[chainhash.Hash]*transaction.BeefTx{},
+	}
+	beefTx := &transaction.BeefTx{
+		Transaction: tx,
+		BumpIndex:   -1,
+		DataFormat:  transaction.RawTx,
+	}
+	if tx.MerklePath != nil {
+		beef.BUMPs = append(beef.BUMPs, tx.MerklePath)
+		beefTx.BumpIndex = 0
+		beefTx.DataFormat = transaction.RawTxAndBumpIndex
+	}
+	beef.Transactions[*txid] = beefTx
+	return beef.AtomicBytes(txid)
 }
 
 func (t *JunglebusBeefStorage) GetRawTx(ctx context.Context, txid *chainhash.Hash) ([]byte, error) {

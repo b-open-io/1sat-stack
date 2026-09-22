@@ -295,6 +295,67 @@ func TestListTokens(t *testing.T) {
 	}
 }
 
+func TestListHoldersAndActivity(t *testing.T) {
+	lookup := newTestLookup(t)
+	ctx := context.Background()
+	tokenId := "abc123_0"
+	topic := "tm_" + tokenId
+
+	insertTokenOutput(t, lookup, topic, tokenId, "transfer", "p2pkh", "addr1", 100, 1.0)
+	insertTokenOutput(t, lookup, topic, tokenId, "transfer", "p2pkh", "addr1", 50, 2.0)
+	spent := insertTokenOutput(t, lookup, topic, tokenId, "transfer", "p2pkh", "addr2", 999, 3.0)
+	insertTokenOutput(t, lookup, topic, tokenId, "transfer", "cos", "addr3", 40, 4.0)
+
+	ts, err := lookup.db(topic)
+	if err != nil {
+		t.Fatal(err)
+	}
+	spendTxid := &chainhash.Hash{}
+	spendTxid[0] = 0xFF
+	if _, err := ts.DB().Exec(`UPDATE token_outputs SET spend_txid = ? WHERE outpoint = ?`, spendTxid[:], spent.Bytes()); err != nil {
+		t.Fatal(err)
+	}
+
+	holders, err := lookup.ListHolders(ctx, tokenId, 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(holders) != 2 {
+		t.Fatalf("holders: %+v", holders)
+	}
+	if holders[0].Address != "addr1" || holders[0].Balance != "150" || holders[0].UtxoCount != 2 {
+		t.Fatalf("top holder: %+v", holders[0])
+	}
+	if holders[1].Address != "addr3" || holders[1].LockType != "cos" || holders[1].Balance != "40" {
+		t.Fatalf("second holder: %+v", holders[1])
+	}
+
+	limited, err := lookup.ListHolders(ctx, tokenId, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(limited) != 1 || limited[0].Address != "addr1" {
+		t.Fatalf("limited holders: %+v", limited)
+	}
+
+	activity, err := lookup.ListActivity(ctx, tokenId, 10, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(activity) != 4 {
+		t.Fatalf("activity len %d", len(activity))
+	}
+	if activity[0].Score != 4 || activity[0].Address != "addr3" {
+		t.Fatalf("newest: %+v", activity[0])
+	}
+	if activity[1].Spend == "" {
+		t.Fatal("expected spent row to include spend txid")
+	}
+	if activity[3].Score != 1 {
+		t.Fatalf("oldest: %+v", activity[3])
+	}
+}
+
 func TestCountOutputs(t *testing.T) {
 	lookup := newTestLookup(t)
 	ctx := context.Background()

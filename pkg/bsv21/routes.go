@@ -47,11 +47,15 @@ func NewRoutes(cfg *RoutesDeps) *Routes {
 
 // Register registers the BSV21 routes with the Fiber router
 func (r *Routes) Register(router fiber.Router) {
-	// Static routes must be registered before parameterized routes
+	// Static routes must be registered before parameterized routes.
+	// /browse is the token browser; it has to win over /:tokenId.
+	registerBrowser(router)
 	router.Get("/tokens", r.ListTokens)
 	router.Post("/tokens", r.LookupTokens)
 
 	// Output validation routes
+	router.Get("/:tokenId/holders", r.ListHolders)
+	router.Get("/:tokenId/activity", r.ListActivity)
 	router.Post("/:tokenId/outputs", r.ValidateOutputs)
 	router.Get("/:tokenId/outputs/:outpoint", r.GetTokenOutput)
 
@@ -115,7 +119,42 @@ var errInvalidTokenID = fmt.Errorf("invalid token ID format")
 // @Router /tokens [get]
 func (r *Routes) ListTokens(c *fiber.Ctx) error {
 	includeAll := c.Query("all") == "true"
-	return c.JSON(r.manager.ListTokenStatuses(c.Context(), includeAll))
+	statuses, err := r.listTokens(c, includeAll)
+	if err != nil {
+		r.logger.Error("failed to list tokens", "error", err)
+		return c.Status(fiber.StatusInternalServerError).JSON(ErrorResponse{Message: "Failed to list tokens"})
+	}
+	if statuses == nil {
+		statuses = []*TokenStatus{}
+	}
+	return c.JSON(statuses)
+}
+
+// listTokens returns funding status when the sync manager is running, and
+// discovery metadata otherwise so the browser still has something to show.
+func (r *Routes) listTokens(c *fiber.Ctx, includeAll bool) ([]*TokenStatus, error) {
+	if r.manager != nil {
+		return r.manager.ListTokenStatuses(c.Context(), includeAll), nil
+	}
+	if !includeAll || r.lookup == nil {
+		return []*TokenStatus{}, nil
+	}
+	tokens, err := r.lookup.ListTokens(c.Context())
+	if err != nil {
+		return nil, err
+	}
+	statuses := make([]*TokenStatus, 0, len(tokens))
+	for _, token := range tokens {
+		if token == nil {
+			continue
+		}
+		st := NewTokenStatus(token.TokenID, "", 0, 0, 0, false, false)
+		st.Symbol = token.Symbol
+		st.Decimals = token.Decimals
+		st.Icon = token.Icon
+		statuses = append(statuses, st)
+	}
+	return statuses, nil
 }
 
 // GetToken retrieves token details and funding status
@@ -137,6 +176,76 @@ func (r *Routes) GetToken(c *fiber.Ctx) error {
 	}
 
 	return c.JSON(resp)
+}
+
+// ListHolders returns unspent balances grouped by lock and address.
+// @Summary List token holders
+// @Tags bsv21
+// @Produce json
+// @Param tokenId path string true "Token ID (outpoint format: txid_vout)"
+// @Param limit query int false "Max holders" default(100)
+// @Success 200 {array} lookuppkg.Holder
+// @Failure 400 {object} ErrorResponse
+// @Router /{tokenId}/holders [get]
+func (r *Routes) ListHolders(c *fiber.Ctx) error {
+	tokenId, err := canonicalTokenID(c.Params("tokenId"))
+	if err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(ErrorResponse{Message: err.Error()})
+	}
+	holders, err := r.lookup.ListHolders(c.Context(), tokenId, queryLimit(c, 100, 500))
+	if err != nil {
+		r.logger.Error("holders lookup error", "error", err)
+		return c.Status(fiber.StatusInternalServerError).JSON(ErrorResponse{Message: "Failed to list holders"})
+	}
+	if holders == nil {
+		holders = []*lookuppkg.Holder{}
+	}
+	return c.JSON(holders)
+}
+
+// ListActivity returns indexed token outputs, newest first when rev=true.
+// @Summary List token activity
+// @Tags bsv21
+// @Produce json
+// @Param tokenId path string true "Token ID (outpoint format: txid_vout)"
+// @Param limit query int false "Max outputs" default(100)
+// @Param rev query bool false "Newest first"
+// @Success 200 {array} lookuppkg.TokenRow
+// @Failure 400 {object} ErrorResponse
+// @Router /{tokenId}/activity [get]
+func (r *Routes) ListActivity(c *fiber.Ctx) error {
+	tokenId, err := canonicalTokenID(c.Params("tokenId"))
+	if err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(ErrorResponse{Message: err.Error()})
+	}
+	rows, err := r.lookup.ListActivity(c.Context(), tokenId, queryLimit(c, 100, 500), c.Query("rev") == "true")
+	if err != nil {
+		r.logger.Error("activity lookup error", "error", err)
+		return c.Status(fiber.StatusInternalServerError).JSON(ErrorResponse{Message: "Failed to list activity"})
+	}
+	if rows == nil {
+		rows = []*lookuppkg.TokenRow{}
+	}
+	return c.JSON(rows)
+}
+
+func canonicalTokenID(tokenId string) (string, error) {
+	op, err := transaction.OutpointFromString(tokenId)
+	if err != nil {
+		return "", errInvalidTokenID
+	}
+	return op.OrdinalString(), nil
+}
+
+func queryLimit(c *fiber.Ctx, def, max int) int {
+	limit := c.QueryInt("limit", def)
+	if limit <= 0 {
+		return def
+	}
+	if limit > max {
+		return max
+	}
+	return limit
 }
 
 // LookupTokens retrieves details for multiple tokens

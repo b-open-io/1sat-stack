@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"fmt"
 	"sync"
+	"time"
 
 	"github.com/bsv-blockchain/go-sdk/chainhash"
 	_ "github.com/jackc/pgx/v5/stdlib"
@@ -77,6 +78,12 @@ func NewPostgresFactory(connStr string) (*PostgresFactory, error) {
 	if err != nil {
 		return nil, fmt.Errorf("open postgres: %w", err)
 	}
+
+	// Hundreds of topic workers share this pool. Cap it so a startup burst
+	// cannot open one connection per collection and trip max_connections.
+	db.SetMaxOpenConns(32)
+	db.SetMaxIdleConns(8)
+	db.SetConnMaxLifetime(30 * time.Minute)
 
 	if _, err := db.Exec(pgSchema); err != nil {
 		db.Close()

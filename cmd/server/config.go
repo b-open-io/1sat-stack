@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/b-open-io/1sat-stack/admin"
+	"github.com/b-open-io/1sat-stack/collections"
 	"github.com/b-open-io/1sat-stack/landing"
 	"github.com/b-open-io/1sat-stack/pkg/arcadeclient"
 	"github.com/b-open-io/1sat-stack/pkg/auth"
@@ -23,6 +24,7 @@ import (
 	"github.com/b-open-io/1sat-stack/pkg/broadcast"
 	"github.com/b-open-io/1sat-stack/pkg/bsocial"
 	"github.com/b-open-io/1sat-stack/pkg/bsv21"
+	"github.com/b-open-io/1sat-stack/pkg/collection"
 	configpkg "github.com/b-open-io/1sat-stack/pkg/config"
 	"github.com/b-open-io/1sat-stack/pkg/ecosystemalias"
 	"github.com/b-open-io/1sat-stack/pkg/httputil"
@@ -112,6 +114,9 @@ type Config struct {
 	// BSV21 token support
 	BSV21 bsv21.Config `mapstructure:"bsv21"`
 
+	// Collection overlay
+	Collection collection.Config `mapstructure:"collection"`
+
 	// BAP identity overlay
 	BAP bap.Config `mapstructure:"bap"`
 
@@ -153,6 +158,9 @@ type Config struct {
 
 	// Landing page
 	Landing landing.Config `mapstructure:"landing"`
+
+	// Collections browser
+	Collections collections.Config `mapstructure:"collections"`
 
 	// Wallet service
 	Wallet wallet.Config `mapstructure:"wallet"`
@@ -249,6 +257,7 @@ type Services struct {
 	TXO            *txo.Services
 	Indexer        *indexer.Services
 	BSV21          *bsv21.Services
+	Collection     *collection.Services
 	BAP            *bap.Services
 	EcosystemAlias *ecosystemalias.Services
 	BSocial        *bsocial.Services
@@ -262,6 +271,7 @@ type Services struct {
 	Admin          *admin.Services
 	Sweep          *sweep.Services
 	Landing        *landing.Services
+	Collections    *collections.Services
 	Wallet         *wallet.Services
 
 	// ConfigStore for admin data (users, progress, settings)
@@ -350,6 +360,7 @@ func (c *Config) SetDefaults(v *viper.Viper) {
 	// Package configs
 	c.Indexer.SetDefaults(v, "indexer")
 	c.BSV21.SetDefaults(v, "bsv21")
+	c.Collection.SetDefaults(v, "collection")
 	c.BAP.SetDefaults(v, "bap")
 	c.EcosystemAlias.SetDefaults(v, "ecosystemalias")
 	c.BSocial.SetDefaults(v, "bsocial")
@@ -363,6 +374,7 @@ func (c *Config) SetDefaults(v *viper.Viper) {
 	c.Admin.SetDefaults(v, "admin")
 	c.Sweep.SetDefaults(v, "sweep")
 	c.Landing.SetDefaults(v, "landing")
+	c.Collections.SetDefaults(v, "collections")
 	c.Wallet.SetDefaults(v, "wallet")
 	c.Auth.SetDefaults(v, "auth")
 	v.SetDefault("messagebox_url", "")
@@ -732,6 +744,31 @@ func (c *Config) applyRuntimeConfig(rc *configpkg.RuntimeConfig) error {
 		}
 	}
 
+	// Collection overlay
+	if rc.CollectionLogLevel != "" {
+		c.Collection.LogLevel = rc.CollectionLogLevel
+	}
+	if rc.CollectionEnabled {
+		c.Collection.Mode = collection.ModeEmbedded
+		c.Overlay.Mode = "embedded"
+		if c.Collection.Sync == nil {
+			c.Collection.Sync = &collection.SyncConfig{}
+		}
+		if rc.CollectionSyncSubID != "" {
+			c.Collection.Sync.SubscriptionID = rc.CollectionSyncSubID
+			c.Collection.Sync.Enabled = true
+		}
+		if rc.CollectionSyncConcurrency > 0 {
+			c.Collection.Sync.DispatchWorkers = rc.CollectionSyncConcurrency
+		}
+		if rc.CollectionSyncBatchSize > 0 {
+			c.Collection.Sync.BatchSize = rc.CollectionSyncBatchSize
+		}
+		if rc.CollectionItemWorkers > 0 {
+			c.Collection.Sync.ItemWorkers = rc.CollectionItemWorkers
+		}
+	}
+
 	// ORDFS
 	if rc.ORDFSEnabled {
 		c.ORDFS.Enabled = true
@@ -1066,6 +1103,27 @@ func (c *Config) Initialize(ctx context.Context, logger *slog.Logger) (*Services
 		}
 		svc.BSV21 = bsv21Svc
 		logger.Info("bsv21 initialized", "duration", time.Since(start).Round(time.Millisecond))
+	}
+
+	// Initialize collection overlay
+	if c.Collection.Mode != collection.ModeDisabled && svc.TXO != nil && moduleDeps != nil && svc.Beef != nil {
+		start = time.Now()
+		var collectionStore store.Store
+		if svc.Store != nil {
+			collectionStore = svc.Store.Store
+		}
+		collectionSvc, err := c.Collection.Initialize(ctx, logging.NewComponentLogger(logger, "collection", c.Collection.LogLevel), moduleDeps, &collection.SyncDeps{
+			Store:       collectionStore,
+			ConfigStore: svc.ConfigStore,
+			Beef:        svc.Beef.Storage,
+			Outputs:     svc.TXO.OutputStore,
+			JungleBus:   svc.JungleBus,
+		})
+		if err != nil {
+			return nil, fmt.Errorf("failed to initialize collection: %w", err)
+		}
+		svc.Collection = collectionSvc
+		logger.Info("collection initialized", "duration", time.Since(start).Round(time.Millisecond))
 	}
 
 	// Initialize MongoDB (used by BSocial)
@@ -1410,6 +1468,9 @@ func (c *Config) Initialize(ctx context.Context, logger *slog.Logger) (*Services
 		if svc.BSV21 != nil {
 			adminDeps.BSV21Sync = svc.BSV21.Sync
 		}
+		if svc.Collection != nil {
+			adminDeps.CollectionSync = svc.Collection.Sync
+		}
 		// Wire OpNS crawl trigger if dependencies are available
 		if svc.OPNS != nil && svc.Beef != nil && svc.Overlay != nil {
 			adminDeps.TriggerOpnsCrawl = func(triggerCtx context.Context) error {
@@ -1453,6 +1514,12 @@ func (c *Config) Initialize(ctx context.Context, logger *slog.Logger) (*Services
 		return nil, fmt.Errorf("landing init: %w", err)
 	}
 	svc.Landing = landingSvc
+
+	collectionsSvc, err := c.Collections.Initialize(ctx, logging.NewComponentLogger(logger, "collections", ""))
+	if err != nil {
+		return nil, fmt.Errorf("collections browser init: %w", err)
+	}
+	svc.Collections = collectionsSvc
 
 	// Initialize Wallet service
 	if c.Wallet.ServerPrivateKey != "" {
@@ -1504,6 +1571,16 @@ func (c *Config) Initialize(ctx context.Context, logger *slog.Logger) (*Services
 			}
 			svc.JBSubscribers = append(svc.JBSubscribers, sub)
 			logger.Info("BSV21 JungleBus subscriber initialized", "queue", "bsv21", "from_block", subCfg.FromBlock)
+		}
+
+		if svc.Collection != nil && svc.Collection.Sync != nil && c.Collection.Sync != nil && c.Collection.Sync.SubscriptionID != "" {
+			subCfg := c.Collection.Sync.SubscriberConfig()
+			sub, err := jbsync.NewSubscriber(subCfg, svc.Store.Store, svc.ConfigStore, svc.Chaintracks, svc.JungleBus, logger)
+			if err != nil {
+				return nil, fmt.Errorf("failed to create collection subscriber: %w", err)
+			}
+			svc.JBSubscribers = append(svc.JBSubscribers, sub)
+			logger.Info("collection JungleBus subscriber initialized", "queue", subCfg.QueueName, "from_block", subCfg.FromBlock)
 		}
 
 		// OrdLock v2 subscriber (if subscription_id configured). The JungleBus
@@ -1640,6 +1717,14 @@ func (c *Config) RegisterRoutes(app *fiber.App, svc *Services) {
 		})
 	}
 
+	if svc.Collection != nil {
+		reg.Add(registrar.Registration{
+			Capability: "collection",
+			Mounts: moduleMounts(prefixOr(c.Collection.Routes.Prefix, "/collection"), "/collection/overlay",
+				registerFunc(svc.Collection.Routes), svc.Collection.OverlayRoutes, overlayBodyLimit),
+		})
+	}
+
 	if svc.BAP != nil {
 		reg.Add(registrar.Registration{
 			Capability: "bap",
@@ -1767,6 +1852,12 @@ func (c *Config) RegisterRoutes(app *fiber.App, svc *Services) {
 	if svc.Sweep != nil && svc.Sweep.Routes != nil {
 		reg.Add(registrar.Registration{Capability: "sweep", Mounts: []registrar.Mount{
 			{Prefix: prefixOr(c.Sweep.Routes.Prefix, "/sweep"), Register: svc.Sweep.Routes.Register},
+		}})
+	}
+
+	if svc.Collections != nil && svc.Collections.Routes != nil {
+		reg.Add(registrar.Registration{Capability: "collections", Mounts: []registrar.Mount{
+			{Prefix: prefixOr(c.Collections.Routes.Prefix, "/collections"), Register: svc.Collections.Routes.Register},
 		}})
 	}
 
@@ -1946,6 +2037,12 @@ func (svc *Services) Close() error {
 	if svc.BSV21 != nil {
 		if err := svc.BSV21.Close(); err != nil {
 			errs = append(errs, fmt.Errorf("bsv21 close: %w", err))
+		}
+	}
+
+	if svc.Collection != nil {
+		if err := svc.Collection.Close(); err != nil {
+			errs = append(errs, fmt.Errorf("collection close: %w", err))
 		}
 	}
 
@@ -2138,6 +2235,15 @@ func (svc *Services) StartSubscribers(ctx context.Context, logger *slog.Logger) 
 			}
 		}()
 		logger.Info("started BSV21 sync services")
+	}
+
+	if svc.Collection != nil && svc.Collection.Sync != nil {
+		go func() {
+			if err := svc.Collection.Sync.Start(ctx); err != nil {
+				logger.Error("collection sync error", "error", err)
+			}
+		}()
+		logger.Info("started collection sync services")
 	}
 
 	// Start overlay sync workers (BAP, BSocial, OPNS)

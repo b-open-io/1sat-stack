@@ -6,6 +6,7 @@ stack
 /.env
 .env.local
 config.yaml
+!deploy/config.yaml
 bin/
 .worktrees/
 node_modules/

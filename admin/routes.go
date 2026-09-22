@@ -19,6 +19,7 @@ import (
 
 	"github.com/b-open-io/1sat-stack/pkg/auth"
 	"github.com/b-open-io/1sat-stack/pkg/bsv21"
+	"github.com/b-open-io/1sat-stack/pkg/collection"
 	"github.com/b-open-io/1sat-stack/pkg/config"
 	"github.com/b-open-io/1sat-stack/pkg/logging"
 	"github.com/b-open-io/1sat-stack/pkg/overlay"
@@ -38,6 +39,7 @@ type Routes struct {
 	store            store.Store
 	configStore      config.Store
 	bsv21Sync        *bsv21.SyncServices
+	collectionSync   *collection.SyncServices
 	triggerOpnsCrawl OpnsCrawlFunc
 	requestRestart   func()
 	config           *RoutesConfig
@@ -56,13 +58,14 @@ type UpdateProgressRequest struct {
 }
 
 // NewRoutes creates a new Routes instance
-func NewRoutes(overlaySvc *overlay.Services, engines map[string]*engine.Engine, s store.Store, cs config.Store, bsv21Sync *bsv21.SyncServices, triggerCrawl OpnsCrawlFunc, requestRestart func(), cfg *RoutesConfig, logger *slog.Logger, logStore *logging.SQLiteHandler) *Routes {
+func NewRoutes(overlaySvc *overlay.Services, engines map[string]*engine.Engine, s store.Store, cs config.Store, bsv21Sync *bsv21.SyncServices, collectionSync *collection.SyncServices, triggerCrawl OpnsCrawlFunc, requestRestart func(), cfg *RoutesConfig, logger *slog.Logger, logStore *logging.SQLiteHandler) *Routes {
 	return &Routes{
 		overlay:          overlaySvc,
 		engines:          engines,
 		store:            s,
 		configStore:      cs,
 		bsv21Sync:        bsv21Sync,
+		collectionSync:   collectionSync,
 		triggerOpnsCrawl: triggerCrawl,
 		requestRestart:   requestRestart,
 		config:           cfg,
@@ -106,6 +109,7 @@ func (r *Routes) Register(guardedGroup fiber.Router, publicGroup fiber.Router, a
 	guardedGroup.Delete("/progress/:id", r.handleDeleteProgress)
 
 	guardedGroup.Get("/bsv21/workers", r.handleGetBSV21Workers)
+	guardedGroup.Get("/collection/workers", r.handleGetCollectionWorkers)
 
 	guardedGroup.Get("/users", r.handleGetUsers)
 	guardedGroup.Post("/users", r.handleAddUser)
@@ -684,6 +688,32 @@ func (r *Routes) handleGetBSV21Workers(c *fiber.Ctx) error {
 		return workers[i].TokenID < workers[j].TokenID
 	})
 
+	return c.JSON(workers)
+}
+
+// handleGetCollectionWorkers returns the status of all active collection item workers.
+// @Summary Get collection workers
+// @Description Returns the status of all active collection item workers
+// @Tags admin
+// @Produce json
+// @Success 200 {array} collection.WorkerStatus "List of active workers"
+// @Security BearerAuth
+// @Router /api/collection/workers [get]
+func (r *Routes) handleGetCollectionWorkers(c *fiber.Ctx) error {
+	if r.collectionSync == nil {
+		return c.JSON([]collection.WorkerStatus{})
+	}
+	manager := r.collectionSync.GetManager()
+	if manager == nil {
+		return c.JSON([]collection.WorkerStatus{})
+	}
+	workers := manager.ListWorkers(c.Context())
+	if workers == nil {
+		workers = []collection.WorkerStatus{}
+	}
+	sort.Slice(workers, func(i, j int) bool {
+		return workers[i].CollectionID < workers[j].CollectionID
+	})
 	return c.JSON(workers)
 }
 

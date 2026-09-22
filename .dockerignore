@@ -1,0 +1,9 @@
+.git
+store
+server
+*.db
+*.db-shm
+*.db-wal
+node_modules
+**/node_modules
+**/.vite

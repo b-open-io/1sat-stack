@@ -224,8 +224,13 @@ export default function App() {
         <div className="text-xs text-[var(--color-text-muted)] mb-2">
           └─ explorer
         </div>
-        <div className="text-sm text-[var(--color-text-muted)]">
-          overlay explorer coming soon
+        <div className="flex gap-4 text-sm">
+          <a href="../collections/" className="text-[var(--color-interactive)] hover:underline">
+            collections
+          </a>
+          <a href="../bsv21/browse/" className="text-[var(--color-interactive)] hover:underline">
+            bsv21
+          </a>
         </div>
       </div>
     </div>
