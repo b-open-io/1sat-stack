@@ -178,3 +178,27 @@ on the same tree:
    BSV-21 lookup is the known gap.
 4. Leave BEEF on Kvrocks. Leave queues on a Redis-protocol store if they leave
    Badger. Do not put either in Postgres.
+
+## Update: brought up on rack, 2026-09-22
+
+The stack now runs permanently on **rack** as the testbed: modules toggled per
+experiment, durable storage kept to seed overlays. `ONESAT_ROOT=/home/shruggr/.1sat`
+with fresh `data/`, `kvrocks/`, `postgres/` subdirs; the July bare-metal state
+sits alongside in `~/.1sat` and is untouched. Ingest started clean from 783968
+(no progress key), Postgres backend initialized, discovery replaying.
+
+Rack-specific requirements, none of which applied on mss1:
+
+- `docker` is **rootless podman + podman-compose, SELinux enforcing**. Bind
+  mounts need `:z`; containers must run `user: "0:0"` (host uid 1000 maps to
+  container root; running "as 1000" maps to an unmapped subuid). Already in
+  `deploy/compose.yaml`.
+- Host files under `ONESAT_ROOT` end up root-owned; inspect through the
+  containers or sudo.
+- Firewalld: `tailscale0` is bound to no zone. `100.64.0.0/10` was added as a
+  source to the `trusted` zone (`firewall-cmd --permanent --zone=trusted
+  --add-source=100.64.0.0/10`). Without it the API is unreachable over the
+  tailnet (`ERR_ADDRESS_UNREACHABLE`, not a container problem — host network).
+- API: `http://rack.tail8041e2.ts.net:18080/1sat/`.
+- `collection.sync.index_all: false` — this box indexes only whitelisted or
+  funded collections until the worker-lifecycle fix (item 1) lands.

@@ -38,4 +38,4 @@ collection:
     from_block: 783968
     dispatch_workers: 4
     item_workers: 2
-    index_all: true
+    index_all: false

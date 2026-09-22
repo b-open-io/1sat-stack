@@ -12,7 +12,10 @@ name: 1sat-dev
 services:
   kvrocks:
     image: apache/kvrocks:2.14.0
-    user: "${HOST_UID:-1000}:${HOST_GID:-1000}"
+    # Runs as root: under rootless podman with SELinux enforcing, the
+    # host-uid mapping cannot write the bind mount. Data in the volume
+    # is owned by root inside the container's namespace only.
+    user: "0:0"
     entrypoint:
       - kvrocks
       - -c
@@ -26,7 +29,7 @@ services:
     ports:
       - "127.0.0.1:6666:6666"
     volumes:
-      - ${ONESAT_ROOT:?set ONESAT_ROOT}/kvrocks:/kvrocks-data
+      - ${ONESAT_ROOT:?set ONESAT_ROOT}/kvrocks:/kvrocks-data:z
     healthcheck:
       test: ["CMD", "redis-cli", "-p", "6666", "PING"]
       interval: 5s
@@ -43,7 +46,7 @@ services:
     ports:
       - "127.0.0.1:5432:5432"
     volumes:
-      - ${ONESAT_ROOT:?set ONESAT_ROOT}/postgres:/var/lib/postgresql/data
+      - ${ONESAT_ROOT:?set ONESAT_ROOT}/postgres:/var/lib/postgresql/data:z
     shm_size: 128mb
     healthcheck:
       test: ["CMD", "pg_isready", "-U", "onesat", "-d", "onesat"]
@@ -56,7 +59,9 @@ services:
     build:
       context: ..
       dockerfile: deploy/Dockerfile
-    user: "${HOST_UID:-1000}:${HOST_GID:-1000}"
+    # Rootless podman maps the host user to container root; running as the
+    # host uid would map to an unmapped subuid that cannot write /data.
+    user: "0:0"
     network_mode: host
     depends_on:
       kvrocks:
@@ -66,7 +71,7 @@ services:
     working_dir: /data
     command: ["/app/server", "--data-dir", "/data", "--config", "/config.yaml"]
     volumes:
-      - ${ONESAT_ROOT}/data:/data
-      - ./config.yaml:/config.yaml:ro
+      - ${ONESAT_ROOT}/data:/data:z
+      - ./config.yaml:/config.yaml:ro,z
     mem_limit: 16g
     restart: unless-stopped
