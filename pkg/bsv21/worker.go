@@ -147,10 +147,10 @@ func (m *TokenManager) GetTokenStatus(ctx context.Context, tokenId string) (*Tok
 
 	// Whitelisted/blacklisted tokens don't need balance calculation - use 0 fee so debits = 0
 	if isWhitelisted {
-		return NewTokenStatus(tokenId, feeAddress, 0, outputCount, 0, true, false), nil
+		return NewTokenStatus(tokenId, feeAddress, 0, outputCount, 0, 0, true, false), nil
 	}
 	if isBlacklisted {
-		return NewTokenStatus(tokenId, feeAddress, 0, outputCount, 0, false, true), nil
+		return NewTokenStatus(tokenId, feeAddress, 0, outputCount, 0, 0, false, true), nil
 	}
 
 	// Credits: unspent satoshis at fee address
@@ -165,5 +165,5 @@ func (m *TokenManager) GetTokenStatus(ctx context.Context, tokenId string) (*Tok
 		return nil, fmt.Errorf("failed to query balance: %w", err)
 	}
 
-	return NewTokenStatus(tokenId, feeAddress, credits, outputCount, m.feePerOutput, false, false), nil
+	return NewTokenStatus(tokenId, feeAddress, credits, outputCount, m.feePerOutput, m.minFunding, false, false), nil
 }

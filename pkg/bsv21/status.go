@@ -24,6 +24,7 @@ type TokenStatus struct {
 	// Funding metrics (from DB on creation/recalc)
 	Credits      uint64 `json:"credits"`
 	FeePerOutput int64  `json:"fee_per_output"`
+	MinFunding   uint64 `json:"min_funding"`
 
 	// Live tracking (not serialized directly). outputCount is atomic because
 	// workers record indexed outputs concurrently.
@@ -33,7 +34,7 @@ type TokenStatus struct {
 }
 
 // NewTokenStatus creates a TokenStatus and initializes the atomic balance
-func NewTokenStatus(tokenId, feeAddress string, credits uint64, outputCount, feePerOutput int64, isWhitelisted, isBlacklisted bool) *TokenStatus {
+func NewTokenStatus(tokenId, feeAddress string, credits uint64, outputCount, feePerOutput int64, minFunding uint64, isWhitelisted, isBlacklisted bool) *TokenStatus {
 	ts := &TokenStatus{
 		TokenID:       tokenId,
 		FeeAddress:    feeAddress,
@@ -41,6 +42,7 @@ func NewTokenStatus(tokenId, feeAddress string, credits uint64, outputCount, fee
 		IsBlacklisted: isBlacklisted,
 		Credits:       credits,
 		FeePerOutput:  feePerOutput,
+		MinFunding:    minFunding,
 	}
 	ts.outputCount.Store(outputCount)
 	ts.balance.Store(int64(credits) - ts.Debits())
@@ -67,7 +69,8 @@ func (ts *TokenStatus) Debits() int64 {
 	return ts.outputCount.Load() * ts.FeePerOutput
 }
 
-// IsActive returns whether the token should be processing
+// IsActive returns whether the token should be processing: its fee address has
+// received at least MinFunding and the indexing fees have not used it up.
 func (ts *TokenStatus) IsActive() bool {
 	if ts.IsWhitelisted {
 		return true
@@ -75,7 +78,7 @@ func (ts *TokenStatus) IsActive() bool {
 	if ts.IsBlacklisted {
 		return false
 	}
-	return ts.balance.Load() > 0
+	return ts.Credits >= ts.MinFunding && ts.balance.Load() > 0
 }
 
 // RecordOutput accounts for a single indexed output: it increments the output

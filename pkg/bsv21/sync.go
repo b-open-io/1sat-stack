@@ -37,6 +37,7 @@ type SyncConfig struct {
 	DispatchWorkers   int           `mapstructure:"dispatch_workers"`   // Concurrency for dispatcher
 	TokenWorkers      int           `mapstructure:"token_workers"`      // Concurrency for token processing
 	FeePerOutput      int64         `mapstructure:"fee_per_output"`     // Satoshis per admitted output (default: 1000)
+	MinFunding        uint64        `mapstructure:"min_funding"`        // Satoshis a token's fee address must receive before it is indexed (default: 10000000)
 	LogLevel          string        `mapstructure:"log_level"`          // Log level for sync (debug, info, warn, error)
 	LifecycleInterval time.Duration `mapstructure:"lifecycle_interval"` // Interval for token lifecycle management (default: 5m)
 }
@@ -99,6 +100,9 @@ func NewSyncServices(
 	if cfg.FeePerOutput == 0 {
 		cfg.FeePerOutput = 1000 // 1000 sats per output
 	}
+	if cfg.MinFunding == 0 {
+		cfg.MinFunding = 10_000_000 // 0.1 BSV to onboard a token
+	}
 	if cfg.LifecycleInterval == 0 {
 		cfg.LifecycleInterval = 5 * time.Minute // Check token lifecycle every 5 minutes
 	}
@@ -131,6 +135,7 @@ func NewSyncServices(
 		ct,
 		cfg.TokenWorkers,
 		cfg.FeePerOutput,
+		cfg.MinFunding,
 		cfg.LifecycleInterval,
 		syncLogger,
 	)

@@ -39,6 +39,7 @@ type TokenManager struct {
 	chainTracker      chaintracks.Chaintracks
 	concurrency       int
 	feePerOutput      int64
+	minFunding        uint64
 	lifecycleInterval time.Duration
 	logger            *slog.Logger
 
@@ -61,6 +62,7 @@ func NewTokenManager(
 	ct chaintracks.Chaintracks,
 	concurrency int,
 	feePerOutput int64,
+	minFunding uint64,
 	lifecycleInterval time.Duration,
 	logger *slog.Logger,
 ) *TokenManager {
@@ -78,6 +80,7 @@ func NewTokenManager(
 		chainTracker:      ct,
 		concurrency:       concurrency,
 		feePerOutput:      feePerOutput,
+		minFunding:        minFunding,
 		lifecycleInterval: lifecycleInterval,
 		logger:            logger.With("component", "token-manager"),
 		limiter:           make(chan struct{}, concurrency),
