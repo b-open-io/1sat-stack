@@ -494,6 +494,52 @@
                 }
             }
         },
+        "/{tokenId}/queue": {
+            "get": {
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "bsv21"
+                ],
+                "summary": "Get token queue depth",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Token ID (outpoint format: txid_vout)",
+                        "name": "tokenId",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/bsv21.QueueResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/bsv21.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/bsv21.ErrorResponse"
+                        }
+                    },
+                    "503": {
+                        "description": "Service Unavailable",
+                        "schema": {
+                            "$ref": "#/definitions/bsv21.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/{tokenId}/tx/{txid}": {
             "get": {
                 "produces": [
@@ -861,6 +907,14 @@
                     "type": "string"
                 },
                 "vout": {
+                    "type": "integer"
+                }
+            }
+        },
+        "bsv21.QueueResponse": {
+            "type": "object",
+            "properties": {
+                "queue_depth": {
                     "type": "integer"
                 }
             }

@@ -31,6 +31,15 @@ type WorkerStatus struct {
 	Status     *TokenStatus `json:"status,omitempty"`
 }
 
+// QueueDepth counts the outpoints waiting in a token's topic queue.
+func (m *TokenManager) QueueDepth(ctx context.Context, tokenId string) (int64, error) {
+	depth, err := m.store.ZCard(ctx, []byte(jbsync.TokenQueueKey(tokenId)))
+	if err != nil {
+		return 0, fmt.Errorf("failed to count queue for %s: %w", tokenId, err)
+	}
+	return depth, nil
+}
+
 // ListWorkers returns the status of all active token workers
 func (m *TokenManager) ListWorkers(ctx context.Context) []WorkerStatus {
 	var workers []WorkerStatus

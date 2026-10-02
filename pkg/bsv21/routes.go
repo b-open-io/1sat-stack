@@ -56,6 +56,7 @@ func (r *Routes) Register(router fiber.Router) {
 	router.Get("/:tokenId/outputs/:outpoint", r.GetTokenOutput)
 
 	router.Get("/:tokenId", r.GetToken)
+	router.Get("/:tokenId/queue", r.GetQueue)
 	router.Get("/:tokenId/tx/:txid", r.GetTransaction)
 	router.Get("/:tokenId/:lockType/:address/balance", r.GetAddressBalance)
 	router.Get("/:tokenId/:lockType/:address/history", r.GetAddressHistory)
@@ -95,6 +96,11 @@ type TransactionData struct {
 type BalanceResponse struct {
 	Balance   uint64 `json:"balance"`
 	UtxoCount int    `json:"utxoCount"`
+}
+
+// QueueResponse reports a token's indexing backlog
+type QueueResponse struct {
+	QueueDepth int64 `json:"queue_depth"`
 }
 
 // ErrorResponse represents an error response
@@ -596,6 +602,35 @@ func (r *Routes) ValidateOutputs(c *fiber.Ctx) error {
 	}
 
 	return c.JSON(outputs)
+}
+
+// GetQueue returns the number of outpoints waiting in the token's topic queue.
+// The count scans the queue, so clients call it only when they need the backlog,
+// e.g. to size funding for an inactive token.
+// @Summary Get token queue depth
+// @Tags bsv21
+// @Produce json
+// @Param tokenId path string true "Token ID (outpoint format: txid_vout)"
+// @Success 200 {object} QueueResponse
+// @Failure 400 {object} ErrorResponse
+// @Failure 500 {object} ErrorResponse
+// @Failure 503 {object} ErrorResponse
+// @Router /{tokenId}/queue [get]
+func (r *Routes) GetQueue(c *fiber.Ctx) error {
+	tokenId := c.Params("tokenId")
+	if _, err := transaction.OutpointFromString(tokenId); err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(ErrorResponse{Message: errInvalidTokenID.Error()})
+	}
+	if r.manager == nil {
+		return c.Status(fiber.StatusServiceUnavailable).JSON(ErrorResponse{Message: "token manager not available"})
+	}
+
+	depth, err := r.manager.QueueDepth(c.Context(), tokenId)
+	if err != nil {
+		r.logger.Error("GetQueue error", "tokenId", tokenId, "error", err)
+		return c.Status(fiber.StatusInternalServerError).JSON(ErrorResponse{Message: err.Error()})
+	}
+	return c.JSON(QueueResponse{QueueDepth: depth})
 }
 
 // GetTokenOutput checks if a single outpoint exists in the token's overlay
