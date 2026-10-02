@@ -2,6 +2,7 @@ package bsv21
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strconv"
 	"time"
@@ -31,13 +32,26 @@ type WorkerStatus struct {
 	Status     *TokenStatus `json:"status,omitempty"`
 }
 
-// QueueDepth counts the outpoints waiting in a token's topic queue.
-func (m *TokenManager) QueueDepth(ctx context.Context, tokenId string) (int64, error) {
+// queueDepth counts the outpoints waiting in a token's topic queue. It scans
+// the queue, so only the funding template calls it.
+func (m *TokenManager) queueDepth(ctx context.Context, tokenId string) (int64, error) {
 	depth, err := m.store.ZCard(ctx, []byte(jbsync.TokenQueueKey(tokenId)))
 	if err != nil {
 		return 0, fmt.Errorf("failed to count queue for %s: %w", tokenId, err)
 	}
 	return depth, nil
+}
+
+// IsQueued reports whether an outpoint is waiting in the token's topic queue.
+func (m *TokenManager) IsQueued(ctx context.Context, tokenId string, op *transaction.Outpoint) (bool, error) {
+	_, err := m.store.ZScore(ctx, []byte(jbsync.TokenQueueKey(tokenId)), op.Bytes())
+	if errors.Is(err, store.ErrKeyNotFound) {
+		return false, nil
+	}
+	if err != nil {
+		return false, fmt.Errorf("failed to look up %s in queue for %s: %w", op.String(), tokenId, err)
+	}
+	return true, nil
 }
 
 // ListWorkers returns the status of all active token workers

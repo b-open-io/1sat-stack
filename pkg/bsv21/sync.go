@@ -136,6 +136,7 @@ func NewSyncServices(
 		cfg.TokenWorkers,
 		cfg.FeePerOutput,
 		cfg.MinFunding,
+		idx,
 		cfg.LifecycleInterval,
 		syncLogger,
 	)
