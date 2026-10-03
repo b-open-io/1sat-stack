@@ -60,21 +60,46 @@ func (r *Routes) Register(router fiber.Router) {
 	router.Get("/tokens", r.ListTokens)
 	router.Post("/tokens", r.LookupTokens)
 
-	// Output validation routes
-	router.Post("/:tokenId/outputs", r.ValidateOutputs)
-	router.Post("/:tokenId/outputs/status", r.OutputStatus)
-	router.Get("/:tokenId/outputs/:outpoint", r.GetTokenOutput)
-
+	// Token details and funding answer for any token.
 	router.Get("/:tokenId", r.GetToken)
 	router.Get("/:tokenId/fund", r.GetFunding)
 	router.Post("/:tokenId/fund", r.PostFunding)
-	router.Get("/:tokenId/tx/:txid", r.GetTransaction)
-	router.Get("/:tokenId/:lockType/:address/balance", r.GetAddressBalance)
-	router.Get("/:tokenId/:lockType/:address/history", r.GetAddressHistory)
-	router.Get("/:tokenId/:lockType/:address/unspent", r.GetAddressUnspent)
-	router.Post("/:tokenId/:lockType/balance", r.GetMultiAddressBalance)
-	router.Post("/:tokenId/:lockType/history", r.GetMultiAddressHistory)
-	router.Post("/:tokenId/:lockType/unspent", r.GetMultiAddressUnspent)
+
+	// Indexed data is served only for active (funded or whitelisted) tokens.
+	router.Post("/:tokenId/outputs", r.requireActive, r.ValidateOutputs)
+	router.Post("/:tokenId/outputs/status", r.requireActive, r.OutputStatus)
+	router.Get("/:tokenId/outputs/:outpoint", r.requireActive, r.GetTokenOutput)
+	router.Get("/:tokenId/tx/:txid", r.requireActive, r.GetTransaction)
+	router.Get("/:tokenId/:lockType/:address/balance", r.requireActive, r.GetAddressBalance)
+	router.Get("/:tokenId/:lockType/:address/history", r.requireActive, r.GetAddressHistory)
+	router.Get("/:tokenId/:lockType/:address/unspent", r.requireActive, r.GetAddressUnspent)
+	router.Post("/:tokenId/:lockType/balance", r.requireActive, r.GetMultiAddressBalance)
+	router.Post("/:tokenId/:lockType/history", r.requireActive, r.GetMultiAddressHistory)
+	router.Post("/:tokenId/:lockType/unspent", r.requireActive, r.GetMultiAddressUnspent)
+}
+
+var errTokenNotActive = fmt.Errorf("token is not active on this overlay")
+
+// requireActive refuses a token's indexed data unless the token is funded or
+// whitelisted. Data indexed while an unfunded token was active is not served.
+func (r *Routes) requireActive(c *fiber.Ctx) error {
+	tokenId := c.Params("tokenId")
+	if _, err := transaction.OutpointFromString(tokenId); err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(ErrorResponse{Message: errInvalidTokenID.Error()})
+	}
+	if r.manager == nil {
+		return c.Status(fiber.StatusServiceUnavailable).JSON(ErrorResponse{Message: "token manager not available"})
+	}
+	active, err := r.manager.IsTokenActive(c.Context(), tokenId)
+	if err != nil {
+		r.logger.Error("requireActive status error", "tokenId", tokenId, "error", err)
+		return c.Status(fiber.StatusInternalServerError).JSON(ErrorResponse{Message: err.Error()})
+	}
+	// 404, not 403: clients treat 404 as "the overlay does not have this yet".
+	if !active {
+		return c.Status(fiber.StatusNotFound).JSON(ErrorResponse{Message: errTokenNotActive.Error()})
+	}
+	return c.Next()
 }
 
 // TokenDetailResponse represents combined BSV21 token details and funding status
@@ -259,6 +284,7 @@ func (r *Routes) getTokenDetail(c *fiber.Ctx, tokenIdStr string) (*TokenDetailRe
 // @Param txid path string true "Transaction ID"
 // @Param beef query bool false "Include BEEF data"
 // @Success 200 {object} TransactionData
+// @Failure 404 {object} ErrorResponse "Token is not active (not funded or whitelisted)"
 // @Router /{tokenId}/tx/{txid} [get]
 func (r *Routes) GetTransaction(c *fiber.Ctx) error {
 	tokenId := c.Params("tokenId")
@@ -342,6 +368,7 @@ func (r *Routes) GetTransaction(c *fiber.Ctx) error {
 // @Param lockType path string true "Lock type (p2pkh, cos, list, etc.)"
 // @Param address path string true "Address"
 // @Success 200 {object} BalanceResponse
+// @Failure 404 {object} ErrorResponse "Token is not active (not funded or whitelisted)"
 // @Router /{tokenId}/{lockType}/{address}/balance [get]
 func (r *Routes) GetAddressBalance(c *fiber.Ctx) error {
 	tokenId := c.Params("tokenId")
@@ -370,6 +397,7 @@ func (r *Routes) GetAddressBalance(c *fiber.Ctx) error {
 // @Param lockType path string true "Lock type"
 // @Param address path string true "Address"
 // @Success 200 {array} txo.IndexedOutput
+// @Failure 404 {object} ErrorResponse "Token is not active (not funded or whitelisted)"
 // @Router /{tokenId}/{lockType}/{address}/history [get]
 func (r *Routes) GetAddressHistory(c *fiber.Ctx) error {
 	tokenId := c.Params("tokenId")
@@ -404,6 +432,7 @@ func (r *Routes) GetAddressHistory(c *fiber.Ctx) error {
 // @Param lockType path string true "Lock type"
 // @Param address path string true "Address"
 // @Success 200 {array} txo.IndexedOutput
+// @Failure 404 {object} ErrorResponse "Token is not active (not funded or whitelisted)"
 // @Router /{tokenId}/{lockType}/{address}/unspent [get]
 func (r *Routes) GetAddressUnspent(c *fiber.Ctx) error {
 	tokenId := c.Params("tokenId")
@@ -439,6 +468,7 @@ func (r *Routes) GetAddressUnspent(c *fiber.Ctx) error {
 // @Param lockType path string true "Lock type"
 // @Param addresses body []string true "Array of addresses (max 100)"
 // @Success 200 {object} BalanceResponse
+// @Failure 404 {object} ErrorResponse "Token is not active (not funded or whitelisted)"
 // @Router /{tokenId}/{lockType}/balance [post]
 func (r *Routes) GetMultiAddressBalance(c *fiber.Ctx) error {
 	tokenId := c.Params("tokenId")
@@ -486,6 +516,7 @@ func (r *Routes) GetMultiAddressBalance(c *fiber.Ctx) error {
 // @Param lockType path string true "Lock type"
 // @Param addresses body []string true "Array of addresses (max 100)"
 // @Success 200 {array} txo.IndexedOutput
+// @Failure 404 {object} ErrorResponse "Token is not active (not funded or whitelisted)"
 // @Router /{tokenId}/{lockType}/history [post]
 func (r *Routes) GetMultiAddressHistory(c *fiber.Ctx) error {
 	tokenId := c.Params("tokenId")
@@ -539,6 +570,7 @@ func (r *Routes) GetMultiAddressHistory(c *fiber.Ctx) error {
 // @Param lockType path string true "Lock type"
 // @Param addresses body []string true "Array of addresses (max 100)"
 // @Success 200 {array} txo.IndexedOutput
+// @Failure 404 {object} ErrorResponse "Token is not active (not funded or whitelisted)"
 // @Router /{tokenId}/{lockType}/unspent [post]
 func (r *Routes) GetMultiAddressUnspent(c *fiber.Ctx) error {
 	tokenId := c.Params("tokenId")
@@ -593,6 +625,7 @@ func (r *Routes) GetMultiAddressUnspent(c *fiber.Ctx) error {
 // @Success 200 {array} txo.IndexedOutputResponse
 // @Failure 400 {object} ErrorResponse
 // @Failure 500 {object} ErrorResponse
+// @Failure 404 {object} ErrorResponse "Token is not active (not funded or whitelisted)"
 // @Router /{tokenId}/outputs [post]
 func (r *Routes) ValidateOutputs(c *fiber.Ctx) error {
 	tokenId := c.Params("tokenId")
@@ -652,6 +685,7 @@ func (r *Routes) ValidateOutputs(c *fiber.Ctx) error {
 // @Failure 400 {object} ErrorResponse
 // @Failure 500 {object} ErrorResponse
 // @Failure 503 {object} ErrorResponse
+// @Failure 404 {object} ErrorResponse "Token is not active (not funded or whitelisted)"
 // @Router /{tokenId}/outputs/status [post]
 func (r *Routes) OutputStatus(c *fiber.Ctx) error {
 	tokenId := c.Params("tokenId")
@@ -896,7 +930,7 @@ func feeLockingScript(feeAddress string) (*script.Script, error) {
 // @Param outpoint path string true "Outpoint (format: txid_vout or txid.vout)"
 // @Success 200 {object} txo.IndexedOutputResponse
 // @Failure 400 {object} ErrorResponse
-// @Failure 404 {object} ErrorResponse
+// @Failure 404 {object} ErrorResponse "Outpoint not in the topic, or token not active (not funded or whitelisted)"
 // @Failure 500 {object} ErrorResponse
 // @Router /{tokenId}/outputs/{outpoint} [get]
 func (r *Routes) GetTokenOutput(c *fiber.Ctx) error {

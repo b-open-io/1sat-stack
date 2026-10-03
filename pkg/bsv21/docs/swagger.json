@@ -552,6 +552,12 @@
                         "schema": {
                             "$ref": "#/definitions/bsv21.ErrorResponse"
                         }
+                    },
+                    "404": {
+                        "description": "Token is not active (not funded or whitelisted)",
+                        "schema": {
+                            "$ref": "#/definitions/bsv21.ErrorResponse"
+                        }
                     }
                 }
             }
@@ -616,6 +622,12 @@
                         "schema": {
                             "$ref": "#/definitions/bsv21.ErrorResponse"
                         }
+                    },
+                    "404": {
+                        "description": "Token is not active (not funded or whitelisted)",
+                        "schema": {
+                            "$ref": "#/definitions/bsv21.ErrorResponse"
+                        }
                     }
                 }
             }
@@ -659,7 +671,7 @@
                         }
                     },
                     "404": {
-                        "description": "Not Found",
+                        "description": "Outpoint not in the topic, or token not active (not funded or whitelisted)",
                         "schema": {
                             "$ref": "#/definitions/bsv21.ErrorResponse"
                         }
@@ -710,6 +722,12 @@
                         "schema": {
                             "$ref": "#/definitions/bsv21.TransactionData"
                         }
+                    },
+                    "404": {
+                        "description": "Token is not active (not funded or whitelisted)",
+                        "schema": {
+                            "$ref": "#/definitions/bsv21.ErrorResponse"
+                        }
                     }
                 }
             }
@@ -759,6 +777,12 @@
                         "description": "OK",
                         "schema": {
                             "$ref": "#/definitions/bsv21.BalanceResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Token is not active (not funded or whitelisted)",
+                        "schema": {
+                            "$ref": "#/definitions/bsv21.ErrorResponse"
                         }
                     }
                 }
@@ -813,6 +837,12 @@
                                 "$ref": "#/definitions/txo.IndexedOutput"
                             }
                         }
+                    },
+                    "404": {
+                        "description": "Token is not active (not funded or whitelisted)",
+                        "schema": {
+                            "$ref": "#/definitions/bsv21.ErrorResponse"
+                        }
                     }
                 }
             }
@@ -866,6 +896,12 @@
                                 "$ref": "#/definitions/txo.IndexedOutput"
                             }
                         }
+                    },
+                    "404": {
+                        "description": "Token is not active (not funded or whitelisted)",
+                        "schema": {
+                            "$ref": "#/definitions/bsv21.ErrorResponse"
+                        }
                     }
                 }
             }
@@ -907,6 +943,12 @@
                         "description": "OK",
                         "schema": {
                             "$ref": "#/definitions/bsv21.BalanceResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Token is not active (not funded or whitelisted)",
+                        "schema": {
+                            "$ref": "#/definitions/bsv21.ErrorResponse"
                         }
                     }
                 }
@@ -953,6 +995,12 @@
                                 "$ref": "#/definitions/txo.IndexedOutput"
                             }
                         }
+                    },
+                    "404": {
+                        "description": "Token is not active (not funded or whitelisted)",
+                        "schema": {
+                            "$ref": "#/definitions/bsv21.ErrorResponse"
+                        }
                     }
                 }
             }
@@ -998,6 +1046,12 @@
                                 "$ref": "#/definitions/txo.IndexedOutput"
                             }
                         }
+                    },
+                    "404": {
+                        "description": "Token is not active (not funded or whitelisted)",
+                        "schema": {
+                            "$ref": "#/definitions/bsv21.ErrorResponse"
+                        }
                     }
                 }
             }
@@ -1026,11 +1080,11 @@
         "bsv21.FundingOutput": {
             "type": "object",
             "properties": {
-                "outputDescription": {
-                    "type": "string"
-                },
                 "lockingScript": {
                     "description": "hex",
+                    "type": "string"
+                },
+                "outputDescription": {
                     "type": "string"
                 },
                 "satoshis": {

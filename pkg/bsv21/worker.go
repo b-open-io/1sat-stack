@@ -134,6 +134,19 @@ func (m *TokenManager) persistOutputCount(ctx context.Context, tokenId string, c
 	}
 }
 
+// IsTokenActive reports whether the token is funded or whitelisted. A running
+// worker's live status answers without a database lookup.
+func (m *TokenManager) IsTokenActive(ctx context.Context, tokenId string) (bool, error) {
+	if v, ok := m.statuses.Load(tokenId); ok {
+		return v.(*TokenStatus).IsActive(), nil
+	}
+	status, err := m.GetTokenStatus(ctx, tokenId)
+	if err != nil {
+		return false, err
+	}
+	return status.IsActive(), nil
+}
+
 // GetTokenStatus returns the status for a specific token
 func (m *TokenManager) GetTokenStatus(ctx context.Context, tokenId string) (*TokenStatus, error) {
 	// Parse outpoint from tokenId

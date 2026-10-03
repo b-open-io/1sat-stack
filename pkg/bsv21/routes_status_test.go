@@ -70,15 +70,27 @@ func TestOutputStatus(t *testing.T) {
 	NewRoutes(&RoutesDeps{Lookup: lookup, Manager: manager}).Register(app)
 
 	body, _ := json.Marshal([]string{valid.String(), spent.String(), queued.String(), unknown.String()})
-	req := httptest.NewRequest("POST", "/"+tokenId+"/outputs/status", strings.NewReader(string(body)))
-	req.Header.Set("Content-Type", "application/json")
-	resp, err := app.Test(req, -1)
-	if err != nil {
-		t.Fatal(err)
+	post := func() (int, []byte) {
+		req := httptest.NewRequest("POST", "/"+tokenId+"/outputs/status", strings.NewReader(string(body)))
+		req.Header.Set("Content-Type", "application/json")
+		resp, err := app.Test(req, -1)
+		if err != nil {
+			t.Fatal(err)
+		}
+		raw, _ := io.ReadAll(resp.Body)
+		return resp.StatusCode, raw
 	}
-	raw, _ := io.ReadAll(resp.Body)
-	if resp.StatusCode != 200 {
-		t.Fatalf("status %d: %s", resp.StatusCode, raw)
+
+	// An unfunded token's indexed data is not served.
+	manager.statuses.Store(tokenId, NewTokenStatus(tokenId, "a", 0, 0, 1000, 10_000_000, false, false))
+	if code, raw := post(); code != 404 {
+		t.Fatalf("inactive token: status %d: %s, want 404", code, raw)
+	}
+
+	manager.statuses.Store(tokenId, NewTokenStatus(tokenId, "a", 0, 0, 0, 0, true, false))
+	code, raw := post()
+	if code != 200 {
+		t.Fatalf("status %d: %s", code, raw)
 	}
 	var got []OutputStatusResponse
 	if err := json.Unmarshal(raw, &got); err != nil {
