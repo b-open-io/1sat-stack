@@ -16,6 +16,7 @@ import (
 	"github.com/b-open-io/1sat-stack/pkg/overlay"
 	"github.com/b-open-io/1sat-stack/pkg/store"
 	"github.com/b-open-io/1sat-stack/pkg/txo"
+	"github.com/b-open-io/1sat-stack/pkg/types"
 	"github.com/bsv-blockchain/go-chaintracks/chaintracks"
 	"github.com/bsv-blockchain/go-overlay-services/pkg/core/engine"
 	sdkoverlay "github.com/bsv-blockchain/go-sdk/overlay"
@@ -428,7 +429,11 @@ func (m *TokenManager) refreshInactiveTokens(ctx context.Context) {
 		if err != nil {
 			continue
 		}
-		feeAddress, err := GenerateFeeAddress(outpoint)
+		network := types.Mainnet
+		if m.outputStore != nil {
+			network = m.outputStore.Network
+		}
+		feeAddress, err := GenerateFeeAddress(outpoint, network)
 		if err != nil {
 			continue
 		}

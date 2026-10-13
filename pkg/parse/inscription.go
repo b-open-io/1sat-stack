@@ -63,7 +63,7 @@ func ParseInscription(ctx *ParseContext) (*ParseResult, error) {
 			suffix = suffix[1:]
 		}
 		if len(suffix) >= 25 {
-			if addr := p2pkh.Decode(script.NewFromBytes(suffix[:25]), true); addr != nil {
+			if addr := p2pkh.Decode(script.NewFromBytes(suffix[:25]), ctx.Mainnet()); addr != nil {
 				if owner := types.PKHashFromBytes(addr.PublicKeyHash); owner != nil {
 					result.Owners = append(result.Owners, owner)
 				}

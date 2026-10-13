@@ -57,6 +57,7 @@ import (
 	"github.com/b-open-io/1sat-stack/pkg/spends"
 	"github.com/b-open-io/1sat-stack/pkg/store"
 	"github.com/b-open-io/1sat-stack/pkg/txo"
+	"github.com/b-open-io/1sat-stack/pkg/types"
 	"github.com/b-open-io/1sat-stack/pkg/wallet"
 	"github.com/b-open-io/go-junglebus"
 	"github.com/bsv-blockchain/go-chaintracks/chaintracks"
@@ -1013,6 +1014,9 @@ func (c *Config) Initialize(ctx context.Context, logger *slog.Logger) (*Services
 			return nil, fmt.Errorf("failed to initialize txo: %w", err)
 		}
 		svc.TXO = txoSvc
+		if txoSvc != nil && txoSvc.OutputStore != nil {
+			txoSvc.OutputStore.Network = types.ParseNetwork(c.Network)
+		}
 		logger.Info("txo initialized", "duration", time.Since(start).Round(time.Millisecond))
 	}
 
@@ -1193,6 +1197,9 @@ func (c *Config) Initialize(ctx context.Context, logger *slog.Logger) (*Services
 			return nil, fmt.Errorf("failed to initialize ordlock: %w", err)
 		}
 		svc.OrdLock = ordlockSvc
+		if ordlockSvc != nil && ordlockSvc.LookupV2 != nil && svc.TXO != nil && svc.TXO.OutputStore != nil {
+			ordlockSvc.LookupV2.Network = svc.TXO.OutputStore.Network
+		}
 		// OverlaySync drains q:ordlock2 (fed by the ordlock2 event bridge and the
 		// optional JungleBus subscriber) into the v2 topic via processDirect.
 		if svc.OrdLock != nil && svc.Beef != nil {

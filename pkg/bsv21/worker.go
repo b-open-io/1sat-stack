@@ -10,6 +10,7 @@ import (
 	"github.com/b-open-io/1sat-stack/pkg/jbsync"
 	"github.com/b-open-io/1sat-stack/pkg/store"
 	"github.com/b-open-io/1sat-stack/pkg/txo"
+	"github.com/b-open-io/1sat-stack/pkg/types"
 	"github.com/b-open-io/1sat-stack/pkg/worker"
 	"github.com/bsv-blockchain/go-sdk/transaction"
 )
@@ -156,7 +157,11 @@ func (m *TokenManager) GetTokenStatus(ctx context.Context, tokenId string) (*Tok
 	}
 
 	// Generate fee address
-	feeAddress, err := GenerateFeeAddress(outpoint)
+	network := types.Mainnet
+	if m.outputStore != nil {
+		network = m.outputStore.Network
+	}
+	feeAddress, err := GenerateFeeAddress(outpoint, network)
 	if err != nil {
 		return nil, fmt.Errorf("failed to generate fee address: %w", err)
 	}

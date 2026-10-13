@@ -14,6 +14,7 @@ import (
 	"github.com/b-open-io/1sat-stack/pkg/parse"
 	"github.com/b-open-io/1sat-stack/pkg/store"
 	"github.com/b-open-io/1sat-stack/pkg/txo"
+	"github.com/b-open-io/1sat-stack/pkg/types"
 	"github.com/bsv-blockchain/go-sdk/chainhash"
 	"github.com/bsv-blockchain/go-sdk/script"
 	"github.com/bsv-blockchain/go-sdk/transaction"
@@ -849,7 +850,11 @@ func (r *Routes) PostFunding(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusBadRequest).JSON(ErrorResponse{Message: fmt.Sprintf("invalid BEEF: %v", err)})
 	}
 
-	feeAddress, err := GenerateFeeAddress(tokenOutpoint)
+	var network types.Network
+	if r.storage != nil {
+		network = r.storage.Network
+	}
+	feeAddress, err := GenerateFeeAddress(tokenOutpoint, network)
 	if err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(ErrorResponse{Message: err.Error()})
 	}

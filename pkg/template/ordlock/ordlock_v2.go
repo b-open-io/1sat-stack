@@ -20,7 +20,11 @@ func IsOrdLockV2(scr *script.Script) bool {
 // appended by the SDK's sellOrdinal) are ignored, exactly as v1 Decode and the
 // 1sat-sdk OrdLockV2.decode behave. Returns the same OrdLock shape as v1 so
 // downstream code is uniform. nil if not v2.
-func DecodeV2(scr *script.Script) *OrdLock {
+func DecodeV2(scr *script.Script, mainnet ...bool) *OrdLock {
+	isMain := true
+	if len(mainnet) > 0 {
+		isMain = mainnet[0]
+	}
 	if scr == nil {
 		return nil
 	}
@@ -44,7 +48,7 @@ func DecodeV2(scr *script.Script) *OrdLock {
 	if _, err := payOutput.ReadFrom(bytes.NewReader(payoutBytes)); err != nil {
 		return nil
 	}
-	seller, err := script.NewAddressFromPublicKeyHash(sellerPKH, true)
+	seller, err := script.NewAddressFromPublicKeyHash(sellerPKH, isMain)
 	if err != nil {
 		return nil
 	}

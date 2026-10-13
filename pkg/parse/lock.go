@@ -12,7 +12,7 @@ const TagLock = "lock"
 // Returns nil if the script is not a valid lock contract.
 func ParseLock(ctx *ParseContext) (*ParseResult, error) {
 	scr := script.NewFromBytes(ctx.LockingScript)
-	lock := lockup.Decode(scr, true)
+	lock := lockup.Decode(scr, ctx.Mainnet())
 	if lock == nil {
 		return nil, nil
 	}

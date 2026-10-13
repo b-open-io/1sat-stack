@@ -12,7 +12,7 @@ const TagCosign = "cosign"
 // Returns nil if the script is not a valid cosign.
 func ParseCosign(ctx *ParseContext) (*ParseResult, error) {
 	scr := script.NewFromBytes(ctx.LockingScript)
-	c := cosign.Decode(scr)
+	c := cosign.Decode(scr, ctx.Mainnet())
 	if c == nil {
 		return nil, nil
 	}

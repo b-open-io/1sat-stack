@@ -20,7 +20,8 @@ import (
 // DecodeV2 instead of Decode. Spend classification (sale/cancel by last unlock
 // byte) and all storage are reused.
 type LookupServiceV2 struct {
-	ol *OrdLock
+	ol      *OrdLock
+	Network types.Network
 }
 
 func NewLookupServiceV2(ol *OrdLock) *LookupServiceV2 {
@@ -114,7 +115,7 @@ func (l *LookupServiceV2) GetMetaData() *overlay.MetaData {
 }
 
 func (l *LookupServiceV2) extractListingData(ctx context.Context, outpoint *transaction.Outpoint, lockingScript *script.Script) *listingData {
-	lock := ordlock.DecodeV2(lockingScript)
+	lock := ordlock.DecodeV2(lockingScript, l.Network.Mainnet())
 	if lock == nil || lock.Price > 2_100_000_000_000_000 {
 		return nil
 	}

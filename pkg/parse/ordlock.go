@@ -30,7 +30,7 @@ func ParseOrdLock(ctx *ParseContext) (*ParseResult, error) {
 
 	scr := script.NewFromBytes(ctx.LockingScript)
 
-	if ol := ordlock.DecodeV2(scr); ol != nil {
+	if ol := ordlock.DecodeV2(scr, ctx.Mainnet()); ol != nil {
 		result := &ParseResult{
 			Tag:    TagOrdLockV2,
 			Data:   ol,
@@ -40,7 +40,7 @@ func ParseOrdLock(ctx *ParseContext) (*ParseResult, error) {
 		return result, nil
 	}
 
-	ol := ordlock.Decode(scr)
+	ol := ordlock.Decode(scr, ctx.Mainnet())
 	if ol == nil {
 		return nil, nil
 	}
