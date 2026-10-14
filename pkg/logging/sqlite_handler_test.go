@@ -3,6 +3,8 @@ package logging
 import (
 	"context"
 	"database/sql"
+	"errors"
+	"fmt"
 	"log/slog"
 	"path/filepath"
 	"testing"
@@ -317,5 +319,36 @@ func TestSQLiteHandler_LegacyNONEDBLeftIntact(t *testing.T) {
 	}
 	if total != 1 {
 		t.Errorf("expected legacy row preserved, got %d", total)
+	}
+}
+
+func TestSQLiteHandler_ErrorAttrStoredAsMessage(t *testing.T) {
+	dbPath := filepath.Join(t.TempDir(), "test-logs.db")
+	h, err := NewSQLiteHandler(dbPath, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	wrapped := fmt.Errorf("failed to build BEEF: %w", errors.New("missing merkle proofs"))
+	slog.New(h).With("pre", wrapped).Error("sync error", "error", wrapped)
+	h.Close()
+
+	h2, err := NewSQLiteHandler(dbPath, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer h2.Close()
+
+	entries, _, err := h2.Query(LogQuery{Limit: 1})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(entries) != 1 {
+		t.Fatalf("expected 1 entry, got %d", len(entries))
+	}
+	for _, key := range []string{"error", "pre"} {
+		if got := entries[0].Attrs[key]; got != wrapped.Error() {
+			t.Errorf("attr %q = %v, want %q", key, got, wrapped.Error())
+		}
 	}
 }
