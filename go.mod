@@ -6,7 +6,7 @@ replace github.com/bsv-blockchain/go-messagebox-server => github.com/b-open-io/g
 
 require (
 	github.com/alicebob/miniredis/v2 v2.39.0
-	github.com/b-open-io/go-junglebus v0.3.5
+	github.com/b-open-io/go-junglebus v0.3.6
 	github.com/bitcoinschema/go-bmap v0.2.4
 	github.com/bitcoinschema/go-sigma v0.1.2
 	github.com/bsv-blockchain/go-bsv-middleware v0.16.3
@@ -87,8 +87,8 @@ require (
 	github.com/bsv-blockchain/teranode v0.16.1-beta-1 // indirect
 	github.com/cenkalti/backoff/v4 v4.3.0 // indirect
 	github.com/cenkalti/backoff/v5 v5.0.3 // indirect
-	github.com/centrifugal/centrifuge-go v0.10.4 // indirect
-	github.com/centrifugal/protocol v0.14.0 // indirect
+	github.com/centrifugal/centrifuge-go v0.10.12 // indirect
+	github.com/centrifugal/protocol v0.16.0 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
 	github.com/clipperhouse/uax29/v2 v2.7.0 // indirect
 	github.com/containerd/errdefs v1.0.0 // indirect
@@ -262,6 +262,7 @@ require (
 	github.com/segmentio/asm v1.2.0 // indirect
 	github.com/segmentio/encoding v0.4.1 // indirect
 	github.com/sercand/kuberesolver/v6 v6.0.1 // indirect
+	github.com/shadowspore/fossil-delta v0.0.0-20241213113458-1d797d70cbe3 // indirect
 	github.com/shirou/gopsutil/v4 v4.26.9 // indirect
 	github.com/sirupsen/logrus v1.10.2 // indirect
 	github.com/spaolacci/murmur3 v1.1.0 // indirect
