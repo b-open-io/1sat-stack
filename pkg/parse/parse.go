@@ -47,6 +47,7 @@ type ParserFunc func(ctx *ParseContext) (*ParseResult, error)
 var Parsers = map[string]ParserFunc{
 	TagP2PKH:       ParseP2PKH,
 	TagLock:        ParseLock,
+	TagTwetch:      ParseTwetch,
 	TagInscription: ParseInscription,
 	TagBSV21:       ParseBSV21,
 	TagOrdLock:     ParseOrdLock,
@@ -69,6 +70,7 @@ var DefaultTags = []string{
 	Tag1Sat,        // 1 satoshi outputs
 	TagP2PKH,       // Basic P2PKH address extraction
 	TagLock,        // Lock protocol
+	TagTwetch,      // Twetch NFTs (hash lock + P2PKH + JSON)
 	TagInscription, // 1Sat ordinals inscriptions
 	TagBSV21,       // BSV21 fungible tokens
 	TagOrdLock,     // Ordinal lock listings
