@@ -58,31 +58,28 @@ func Search(ctx context.Context, s Store, cfg *SearchCfg) ([]ScoredMember, error
 	return records, nil
 }
 
+// nextResult merges the cursors in (score, member) order — the order every
+// backend returns sorted set entries in, members breaking score ties
+// lexicographically (reversed when cfg.Reverse). All outputs of a transaction
+// share one score, so ties are common and matching must compare members, not
+// just scores.
 func nextResult(ctx context.Context, s Store, cursors []*cursor, cfg *SearchCfg, seen map[string]float64) ([]byte, float64, []byte, bool, error) {
 	for {
 		var best *cursor
-		var bestScore float64
-		var bestMember []byte
+		var head ScoredMember
+		exhausted := 0
 
 		for _, c := range cursors {
-			if c.pos >= len(c.results) {
-				if c.done {
-					continue
-				}
-				if err := fetchPage(ctx, s, c, cfg); err != nil {
-					return nil, 0, nil, false, err
-				}
-				if c.pos >= len(c.results) {
-					continue
-				}
+			if err := ensureHead(ctx, s, c, cfg); err != nil {
+				return nil, 0, nil, false, err
 			}
-			m := c.results[c.pos]
-			if best == nil ||
-				(cfg.Reverse && m.Score > bestScore) ||
-				(!cfg.Reverse && m.Score < bestScore) {
+			if c.pos >= len(c.results) {
+				exhausted++
+				continue
+			}
+			if m := c.results[c.pos]; best == nil || compareEntries(m, head, cfg.Reverse) < 0 {
 				best = c
-				bestScore = m.Score
-				bestMember = m.Member
+				head = m
 			}
 		}
 
@@ -90,54 +87,75 @@ func nextResult(ctx context.Context, s Store, cursors []*cursor, cfg *SearchCfg,
 			return nil, 0, nil, false, nil
 		}
 
+		// Remaining entries can no longer produce results: an intersection
+		// needs every key, a difference needs the first key.
 		switch cfg.JoinType {
 		case JoinIntersect:
-			if !inAllCursors(cursors, bestMember) {
-				for _, c := range cursors {
-					if c.pos < len(c.results) && bytes.Equal(c.results[c.pos].Member, bestMember) {
-						c.pos++
-					}
-				}
-				continue
+			if exhausted > 0 {
+				return nil, 0, nil, false, nil
 			}
-			for _, c := range cursors {
-				c.pos++
-			}
-
 		case JoinDifference:
-			if len(cursors) > 1 && inAnyCursor(cursors[1:], bestMember) {
-				best.pos++
-				continue
+			if cursors[0].pos >= len(cursors[0].results) {
+				return nil, 0, nil, false, nil
 			}
-			best.pos++
+		}
 
+		// Consume the head entry from every cursor positioned on it.
+		matched := 0
+		inFirst := false
+		for i, c := range cursors {
+			if c.pos < len(c.results) && compareEntries(c.results[c.pos], head, cfg.Reverse) == 0 {
+				c.pos++
+				matched++
+				if i == 0 {
+					inFirst = true
+				}
+			}
+		}
+
+		var emit bool
+		switch cfg.JoinType {
+		case JoinIntersect:
+			emit = matched == len(cursors)
+		case JoinDifference:
+			emit = inFirst && matched == 1
 		default: // JoinUnion
-			best.pos++
+			emit = true
+		}
+		if !emit {
+			continue
 		}
 
-		lastScore, ok := seen[string(bestMember)]
-		if !ok || lastScore != bestScore {
-			return bestMember, bestScore, best.key, true, nil
+		lastScore, ok := seen[string(head.Member)]
+		if !ok || lastScore != head.Score {
+			return head.Member, head.Score, best.key, true, nil
 		}
 	}
 }
 
-func inAllCursors(cursors []*cursor, member []byte) bool {
-	for _, c := range cursors {
-		if c.pos >= len(c.results) || !bytes.Equal(c.results[c.pos].Member, member) {
-			return false
-		}
+// ensureHead loads the next page when a cursor has consumed its current one.
+func ensureHead(ctx context.Context, s Store, c *cursor, cfg *SearchCfg) error {
+	if c.pos < len(c.results) || c.done {
+		return nil
 	}
-	return true
+	return fetchPage(ctx, s, c, cfg)
 }
 
-func inAnyCursor(cursors []*cursor, member []byte) bool {
-	for _, c := range cursors {
-		if c.pos < len(c.results) && bytes.Equal(c.results[c.pos].Member, member) {
-			return true
-		}
+// compareEntries orders a before b (negative) in iteration order.
+func compareEntries(a, b ScoredMember, reverse bool) int {
+	cmp := 0
+	switch {
+	case a.Score < b.Score:
+		cmp = -1
+	case a.Score > b.Score:
+		cmp = 1
+	default:
+		cmp = bytes.Compare(a.Member, b.Member)
 	}
-	return false
+	if reverse {
+		return -cmp
+	}
+	return cmp
 }
 
 func fetchPage(ctx context.Context, s Store, c *cursor, cfg *SearchCfg) error {
