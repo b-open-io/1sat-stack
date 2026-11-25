@@ -11,10 +11,12 @@ import (
 
 	"github.com/b-open-io/1sat-stack/pkg/beef"
 	"github.com/b-open-io/1sat-stack/pkg/config"
+	"github.com/b-open-io/1sat-stack/pkg/indexer"
 	lookuppkg "github.com/b-open-io/1sat-stack/pkg/lookup"
 	"github.com/b-open-io/1sat-stack/pkg/overlay"
 	"github.com/b-open-io/1sat-stack/pkg/store"
 	"github.com/b-open-io/1sat-stack/pkg/txo"
+	"github.com/b-open-io/1sat-stack/pkg/types"
 	"github.com/bsv-blockchain/go-chaintracks/chaintracks"
 	"github.com/bsv-blockchain/go-overlay-services/pkg/core/engine"
 	sdkoverlay "github.com/bsv-blockchain/go-sdk/overlay"
@@ -39,8 +41,12 @@ type TokenManager struct {
 	chainTracker      chaintracks.Chaintracks
 	concurrency       int
 	feePerOutput      int64
+	minFunding        uint64
+	ingest            *indexer.IngestCtx
 	lifecycleInterval time.Duration
 	logger            *slog.Logger
+
+	startMu sync.Mutex // serializes worker starts from the lifecycle loop and ActivateToken
 
 	workers  sync.Map // tokenId -> *TokenWorker
 	statuses sync.Map // tokenId -> *TokenStatus
@@ -61,6 +67,8 @@ func NewTokenManager(
 	ct chaintracks.Chaintracks,
 	concurrency int,
 	feePerOutput int64,
+	minFunding uint64,
+	ingest *indexer.IngestCtx,
 	lifecycleInterval time.Duration,
 	logger *slog.Logger,
 ) *TokenManager {
@@ -78,6 +86,8 @@ func NewTokenManager(
 		chainTracker:      ct,
 		concurrency:       concurrency,
 		feePerOutput:      feePerOutput,
+		minFunding:        minFunding,
+		ingest:            ingest,
 		lifecycleInterval: lifecycleInterval,
 		logger:            logger.With("component", "token-manager"),
 		limiter:           make(chan struct{}, concurrency),
@@ -320,22 +330,7 @@ func (m *TokenManager) manageWorkerLifecycle(ctx context.Context) {
 		}
 
 		activeTokens[tokenId] = struct{}{}
-
-		// Register topic manager
-		topicName := "tm_" + tokenId
-		if m.overlay != nil {
-			var metadata *sdkoverlay.MetaData
-			if outpoint, err := transaction.OutpointFromString(tokenId); err == nil {
-				metadata = m.getTokenMetadata(ctx, outpoint)
-			}
-			tm := NewBsv21ValidatedTopicManager(topicName, nil, metadata, m.beefStorage)
-			m.overlay.RegisterTopicManager(topicName, tm)
-		}
-
-		// Create worker
-		if err := m.createWorker(ctx, status); err != nil {
-			m.logger.Error("failed to create worker", "error", err, "tokenId", tokenId)
-		}
+		m.startToken(ctx, status)
 	}
 
 	// Phase 3: Unregister topic managers for tokens no longer active
@@ -350,6 +345,68 @@ func (m *TokenManager) manageWorkerLifecycle(ctx context.Context) {
 		}
 		return true
 	})
+}
+
+// startToken registers an active token's topic manager and starts its worker,
+// unless a worker is already running.
+func (m *TokenManager) startToken(ctx context.Context, status *TokenStatus) {
+	tokenId := status.TokenID
+	m.startMu.Lock()
+	defer m.startMu.Unlock()
+	if _, running := m.workers.Load(tokenId); running {
+		return
+	}
+
+	topicName := "tm_" + tokenId
+	if m.overlay != nil {
+		var metadata *sdkoverlay.MetaData
+		if outpoint, err := transaction.OutpointFromString(tokenId); err == nil {
+			metadata = m.getTokenMetadata(ctx, outpoint)
+		}
+		tm := NewBsv21ValidatedTopicManager(topicName, nil, metadata, m.beefStorage)
+		m.overlay.RegisterTopicManager(topicName, tm)
+	}
+
+	if err := m.createWorker(ctx, status); err != nil {
+		m.logger.Error("failed to create worker", "error", err, "tokenId", tokenId)
+	}
+}
+
+// ActivateToken starts the token's worker now if its funding qualifies, rather
+// than at the next lifecycle pass, and returns the token's current status.
+func (m *TokenManager) ActivateToken(ctx context.Context, tokenId string) (*TokenStatus, error) {
+	if m.ctx == nil {
+		return nil, errors.New("token manager not started")
+	}
+	status, err := m.GetTokenStatus(ctx, tokenId)
+	if err != nil {
+		return nil, err
+	}
+	if outpoint, err := transaction.OutpointFromString(tokenId); err == nil {
+		if token, err := m.lookup.GetToken(ctx, outpoint); err == nil {
+			status.Symbol = token.Symbol
+			status.Decimals = token.Decimals
+			status.Icon = token.Icon
+		}
+	}
+
+	if status.IsActive() {
+		// The worker outlives this request, so it runs under the manager's context.
+		m.startToken(m.ctx, status)
+	}
+	return status, nil
+}
+
+// IngestFunding indexes a funding transaction so its fee-address outputs count
+// toward the token's credits immediately.
+func (m *TokenManager) IngestFunding(ctx context.Context, tx *transaction.Transaction) error {
+	if m.ingest == nil {
+		return errors.New("token manager has no ingest context")
+	}
+	if _, err := m.ingest.IngestTx(ctx, tx); err != nil {
+		return fmt.Errorf("failed to ingest funding tx %s: %w", tx.TxID().String(), err)
+	}
+	return nil
 }
 
 // refreshInactiveTokens syncs fee addresses for tokens without active workers.
@@ -372,7 +429,11 @@ func (m *TokenManager) refreshInactiveTokens(ctx context.Context) {
 		if err != nil {
 			continue
 		}
-		feeAddress, err := GenerateFeeAddress(outpoint)
+		network := types.Mainnet
+		if m.outputStore != nil {
+			network = m.outputStore.Network
+		}
+		feeAddress, err := GenerateFeeAddress(outpoint, network)
 		if err != nil {
 			continue
 		}

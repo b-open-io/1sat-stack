@@ -6,6 +6,7 @@ import (
 	"log/slog"
 
 	"github.com/b-open-io/1sat-stack/pkg/beef"
+	"github.com/b-open-io/1sat-stack/pkg/broadcast"
 	"github.com/b-open-io/1sat-stack/pkg/config"
 	lookuppkg "github.com/b-open-io/1sat-stack/pkg/lookup"
 	"github.com/b-open-io/1sat-stack/pkg/overlay"
@@ -88,6 +89,7 @@ func (c *Config) Initialize(
 	chaintracker chaintracks.Chaintracks,
 	beefStorage *beef.Storage,
 	jbClient *junglebus.Client,
+	broadcaster *broadcast.Handler,
 ) (*Services, error) {
 	if c.Mode == ModeDisabled {
 		return nil, nil
@@ -100,6 +102,9 @@ func (c *Config) Initialize(
 	switch c.Mode {
 	case ModeEmbedded:
 		bsv21Lookup := lookuppkg.NewBSV21Lookup(deps.Factory)
+		if txoStorage != nil {
+			bsv21Lookup.Network = txoStorage.Network
+		}
 		topicManager := NewBsv21ValidatedTopicManager("bsv21", c.WhitelistTokens, nil, beefStorage)
 		discoveryManager := NewBsv21DiscoveryTopicManager("tm_bsv21", logger)
 
@@ -142,9 +147,10 @@ func (c *Config) Initialize(
 		// Create routes if enabled
 		if c.Routes.Enabled && txoStorage != nil {
 			routesDeps := &RoutesDeps{
-				Storage: txoStorage,
-				Lookup:  bsv21Lookup,
-				Logger:  logger,
+				Storage:     txoStorage,
+				Lookup:      bsv21Lookup,
+				Broadcaster: broadcaster,
+				Logger:      logger,
 			}
 			if svc.Sync != nil && svc.Sync.manager != nil {
 				routesDeps.Manager = svc.Sync.manager

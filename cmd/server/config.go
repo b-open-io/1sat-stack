@@ -24,6 +24,7 @@ import (
 	"github.com/b-open-io/1sat-stack/pkg/bsocial"
 	"github.com/b-open-io/1sat-stack/pkg/bsv21"
 	configpkg "github.com/b-open-io/1sat-stack/pkg/config"
+	"github.com/b-open-io/1sat-stack/pkg/ecosystemalias"
 	"github.com/b-open-io/1sat-stack/pkg/httputil"
 	"github.com/b-open-io/1sat-stack/sweep"
 
@@ -34,6 +35,8 @@ import (
 	bsocialdocs "github.com/b-open-io/1sat-stack/pkg/bsocial/docs"
 	bsv21docs "github.com/b-open-io/1sat-stack/pkg/bsv21/docs"
 	chaintracksdocs "github.com/b-open-io/1sat-stack/pkg/chaintracks/docs"
+	gibpkg "github.com/b-open-io/1sat-stack/pkg/gib"
+	gibdocs "github.com/b-open-io/1sat-stack/pkg/gib/docs"
 	"github.com/b-open-io/1sat-stack/pkg/indexer"
 	"github.com/b-open-io/1sat-stack/pkg/jbsync"
 	"github.com/b-open-io/1sat-stack/pkg/logging"
@@ -45,17 +48,16 @@ import (
 	ordlockdocs "github.com/b-open-io/1sat-stack/pkg/ordlock/docs"
 	"github.com/b-open-io/1sat-stack/pkg/overlay"
 	ownerdocs "github.com/b-open-io/1sat-stack/pkg/owner/docs"
-	paymaildocs "github.com/b-open-io/1sat-stack/pkg/paymail/docs"
 	pubsubdocs "github.com/b-open-io/1sat-stack/pkg/pubsub/docs"
 	"github.com/b-open-io/1sat-stack/pkg/registrar"
 	txodocs "github.com/b-open-io/1sat-stack/pkg/txo/docs"
 
 	"github.com/b-open-io/1sat-stack/pkg/owner"
-	"github.com/b-open-io/1sat-stack/pkg/paymail"
 	"github.com/b-open-io/1sat-stack/pkg/pubsub"
 	"github.com/b-open-io/1sat-stack/pkg/spends"
 	"github.com/b-open-io/1sat-stack/pkg/store"
 	"github.com/b-open-io/1sat-stack/pkg/txo"
+	"github.com/b-open-io/1sat-stack/pkg/types"
 	"github.com/b-open-io/1sat-stack/pkg/wallet"
 	"github.com/b-open-io/go-junglebus"
 	"github.com/bsv-blockchain/go-chaintracks/chaintracks"
@@ -114,6 +116,9 @@ type Config struct {
 	// BAP identity overlay
 	BAP bap.Config `mapstructure:"bap"`
 
+	// BRC-169 ecosystem-alias overlay
+	EcosystemAlias ecosystemalias.Config `mapstructure:"ecosystemalias"`
+
 	// BSocial overlay
 	BSocial bsocial.Config `mapstructure:"bsocial"`
 
@@ -122,6 +127,9 @@ type Config struct {
 
 	// OrdLock marketplace overlay
 	OrdLock ordlockpkg.Config `mapstructure:"ordlock"`
+
+	// gib on-chain git commit-head overlay
+	Gib gibpkg.Config `mapstructure:"gib"`
 
 	// MongoDB (shared by BAP and BSocial)
 	MongoDB MongoDBConfig `mapstructure:"mongodb"`
@@ -153,10 +161,7 @@ type Config struct {
 	// Auth middleware
 	Auth auth.Config `mapstructure:"auth"`
 
-	// Paymail service
-	Paymail paymail.Config `mapstructure:"paymail"`
-
-	// MessageBox URL for remote messagebox server (used by paymail)
+	// MessageBox URL for remote messagebox server
 	MessageBoxURL string `mapstructure:"messagebox_url"`
 }
 
@@ -239,25 +244,26 @@ func (c *Config) CreateLogger(logLevelOverride string) *slog.Logger {
 
 // Services holds all initialized services
 type Services struct {
-	Store   *store.Services
-	PubSub  *pubsub.Services
-	Beef    *beef.Services
-	TXO     *txo.Services
-	Indexer *indexer.Services
-	BSV21   *bsv21.Services
-	BAP     *bap.Services
-	BSocial *bsocial.Services
-	OPNS    *opns.Services
-	OrdLock *ordlockpkg.Services
-	Overlay *overlay.Services
-	Spends  *spends.Services
-	ORDFS   *ordfs.Services
-	Own     *owner.Services
-	Admin   *admin.Services
-	Sweep   *sweep.Services
-	Landing *landing.Services
-	Wallet  *wallet.Services
-	Paymail *paymail.Services
+	Store          *store.Services
+	PubSub         *pubsub.Services
+	Beef           *beef.Services
+	TXO            *txo.Services
+	Indexer        *indexer.Services
+	BSV21          *bsv21.Services
+	BAP            *bap.Services
+	EcosystemAlias *ecosystemalias.Services
+	BSocial        *bsocial.Services
+	OPNS           *opns.Services
+	OrdLock        *ordlockpkg.Services
+	Gib            *gibpkg.Services
+	Overlay        *overlay.Services
+	Spends         *spends.Services
+	ORDFS          *ordfs.Services
+	Own            *owner.Services
+	Admin          *admin.Services
+	Sweep          *sweep.Services
+	Landing        *landing.Services
+	Wallet         *wallet.Services
 
 	// ConfigStore for admin data (users, progress, settings)
 	ConfigStore configpkg.Store
@@ -346,9 +352,11 @@ func (c *Config) SetDefaults(v *viper.Viper) {
 	c.Indexer.SetDefaults(v, "indexer")
 	c.BSV21.SetDefaults(v, "bsv21")
 	c.BAP.SetDefaults(v, "bap")
+	c.EcosystemAlias.SetDefaults(v, "ecosystemalias")
 	c.BSocial.SetDefaults(v, "bsocial")
 	c.OPNS.SetDefaults(v, "opns")
 	c.OrdLock.SetDefaults(v, "ordlock")
+	c.Gib.SetDefaults(v, "gib")
 	c.Overlay.SetDefaults(v, "overlay")
 	c.Spends.SetDefaults(v, "spends")
 	c.ORDFS.SetDefaults(v, "ordfs")
@@ -358,7 +366,6 @@ func (c *Config) SetDefaults(v *viper.Viper) {
 	c.Landing.SetDefaults(v, "landing")
 	c.Wallet.SetDefaults(v, "wallet")
 	c.Auth.SetDefaults(v, "auth")
-	c.Paymail.SetDefaults(v, "paymail")
 	v.SetDefault("messagebox_url", "")
 }
 
@@ -389,7 +396,6 @@ func (c *Config) resolveAllPaths() {
 	c.Overlay.StoragePath = c.resolvePath(c.Overlay.StoragePath)
 	c.Overlay.P2P.StoragePath = c.resolvePath(c.Overlay.P2P.StoragePath)
 	c.P2P.StoragePath = c.resolvePath(c.P2P.StoragePath)
-	c.Paymail.DBPath = c.resolvePath(c.Paymail.DBPath)
 
 	for i := range c.Beef.Chain {
 		c.Beef.Chain[i].Filesystem.Path = c.resolvePath(c.Beef.Chain[i].Filesystem.Path)
@@ -401,9 +407,9 @@ func (c *Config) resolveAllPaths() {
 // The config store is the sole source of truth for all operational settings.
 // Only values actually present in the store are applied — zero values from
 // missing keys leave the Viper defaults in place.
-func (c *Config) applyRuntimeConfig(rc *configpkg.RuntimeConfig) {
+func (c *Config) applyRuntimeConfig(rc *configpkg.RuntimeConfig) error {
 	if !rc.SetupComplete {
-		return
+		return nil
 	}
 
 	// Server
@@ -577,6 +583,56 @@ func (c *Config) applyRuntimeConfig(rc *configpkg.RuntimeConfig) {
 		}
 	}
 
+	// Ecosystem-alias overlay
+	if rc.EcosystemAliasLogLevel != "" {
+		c.EcosystemAlias.LogLevel = rc.EcosystemAliasLogLevel
+	}
+	if rc.EcosystemAliasEnabledSet {
+		if rc.EcosystemAliasEnabled {
+			c.EcosystemAlias.Mode = ecosystemalias.ModeEmbedded
+			c.Overlay.Mode = overlay.ModeEmbedded
+		} else {
+			c.EcosystemAlias.Mode = ecosystemalias.ModeDisabled
+		}
+	}
+	if rc.EcosystemAliasRoutesEnabledSet {
+		c.EcosystemAlias.Routes.Enabled = rc.EcosystemAliasRoutesEnabled
+	}
+	if rc.EcosystemAliasRoutePrefixSet {
+		prefix, err := configpkg.NormalizeEcosystemAliasRoutePrefix(rc.EcosystemAliasRoutePrefix)
+		if err != nil {
+			return fmt.Errorf("apply ecosystem-alias route prefix: %w", err)
+		}
+		c.EcosystemAlias.Routes.Prefix = prefix
+	}
+	if c.EcosystemAlias.Sync == nil && (rc.EcosystemAliasSyncEnabledSet || rc.EcosystemAliasSyncSubIDSet || rc.EcosystemAliasSyncSubID != "" ||
+		rc.EcosystemAliasSyncConcurrencySet || rc.EcosystemAliasSyncBatchSizeSet) {
+		c.EcosystemAlias.Sync = &overlay.OverlaySyncConfig{}
+	}
+	if c.EcosystemAlias.Sync != nil {
+		if rc.EcosystemAliasSyncEnabledSet {
+			c.EcosystemAlias.Sync.Enabled = rc.EcosystemAliasSyncEnabled
+		}
+		if rc.EcosystemAliasSyncSubIDSet || rc.EcosystemAliasSyncSubID != "" {
+			c.EcosystemAlias.Sync.SubscriptionID = rc.EcosystemAliasSyncSubID
+			if !rc.EcosystemAliasSyncEnabledSet && rc.EcosystemAliasSyncSubID != "" {
+				c.EcosystemAlias.Sync.Enabled = true
+			}
+		}
+		if rc.EcosystemAliasSyncConcurrencySet {
+			if err := configpkg.ValidateEcosystemAliasConcurrency(rc.EcosystemAliasSyncConcurrency); err != nil {
+				return fmt.Errorf("apply ecosystem-alias concurrency: %w", err)
+			}
+			c.EcosystemAlias.Sync.Concurrency = rc.EcosystemAliasSyncConcurrency
+		}
+		if rc.EcosystemAliasSyncBatchSizeSet {
+			if err := configpkg.ValidateEcosystemAliasBatchSize(rc.EcosystemAliasSyncBatchSize); err != nil {
+				return fmt.Errorf("apply ecosystem-alias batch size: %w", err)
+			}
+			c.EcosystemAlias.Sync.BatchSize = rc.EcosystemAliasSyncBatchSize
+		}
+	}
+
 	// BSocial overlay
 	if rc.BSocialLogLevel != "" {
 		c.BSocial.LogLevel = rc.BSocialLogLevel
@@ -620,9 +676,6 @@ func (c *Config) applyRuntimeConfig(rc *configpkg.RuntimeConfig) {
 			c.OPNS.Sync.BatchSize = rc.OPNSSyncBatchSize
 		}
 	}
-	if rc.OPNSPaymail {
-		c.Paymail.Mode = "enabled"
-	}
 
 	// OrdLock overlay
 	if rc.OrdLockLogLevel != "" {
@@ -644,6 +697,15 @@ func (c *Config) applyRuntimeConfig(rc *configpkg.RuntimeConfig) {
 		if rc.OrdLockSyncBatchSize > 0 {
 			c.OrdLock.Sync.BatchSize = rc.OrdLockSyncBatchSize
 		}
+	}
+
+	// gib overlay
+	if rc.GibLogLevel != "" {
+		c.Gib.LogLevel = rc.GibLogLevel
+	}
+	if rc.GibEnabled {
+		c.Gib.Mode = gibpkg.ModeEmbedded
+		c.Overlay.Mode = "embedded"
 	}
 
 	// BSV21
@@ -690,14 +752,6 @@ func (c *Config) applyRuntimeConfig(rc *configpkg.RuntimeConfig) {
 		c.Owner.Mode = rc.OwnerMode
 	}
 
-	// Paymail
-	if rc.PaymailMode != "" {
-		c.Paymail.Mode = rc.PaymailMode
-	}
-	if rc.PaymailDBPath != "" {
-		c.Paymail.DBPath = rc.PaymailDBPath
-	}
-
 	// MongoDB
 	if rc.MongoDBURL != "" {
 		c.MongoDB.URL = rc.MongoDBURL
@@ -727,6 +781,8 @@ func (c *Config) applyRuntimeConfig(rc *configpkg.RuntimeConfig) {
 	if rc.PubSubRedisURL != "" {
 		c.PubSub.Redis.URL = rc.PubSubRedisURL
 	}
+
+	return nil
 }
 
 // splitMultiDelim splits a string by newlines, commas, or both, trimming whitespace
@@ -853,7 +909,9 @@ func (c *Config) Initialize(ctx context.Context, logger *slog.Logger) (*Services
 	if err != nil {
 		return nil, fmt.Errorf("failed to load runtime config: %w", err)
 	}
-	c.applyRuntimeConfig(runtimeCfg)
+	if err := c.applyRuntimeConfig(runtimeCfg); err != nil {
+		return nil, fmt.Errorf("failed to apply runtime config: %w", err)
+	}
 	c.resolveAllPaths()
 
 	// Initialize pubsub
@@ -956,6 +1014,9 @@ func (c *Config) Initialize(ctx context.Context, logger *slog.Logger) (*Services
 			return nil, fmt.Errorf("failed to initialize txo: %w", err)
 		}
 		svc.TXO = txoSvc
+		if txoSvc != nil && txoSvc.OutputStore != nil {
+			txoSvc.OutputStore.Network = types.ParseNetwork(c.Network)
+		}
 		logger.Info("txo initialized", "duration", time.Since(start).Round(time.Millisecond))
 	}
 
@@ -1003,7 +1064,7 @@ func (c *Config) Initialize(ctx context.Context, logger *slog.Logger) (*Services
 	// Initialize BSV21
 	if c.BSV21.Mode != bsv21.ModeDisabled && svc.TXO != nil && moduleDeps != nil {
 		start = time.Now()
-		bsv21Svc, err := c.BSV21.Initialize(ctx, logging.NewComponentLogger(logger, "bsv21", c.BSV21.LogLevel), svc.TXO.OutputStore, moduleDeps, svc.ConfigStore, svc.Chaintracks, svc.Beef.Storage, svc.JungleBus)
+		bsv21Svc, err := c.BSV21.Initialize(ctx, logging.NewComponentLogger(logger, "bsv21", c.BSV21.LogLevel), svc.TXO.OutputStore, moduleDeps, svc.ConfigStore, svc.Chaintracks, svc.Beef.Storage, svc.JungleBus, svc.BroadcastHandler)
 		if err != nil {
 			return nil, fmt.Errorf("failed to initialize bsv21: %w", err)
 		}
@@ -1046,6 +1107,35 @@ func (c *Config) Initialize(ctx context.Context, logger *slog.Logger) (*Services
 			svc.BAP.Sync = overlay.NewOverlaySync(syncCfg, "tm_bap", svc.Store.Store, svc.Beef.Storage, svc.BAP.Engine, bapLogger)
 		}
 		logger.Info("bap initialized", "duration", time.Since(start).Round(time.Millisecond))
+	}
+
+	// Initialize BRC-169 ecosystem-alias overlay.
+	if c.EcosystemAlias.Mode != "" && c.EcosystemAlias.Mode != ecosystemalias.ModeDisabled {
+		start = time.Now()
+		ecosystemAliasLogger := logging.NewComponentLogger(logger, "ecosystemalias", c.EcosystemAlias.LogLevel)
+		ecosystemAliasSvc, err := c.EcosystemAlias.Initialize(ctx, ecosystemAliasLogger, moduleDeps)
+		if err != nil {
+			return nil, fmt.Errorf("failed to initialize ecosystem-alias: %w", err)
+		}
+		svc.EcosystemAlias = ecosystemAliasSvc
+
+		if c.EcosystemAlias.Sync != nil && c.EcosystemAlias.Sync.Enabled {
+			if svc.Store == nil || svc.Beef == nil {
+				return nil, fmt.Errorf("ecosystem-alias sync requires store and BEEF services")
+			}
+			if c.EcosystemAlias.Sync.QueueName == "" {
+				c.EcosystemAlias.Sync.QueueName = ecosystemalias.QueueName
+			}
+			svc.EcosystemAlias.Sync = overlay.NewOverlaySync(
+				c.EcosystemAlias.Sync,
+				ecosystemalias.TopicName,
+				svc.Store.Store,
+				svc.Beef.Storage,
+				svc.EcosystemAlias.Engine,
+				ecosystemAliasLogger,
+			)
+		}
+		logger.Info("ecosystem-alias initialized", "duration", time.Since(start).Round(time.Millisecond))
 	}
 
 	// Initialize BSocial
@@ -1107,8 +1197,12 @@ func (c *Config) Initialize(ctx context.Context, logger *slog.Logger) (*Services
 			return nil, fmt.Errorf("failed to initialize ordlock: %w", err)
 		}
 		svc.OrdLock = ordlockSvc
-
-		if svc.Beef != nil {
+		if ordlockSvc != nil && ordlockSvc.LookupV2 != nil && svc.TXO != nil && svc.TXO.OutputStore != nil {
+			ordlockSvc.LookupV2.Network = svc.TXO.OutputStore.Network
+		}
+		// OverlaySync drains q:ordlock2 (fed by the ordlock2 event bridge and the
+		// optional JungleBus subscriber) into the v2 topic via processDirect.
+		if svc.OrdLock != nil && svc.Beef != nil {
 			syncCfg := c.OrdLock.Sync
 			if syncCfg == nil {
 				syncCfg = &overlay.OverlaySyncConfig{}
@@ -1116,9 +1210,37 @@ func (c *Config) Initialize(ctx context.Context, logger *slog.Logger) (*Services
 			if syncCfg.QueueName == "" {
 				syncCfg.QueueName = ordlockpkg.QueueName
 			}
-			svc.OrdLock.Sync = overlay.NewOverlaySync(syncCfg, ordlockpkg.TopicName, svc.Store.Store, svc.Beef.Storage, svc.OrdLock.Engine, ordlockLogger)
+			svc.OrdLock.Sync = overlay.NewOverlaySync(syncCfg, ordlockpkg.TopicNameV2, svc.Store.Store, svc.Beef.Storage, svc.OrdLock.Engine, ordlockLogger)
 		}
 		logger.Info("ordlock initialized", "duration", time.Since(start).Round(time.Millisecond))
+	}
+
+	// Initialize gib
+	if c.Gib.Mode != "" && c.Gib.Mode != gibpkg.ModeDisabled && moduleDeps != nil {
+		start = time.Now()
+		gibLogger := logging.NewComponentLogger(logger, "gib", c.Gib.LogLevel)
+		gibSvc, err := c.Gib.Initialize(ctx, gibLogger, moduleDeps)
+		if err != nil {
+			return nil, fmt.Errorf("failed to initialize gib: %w", err)
+		}
+		svc.Gib = gibSvc
+		if svc.Gib != nil {
+			// `.gib` enrichment reads through this server's own ORDFS content
+			// route so patch chains and binary manifests resolve exactly as
+			// they do for clients.
+			host := c.Server.Host
+			if host == "" || host == "0.0.0.0" || host == "::" {
+				host = "127.0.0.1"
+			}
+			svc.Gib.Lookup.SetMetaFetcher(gibpkg.HTTPMetaFetcher(fmt.Sprintf("http://%s:%d", host, c.Server.Port), nil))
+			if svc.Gib.Routes != nil {
+				svc.Gib.Routes.SetMetaFiller(svc.Gib.Lookup.FillMeta)
+			}
+		}
+		// No sync worker: gib has no queue. A head enters tm_gib only when a
+		// client submits it with the content transactions that prove it, so
+		// there is nothing to drain and nothing to discover.
+		logger.Info("gib initialized", "duration", time.Since(start).Round(time.Millisecond))
 	}
 
 	// Initialize Spends
@@ -1155,9 +1277,9 @@ func (c *Config) Initialize(ctx context.Context, logger *slog.Logger) (*Services
 		}
 		svc.ORDFS = ordfsSvc
 
-		// Wire ORDFS into OrdLock for origin resolution on transferred ordinals
-		if svc.OrdLock != nil && svc.OrdLock.Lookup != nil {
-			svc.OrdLock.Lookup.SetOrdfs(ordfsSvc.Ordfs)
+		// Wire ORDFS into OrdLock v2 for origin resolution on transferred ordinals
+		if svc.OrdLock != nil && svc.OrdLock.LookupV2 != nil {
+			svc.OrdLock.LookupV2.SetOrdfs(ordfsSvc.Ordfs)
 		}
 
 		logger.Info("ordfs initialized", "duration", time.Since(start).Round(time.Millisecond))
@@ -1195,14 +1317,20 @@ func (c *Config) Initialize(ctx context.Context, logger *slog.Logger) (*Services
 			if svc.BAP != nil {
 				lookups["tm_bap"] = svc.BAP.Lookup
 			}
+			if svc.EcosystemAlias != nil {
+				lookups[ecosystemalias.TopicName] = svc.EcosystemAlias.Lookup
+			}
 			if svc.BSocial != nil {
 				lookups["tm_bsocial"] = svc.BSocial.Lookup
 			}
 			if svc.OPNS != nil {
 				lookups["tm_opns"] = svc.OPNS.Lookup
 			}
-			if svc.OrdLock != nil {
-				lookups[ordlockpkg.TopicName] = svc.OrdLock.Lookup
+			if svc.OrdLock != nil && svc.OrdLock.LookupV2 != nil {
+				lookups[ordlockpkg.TopicNameV2] = svc.OrdLock.LookupV2
+			}
+			if svc.Gib != nil {
+				lookups[gibpkg.TopicName] = svc.Gib.Lookup
 			}
 			if svc.BSV21 != nil {
 				lookups["bsv21"] = svc.BSV21.Lookup
@@ -1259,6 +1387,9 @@ func (c *Config) Initialize(ctx context.Context, logger *slog.Logger) (*Services
 		if svc.BAP != nil {
 			engines["bap"] = svc.BAP.Engine
 		}
+		if svc.EcosystemAlias != nil {
+			engines["ecosystemalias"] = svc.EcosystemAlias.Engine
+		}
 		if svc.BSocial != nil {
 			engines["bsocial"] = svc.BSocial.Engine
 		}
@@ -1267,6 +1398,9 @@ func (c *Config) Initialize(ctx context.Context, logger *slog.Logger) (*Services
 		}
 		if svc.OrdLock != nil {
 			engines["ordlock"] = svc.OrdLock.Engine
+		}
+		if svc.Gib != nil {
+			engines["gib"] = svc.Gib.Engine
 		}
 		if svc.BSV21 != nil {
 			engines["bsv21"] = svc.BSV21.Engine
@@ -1364,31 +1498,6 @@ func (c *Config) Initialize(ctx context.Context, logger *slog.Logger) (*Services
 
 	}
 
-	// Initialize Paymail service (requires OpNS + ORDFS + BroadcastHandler, optionally remote MessageBox)
-	if c.Paymail.Mode != paymail.ModeDisabled && c.Paymail.Mode != "" {
-		paymailDeps := &paymail.InitializeDeps{}
-		if svc.OPNS != nil && svc.OPNS.Lookup != nil {
-			paymailDeps.OpnsLookup = svc.OPNS.Lookup
-		}
-		if svc.ORDFS != nil && svc.ORDFS.Ordfs != nil {
-			paymailDeps.Ordfs = svc.ORDFS.Ordfs
-		}
-		paymailDeps.BroadcastHandler = svc.BroadcastHandler
-		if svc.Beef != nil && svc.Beef.Storage != nil {
-			paymailDeps.BeefStorage = svc.Beef.Storage
-		}
-		if c.MessageBoxURL != "" && svc.Wallet != nil {
-			paymailDeps.MessageBoxClient = paymail.NewMessageBoxClient(
-				c.MessageBoxURL, svc.Wallet.Wallet, logger,
-			)
-		}
-		paymailSvc, err := c.Paymail.Initialize(ctx, logging.NewComponentLogger(logger, "paymail", ""), paymailDeps)
-		if err != nil {
-			return nil, fmt.Errorf("failed to initialize paymail: %w", err)
-		}
-		svc.Paymail = paymailSvc
-	}
-
 	// Initialize JungleBus subscribers from per-module subscription configs
 	if svc.Store != nil && svc.JungleBus != nil {
 		start = time.Now()
@@ -1404,6 +1513,19 @@ func (c *Config) Initialize(ctx context.Context, logger *slog.Logger) (*Services
 			logger.Info("BSV21 JungleBus subscriber initialized", "queue", "bsv21", "from_block", subCfg.FromBlock)
 		}
 
+		// OrdLock v2 subscriber (if subscription_id configured). The JungleBus
+		// subscription should filter on output type "ordlock2" (listings) and
+		// input type "ordlock2" (purchases/cancels).
+		if svc.OrdLock != nil && c.OrdLock.Sync != nil && c.OrdLock.Sync.SubscriptionID != "" {
+			subCfg := c.OrdLock.Sync.SubscriberConfig()
+			sub, err := jbsync.NewSubscriber(subCfg, svc.Store.Store, svc.ConfigStore, svc.Chaintracks, svc.JungleBus, logger)
+			if err != nil {
+				return nil, fmt.Errorf("failed to create ordlock subscriber: %w", err)
+			}
+			svc.JBSubscribers = append(svc.JBSubscribers, sub)
+			logger.Info("OrdLock v2 JungleBus subscriber initialized", "queue", subCfg.QueueName, "from_block", subCfg.FromBlock)
+		}
+
 		// BAP subscriber (if subscription_id configured)
 		if svc.BAP != nil && c.BAP.Sync != nil && c.BAP.Sync.SubscriptionID != "" {
 			subCfg := c.BAP.Sync.SubscriberConfig()
@@ -1415,6 +1537,17 @@ func (c *Config) Initialize(ctx context.Context, logger *slog.Logger) (*Services
 			logger.Info("BAP JungleBus subscriber initialized", "queue", subCfg.QueueName, "from_block", subCfg.FromBlock)
 		}
 
+		// Ecosystem-alias subscriber (if subscription_id configured).
+		if svc.EcosystemAlias != nil && svc.EcosystemAlias.Sync != nil && c.EcosystemAlias.Sync != nil && c.EcosystemAlias.Sync.SubscriptionID != "" {
+			subCfg := c.EcosystemAlias.Sync.SubscriberConfig()
+			sub, err := jbsync.NewSubscriber(subCfg, svc.Store.Store, svc.ConfigStore, svc.Chaintracks, svc.JungleBus, logger)
+			if err != nil {
+				return nil, fmt.Errorf("failed to create ecosystem-alias subscriber: %w", err)
+			}
+			svc.JBSubscribers = append(svc.JBSubscribers, sub)
+			logger.Info("ecosystem-alias JungleBus subscriber initialized", "queue", subCfg.QueueName, "from_block", subCfg.FromBlock)
+		}
+
 		// BSocial subscriber (if subscription_id configured)
 		if svc.BSocial != nil && c.BSocial.Sync != nil && c.BSocial.Sync.SubscriptionID != "" {
 			subCfg := c.BSocial.Sync.SubscriberConfig()
@@ -1424,17 +1557,6 @@ func (c *Config) Initialize(ctx context.Context, logger *slog.Logger) (*Services
 			}
 			svc.JBSubscribers = append(svc.JBSubscribers, sub)
 			logger.Info("BSocial JungleBus subscriber initialized", "queue", subCfg.QueueName, "from_block", subCfg.FromBlock)
-		}
-
-		// OrdLock subscriber (if subscription_id configured)
-		if svc.OrdLock != nil && c.OrdLock.Sync != nil && c.OrdLock.Sync.SubscriptionID != "" {
-			subCfg := c.OrdLock.Sync.SubscriberConfig()
-			sub, err := jbsync.NewSubscriber(subCfg, svc.Store.Store, svc.ConfigStore, svc.Chaintracks, svc.JungleBus, logger)
-			if err != nil {
-				return nil, fmt.Errorf("failed to create ordlock subscriber: %w", err)
-			}
-			svc.JBSubscribers = append(svc.JBSubscribers, sub)
-			logger.Info("OrdLock JungleBus subscriber initialized", "queue", subCfg.QueueName, "from_block", subCfg.FromBlock)
 		}
 
 		// Ingest subscribers (multiple subscription_ids filling q:ingest)
@@ -1534,6 +1656,15 @@ func (c *Config) RegisterRoutes(app *fiber.App, svc *Services) {
 		})
 	}
 
+	if svc.EcosystemAlias != nil && svc.EcosystemAlias.OverlayRoutes != nil {
+		prefix := prefixOr(c.EcosystemAlias.Routes.Prefix, "/ecosystemalias")
+		reg.Add(registrar.Registration{
+			Capability: "ecosystemalias",
+			Mounts: moduleMounts(prefix, prefix+"/overlay",
+				nil, svc.EcosystemAlias.OverlayRoutes, overlayBodyLimit),
+		})
+	}
+
 	if svc.BSocial != nil {
 		reg.Add(registrar.Registration{
 			Capability: "bsocial",
@@ -1558,6 +1689,16 @@ func (c *Config) RegisterRoutes(app *fiber.App, svc *Services) {
 			Spec:       ordlockdocs.Spec,
 			Mounts: moduleMounts(prefixOr(c.OrdLock.Routes.Prefix, "/market"), "/market/overlay",
 				registerFunc(svc.OrdLock.Routes), svc.OrdLock.OverlayRoutes, overlayBodyLimit),
+		})
+	}
+
+	if svc.Gib != nil {
+		prefix := prefixOr(c.Gib.Routes.Prefix, "/gib")
+		reg.Add(registrar.Registration{
+			Capability: "gib",
+			Spec:       gibdocs.Spec,
+			Mounts: moduleMounts(prefix, prefix+"/overlay",
+				registerFunc(svc.Gib.Routes), svc.Gib.OverlayRoutes, overlayBodyLimit),
 		})
 	}
 
@@ -1589,10 +1730,10 @@ func (c *Config) RegisterRoutes(app *fiber.App, svc *Services) {
 		}})
 	}
 
-	// Broadcast routes (POST /tx, GET /tx/:txid). Label predates the arcade
-	// removal; kept for SDK compatibility.
+	// Arcade-shaped routes under /arcade; /tx kept for submit/status compatibility.
 	if svc.BroadcastRoutes != nil {
 		reg.Add(registrar.Registration{Capability: "arcade", Spec: broadcastdocs.Spec, Mounts: []registrar.Mount{
+			{Prefix: "/arcade", Register: svc.BroadcastRoutes.RegisterArcade},
 			{Prefix: "/tx", Register: svc.BroadcastRoutes.Register},
 		}})
 	}
@@ -1634,22 +1775,6 @@ func (c *Config) RegisterRoutes(app *fiber.App, svc *Services) {
 		reg.Add(registrar.Registration{Capability: "sweep", Mounts: []registrar.Mount{
 			{Prefix: prefixOr(c.Sweep.Routes.Prefix, "/sweep"), Register: svc.Sweep.Routes.Register},
 		}})
-	}
-
-	if svc.Paymail != nil && svc.Paymail.Routes != nil {
-		prefix := prefixOr(c.Paymail.Routes.Prefix, "/bsvalias")
-		svc.Paymail.Routes.SetPathPrefix(c.Server.BasePath + prefix)
-		reg.Add(registrar.Registration{
-			Capability: "paymail",
-			Spec:       paymaildocs.Spec,
-			Mounts: []registrar.Mount{
-				{Prefix: prefix, Register: svc.Paymail.Routes.Register},
-			},
-			// /.well-known/bsvalias at app root for capability discovery
-			RootMounts: []registrar.Mount{
-				{Register: func(fiber.Router) { svc.Paymail.Routes.RegisterWellKnown(app) }},
-			},
-		})
 	}
 
 	reg.Add(registrar.Registration{Mounts: []registrar.Mount{{
@@ -1795,9 +1920,21 @@ func (svc *Services) Close() error {
 		}
 	}
 
+	if svc.Gib != nil {
+		if err := svc.Gib.Close(); err != nil {
+			errs = append(errs, fmt.Errorf("gib close: %w", err))
+		}
+	}
+
 	if svc.BSocial != nil {
 		if err := svc.BSocial.Close(); err != nil {
 			errs = append(errs, fmt.Errorf("bsocial close: %w", err))
+		}
+	}
+
+	if svc.EcosystemAlias != nil {
+		if err := svc.EcosystemAlias.Close(); err != nil {
+			errs = append(errs, fmt.Errorf("ecosystem-alias close: %w", err))
 		}
 	}
 
@@ -1912,6 +2049,48 @@ func (svc *Services) StartSubscribers(ctx context.Context, logger *slog.Logger) 
 				logger.Error("failed to start BSocial event bridge", "error", err)
 			}
 		}
+		// OrdLock v2: listing outputs (ordlock2) and their spends (spend:ordlock2)
+		// from the indexer route to the v2 topic. No GASP: admission only checks
+		// the script, so processDirect is sufficient.
+		//
+		// Queue only, no immediate-submit path (SubmitBuffer 0). The immediate
+		// path never dequeued what it submitted, so every live transaction was
+		// applied twice, once by it and once by the queue workers about a
+		// second later, and with the queue at concurrency 8 a spend could be
+		// applied while its listing was still in flight on the other path.
+		// The engine then saw no coin for the spend and recorded nothing
+		// (2026-09-12: listing 6f3cff09…, cancel c705a20c…). Live events carry
+		// arrival-time scores, so the single-threaded queue keeps listing
+		// before spend on its own.
+		if svc.OrdLock != nil && svc.OrdLock.Sync != nil {
+			bridge := overlay.NewEventBridge(&overlay.EventBridgeConfig{
+				PubSub:   svc.PubSub.PubSub,
+				Store:    svc.Store.Store,
+				Patterns: []string{"ordlock2", "spend:ordlock2"},
+				QueueFunc: func(ev pubsub.Event) string {
+					return string(txo.KeyQueue(ordlockpkg.QueueName))
+				},
+				Logger:       logger,
+				Engine:       svc.OrdLock.Engine,
+				BeefStorage:  svc.Beef.Storage,
+				SubmitBuffer: 0,
+			})
+			if err := bridge.Start(ctx); err != nil {
+				logger.Error("failed to start OrdLock v2 event bridge", "error", err)
+			}
+			// Spends are recorded directly from the indexer's spend events as
+			// well: the engine drops OutputSpent for coins it has not admitted
+			// yet, so a spend ingested alongside its listing would otherwise
+			// leave the listing active.
+			spendSync := ordlockpkg.NewSpendSync(svc.PubSub.PubSub, svc.Beef.Storage, svc.OrdLock.LookupV2, logger)
+			if err := spendSync.Start(ctx); err != nil {
+				logger.Error("failed to start OrdLock v2 spend sync", "error", err)
+			}
+		}
+		// gib subscribes to nothing. Heads are submitted, never ingested,
+		// and a spend is only of interest when the engine sees it at
+		// admission — a push taking the branch's previous head as an input.
+		// Its `gib` and `gib:{origin}` events stay for readers.
 		if svc.OPNS != nil && svc.OPNS.Sync != nil {
 			bridge := overlay.NewEventBridge(&overlay.EventBridgeConfig{
 				PubSub:   svc.PubSub.PubSub,
@@ -1927,23 +2106,6 @@ func (svc *Services) StartSubscribers(ctx context.Context, logger *slog.Logger) 
 			})
 			if err := bridge.Start(ctx); err != nil {
 				logger.Error("failed to start OPNS event bridge", "error", err)
-			}
-		}
-		if svc.OrdLock != nil && svc.OrdLock.Sync != nil {
-			bridge := overlay.NewEventBridge(&overlay.EventBridgeConfig{
-				PubSub:   svc.PubSub.PubSub,
-				Store:    svc.Store.Store,
-				Patterns: []string{"ordlock", "spend:ordlock"},
-				QueueFunc: func(ev pubsub.Event) string {
-					return string(txo.KeyQueue(ordlockpkg.QueueName))
-				},
-				Logger:       logger,
-				Engine:       svc.OrdLock.Engine,
-				BeefStorage:  svc.Beef.Storage,
-				SubmitBuffer: 64,
-			})
-			if err := bridge.Start(ctx); err != nil {
-				logger.Error("failed to start OrdLock event bridge", "error", err)
 			}
 		}
 		if svc.BSV21 != nil && svc.BSV21.Sync != nil {
@@ -1994,6 +2156,14 @@ func (svc *Services) StartSubscribers(ctx context.Context, logger *slog.Logger) 
 		}()
 		logger.Info("started BAP overlay sync")
 	}
+	if svc.EcosystemAlias != nil && svc.EcosystemAlias.Sync != nil {
+		go func() {
+			if err := svc.EcosystemAlias.Sync.Start(ctx); err != nil {
+				logger.Error("ecosystem-alias sync error", "error", err)
+			}
+		}()
+		logger.Info("started ecosystem-alias overlay sync")
+	}
 	if svc.BSocial != nil && svc.BSocial.Sync != nil {
 		go func() {
 			if err := svc.BSocial.Sync.Start(ctx); err != nil {
@@ -2005,10 +2175,10 @@ func (svc *Services) StartSubscribers(ctx context.Context, logger *slog.Logger) 
 	if svc.OrdLock != nil && svc.OrdLock.Sync != nil {
 		go func() {
 			if err := svc.OrdLock.Sync.Start(ctx); err != nil {
-				logger.Error("OrdLock sync error", "error", err)
+				logger.Error("OrdLock v2 sync error", "error", err)
 			}
 		}()
-		logger.Info("started OrdLock overlay sync")
+		logger.Info("started OrdLock v2 overlay sync")
 	}
 	if svc.OPNS != nil && svc.OPNS.Sync != nil {
 		go func() {

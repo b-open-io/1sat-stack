@@ -32,11 +32,6 @@ Transactions enter the system through three independent paths:
     ┌─────┬───┼───┬────────┐
     ▼     ▼   ▼   ▼        ▼
   BAP  BSV21 OPNS OrdLock BSocial
-              │
-              ▼
-        ┌──────────┐
-        │  Paymail │◄── ORDFS, MessageBox
-        └──────────┘
 
  Separate:
    Owner ──▶ requires JungleBus (full chain index)
@@ -94,7 +89,6 @@ These services initialize automatically with sensible defaults. No user configur
 | Module | Config Key | Modes | Default | Hard Deps | Soft Deps |
 |--------|-----------|-------|---------|-----------|-----------|
 | Auth | `auth` | conditional | — | Wallet | — |
-| Paymail | `paymail` | enabled, disabled | disabled | OPNS, ORDFS, MessageBox | — |
 
 ### Optional Data Source
 
@@ -127,9 +121,6 @@ Enabling certain features implies a chain of required modules:
 
 **"I want to index BSV21 tokens"**
 → Overlay + BSV21 (Store, PubSub, Beef, TXO already always-on)
-
-**"I want paymail"**
-→ Overlay + OPNS + Paymail (ORDFS and MessageBox already always-on)
 
 **"I just want ORDFS content serving"**
 → Already running (always-on)

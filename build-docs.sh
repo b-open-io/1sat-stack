@@ -24,9 +24,9 @@ bap:routes.go
 bsocial:routes.go
 opns:routes.go
 ordlock:routes.go
+gib:routes.go
 ordfs:routes.go
 chaintracks:swagger.go
-paymail:routes.go
 broadcast:routes.go
 "
 

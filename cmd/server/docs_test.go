@@ -11,7 +11,6 @@ import (
 	broadcastdocs "github.com/b-open-io/1sat-stack/pkg/broadcast/docs"
 	opnsdocs "github.com/b-open-io/1sat-stack/pkg/opns/docs"
 	ordlockdocs "github.com/b-open-io/1sat-stack/pkg/ordlock/docs"
-	paymaildocs "github.com/b-open-io/1sat-stack/pkg/paymail/docs"
 	"github.com/b-open-io/1sat-stack/pkg/registrar"
 	"github.com/gofiber/fiber/v2"
 )
@@ -28,8 +27,7 @@ func TestMergedSpecPaths(t *testing.T) {
 		}})
 	}
 	add("opns", "/opns", opnsdocs.Spec)
-	add("paymail", "/bsvalias", paymaildocs.Spec)
-	add("arcade", "/tx", broadcastdocs.Spec)
+	add("arcade", "/arcade", broadcastdocs.Spec)
 	add("market", "/market", ordlockdocs.Spec)
 	add("admin", "/admin", admindocs.Spec)
 	reg.Finalize()
@@ -50,9 +48,10 @@ func TestMergedSpecPaths(t *testing.T) {
 	wantPresent := []string{
 		"/1sat/opns/origin/{name}",
 		"/1sat/opns/overlay/submit",
-		"/1sat/bsvalias/id/{paymail}",
-		"/.well-known/bsvalias",
-		"/1sat/tx/{txid}",
+		"/1sat/arcade/tx",
+		"/1sat/arcade/txs",
+		"/1sat/arcade/tx/{txid}",
+		"/1sat/arcade/policy",
 		"/1sat/market/overlay/submit",
 		"/1sat/admin/api/whitelist",
 		"/1sat/capabilities",
@@ -65,10 +64,8 @@ func TestMergedSpecPaths(t *testing.T) {
 	}
 
 	wantAbsent := []string{
-		"/1sat/arcade/tx",
+		"/1sat/tx/policy",
 		"/arcade/tx",
-		"/v1/bsvalias/id/{paymail}",
-		"/1sat/bsvalias/.well-known/bsvalias",
 	}
 	for _, p := range wantAbsent {
 		if _, ok := doc.Paths[p]; ok {

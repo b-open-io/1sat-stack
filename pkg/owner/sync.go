@@ -11,9 +11,16 @@ import (
 	"github.com/b-open-io/1sat-stack/pkg/config"
 	"github.com/b-open-io/1sat-stack/pkg/dedup"
 	"github.com/b-open-io/1sat-stack/pkg/indexer"
+	"github.com/b-open-io/1sat-stack/pkg/store"
 	"github.com/b-open-io/1sat-stack/pkg/txo"
 	"github.com/b-open-io/go-junglebus"
+	"github.com/bsv-blockchain/go-sdk/chainhash"
 )
+
+// confirmedScoreBoundary separates confirmed HeightScore values (block height
+// ~850k) from mempool unix-timestamp scores (~1.7e9). Same split as the
+// pending auditor.
+const confirmedScoreBoundary = 10_000_000
 
 const defaultSyncConcurrency = 16
 
@@ -140,13 +147,15 @@ func (s *OwnerSync) syncWithProgress(ctx context.Context, owner string, progress
 		return nil
 	}
 
-	// Filter out already-synced txns to get accurate total
+	// Filter out already-synced mined txns. Height 0 is JungleBus mempool:
+	// those rows have no height, so they cannot be cursor'd via lastHeight
+	// and must be included every fetch. skipIngest de-dupes them.
 	var toProcess []struct {
 		txid        string
 		blockHeight uint32
 	}
 	for _, addTxn := range addTxns {
-		if float64(addTxn.BlockHeight) >= lastHeight {
+		if includeJungleBusTx(addTxn.BlockHeight, lastHeight) {
 			toProcess = append(toProcess, struct {
 				txid        string
 				blockHeight uint32
@@ -201,6 +210,21 @@ func (s *OwnerSync) syncWithProgress(ctx context.Context, owner string, progress
 				wg.Done()
 			}()
 
+			skip, err := s.skipIngest(ctx, txid, blockHeight)
+			if err != nil {
+				s.logger.Error("OwnerSync: skip check failed", "txid", txid, "error", err)
+			} else if skip {
+				mu.Lock()
+				processed++
+				mu.Unlock()
+				sendProgress(SyncProgress{
+					Phase:     "ingest",
+					Total:     total,
+					Processed: processed,
+				})
+				return
+			}
+
 			if _, err := s.indexer.IngestTxid(ctx, txid); err != nil {
 				s.logger.Error("OwnerSync: error ingesting txid", "txid", txid, "height", blockHeight, "error", err)
 				mu.Lock()
@@ -249,4 +273,60 @@ func (s *OwnerSync) syncWithProgress(ctx context.Context, owner string, progress
 
 	sendProgress(SyncProgress{Phase: "done", Height: uint32(newMaxHeight)})
 	return nil
+}
+
+// includeJungleBusTx reports whether a JungleBus address row should be
+// considered for ingest. Mined txs use lastHeight as a cursor. Mempool txs
+// (BlockHeight == 0) have no height and are always candidates; skipIngest
+// drops ones already stored.
+func includeJungleBusTx(blockHeight uint32, lastHeight float64) bool {
+	return blockHeight == 0 || float64(blockHeight) >= lastHeight
+}
+
+// shouldSkipIngest reports whether IngestTxid can be skipped.
+//
+//   - Never stored: ingest.
+//   - In immutable log: skip (already confirmed).
+//   - In pending, this fetch is mempool (height 0): skip (already indexed).
+//   - In pending with a confirmed score, this fetch is mined: skip.
+//   - In pending with a mempool score, this fetch is mined: re-ingest so
+//     ZAdd moves owner-set members from timestamp → height.
+func shouldSkipIngest(blockHeight uint32, pendingScore *float64, inImmutable bool) bool {
+	if inImmutable {
+		return true
+	}
+	if pendingScore == nil {
+		return false
+	}
+	if blockHeight == 0 {
+		return true
+	}
+	return *pendingScore < confirmedScoreBoundary
+}
+
+func (s *OwnerSync) skipIngest(ctx context.Context, txid string, blockHeight uint32) (bool, error) {
+	if s.outputStore == nil {
+		return false, nil
+	}
+	hash, err := chainhash.NewHashFromHex(txid)
+	if err != nil {
+		return false, err
+	}
+
+	pendingScore, err := s.outputStore.Store.ZScore(ctx, txo.KeyLog(txo.PendingTxLog), hash[:])
+	if err == nil {
+		return shouldSkipIngest(blockHeight, &pendingScore, false), nil
+	}
+	if !errors.Is(err, store.ErrKeyNotFound) {
+		return false, err
+	}
+
+	_, err = s.outputStore.Store.ZScore(ctx, txo.KeyLog(txo.ImmutableTxLog), hash[:])
+	if err == nil {
+		return shouldSkipIngest(blockHeight, nil, true), nil
+	}
+	if !errors.Is(err, store.ErrKeyNotFound) {
+		return false, err
+	}
+	return shouldSkipIngest(blockHeight, nil, false), nil
 }

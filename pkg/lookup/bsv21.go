@@ -49,6 +49,8 @@ type BSV21Lookup struct {
 	topicDB   overlaystorage.Factory
 	ready     sync.Map // tracks which topics have had schema created
 	mintCache sync.Map
+	// Network selects the address prefix stored in token_outputs. Zero value is mainnet.
+	Network types.Network
 }
 
 // NewBSV21Lookup creates a new BSV21 lookup service backed by per-topic overlay storage.
@@ -114,10 +116,10 @@ func (l *BSV21Lookup) OutputAdmittedByTopic(ctx context.Context, payload *engine
 
 	var lockType, address string
 	suffix := script.NewFromBytes(b.Insc.ScriptSuffix)
-	if p := p2pkh.Decode(suffix, true); p != nil {
+	if p := p2pkh.Decode(suffix, l.Network.Mainnet()); p != nil {
 		lockType = "p2pkh"
 		address = p.AddressString
-	} else if c := cosign.Decode(suffix); c != nil {
+	} else if c := cosign.Decode(suffix, l.Network.Mainnet()); c != nil {
 		lockType = "cos"
 		address = c.Address
 	}

@@ -65,7 +65,7 @@
         },
         "/search": {
             "get": {
-                "description": "Search transaction outputs by indexed keys. Keys use type prefixes: \"ev:\" for events, \"tp:\" for topics. Without prefix, \"ev:\" is assumed.",
+                "description": "Search transaction outputs by indexed keys. Keys use type prefixes: \"ev:\" for events, \"tp:\" for topics. Without prefix, \"ev:\" is assumed. Public searches for deprecated listing events and topics are omitted; owner-only searches and owner intersections still resolve remaining inventory.",
                 "produces": [
                     "application/json"
                 ],

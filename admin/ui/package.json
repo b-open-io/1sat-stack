@@ -6,7 +6,8 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "test": "bun test"
   },
   "dependencies": {
     "@1sat/actions": "0.0.88",
@@ -14,7 +15,7 @@
     "@1sat/connect": "0.0.26",
     "@1sat/react": "^0.0.36",
     "@1sat/types": "^0.0.9",
-    "@bsv/sdk": "^2.0.12",
+    "@bsv/sdk": "^2.5.0",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "lucide-react": "^0.577.0",

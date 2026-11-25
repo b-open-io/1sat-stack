@@ -2775,6 +2775,10 @@
                     "description": "List status",
                     "type": "boolean"
                 },
+                "min_funding": {
+                    "description": "Satoshis the fee address must receive before the token is indexed",
+                    "type": "integer"
+                },
                 "output_count": {
                     "type": "integer"
                 },

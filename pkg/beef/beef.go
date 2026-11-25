@@ -124,9 +124,15 @@ func NewStorage(connectionString string, chainTracker chaintracker.ChainTracker)
 	return NewStorageFromProviders(storages, chainTracker), nil
 }
 
-// LoadBeef loads a BEEF from storage.
+// LoadBeef returns a copy of the transaction's BEEF that the caller owns. The
+// loader shares one instance among concurrent callers for the same txid, and
+// go-sdk merges (MergeBeef, Transaction.BEEF) combine BUMPs in place.
 func (s *Storage) LoadBeef(ctx context.Context, txid *chainhash.Hash) (*transaction.Beef, error) {
-	return s.loader.Load(*txid)
+	beef, err := s.loader.Load(*txid)
+	if err != nil {
+		return nil, err
+	}
+	return beef.Clone(), nil
 }
 
 // MergeBeef takes an existing Beef object and merges in additional transactions by their txids.
@@ -136,7 +142,7 @@ func (s *Storage) MergeBeef(ctx context.Context, beef *transaction.Beef, txids [
 	}
 
 	for _, txid := range txids {
-		additionalBeef, err := s.loader.Load(*txid)
+		additionalBeef, err := s.LoadBeef(ctx, txid)
 		if err != nil {
 			return nil, errors.New("failed to load tx for merge " + txid.String() + ": " + err.Error())
 		}
@@ -207,7 +213,7 @@ func (s *Storage) loadBeefInternal(ctx context.Context, txid *chainhash.Hash) (*
 
 		if tx.MerklePath == nil {
 			for _, input := range tx.Inputs {
-				inputBeef, err := s.loader.Load(*input.SourceTXID)
+				inputBeef, err := s.LoadBeef(ctx, input.SourceTXID)
 				if err != nil {
 					return nil, errors.New(ErrMissingInputs.Error() + ": " + input.SourceTXID.String())
 				}
@@ -475,13 +481,10 @@ func (s *Storage) PopulateAncestors(ctx context.Context, tx *transaction.Transac
 }
 
 func (s *Storage) BuildFullBeef(ctx context.Context, txid *chainhash.Hash) ([]byte, error) {
-	loaded, err := s.LoadBeef(ctx, txid)
+	beef, err := s.LoadBeef(ctx, txid)
 	if err != nil {
 		return nil, err
 	}
-	// The loader shares one Beef instance among concurrent callers for the
-	// same txid; clone before mutating it below.
-	beef := loaded.Clone()
 	tx := beef.FindTransactionForSigningByHash(txid)
 	if tx == nil {
 		return nil, errors.New("transaction " + txid.String() + " not found in BEEF")

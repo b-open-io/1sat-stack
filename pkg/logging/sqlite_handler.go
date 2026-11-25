@@ -173,6 +173,16 @@ func (h *SQLiteHandler) Enabled(_ context.Context, level slog.Level) bool {
 // NewComponentLogger) may legitimately raise the effective level above
 // h.opts.Level; re-checking opts.Level here would defeat that override and
 // silently drop records the caller intended to keep.
+// attrValue returns the JSON-serializable form of an attribute value. Errors
+// are stored as their message: json.Marshal renders most error types as {}.
+func attrValue(v slog.Value) any {
+	v = v.Resolve()
+	if err, ok := v.Any().(error); ok {
+		return err.Error()
+	}
+	return v.Any()
+}
+
 func (h *SQLiteHandler) Handle(_ context.Context, r slog.Record) error {
 	component := h.component
 	attrsMap := make(map[string]any, len(h.preAttrs))
@@ -182,7 +192,7 @@ func (h *SQLiteHandler) Handle(_ context.Context, r slog.Record) error {
 		if a.Key == ComponentKey {
 			component = a.Value.String()
 		} else {
-			attrsMap[h.prefixKey(a.Key)] = a.Value.Any()
+			attrsMap[h.prefixKey(a.Key)] = attrValue(a.Value)
 		}
 	}
 
@@ -191,7 +201,7 @@ func (h *SQLiteHandler) Handle(_ context.Context, r slog.Record) error {
 		if a.Key == ComponentKey && h.group == "" {
 			component = a.Value.String()
 		} else {
-			attrsMap[h.prefixKey(a.Key)] = a.Value.Any()
+			attrsMap[h.prefixKey(a.Key)] = attrValue(a.Value)
 		}
 		return true
 	})

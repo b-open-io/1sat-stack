@@ -26,9 +26,18 @@ type ParseContext struct {
 	IsOrigin      bool                  // True if this 1-sat output is an ordinal origin (not a transfer)
 	Ctx           context.Context       // For parsers that need network calls (optional)
 	Ordfs         *ordfs.Ordfs          // Origin resolution via ORDFS (optional)
+	Network       types.Network         // Address prefix. Zero value is mainnet.
 
 	// Accumulated results from parsers (keyed by tag)
 	Results map[string]*ParseResult
+}
+
+// Mainnet reports whether address strings should use the mainnet prefix.
+func (ctx *ParseContext) Mainnet() bool {
+	if ctx == nil {
+		return true
+	}
+	return ctx.Network.Mainnet()
 }
 
 // ParserFunc is a function that parses a script and returns a ParseResult
@@ -42,8 +51,8 @@ var Parsers = map[string]ParserFunc{
 	TagBSV21:       ParseBSV21,
 	TagOrdLock:     ParseOrdLock,
 	TagCosign:      ParseCosign,
-	TagShrug:       ParseShrug,
 	TagOPNS:        ParseOPNS,
+	TagGib:         ParseGib,
 	TagBitcom:      ParseBitcom,
 	TagB:           ParseB,
 	TagMAP:         ParseMAP,
@@ -65,6 +74,7 @@ var DefaultTags = []string{
 	TagOrdLock,     // Ordinal lock listings
 	TagCosign,      // Cosign protocol
 	TagOPNS,        // OpNS mine outputs
+	TagGib,         // gib commit heads (branch pointers)
 	TagBitcom,      // Base bitcom parser (must come before B, MAP, etc.)
 	TagB,           // B:// protocol
 	TagMAP,         // MAP protocol
