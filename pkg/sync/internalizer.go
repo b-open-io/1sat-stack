@@ -133,6 +133,16 @@ func classifyOutput(events []string, satoshis uint64) *outputClassification {
 		}
 	}
 
+	// Twetch NFT ("twonk"): hash lock + P2PKH + JSON. Never plain funds, because
+	// spending it needs the hash preimage as well as the owner's signature.
+	if hasEvent("twetch") {
+		return &outputClassification{
+			basket:   "twetch",
+			protocol: sdk.InternalizeProtocolBasketInsertion,
+			tags:     []string{"twetch"},
+		}
+	}
+
 	// Ordinal (has origin event)
 	if hasEvent("origin:") {
 		return &outputClassification{
@@ -210,6 +220,20 @@ func (i *Internalizer) FromSync(ctx context.Context, beef []byte, txid string, o
 			if d, ok := derivations[addr]; ok {
 				deriv = &d
 				break
+			}
+		}
+		// A Twetch NFT names its owner in a "twetch:<address>" event, not in
+		// Owners, so that wallets that don't know the format never take it for funds.
+		if deriv == nil {
+			for _, ev := range idxOutput.Events {
+				addr, ok := strings.CutPrefix(ev, "twetch:")
+				if !ok {
+					continue
+				}
+				if d, ok := derivations[addr]; ok {
+					deriv = &d
+					break
+				}
 			}
 		}
 		if deriv == nil {
