@@ -10,7 +10,7 @@
         "@1sat/connect": "0.0.26",
         "@1sat/react": "^0.0.36",
         "@1sat/types": "^0.0.9",
-        "@bsv/sdk": "^2.0.12",
+        "@bsv/sdk": "^2.5.0",
         "class-variance-authority": "^0.7.1",
         "clsx": "^2.1.1",
         "lucide-react": "^0.577.0",
@@ -112,7 +112,7 @@
 
     "@bsv/payment-express-middleware": ["@bsv/payment-express-middleware@2.0.1", "", { "dependencies": { "@bsv/sdk": "^2.0.4", "express": "^5.1.0" } }, "sha512-pFit3zEi6R2ixFWugXb6WgRoEFNXmmwRaV0oO3ala1gobtJIjc0WEJEASUQD6NYraEt7ql4xHDSkIWcisKO27g=="],
 
-    "@bsv/sdk": ["@bsv/sdk@2.0.12", "", {}, "sha512-UEIOrTzNycYoj+OHc6AoPXz8Wb1KQAkeeBXsk2emtn0wBi3vcs6AZ4yvwsfZvjiQYyBcJwgbx8KRRstgAT5bOQ=="],
+    "@bsv/sdk": ["@bsv/sdk@2.5.0", "", {}, "sha512-Y1j9iEjpcY09Jvr3HcoXQO2dhn/qEAHsEi+S/yqvu/hwkx2OdH+UlFbEE4na97lNO0UzrIUYFZIL7FJxUSje2w=="],
 
     "@bsv/wallet-toolbox": ["@bsv/wallet-toolbox@2.1.2", "", { "dependencies": { "@bsv/auth-express-middleware": "^2.0.4", "@bsv/payment-express-middleware": "^2.0.0", "@bsv/sdk": "^2.0.4", "better-sqlite3": "^12.6.2", "express": "^4.21.2", "idb": "^8.0.2", "knex": "^3.1.0", "mysql2": "^3.12.0", "ws": "^8.18.3" } }, "sha512-1LXHe9MXjB6SaGTPNeqTq0Zx+l/vP7nen/W02lPDbfCApNzLBGtIydVkP7LB7asDoIUIFS5PcDVcGCOssy9OEw=="],
 

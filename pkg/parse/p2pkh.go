@@ -17,7 +17,7 @@ func ParseP2PKH(ctx *ParseContext) (*ParseResult, error) {
 	}
 
 	prefix := script.Script(ctx.LockingScript[:25])
-	addr := p2pkh.Decode(&prefix, true)
+	addr := p2pkh.Decode(&prefix, ctx.Mainnet())
 	if addr == nil {
 		return nil, nil
 	}
@@ -33,7 +33,7 @@ func ParseP2PKH(ctx *ParseContext) (*ParseResult, error) {
 	}
 
 	if len(ctx.LockingScript) == 25 {
-		result.Events = []string{TagP2PKH + ":" + pkHash.Address()}
+		result.Events = []string{TagP2PKH + ":" + pkHash.Address(ctx.Network)}
 	}
 
 	return result, nil

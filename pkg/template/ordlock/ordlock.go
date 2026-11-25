@@ -14,7 +14,11 @@ type OrdLock struct {
 	PayOut   []byte          `json:"payout"`
 }
 
-func Decode(scr *script.Script) *OrdLock {
+func Decode(scr *script.Script, mainnet ...bool) *OrdLock {
+	isMain := true
+	if len(mainnet) > 0 {
+		isMain = mainnet[0]
+	}
 	if sCryptPrefixIndex := bytes.Index(*scr, OrdLockPrefix); sCryptPrefixIndex == -1 {
 		return nil
 	} else if ordLockSuffixIndex := bytes.Index(*scr, OrdLockSuffix); ordLockSuffixIndex == -1 {
@@ -31,7 +35,7 @@ func Decode(scr *script.Script) *OrdLock {
 			Price:  payOutput.Satoshis,
 			PayOut: payOutput.Bytes(),
 		}
-		if ordLock.Seller, err = script.NewAddressFromPublicKeyHash(ordLockOps[0].Data, true); err != nil {
+		if ordLock.Seller, err = script.NewAddressFromPublicKeyHash(ordLockOps[0].Data, isMain); err != nil {
 			return nil
 		}
 

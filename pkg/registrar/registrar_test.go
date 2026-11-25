@@ -64,7 +64,7 @@ func TestRegistrar(t *testing.T) {
 	t.Run("capabilities reflect registrations", func(t *testing.T) {
 		app, r := newApp()
 		r.Add(Registration{Capability: "opns", Mounts: []Mount{{Prefix: "/opns", Register: func(fiber.Router) {}}}})
-		r.Add(Registration{Capability: "paymail"})
+		r.Add(Registration{Capability: "sweep"})
 		r.Add(Registration{Mounts: []Mount{{Register: func(g fiber.Router) {
 			g.Get("/health", func(c *fiber.Ctx) error { return c.SendString("ok") })
 		}}}})
@@ -78,7 +78,7 @@ func TestRegistrar(t *testing.T) {
 		if err := json.Unmarshal([]byte(body), &caps); err != nil {
 			t.Fatalf("invalid capabilities JSON: %v", err)
 		}
-		want := []string{"opns", "paymail"}
+		want := []string{"opns", "sweep"}
 		if len(caps) != len(want) || caps[0] != want[0] || caps[1] != want[1] {
 			t.Errorf("capabilities = %v, want %v", caps, want)
 		}

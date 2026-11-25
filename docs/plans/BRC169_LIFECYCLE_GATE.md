@@ -20,9 +20,9 @@ The HTTP gate exposed two defects that provider-only tests missed:
 
 - Upstream rejects explicit `{}` queries before provider dispatch. Fix:
   https://github.com/bsv-blockchain/go-overlay-services/pull/365
-- Formula hydration asks storage for an output without a topic. Single-topic
-  module engines now bind that operation to their own topic; unbound adapters
-  still reject ambiguous requests. An isolation regression covers this scope.
+- Formula hydration asks storage for an output without a topic. The alias
+  module opts into binding that operation to its own topic. Other modules still
+  require an explicit topic. The alias isolation and GIB tests cover both paths.
 
 ## Validation and upstream dependency
 

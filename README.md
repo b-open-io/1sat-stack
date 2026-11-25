@@ -9,7 +9,7 @@ A composable BSV indexing server. One Go binary consolidates overlay, indexer, B
 - **Indexer** — output-level script parsing (P2PKH, inscriptions, BSV21, and more) and transaction ingestion
 - **ORDFS** — ordinal content serving with optional Redis caching
 - **BEEF storage** — tiered transaction storage (LRU cache, Redis, filesystem, JungleBus fallback)
-- **Supporting services** — chaintracks block header tracking, Arcade transaction broadcasting, paymail, wallet operations, pubsub (channels, Redis, SSE)
+- **Supporting services** — chaintracks block header tracking, Arcade transaction broadcasting, wallet operations, pubsub (channels, Redis, SSE)
 - **Web UIs** — admin panel for runtime configuration, sweep tool, landing page
 
 ## Requirements
@@ -63,7 +63,6 @@ Routes mount under the base path (default `/1sat`):
 | `/content` | ORDFS ordinal content |
 | `/chaintracks` | Block headers and merkle proofs |
 | `/arcade` | Transaction broadcasting |
-| `/bsvalias` | Paymail (with `/.well-known/bsvalias` discovery at root) |
 | `/admin` | Admin UI and API |
 | `/health` | Health check |
 
@@ -79,7 +78,17 @@ gofmt -s -w . && go vet ./...  # format and vet (required before commit)
 ./build-docs.sh                # regenerate OpenAPI docs
 ```
 
-Additional binaries live in `cmd/`: `bsv21-reindex` and `fixproofs` for maintenance tasks.
+Additional binaries live in `cmd/`: `bsv21-reindex` and `fixproofs` for maintenance tasks, and `stack`, the operator command. `stack` loads the same config file, `ONESAT_*` environment and data dir as the server, so it needs no arguments to find the same config store and admin API:
+
+```bash
+go build -o stack ./cmd/stack
+./stack config list [prefix]        # read the config store (read-only)
+./stack config get <key>
+./stack config set <key> <value>    # through the running server's admin API; direct write if it is down
+./stack config unset <key>
+./stack restart                     # ask the running server to restart
+./stack queue add ordlock2 <txid>   # put a transaction back on a work queue for reprocessing
+```
 
 ## Documentation
 

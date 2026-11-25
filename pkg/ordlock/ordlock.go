@@ -195,6 +195,35 @@ func (o *OrdLock) UpsertListing(ctx context.Context, outpoint *transaction.Outpo
 	return err
 }
 
+// UpsertSpend records a spend for a listing whether or not the listing row
+// exists yet. A spend that arrives before its listing inserts the row already
+// spent; a listing that arrives afterwards (UpsertListing) leaves the spend
+// columns alone. The two are therefore order-independent, which the overlay
+// engine's OutputSpent is not: the engine only reports spends of coins it has
+// already admitted.
+func (o *OrdLock) UpsertSpend(ctx context.Context, outpoint *transaction.Outpoint, ld *listingData, listingScore float64, spendTxid *chainhash.Hash, spendType string, spendScore float64) error {
+	if err := o.ensureSchema(); err != nil {
+		return err
+	}
+	q := o.newQB()
+	query := fmt.Sprintf(
+		`INSERT INTO listings (%soutpoint, origin, name, content_type, price, seller, score, spend_txid, spend_type, spend_score)
+		VALUES (%s%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+		ON CONFLICT %s DO UPDATE SET
+			spend_txid = EXCLUDED.spend_txid,
+			spend_type = EXCLUDED.spend_type,
+			spend_score = EXCLUDED.spend_score`,
+		q.topicCols(),
+		q.topicVals(),
+		q.ph(outpoint.Bytes()), q.ph(ld.origin.Bytes()), q.ph(ld.name), q.ph(ld.contentType),
+		q.ph(ld.price), q.ph(ld.seller), q.ph(listingScore),
+		q.ph(spendTxid[:]), q.ph(spendType), q.ph(spendScore),
+		q.conflictTarget(),
+	)
+	_, err := o.db.ExecContext(ctx, query, q.args...)
+	return err
+}
+
 func (o *OrdLock) MarkSpent(ctx context.Context, outpoint *transaction.Outpoint, spendTxid *chainhash.Hash, spendType string, spendScore float64) error {
 	if err := o.ensureSchema(); err != nil {
 		return err

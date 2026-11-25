@@ -106,7 +106,9 @@ func (c *Config) Initialize(
 
 		lookupService := NewLookupService(topicStorage)
 		topicManager := &TopicManager{}
-		eng := overlay.NewModuleEngine(deps,
+		moduleDeps := *deps
+		moduleDeps.LookupTopic = TopicName
+		eng := overlay.NewModuleEngine(&moduleDeps,
 			map[string]engine.TopicManager{TopicName: topicManager},
 			map[string]engine.LookupService{LookupName: lookupService},
 		)

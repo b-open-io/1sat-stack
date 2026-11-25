@@ -27,10 +27,9 @@
   { "_type": "rectangle", "shapeId": "ordfs", "w": 160, "h": 70, "color": "light-blue", "fill": "solid", "text": "ORDFS" },
   { "_type": "rectangle", "shapeId": "owner", "w": 160, "h": 70, "color": "light-blue", "fill": "solid", "text": "Owner Sync", "note": "JungleBus-only: requires full chain index" },
 
-  { "_type": "frame", "shapeId": "external", "name": "External-Facing (Tier 4)", "children": ["auth", "messagebox", "paymail"] },
+  { "_type": "frame", "shapeId": "external", "name": "External-Facing (Tier 4)", "children": ["auth", "messagebox"] },
   { "_type": "rectangle", "shapeId": "auth", "w": 160, "h": 70, "color": "orange", "fill": "solid", "text": "Auth" },
   { "_type": "rectangle", "shapeId": "messagebox", "w": 160, "h": 70, "color": "orange", "fill": "solid", "text": "MessageBox" },
-  { "_type": "rectangle", "shapeId": "paymail", "w": 160, "h": 70, "color": "orange", "fill": "solid", "text": "Paymail" },
 
   { "_type": "cloud", "shapeId": "junglebus", "w": 180, "h": 80, "color": "grey", "fill": "semi", "text": "JungleBus", "note": "Fully optional. Service-provider data source." },
 
@@ -58,9 +57,6 @@
   { "_type": "arrow", "shapeId": "a_overlay_ordlock", "fromId": "overlay_engine", "toId": "ordlock", "color": "violet", "dash": "solid" },
 
   { "_type": "arrow", "shapeId": "a_wallet_auth", "fromId": "wallet", "toId": "auth", "color": "black", "dash": "solid" },
-  { "_type": "arrow", "shapeId": "a_opns_paymail", "fromId": "opns", "toId": "paymail", "color": "black", "dash": "dashed" },
-  { "_type": "arrow", "shapeId": "a_ordfs_paymail", "fromId": "ordfs", "toId": "paymail", "color": "black", "dash": "dashed" },
-  { "_type": "arrow", "shapeId": "a_mb_paymail", "fromId": "messagebox", "toId": "paymail", "color": "black", "dash": "dashed" },
 
   { "_type": "arrow", "shapeId": "a_jb_overlays", "fromId": "junglebus", "toId": "overlay_engine", "color": "grey", "dash": "dashed", "text": "optional subscription" },
   { "_type": "arrow", "shapeId": "a_jb_owner", "fromId": "junglebus", "toId": "owner", "color": "grey", "dash": "solid", "text": "required" }

@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/b-open-io/1sat-stack/pkg/indexer"
+	"github.com/b-open-io/1sat-stack/pkg/types"
 	ec "github.com/bsv-blockchain/go-sdk/primitives/ec"
 	"github.com/bsv-blockchain/go-sdk/transaction"
 	sdk "github.com/bsv-blockchain/go-sdk/wallet"
@@ -123,12 +124,12 @@ func classifyOutput(events []string, satoshis uint64) *outputClassification {
 		}
 	}
 
-	// OrdLock listing
-	if hasEvent("ordlock") {
+	// OrdLock v2 listing (v1 is deprecated and no longer emits an event)
+	if hasEvent("ordlock2") {
 		return &outputClassification{
 			basket:   "ordlock",
 			protocol: sdk.InternalizeProtocolBasketInsertion,
-			tags:     filterEvents(events, "ordlock"),
+			tags:     filterEvents(events, "ordlock2"),
 		}
 	}
 
@@ -200,8 +201,12 @@ func (i *Internalizer) FromSync(ctx context.Context, beef []byte, txid string, o
 
 		// Match owners against derivation map
 		var deriv *AddressDerivation
+		network := types.Mainnet
+		if i.indexer != nil && i.indexer.Store != nil {
+			network = i.indexer.Store.Network
+		}
 		for _, owner := range idxOutput.Owners {
-			addr := owner.Address()
+			addr := owner.Address(network)
 			if d, ok := derivations[addr]; ok {
 				deriv = &d
 				break

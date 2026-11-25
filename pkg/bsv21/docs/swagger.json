@@ -383,6 +383,121 @@
                 }
             }
         },
+        "/{tokenId}/fund": {
+            "get": {
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "bsv21"
+                ],
+                "summary": "Get funding template",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Token ID (outpoint format: txid_vout)",
+                        "name": "tokenId",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/bsv21.FundingTemplate"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/bsv21.ErrorResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/bsv21.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/bsv21.ErrorResponse"
+                        }
+                    },
+                    "503": {
+                        "description": "Service Unavailable",
+                        "schema": {
+                            "$ref": "#/definitions/bsv21.ErrorResponse"
+                        }
+                    }
+                }
+            },
+            "post": {
+                "consumes": [
+                    "application/octet-stream"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "bsv21"
+                ],
+                "summary": "Submit funding transaction",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Token ID (outpoint format: txid_vout)",
+                        "name": "tokenId",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "BEEF bytes of a transaction paying the token's fee address",
+                        "name": "beef",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "format": "binary"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/bsv21.TokenStatus"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/bsv21.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/bsv21.ErrorResponse"
+                        }
+                    },
+                    "502": {
+                        "description": "Bad Gateway",
+                        "schema": {
+                            "$ref": "#/definitions/bsv21.ErrorResponse"
+                        }
+                    },
+                    "503": {
+                        "description": "Service Unavailable",
+                        "schema": {
+                            "$ref": "#/definitions/bsv21.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/{tokenId}/outputs": {
             "post": {
                 "consumes": [
@@ -437,6 +552,82 @@
                         "schema": {
                             "$ref": "#/definitions/bsv21.ErrorResponse"
                         }
+                    },
+                    "404": {
+                        "description": "Token is not active (not funded or whitelisted)",
+                        "schema": {
+                            "$ref": "#/definitions/bsv21.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/{tokenId}/outputs/status": {
+            "post": {
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "bsv21"
+                ],
+                "summary": "Outpoint states",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Token ID",
+                        "name": "tokenId",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Outpoints (txid_vout or txid.vout, max 1000)",
+                        "name": "outpoints",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/bsv21.OutputStatusResponse"
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/bsv21.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/bsv21.ErrorResponse"
+                        }
+                    },
+                    "503": {
+                        "description": "Service Unavailable",
+                        "schema": {
+                            "$ref": "#/definitions/bsv21.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Token is not active (not funded or whitelisted)",
+                        "schema": {
+                            "$ref": "#/definitions/bsv21.ErrorResponse"
+                        }
                     }
                 }
             }
@@ -480,7 +671,7 @@
                         }
                     },
                     "404": {
-                        "description": "Not Found",
+                        "description": "Outpoint not in the topic, or token not active (not funded or whitelisted)",
                         "schema": {
                             "$ref": "#/definitions/bsv21.ErrorResponse"
                         }
@@ -531,6 +722,12 @@
                         "schema": {
                             "$ref": "#/definitions/bsv21.TransactionData"
                         }
+                    },
+                    "404": {
+                        "description": "Token is not active (not funded or whitelisted)",
+                        "schema": {
+                            "$ref": "#/definitions/bsv21.ErrorResponse"
+                        }
                     }
                 }
             }
@@ -580,6 +777,12 @@
                         "description": "OK",
                         "schema": {
                             "$ref": "#/definitions/bsv21.BalanceResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Token is not active (not funded or whitelisted)",
+                        "schema": {
+                            "$ref": "#/definitions/bsv21.ErrorResponse"
                         }
                     }
                 }
@@ -634,6 +837,12 @@
                                 "$ref": "#/definitions/txo.IndexedOutput"
                             }
                         }
+                    },
+                    "404": {
+                        "description": "Token is not active (not funded or whitelisted)",
+                        "schema": {
+                            "$ref": "#/definitions/bsv21.ErrorResponse"
+                        }
                     }
                 }
             }
@@ -687,6 +896,12 @@
                                 "$ref": "#/definitions/txo.IndexedOutput"
                             }
                         }
+                    },
+                    "404": {
+                        "description": "Token is not active (not funded or whitelisted)",
+                        "schema": {
+                            "$ref": "#/definitions/bsv21.ErrorResponse"
+                        }
                     }
                 }
             }
@@ -728,6 +943,12 @@
                         "description": "OK",
                         "schema": {
                             "$ref": "#/definitions/bsv21.BalanceResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Token is not active (not funded or whitelisted)",
+                        "schema": {
+                            "$ref": "#/definitions/bsv21.ErrorResponse"
                         }
                     }
                 }
@@ -774,6 +995,12 @@
                                 "$ref": "#/definitions/txo.IndexedOutput"
                             }
                         }
+                    },
+                    "404": {
+                        "description": "Token is not active (not funded or whitelisted)",
+                        "schema": {
+                            "$ref": "#/definitions/bsv21.ErrorResponse"
+                        }
                     }
                 }
             }
@@ -819,6 +1046,12 @@
                                 "$ref": "#/definitions/txo.IndexedOutput"
                             }
                         }
+                    },
+                    "404": {
+                        "description": "Token is not active (not funded or whitelisted)",
+                        "schema": {
+                            "$ref": "#/definitions/bsv21.ErrorResponse"
+                        }
                     }
                 }
             }
@@ -844,6 +1077,32 @@
                 }
             }
         },
+        "bsv21.FundingOutput": {
+            "type": "object",
+            "properties": {
+                "lockingScript": {
+                    "description": "hex",
+                    "type": "string"
+                },
+                "outputDescription": {
+                    "type": "string"
+                },
+                "satoshis": {
+                    "type": "integer"
+                }
+            }
+        },
+        "bsv21.FundingTemplate": {
+            "type": "object",
+            "properties": {
+                "outputs": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/bsv21.FundingOutput"
+                    }
+                }
+            }
+        },
         "bsv21.OutputData": {
             "description": "Output or input data for a transaction",
             "type": "object",
@@ -862,6 +1121,23 @@
                 },
                 "vout": {
                     "type": "integer"
+                }
+            }
+        },
+        "bsv21.OutputStatusResponse": {
+            "type": "object",
+            "properties": {
+                "outpoint": {
+                    "type": "string"
+                },
+                "state": {
+                    "type": "string",
+                    "enum": [
+                        "valid",
+                        "spent",
+                        "queued",
+                        "unknown"
+                    ]
                 }
             }
         },
@@ -910,6 +1186,10 @@
                     "type": "boolean"
                 },
                 "output_count": {
+                    "type": "integer"
+                },
+                "min_funding": {
+                    "description": "Satoshis the fee address must receive before the token is indexed",
                     "type": "integer"
                 },
                 "symbol": {

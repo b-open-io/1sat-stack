@@ -78,15 +78,18 @@ type ModuleDeps struct {
 	RoutesConfig *RoutesConfig
 	P2PBus       *P2PBus
 	Broadcaster  transaction.Broadcaster
+	// LookupTopic opts a single-topic module into topic-less formula hydration.
+	LookupTopic string
 }
 
 // NewModuleEngine creates an engine.Engine for a single overlay module.
 func NewModuleEngine(deps *ModuleDeps, managers map[string]engine.TopicManager, lookups map[string]engine.LookupService) *engine.Engine {
 	adapter := overlaystorage.NewEngineAdapter(deps.Factory, deps.BeefStorage, deps.TxTopicIndex)
-	// Formula hydration omits a topic. Bind it only when this engine owns one.
-	if len(managers) == 1 {
-		for name := range managers {
-			adapter.LookupTopic = &name
+	// Formula hydration omits a topic. Bind it only for an opted-in engine
+	// that owns exactly that topic.
+	if topic := deps.LookupTopic; topic != "" && len(managers) == 1 {
+		if _, ok := managers[topic]; ok {
+			adapter.LookupTopic = &topic
 		}
 	}
 	if deps.IngestTx != nil {

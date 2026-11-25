@@ -129,6 +129,7 @@ func (idxCtx *IndexContext) ParseOutputs() error {
 			IsOrigin:      origins[vout],
 			Ctx:           idxCtx.Ctx,
 			Ordfs:         idxCtx.Ordfs,
+			Network:       idxCtx.network(),
 		}, idxCtx.Tags)
 		if err != nil {
 			return err
@@ -156,6 +157,13 @@ func (idxCtx *IndexContext) ParseOutputs() error {
 	}
 
 	return nil
+}
+
+func (idxCtx *IndexContext) network() types.Network {
+	if idxCtx == nil || idxCtx.Store == nil {
+		return types.Mainnet
+	}
+	return idxCtx.Store.Network
 }
 
 // ParseSpends parses the inputs (spent outputs) of the transaction
@@ -187,6 +195,7 @@ func (idxCtx *IndexContext) ParseSpends() error {
 			Outpoint:      outpoint,
 			LockingScript: spentOutput.LockingScript.Bytes(),
 			Satoshis:      spentOutput.Satoshis,
+			Network:       idxCtx.network(),
 		}, idxCtx.Tags)
 		if err != nil {
 			return err

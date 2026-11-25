@@ -2,6 +2,7 @@ package bsv21
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strconv"
 	"time"
@@ -9,6 +10,7 @@ import (
 	"github.com/b-open-io/1sat-stack/pkg/jbsync"
 	"github.com/b-open-io/1sat-stack/pkg/store"
 	"github.com/b-open-io/1sat-stack/pkg/txo"
+	"github.com/b-open-io/1sat-stack/pkg/types"
 	"github.com/b-open-io/1sat-stack/pkg/worker"
 	"github.com/bsv-blockchain/go-sdk/transaction"
 )
@@ -29,6 +31,28 @@ type WorkerStatus struct {
 	QueueDepth int64        `json:"queue_depth"`
 	StartedAt  time.Time    `json:"started_at"`
 	Status     *TokenStatus `json:"status,omitempty"`
+}
+
+// queueDepth counts the outpoints waiting in a token's topic queue. It scans
+// the queue, so only the funding template calls it.
+func (m *TokenManager) queueDepth(ctx context.Context, tokenId string) (int64, error) {
+	depth, err := m.store.ZCard(ctx, []byte(jbsync.TokenQueueKey(tokenId)))
+	if err != nil {
+		return 0, fmt.Errorf("failed to count queue for %s: %w", tokenId, err)
+	}
+	return depth, nil
+}
+
+// IsQueued reports whether an outpoint is waiting in the token's topic queue.
+func (m *TokenManager) IsQueued(ctx context.Context, tokenId string, op *transaction.Outpoint) (bool, error) {
+	_, err := m.store.ZScore(ctx, []byte(jbsync.TokenQueueKey(tokenId)), op.Bytes())
+	if errors.Is(err, store.ErrKeyNotFound) {
+		return false, nil
+	}
+	if err != nil {
+		return false, fmt.Errorf("failed to look up %s in queue for %s: %w", op.String(), tokenId, err)
+	}
+	return true, nil
 }
 
 // ListWorkers returns the status of all active token workers
@@ -111,6 +135,19 @@ func (m *TokenManager) persistOutputCount(ctx context.Context, tokenId string, c
 	}
 }
 
+// IsTokenActive reports whether the token is funded or whitelisted. A running
+// worker's live status answers without a database lookup.
+func (m *TokenManager) IsTokenActive(ctx context.Context, tokenId string) (bool, error) {
+	if v, ok := m.statuses.Load(tokenId); ok {
+		return v.(*TokenStatus).IsActive(), nil
+	}
+	status, err := m.GetTokenStatus(ctx, tokenId)
+	if err != nil {
+		return false, err
+	}
+	return status.IsActive(), nil
+}
+
 // GetTokenStatus returns the status for a specific token
 func (m *TokenManager) GetTokenStatus(ctx context.Context, tokenId string) (*TokenStatus, error) {
 	// Parse outpoint from tokenId
@@ -120,7 +157,11 @@ func (m *TokenManager) GetTokenStatus(ctx context.Context, tokenId string) (*Tok
 	}
 
 	// Generate fee address
-	feeAddress, err := GenerateFeeAddress(outpoint)
+	network := types.Mainnet
+	if m.outputStore != nil {
+		network = m.outputStore.Network
+	}
+	feeAddress, err := GenerateFeeAddress(outpoint, network)
 	if err != nil {
 		return nil, fmt.Errorf("failed to generate fee address: %w", err)
 	}
@@ -138,10 +179,10 @@ func (m *TokenManager) GetTokenStatus(ctx context.Context, tokenId string) (*Tok
 
 	// Whitelisted/blacklisted tokens don't need balance calculation - use 0 fee so debits = 0
 	if isWhitelisted {
-		return NewTokenStatus(tokenId, feeAddress, 0, outputCount, 0, true, false), nil
+		return NewTokenStatus(tokenId, feeAddress, 0, outputCount, 0, 0, true, false), nil
 	}
 	if isBlacklisted {
-		return NewTokenStatus(tokenId, feeAddress, 0, outputCount, 0, false, true), nil
+		return NewTokenStatus(tokenId, feeAddress, 0, outputCount, 0, 0, false, true), nil
 	}
 
 	// Credits: unspent satoshis at fee address
@@ -156,5 +197,5 @@ func (m *TokenManager) GetTokenStatus(ctx context.Context, tokenId string) (*Tok
 		return nil, fmt.Errorf("failed to query balance: %w", err)
 	}
 
-	return NewTokenStatus(tokenId, feeAddress, credits, outputCount, m.feePerOutput, false, false), nil
+	return NewTokenStatus(tokenId, feeAddress, credits, outputCount, m.feePerOutput, m.minFunding, false, false), nil
 }

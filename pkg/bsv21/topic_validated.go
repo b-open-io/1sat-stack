@@ -3,6 +3,7 @@ package bsv21
 import (
 	"context"
 	"log/slog"
+	"math/bits"
 	"slices"
 
 	overlayerr "github.com/b-open-io/1sat-stack/pkg/overlay"
@@ -80,6 +81,21 @@ type tokenSummary struct {
 	// Op=deploy+auth) for this tokenId. Confers unlimited mint authority for
 	// the tx's mint and auth outputs.
 	hasAuthInput bool
+	// True when any uint64 amount accumulator would have wrapped. A wrapped
+	// sum can make an inflated output total look covered by the inputs, so
+	// transfer/burn outputs are never admitted for an overflowed summary.
+	overflow bool
+}
+
+// add accumulates amt into acc, flagging the summary when the sum would
+// exceed math.MaxUint64 instead of silently wrapping.
+func (ts *tokenSummary) add(acc *uint64, amt uint64) {
+	sum, carry := bits.Add64(*acc, amt, 0)
+	if carry != 0 {
+		ts.overflow = true
+		return
+	}
+	*acc = sum
 }
 
 // IdentifyAdmissibleOutputs determines which outputs should be admitted to
@@ -136,11 +152,11 @@ func (tm *Bsv21ValidatedTopicManager) IdentifyAdmissibleOutputs(ctx context.Cont
 			admit.OutputsToAdmit = append(admit.OutputsToAdmit, uint32(vout))
 		case string(bsv21template.OpTransfer):
 			ts := getSummary(b.Id)
-			ts.transferOut += b.Amt
+			ts.add(&ts.transferOut, b.Amt)
 			ts.transferVouts = append(ts.transferVouts, uint32(vout))
 		case string(bsv21template.OpBurn):
 			ts := getSummary(b.Id)
-			ts.burnOut += b.Amt
+			ts.add(&ts.burnOut, b.Amt)
 			ts.burnVouts = append(ts.burnVouts, uint32(vout))
 		case string(bsv21template.OpMint):
 			ts := getSummary(b.Id)
@@ -226,7 +242,7 @@ func (tm *Bsv21ValidatedTopicManager) IdentifyAdmissibleOutputs(ctx context.Cont
 				"source_txid", txin.SourceTXID.String(),
 				"amt", b.Amt)
 			admit.CoinsToRetain = append(admit.CoinsToRetain, uint32(vin))
-			ts.tokensIn += b.Amt
+			ts.add(&ts.tokensIn, b.Amt)
 		}
 	}
 
@@ -234,7 +250,8 @@ func (tm *Bsv21ValidatedTopicManager) IdentifyAdmissibleOutputs(ctx context.Cont
 	// mint/auth admit on auth-input presence. The two layers are independent:
 	// a tx with insufficient balance can still admit valid mint outputs.
 	for _, ts := range summary {
-		if ts.tokensIn >= ts.transferOut+ts.burnOut {
+		out, carry := bits.Add64(ts.transferOut, ts.burnOut, 0)
+		if !ts.overflow && carry == 0 && ts.tokensIn >= out {
 			admit.OutputsToAdmit = append(admit.OutputsToAdmit, ts.transferVouts...)
 			admit.OutputsToAdmit = append(admit.OutputsToAdmit, ts.burnVouts...)
 		}

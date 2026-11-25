@@ -1,0 +1,1075 @@
+package gib
+
+import (
+	"context"
+	"database/sql"
+	"encoding/json"
+	"fmt"
+	"log/slog"
+	"math"
+	"strings"
+	"sync"
+
+	gibtpl "github.com/b-open-io/1sat-stack/pkg/template/gib"
+)
+
+const (
+	// DefaultLimit is the default page size for list queries.
+	DefaultLimit = 20
+	// MaxLimit is the maximum page size for list queries.
+	MaxLimit = 100
+	// mempoolScoreFloor separates block-height scores from the unix-timestamp
+	// scores types.HeightScore assigns to unconfirmed transactions.
+	mempoolScoreFloor = 1e9
+)
+
+const sqliteSchema = `
+CREATE TABLE IF NOT EXISTS gib_heads (
+    outpoint        TEXT PRIMARY KEY,
+    txid            TEXT NOT NULL,
+    vout            INTEGER NOT NULL,
+    origin          TEXT NOT NULL,
+    branch          TEXT NOT NULL,
+    root            TEXT NOT NULL,
+    identity        TEXT NOT NULL,
+    branched_from   TEXT,
+    commit_sha      TEXT,
+    tree_sha        TEXT,
+    parents         TEXT,
+    author_name     TEXT,
+    author_email    TEXT,
+    author_time     INTEGER,
+    author_tz       TEXT,
+    committer_name  TEXT,
+    committer_email TEXT,
+    committer_time  INTEGER,
+    committer_tz    TEXT,
+    message         TEXT,
+    prev_outpoint   TEXT,
+    spend_txid      TEXT,
+    next_outpoint   TEXT,
+    spend_score     REAL,
+    score           REAL NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_gib_heads_branch ON gib_heads(origin, branch, score);
+CREATE INDEX IF NOT EXISTS idx_gib_heads_identity ON gib_heads(identity, score);
+CREATE INDEX IF NOT EXISTS idx_gib_heads_score ON gib_heads(score);
+CREATE INDEX IF NOT EXISTS idx_gib_heads_txid ON gib_heads(txid);
+CREATE INDEX IF NOT EXISTS idx_gib_heads_spend ON gib_heads(spend_txid);
+CREATE INDEX IF NOT EXISTS idx_gib_heads_sha ON gib_heads(commit_sha);
+CREATE TABLE IF NOT EXISTS gib_commit_parents (
+    outpoint        TEXT NOT NULL,
+    parent          TEXT NOT NULL,
+    PRIMARY KEY (outpoint, parent)
+);
+CREATE INDEX IF NOT EXISTS idx_gib_parents_parent ON gib_commit_parents(parent);
+CREATE TABLE IF NOT EXISTS gib_commits (
+    sha             TEXT PRIMARY KEY,
+    outpoint        TEXT NOT NULL,
+    ref_outpoint    TEXT NOT NULL,
+    held            INTEGER NOT NULL,
+    tree_sha        TEXT,
+    parents         TEXT,
+    author_name     TEXT,
+    author_email    TEXT,
+    author_time     INTEGER,
+    author_tz       TEXT,
+    committer_name  TEXT,
+    committer_email TEXT,
+    committer_time  INTEGER,
+    committer_tz    TEXT,
+    message         TEXT,
+    score           REAL NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_gib_commits_outpoint ON gib_commits(outpoint);
+`
+
+const postgresSchema = `
+CREATE TABLE IF NOT EXISTS gib_heads (
+    topic_id        INTEGER NOT NULL,
+    outpoint        TEXT NOT NULL,
+    txid            TEXT NOT NULL,
+    vout            INTEGER NOT NULL,
+    origin          TEXT NOT NULL,
+    branch          TEXT NOT NULL,
+    root            TEXT NOT NULL,
+    identity        TEXT NOT NULL,
+    branched_from   TEXT,
+    commit_sha      TEXT,
+    tree_sha        TEXT,
+    parents         TEXT,
+    author_name     TEXT,
+    author_email    TEXT,
+    author_time     BIGINT,
+    author_tz       TEXT,
+    committer_name  TEXT,
+    committer_email TEXT,
+    committer_time  BIGINT,
+    committer_tz    TEXT,
+    message         TEXT,
+    prev_outpoint   TEXT,
+    spend_txid      TEXT,
+    next_outpoint   TEXT,
+    spend_score     DOUBLE PRECISION,
+    score           DOUBLE PRECISION NOT NULL,
+    PRIMARY KEY (topic_id, outpoint)
+);
+CREATE INDEX IF NOT EXISTS idx_gib_heads_branch ON gib_heads(topic_id, origin, branch, score);
+CREATE INDEX IF NOT EXISTS idx_gib_heads_identity ON gib_heads(topic_id, identity, score);
+CREATE INDEX IF NOT EXISTS idx_gib_heads_score ON gib_heads(topic_id, score);
+CREATE INDEX IF NOT EXISTS idx_gib_heads_txid ON gib_heads(topic_id, txid);
+CREATE INDEX IF NOT EXISTS idx_gib_heads_spend ON gib_heads(topic_id, spend_txid);
+CREATE INDEX IF NOT EXISTS idx_gib_heads_sha ON gib_heads(topic_id, commit_sha);
+CREATE TABLE IF NOT EXISTS gib_commit_parents (
+    topic_id        INTEGER NOT NULL,
+    outpoint        TEXT NOT NULL,
+    parent          TEXT NOT NULL,
+    PRIMARY KEY (topic_id, outpoint, parent)
+);
+CREATE INDEX IF NOT EXISTS idx_gib_parents_parent ON gib_commit_parents(topic_id, parent);
+CREATE TABLE IF NOT EXISTS gib_commits (
+    topic_id        INTEGER NOT NULL,
+    sha             TEXT NOT NULL,
+    outpoint        TEXT NOT NULL,
+    ref_outpoint    TEXT NOT NULL,
+    held            INTEGER NOT NULL,
+    tree_sha        TEXT,
+    parents         TEXT,
+    author_name     TEXT,
+    author_email    TEXT,
+    author_time     BIGINT,
+    author_tz       TEXT,
+    committer_name  TEXT,
+    committer_email TEXT,
+    committer_time  BIGINT,
+    committer_tz    TEXT,
+    message         TEXT,
+    score           DOUBLE PRECISION NOT NULL,
+    PRIMARY KEY (topic_id, sha)
+);
+CREATE INDEX IF NOT EXISTS idx_gib_commits_outpoint ON gib_commits(topic_id, outpoint);
+`
+
+// Spend records how a head was spent: the spending txid and, for a push,
+// the successor head in that transaction. A spend with no successor is a
+// branch deletion (burn).
+type Spend struct {
+	Txid  string  `json:"txid"`
+	Next  string  `json:"next,omitempty"`
+	Score float64 `json:"score"`
+}
+
+// HeadRecord is one indexed commit head: a branch pointer at one moment.
+// Outpoints are txid_vout strings; identity is a compressed pubkey in hex.
+//
+// Nothing is inscribed on a head any more, so Commit is not read from the
+// token: it is the tip commit of the root's `.git` object store — the `.`
+// entry — when the submission carried it. When the tip was cited rather
+// than republished (a fork of a head whose commit is already on chain),
+// only its sha is known and the rest of Commit is empty. The commits the
+// push publishes are indexed separately; see CommitRecord.
+type HeadRecord struct {
+	Outpoint string `json:"outpoint"`
+	Txid     string `json:"txid"`
+	Vout     uint32 `json:"vout"`
+	Origin   string `json:"origin"`
+	Branch   string `json:"branch"`
+	Root     string `json:"root"`
+	Identity string `json:"identity"`
+	// BranchedFrom is the head this one branched from or merged in: the
+	// second parent, empty on an ordinary push.
+	BranchedFrom string         `json:"branchedFrom,omitempty"`
+	Commit       *gibtpl.Commit `json:"commit,omitempty"`
+	Prev         string         `json:"prev,omitempty"`
+	Spend        *Spend         `json:"spend,omitempty"`
+	Meta         *RepoMeta      `json:"meta,omitempty"`
+	Score        float64        `json:"score"`
+	Height       uint32         `json:"height"`
+}
+
+// CommitRecord is one git commit a published root's `.git` store names.
+// Outpoint is the head that published it and Ref the output holding the
+// object. Held is false for a hop the overlay records but does not have:
+// an entry citing a commit object in an earlier transaction, which the
+// push did not republish. Commit is nil exactly when Held is false.
+type CommitRecord struct {
+	Sha      string         `json:"sha"`
+	Outpoint string         `json:"outpoint"`
+	Ref      string         `json:"ref"`
+	Held     bool           `json:"held"`
+	Commit   *gibtpl.Commit `json:"commit,omitempty"`
+	Score    float64        `json:"score"`
+}
+
+// RepoRecord summarizes one repository (origin) from its indexed heads.
+// Owner is the identity that minted the earliest head for the origin.
+type RepoRecord struct {
+	Origin        string  `json:"origin"`
+	Owner         string  `json:"owner"`
+	FirstOutpoint string  `json:"firstOutpoint"`
+	FirstScore    float64 `json:"firstScore"`
+	LastScore     float64 `json:"lastScore"`
+	Name          string  `json:"name,omitempty"`
+	Description   string  `json:"description,omitempty"`
+	DefaultBranch string  `json:"defaultBranch,omitempty"`
+	Heads         int     `json:"heads"`
+	Branches      int     `json:"branches"`
+}
+
+// HeadFilter selects heads for ListHeads.
+type HeadFilter struct {
+	Origin   string
+	Branch   string
+	Identity string
+	// CommitSha selects heads publishing this git commit (forks and
+	// multi-branch pushes share one sha).
+	CommitSha string
+	Unspent   bool    // only current heads
+	From      float64 // paging cursor on score; 0 = start
+	Limit     int
+	Rev       bool // newest first
+}
+
+// Store persists commit heads in the module's topic database.
+type Store struct {
+	db      *sql.DB
+	topicID int
+	logger  *slog.Logger
+	once    sync.Once
+	initErr error
+}
+
+// NewStore wraps the topic database. topicID > 0 selects the Postgres
+// schema (shared table scoped by topic_id); 0 selects SQLite.
+func NewStore(db *sql.DB, topicID int, logger *slog.Logger) *Store {
+	if logger == nil {
+		logger = slog.Default()
+	}
+	return &Store{db: db, topicID: topicID, logger: logger}
+}
+
+func (s *Store) ensureSchema() error {
+	s.once.Do(func() {
+		schema := sqliteSchema
+		if s.topicID > 0 {
+			schema = postgresSchema
+		}
+		_, s.initErr = s.db.Exec(schema)
+		if s.initErr != nil {
+			return
+		}
+		// Columns added after the first deploy; SQLite has no IF NOT EXISTS
+		// for columns, so a "duplicate column" error is the expected no-op.
+		for _, col := range []string{"name TEXT", "description TEXT", "default_branch TEXT", "branched_from TEXT"} {
+			_, _ = s.db.Exec("ALTER TABLE gib_heads ADD COLUMN " + col)
+		}
+	})
+	return s.initErr
+}
+
+// qb numbers placeholders and scopes queries by topic_id on Postgres.
+type qb struct {
+	topicID int
+	args    []any
+	n       int
+}
+
+func (s *Store) newQB() *qb {
+	q := &qb{topicID: s.topicID}
+	if s.topicID > 0 {
+		q.args = append(q.args, s.topicID)
+		q.n = 1
+	}
+	return q
+}
+
+func (q *qb) ph(val any) string {
+	q.n++
+	q.args = append(q.args, val)
+	if q.topicID > 0 {
+		return fmt.Sprintf("$%d", q.n)
+	}
+	return "?"
+}
+
+// topicWhere returns "alias.topic_id = $1 AND " on Postgres, "" on SQLite.
+func (q *qb) topicWhere(alias string) string {
+	if q.topicID > 0 {
+		if alias != "" {
+			return alias + ".topic_id = $1 AND "
+		}
+		return "topic_id = $1 AND "
+	}
+	return ""
+}
+
+func (q *qb) topicCols() string {
+	if q.topicID > 0 {
+		return "topic_id, "
+	}
+	return ""
+}
+
+func (q *qb) topicVals() string {
+	if q.topicID > 0 {
+		return "$1, "
+	}
+	return ""
+}
+
+func (q *qb) conflictTarget() string {
+	if q.topicID > 0 {
+		return "(topic_id, outpoint)"
+	}
+	return "(outpoint)"
+}
+
+func nullStr(s string) any {
+	if s == "" {
+		return nil
+	}
+	return s
+}
+
+func nullMeta(m *RepoMeta, pick func(*RepoMeta) string) any {
+	if m == nil {
+		return nil
+	}
+	return nullStr(pick(m))
+}
+
+func nullSpendScore(sp *Spend) any {
+	if sp == nil {
+		return nil
+	}
+	return sp.Score
+}
+
+func nullSpendField(sp *Spend, pick func(*Spend) string) any {
+	if sp == nil {
+		return nil
+	}
+	return nullStr(pick(sp))
+}
+
+// UpsertHead inserts or refreshes a head. Spend and predecessor fields are
+// only ever filled in, never cleared, so the admission and spend paths can
+// arrive in either order. The lower score wins: a mined height replaces a
+// mempool timestamp (see types.HeightScore) and the first arrival is kept.
+func (s *Store) UpsertHead(ctx context.Context, rec *HeadRecord) error {
+	if err := s.ensureSchema(); err != nil {
+		return err
+	}
+	var (
+		sha, tree, parents        any
+		aName, aEmail, aTime, aTZ any
+		cName, cEmail, cTime, cTZ any
+		message                   any
+	)
+	if c := rec.Commit; c != nil {
+		sha, tree, message = c.SHA, c.Tree, c.Message
+		if b, err := json.Marshal(c.Parents); err == nil {
+			parents = string(b)
+		}
+		if c.Author != nil {
+			aName, aEmail, aTime, aTZ = c.Author.Name, c.Author.Email, c.Author.Time, c.Author.TZ
+		}
+		if c.Committer != nil {
+			cName, cEmail, cTime, cTZ = c.Committer.Name, c.Committer.Email, c.Committer.Time, c.Committer.TZ
+		}
+	}
+
+	q := s.newQB()
+	query := fmt.Sprintf(`INSERT INTO gib_heads (%soutpoint, txid, vout, origin, branch, root, identity, branched_from,
+		commit_sha, tree_sha, parents, author_name, author_email, author_time, author_tz,
+		committer_name, committer_email, committer_time, committer_tz, message,
+		prev_outpoint, spend_txid, next_outpoint, spend_score, score, name, description, default_branch)
+		VALUES (%s%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+		ON CONFLICT %s DO UPDATE SET
+			origin = EXCLUDED.origin,
+			branch = EXCLUDED.branch,
+			root = EXCLUDED.root,
+			identity = EXCLUDED.identity,
+			branched_from = COALESCE(EXCLUDED.branched_from, gib_heads.branched_from),
+			commit_sha = COALESCE(EXCLUDED.commit_sha, gib_heads.commit_sha),
+			tree_sha = COALESCE(EXCLUDED.tree_sha, gib_heads.tree_sha),
+			parents = COALESCE(EXCLUDED.parents, gib_heads.parents),
+			author_name = COALESCE(EXCLUDED.author_name, gib_heads.author_name),
+			author_email = COALESCE(EXCLUDED.author_email, gib_heads.author_email),
+			author_time = COALESCE(EXCLUDED.author_time, gib_heads.author_time),
+			author_tz = COALESCE(EXCLUDED.author_tz, gib_heads.author_tz),
+			committer_name = COALESCE(EXCLUDED.committer_name, gib_heads.committer_name),
+			committer_email = COALESCE(EXCLUDED.committer_email, gib_heads.committer_email),
+			committer_time = COALESCE(EXCLUDED.committer_time, gib_heads.committer_time),
+			committer_tz = COALESCE(EXCLUDED.committer_tz, gib_heads.committer_tz),
+			message = COALESCE(EXCLUDED.message, gib_heads.message),
+			prev_outpoint = COALESCE(EXCLUDED.prev_outpoint, gib_heads.prev_outpoint),
+			spend_txid = COALESCE(EXCLUDED.spend_txid, gib_heads.spend_txid),
+			next_outpoint = COALESCE(EXCLUDED.next_outpoint, gib_heads.next_outpoint),
+			spend_score = COALESCE(EXCLUDED.spend_score, gib_heads.spend_score),
+			score = CASE WHEN EXCLUDED.score < gib_heads.score THEN EXCLUDED.score ELSE gib_heads.score END,
+			name = COALESCE(EXCLUDED.name, gib_heads.name),
+			description = COALESCE(EXCLUDED.description, gib_heads.description),
+			default_branch = COALESCE(EXCLUDED.default_branch, gib_heads.default_branch)`,
+		q.topicCols(), q.topicVals(),
+		q.ph(rec.Outpoint), q.ph(rec.Txid), q.ph(rec.Vout), q.ph(rec.Origin), q.ph(rec.Branch), q.ph(rec.Root), q.ph(rec.Identity),
+		q.ph(nullStr(rec.BranchedFrom)),
+		q.ph(sha), q.ph(tree), q.ph(parents), q.ph(aName), q.ph(aEmail), q.ph(aTime), q.ph(aTZ),
+		q.ph(cName), q.ph(cEmail), q.ph(cTime), q.ph(cTZ), q.ph(message),
+		q.ph(nullStr(rec.Prev)),
+		q.ph(nullSpendField(rec.Spend, func(sp *Spend) string { return sp.Txid })),
+		q.ph(nullSpendField(rec.Spend, func(sp *Spend) string { return sp.Next })),
+		q.ph(nullSpendScore(rec.Spend)),
+		q.ph(rec.Score),
+		q.ph(nullMeta(rec.Meta, func(m *RepoMeta) string { return m.Name })),
+		q.ph(nullMeta(rec.Meta, func(m *RepoMeta) string { return m.Description })),
+		q.ph(nullMeta(rec.Meta, func(m *RepoMeta) string { return m.DefaultBranch })),
+		q.conflictTarget())
+	if _, err := s.db.ExecContext(ctx, query, q.args...); err != nil {
+		return err
+	}
+	if rec.Commit == nil {
+		return nil
+	}
+	// Parent edges make the DAG walkable across repositories: a fork's
+	// first commit names parents that live on another origin's heads.
+	for _, parent := range rec.Commit.Parents {
+		pq := s.newQB()
+		ins := fmt.Sprintf(`INSERT INTO gib_commit_parents (%soutpoint, parent) VALUES (%s%s, %s) ON CONFLICT DO NOTHING`,
+			pq.topicCols(), pq.topicVals(), pq.ph(rec.Outpoint), pq.ph(parent))
+		if _, err := s.db.ExecContext(ctx, ins, pq.args...); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// MarkSpent records the spend of a head. It returns the number of rows
+// updated; zero means the head has not been indexed yet.
+func (s *Store) MarkSpent(ctx context.Context, outpoint, spendTxid, next string, spendScore float64) (int64, error) {
+	if err := s.ensureSchema(); err != nil {
+		return 0, err
+	}
+	q := s.newQB()
+	query := fmt.Sprintf(`UPDATE gib_heads SET
+			spend_txid = %s,
+			next_outpoint = COALESCE(%s, next_outpoint),
+			spend_score = %s
+		WHERE %soutpoint = %s`,
+		q.ph(spendTxid), q.ph(nullStr(next)), q.ph(spendScore), q.topicWhere(""), q.ph(outpoint))
+	res, err := s.db.ExecContext(ctx, query, q.args...)
+	if err != nil {
+		return 0, err
+	}
+	return res.RowsAffected()
+}
+
+// UpdateScoreForTxid restamps heads created by txid and spends made by txid
+// once the transaction's block position is known.
+func (s *Store) UpdateScoreForTxid(ctx context.Context, txid string, score float64) error {
+	if err := s.ensureSchema(); err != nil {
+		return err
+	}
+	q := s.newQB()
+	query := fmt.Sprintf(`UPDATE gib_heads SET score = %s WHERE %stxid = %s`,
+		q.ph(score), q.topicWhere(""), q.ph(txid))
+	if _, err := s.db.ExecContext(ctx, query, q.args...); err != nil {
+		return err
+	}
+	q = s.newQB()
+	query = fmt.Sprintf(`UPDATE gib_heads SET spend_score = %s WHERE %sspend_txid = %s`,
+		q.ph(score), q.topicWhere(""), q.ph(txid))
+	_, err := s.db.ExecContext(ctx, query, q.args...)
+	return err
+}
+
+// DeleteHead removes a head (engine eviction, e.g. reorg), along with the
+// commits it published: a transaction the chain unmade never published
+// them, whatever their content says.
+func (s *Store) DeleteHead(ctx context.Context, outpoint string) error {
+	if err := s.ensureSchema(); err != nil {
+		return err
+	}
+	for _, table := range []string{"gib_heads", "gib_commit_parents", "gib_commits"} {
+		q := s.newQB()
+		del := fmt.Sprintf(`DELETE FROM %s WHERE %soutpoint = %s`, table, q.topicWhere(""), q.ph(outpoint))
+		if _, err := s.db.ExecContext(ctx, del, q.args...); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// UpsertCommits indexes the commits one push's `.git` store names. A commit
+// is content-addressed: the row is keyed by sha alone, and the first head to
+// publish it keeps the credit however many later pushes cite or republish
+// it. A push that carries the bytes for a sha only cited before fills the
+// body in and takes the row over, because a hop the overlay holds beats one
+// it merely named.
+func (s *Store) UpsertCommits(ctx context.Context, recs []CommitRecord) error {
+	if len(recs) == 0 {
+		return nil
+	}
+	if err := s.ensureSchema(); err != nil {
+		return err
+	}
+	for _, rec := range recs {
+		var (
+			tree, parents             any
+			aName, aEmail, aTime, aTZ any
+			cName, cEmail, cTime, cTZ any
+			message                   any
+		)
+		if c := rec.Commit; c != nil {
+			tree, message = c.Tree, c.Message
+			if b, err := json.Marshal(c.Parents); err == nil {
+				parents = string(b)
+			}
+			if c.Author != nil {
+				aName, aEmail, aTime, aTZ = c.Author.Name, c.Author.Email, c.Author.Time, c.Author.TZ
+			}
+			if c.Committer != nil {
+				cName, cEmail, cTime, cTZ = c.Committer.Name, c.Committer.Email, c.Committer.Time, c.Committer.TZ
+			}
+		}
+		held := 0
+		if rec.Held {
+			held = 1
+		}
+		q := s.newQB()
+		query := fmt.Sprintf(`INSERT INTO gib_commits (%ssha, outpoint, ref_outpoint, held,
+			tree_sha, parents, author_name, author_email, author_time, author_tz,
+			committer_name, committer_email, committer_time, committer_tz, message, score)
+			VALUES (%s%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+			ON CONFLICT %s DO UPDATE SET
+				ref_outpoint = CASE WHEN gib_commits.held = 0 AND EXCLUDED.held = 1 THEN EXCLUDED.ref_outpoint ELSE gib_commits.ref_outpoint END,
+				held = CASE WHEN EXCLUDED.held = 1 THEN 1 ELSE gib_commits.held END,
+				tree_sha = COALESCE(gib_commits.tree_sha, EXCLUDED.tree_sha),
+				parents = COALESCE(gib_commits.parents, EXCLUDED.parents),
+				author_name = COALESCE(gib_commits.author_name, EXCLUDED.author_name),
+				author_email = COALESCE(gib_commits.author_email, EXCLUDED.author_email),
+				author_time = COALESCE(gib_commits.author_time, EXCLUDED.author_time),
+				author_tz = COALESCE(gib_commits.author_tz, EXCLUDED.author_tz),
+				committer_name = COALESCE(gib_commits.committer_name, EXCLUDED.committer_name),
+				committer_email = COALESCE(gib_commits.committer_email, EXCLUDED.committer_email),
+				committer_time = COALESCE(gib_commits.committer_time, EXCLUDED.committer_time),
+				committer_tz = COALESCE(gib_commits.committer_tz, EXCLUDED.committer_tz),
+				message = COALESCE(gib_commits.message, EXCLUDED.message),
+				score = CASE WHEN EXCLUDED.score < gib_commits.score THEN EXCLUDED.score ELSE gib_commits.score END`,
+			q.topicCols(), q.topicVals(),
+			q.ph(rec.Sha), q.ph(rec.Outpoint), q.ph(rec.Ref), q.ph(held),
+			q.ph(tree), q.ph(parents), q.ph(aName), q.ph(aEmail), q.ph(aTime), q.ph(aTZ),
+			q.ph(cName), q.ph(cEmail), q.ph(cTime), q.ph(cTZ), q.ph(message), q.ph(rec.Score),
+			s.commitConflictTarget())
+		if _, err := s.db.ExecContext(ctx, query, q.args...); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (s *Store) commitConflictTarget() string {
+	if s.topicID > 0 {
+		return "(topic_id, sha)"
+	}
+	return "(sha)"
+}
+
+const commitColumns = `sha, outpoint, ref_outpoint, held,
+	tree_sha, parents, author_name, author_email, author_time, author_tz,
+	committer_name, committer_email, committer_time, committer_tz, message, score`
+
+func scanCommit(r rowScanner) (*CommitRecord, error) {
+	var (
+		rec                    CommitRecord
+		held                   int
+		tree, parents, message sql.NullString
+		aName, aEmail, aTZ     sql.NullString
+		cName, cEmail, cTZ     sql.NullString
+		aTime, cTime           sql.NullInt64
+	)
+	if err := r.Scan(&rec.Sha, &rec.Outpoint, &rec.Ref, &held,
+		&tree, &parents, &aName, &aEmail, &aTime, &aTZ,
+		&cName, &cEmail, &cTime, &cTZ, &message, &rec.Score); err != nil {
+		return nil, err
+	}
+	rec.Held = held == 1
+	if !tree.Valid && !message.Valid && !parents.Valid {
+		return &rec, nil
+	}
+	commit := &gibtpl.Commit{SHA: rec.Sha, Tree: tree.String, Message: message.String, Parents: []string{}}
+	if parents.Valid && parents.String != "" {
+		_ = json.Unmarshal([]byte(parents.String), &commit.Parents)
+	}
+	if aName.Valid || aEmail.Valid {
+		commit.Author = &gibtpl.Signature{Name: aName.String, Email: aEmail.String, Time: aTime.Int64, TZ: aTZ.String}
+	}
+	if cName.Valid || cEmail.Valid {
+		commit.Committer = &gibtpl.Signature{Name: cName.String, Email: cEmail.String, Time: cTime.Int64, TZ: cTZ.String}
+	}
+	rec.Commit = commit
+	return &rec, nil
+}
+
+// GetCommit returns one indexed commit by sha, or sql.ErrNoRows.
+func (s *Store) GetCommit(ctx context.Context, sha string) (*CommitRecord, error) {
+	if err := s.ensureSchema(); err != nil {
+		return nil, err
+	}
+	q := s.newQB()
+	query := fmt.Sprintf(`SELECT %s FROM gib_commits WHERE %ssha = %s`, commitColumns, q.topicWhere(""), q.ph(sha))
+	return scanCommit(s.db.QueryRowContext(ctx, query, q.args...))
+}
+
+// ListCommitsForHead returns the commits one head's push named, newest
+// rows last. It is the push's own view of the object store: what it
+// republished and what it only cited.
+func (s *Store) ListCommitsForHead(ctx context.Context, outpoint string, limit int) ([]CommitRecord, error) {
+	if err := s.ensureSchema(); err != nil {
+		return nil, err
+	}
+	q := s.newQB()
+	query := fmt.Sprintf(`SELECT %s FROM gib_commits WHERE %soutpoint = %s ORDER BY sha ASC LIMIT %s`,
+		commitColumns, q.topicWhere(""), q.ph(outpoint), q.ph(clampLimit(limit)))
+	rows, err := s.db.QueryContext(ctx, query, q.args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := []CommitRecord{}
+	for rows.Next() {
+		rec, err := scanCommit(rows)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, *rec)
+	}
+	return out, rows.Err()
+}
+
+// ChildrenOfCommit returns heads whose commit names sha as a parent: the
+// next step along every branch, fork, or repository that built on it.
+func (s *Store) ChildrenOfCommit(ctx context.Context, sha string, limit int) ([]HeadRecord, error) {
+	if err := s.ensureSchema(); err != nil {
+		return nil, err
+	}
+	q := s.newQB()
+	query := fmt.Sprintf(`SELECT %s FROM gib_heads h
+		WHERE %sh.outpoint IN (SELECT p.outpoint FROM gib_commit_parents p WHERE %sp.parent = %s)
+		ORDER BY h.score ASC, h.vout ASC LIMIT %s`,
+		prefixedHeadColumns("h."), q.topicWhere("h"), q.topicWhere("p"), q.ph(sha), q.ph(clampLimit(limit)))
+	rows, err := s.db.QueryContext(ctx, query, q.args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := []HeadRecord{}
+	for rows.Next() {
+		rec, err := scanHead(rows)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, *rec)
+	}
+	return out, rows.Err()
+}
+
+func prefixedHeadColumns(prefix string) string {
+	cols := strings.Split(headColumns, ",")
+	for i, c := range cols {
+		cols[i] = prefix + strings.TrimSpace(c)
+	}
+	return strings.Join(cols, ", ")
+}
+
+const headColumns = `outpoint, txid, vout, origin, branch, root, identity, branched_from,
+	commit_sha, tree_sha, parents, author_name, author_email, author_time, author_tz,
+	committer_name, committer_email, committer_time, committer_tz, message,
+	prev_outpoint, spend_txid, next_outpoint, spend_score, score,
+	name, description, default_branch`
+
+type rowScanner interface {
+	Scan(dest ...any) error
+}
+
+func scanHead(r rowScanner) (*HeadRecord, error) {
+	var (
+		rec                   HeadRecord
+		branchedFrom          sql.NullString
+		sha, tree, parents    sql.NullString
+		aName, aEmail, aTZ    sql.NullString
+		cName, cEmail, cTZ    sql.NullString
+		aTime, cTime          sql.NullInt64
+		message               sql.NullString
+		prev, spendTxid, next sql.NullString
+		spendScore            sql.NullFloat64
+		name, desc, branch    sql.NullString
+	)
+	if err := r.Scan(&rec.Outpoint, &rec.Txid, &rec.Vout, &rec.Origin, &rec.Branch, &rec.Root, &rec.Identity,
+		&branchedFrom, &sha, &tree, &parents, &aName, &aEmail, &aTime, &aTZ,
+		&cName, &cEmail, &cTime, &cTZ, &message,
+		&prev, &spendTxid, &next, &spendScore, &rec.Score, &name, &desc, &branch); err != nil {
+		return nil, err
+	}
+	if name.Valid || desc.Valid || branch.Valid {
+		rec.Meta = &RepoMeta{Name: name.String, Description: desc.String, DefaultBranch: branch.String}
+	}
+	// Mined scores are block heights; mempool scores are unix timestamps
+	// (see types.HeightScore), which carry no height.
+	if rec.Score < mempoolScoreFloor {
+		rec.Height = uint32(math.Floor(rec.Score))
+	}
+	rec.Prev = prev.String
+	rec.BranchedFrom = branchedFrom.String
+	if sha.Valid {
+		commit := &gibtpl.Commit{SHA: sha.String, Tree: tree.String, Message: message.String, Parents: []string{}}
+		if parents.Valid && parents.String != "" {
+			_ = json.Unmarshal([]byte(parents.String), &commit.Parents)
+		}
+		if aName.Valid || aEmail.Valid {
+			commit.Author = &gibtpl.Signature{Name: aName.String, Email: aEmail.String, Time: aTime.Int64, TZ: aTZ.String}
+		}
+		if cName.Valid || cEmail.Valid {
+			commit.Committer = &gibtpl.Signature{Name: cName.String, Email: cEmail.String, Time: cTime.Int64, TZ: cTZ.String}
+		}
+		rec.Commit = commit
+	}
+	if spendTxid.Valid {
+		rec.Spend = &Spend{Txid: spendTxid.String, Next: next.String, Score: spendScore.Float64}
+	}
+	return &rec, nil
+}
+
+// GetHead returns one head or sql.ErrNoRows.
+func (s *Store) GetHead(ctx context.Context, outpoint string) (*HeadRecord, error) {
+	if err := s.ensureSchema(); err != nil {
+		return nil, err
+	}
+	q := s.newQB()
+	query := fmt.Sprintf(`SELECT %s FROM gib_heads WHERE %soutpoint = %s`, headColumns, q.topicWhere(""), q.ph(outpoint))
+	return scanHead(s.db.QueryRowContext(ctx, query, q.args...))
+}
+
+// ListHeads returns heads matching the filter, ordered by score then vout.
+func (s *Store) ListHeads(ctx context.Context, f HeadFilter) ([]HeadRecord, error) {
+	if err := s.ensureSchema(); err != nil {
+		return nil, err
+	}
+	q := s.newQB()
+	where := []string{}
+	if tw := q.topicWhere(""); tw != "" {
+		where = append(where, strings.TrimSuffix(tw, " AND "))
+	}
+	if f.Origin != "" {
+		where = append(where, "origin = "+q.ph(f.Origin))
+	}
+	if f.Branch != "" {
+		where = append(where, "branch = "+q.ph(f.Branch))
+	}
+	if f.Identity != "" {
+		where = append(where, "identity = "+q.ph(f.Identity))
+	}
+	if f.CommitSha != "" {
+		where = append(where, "commit_sha = "+q.ph(f.CommitSha))
+	}
+	if f.Unspent {
+		where = append(where, "spend_txid IS NULL")
+	}
+	if f.From > 0 {
+		if f.Rev {
+			where = append(where, "score < "+q.ph(f.From))
+		} else {
+			where = append(where, "score > "+q.ph(f.From))
+		}
+	}
+	query := fmt.Sprintf(`SELECT %s FROM gib_heads`, headColumns)
+	if len(where) > 0 {
+		query += " WHERE " + strings.Join(where, " AND ")
+	}
+	if f.Rev {
+		query += " ORDER BY score DESC, vout DESC"
+	} else {
+		query += " ORDER BY score ASC, vout ASC"
+	}
+	query += " LIMIT " + q.ph(clampLimit(f.Limit))
+
+	rows, err := s.db.QueryContext(ctx, query, q.args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := []HeadRecord{}
+	for rows.Next() {
+		rec, err := scanHead(rows)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, *rec)
+	}
+	return out, rows.Err()
+}
+
+const repoSelect = `SELECT h.origin,
+	(SELECT h2.identity FROM gib_heads h2 WHERE %sh2.origin = h.origin ORDER BY h2.score ASC, h2.vout ASC LIMIT 1) AS owner,
+	(SELECT h3.outpoint FROM gib_heads h3 WHERE %sh3.origin = h.origin ORDER BY h3.score ASC, h3.vout ASC LIMIT 1) AS first_outpoint,
+	(SELECT h5.name FROM gib_heads h5 WHERE %sh5.origin = h.origin AND h5.name IS NOT NULL ORDER BY h5.score DESC, h5.vout DESC LIMIT 1) AS name,
+	(SELECT h6.description FROM gib_heads h6 WHERE %sh6.origin = h.origin AND h6.description IS NOT NULL ORDER BY h6.score DESC, h6.vout DESC LIMIT 1) AS description,
+	(SELECT h7.default_branch FROM gib_heads h7 WHERE %sh7.origin = h.origin AND h7.default_branch IS NOT NULL ORDER BY h7.score DESC, h7.vout DESC LIMIT 1) AS default_branch,
+	MIN(h.score), MAX(h.score), COUNT(*), COUNT(DISTINCT h.branch)
+	FROM gib_heads h`
+
+func scanRepo(r rowScanner) (*RepoRecord, error) {
+	var rec RepoRecord
+	var owner, first, name, desc, branch sql.NullString
+	if err := r.Scan(&rec.Origin, &owner, &first, &name, &desc, &branch, &rec.FirstScore, &rec.LastScore, &rec.Heads, &rec.Branches); err != nil {
+		return nil, err
+	}
+	rec.Owner = owner.String
+	rec.FirstOutpoint = first.String
+	rec.Name, rec.Description, rec.DefaultBranch = name.String, desc.String, branch.String
+	return &rec, nil
+}
+
+// GetRepo summarizes one origin or returns sql.ErrNoRows.
+func (s *Store) GetRepo(ctx context.Context, origin string) (*RepoRecord, error) {
+	if err := s.ensureSchema(); err != nil {
+		return nil, err
+	}
+	q := s.newQB()
+	query := fmt.Sprintf(repoSelect, q.topicWhere("h2"), q.topicWhere("h3"), q.topicWhere("h5"), q.topicWhere("h6"), q.topicWhere("h7")) +
+		fmt.Sprintf(` WHERE %sh.origin = %s GROUP BY h.origin`, q.topicWhere("h"), q.ph(origin))
+	return scanRepo(s.db.QueryRowContext(ctx, query, q.args...))
+}
+
+// ListRepos pages repositories by most recent activity. When identity is
+// set, only repositories that identity has pushed to are returned.
+func (s *Store) ListRepos(ctx context.Context, identity string, from float64, limit int, rev bool) ([]RepoRecord, error) {
+	if err := s.ensureSchema(); err != nil {
+		return nil, err
+	}
+	q := s.newQB()
+	query := fmt.Sprintf(repoSelect, q.topicWhere("h2"), q.topicWhere("h3"), q.topicWhere("h5"), q.topicWhere("h6"), q.topicWhere("h7"))
+	where := []string{}
+	if tw := q.topicWhere("h"); tw != "" {
+		where = append(where, strings.TrimSuffix(tw, " AND "))
+	}
+	if identity != "" {
+		where = append(where, fmt.Sprintf(`EXISTS (SELECT 1 FROM gib_heads h4 WHERE %sh4.origin = h.origin AND h4.identity = %s)`,
+			q.topicWhere("h4"), q.ph(identity)))
+	}
+	if len(where) > 0 {
+		query += " WHERE " + strings.Join(where, " AND ")
+	}
+	query += " GROUP BY h.origin"
+	if from > 0 {
+		if rev {
+			query += " HAVING MAX(h.score) < " + q.ph(from)
+		} else {
+			query += " HAVING MAX(h.score) > " + q.ph(from)
+		}
+	}
+	if rev {
+		query += " ORDER BY MAX(h.score) DESC"
+	} else {
+		query += " ORDER BY MAX(h.score) ASC"
+	}
+	query += " LIMIT " + q.ph(clampLimit(limit))
+
+	rows, err := s.db.QueryContext(ctx, query, q.args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := []RepoRecord{}
+	for rows.Next() {
+		rec, err := scanRepo(rows)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, *rec)
+	}
+	return out, rows.Err()
+}
+
+func clampLimit(limit int) int {
+	if limit <= 0 {
+		return DefaultLimit
+	}
+	if limit > MaxLimit {
+		return MaxLimit
+	}
+	return limit
+}
+
+// BranchRecord is one branch of a repository: a (repository origin, branch,
+// identity) triple and the newest head this overlay holds for it. The same
+// branch name published by two identities is two branches, which is why the
+// identity is part of what names one.
+type BranchRecord struct {
+	Branch   string `json:"branch"`
+	Identity string `json:"identity"`
+	// Tip is the newest head for this branch: what a client syncs up to,
+	// and where it resumes from.
+	Tip string `json:"tip"`
+	// Sha is the commit that head publishes, when this overlay read it.
+	Sha string `json:"sha,omitempty"`
+	// Root is the published root directory the tip head names.
+	Root string `json:"root"`
+	// Spent is true when the tip coin has been spent without a successor:
+	// the publisher has stopped extending this branch. Its history is still
+	// served and anyone may branch from it — see the README.
+	Spent bool `json:"spent,omitempty"`
+	// Score orders the tip in the chain (block height, or a timestamp while
+	// unconfirmed); it is not the paging cursor, which is the name.
+	Score float64 `json:"score"`
+}
+
+// BranchKey is an exclusive position in a repository's branch list: the
+// (branch, identity) of the last entry a caller received. Branches are
+// ordered by name then identity rather than by activity, so a push landing
+// between pages cannot move an entry from one page to another.
+type BranchKey struct {
+	Branch   string
+	Identity string
+}
+
+// ListBranches returns a repository's branches, ordered by branch name then
+// identity, starting strictly after the cursor. A nil cursor starts at the
+// first. Each entry carries the newest head for that branch, spent or not:
+// a branch nobody extends any more is still a branch, and the overlay goes
+// on serving it.
+func (s *Store) ListBranches(ctx context.Context, origin string, after *BranchKey, limit int) ([]BranchRecord, error) {
+	if err := s.ensureSchema(); err != nil {
+		return nil, err
+	}
+	if limit <= 0 {
+		limit = DefaultLimit
+	}
+	if limit > MaxLimit+1 {
+		limit = MaxLimit + 1
+	}
+
+	q := s.newQB()
+	where := []string{}
+	if tw := q.topicWhere("h"); tw != "" {
+		where = append(where, strings.TrimSuffix(tw, " AND "))
+	}
+	where = append(where, "h.origin = "+q.ph(origin))
+	if after != nil {
+		// Tuple cursor on the same ordering the rows come back in.
+		where = append(where, fmt.Sprintf("(h.branch > %s OR (h.branch = %s AND h.identity > %s))",
+			q.ph(after.Branch), q.ph(after.Branch), q.ph(after.Identity)))
+	}
+	// The newest head of each (branch, identity): the one no sibling
+	// outranks. Ordering is (score, vout, outpoint) — the last is only a
+	// tie-break, so exactly one row per branch survives.
+	where = append(where, fmt.Sprintf(`NOT EXISTS (
+		SELECT 1 FROM gib_heads n WHERE %sn.origin = h.origin AND n.branch = h.branch AND n.identity = h.identity
+			AND (n.score > h.score
+				OR (n.score = h.score AND n.vout > h.vout)
+				OR (n.score = h.score AND n.vout = h.vout AND n.outpoint > h.outpoint)))`, q.topicWhere("n")))
+
+	query := fmt.Sprintf(`SELECT h.branch, h.identity, h.outpoint, h.commit_sha, h.root, h.spend_txid, h.next_outpoint, h.score
+		FROM gib_heads h WHERE %s ORDER BY h.branch ASC, h.identity ASC LIMIT %s`,
+		strings.Join(where, " AND "), q.ph(limit))
+
+	rows, err := s.db.QueryContext(ctx, query, q.args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := []BranchRecord{}
+	for rows.Next() {
+		var (
+			rec              BranchRecord
+			sha, spend, next sql.NullString
+		)
+		if err := rows.Scan(&rec.Branch, &rec.Identity, &rec.Tip, &sha, &rec.Root, &spend, &next, &rec.Score); err != nil {
+			return nil, err
+		}
+		rec.Sha = sha.String
+		// A spend with a successor cannot reach here — the successor is the
+		// newer head, and would have outranked this one — so a spend on the
+		// newest head means the publisher stopped extending the branch.
+		rec.Spent = spend.Valid && next.String == ""
+		out = append(out, rec)
+	}
+	return out, rows.Err()
+}
+
+// GenesisHead returns the earliest head this overlay holds for a repository:
+// the one whose branch is the repository's default and whose identity is its
+// owner. It returns sql.ErrNoRows when the repository has no indexed head.
+//
+// "Earliest this overlay holds" is the honest reading: an overlay that never
+// saw the genesis push names the oldest head it did see. It is still a
+// better answer than the client guessing from `.gib`, which is a label the
+// publisher writes rather than anything the chain attests.
+func (s *Store) GenesisHead(ctx context.Context, origin string) (*HeadRecord, error) {
+	if err := s.ensureSchema(); err != nil {
+		return nil, err
+	}
+	q := s.newQB()
+	query := fmt.Sprintf(`SELECT %s FROM gib_heads WHERE %sorigin = %s ORDER BY score ASC, vout ASC LIMIT 1`,
+		headColumns, q.topicWhere(""), q.ph(origin))
+	return scanHead(s.db.QueryRowContext(ctx, query, q.args...))
+}
+
+// BranchCursor is an exclusive position in a branch's push history: the
+// score and vout of a head the caller already holds. Ordering is (score,
+// vout), the same order ListHeads uses, so a mined head always precedes an
+// unconfirmed one (see types.HeightScore).
+type BranchCursor struct {
+	Score float64
+	Vout  uint32
+}
+
+// ListBranchHeadsAfter returns one branch's heads in push order (oldest
+// first), starting strictly after the cursor. A nil cursor starts at the
+// branch's first head. An empty identity means every publisher on the
+// branch. limit must be positive; it is capped at MaxLimit+1 so a caller may
+// ask for one extra row to detect a further page.
+func (s *Store) ListBranchHeadsAfter(ctx context.Context, origin, branch, identity string, after *BranchCursor, limit int) ([]HeadRecord, error) {
+	if err := s.ensureSchema(); err != nil {
+		return nil, err
+	}
+	if limit <= 0 {
+		limit = DefaultLimit
+	}
+	if limit > MaxLimit+1 {
+		limit = MaxLimit + 1
+	}
+
+	q := s.newQB()
+	where := []string{}
+	if tw := q.topicWhere(""); tw != "" {
+		where = append(where, strings.TrimSuffix(tw, " AND "))
+	}
+	where = append(where, "origin = "+q.ph(origin))
+	where = append(where, "branch = "+q.ph(branch))
+	if identity != "" {
+		where = append(where, "identity = "+q.ph(identity))
+	}
+	if after != nil {
+		// Tuple cursor: score alone would skip a same-score sibling.
+		where = append(where, fmt.Sprintf("(score > %s OR (score = %s AND vout > %s))",
+			q.ph(after.Score), q.ph(after.Score), q.ph(after.Vout)))
+	}
+	query := fmt.Sprintf(`SELECT %s FROM gib_heads WHERE %s ORDER BY score ASC, vout ASC LIMIT %s`,
+		headColumns, strings.Join(where, " AND "), q.ph(limit))
+
+	rows, err := s.db.QueryContext(ctx, query, q.args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := []HeadRecord{}
+	for rows.Next() {
+		rec, err := scanHead(rows)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, *rec)
+	}
+	return out, rows.Err()
+}

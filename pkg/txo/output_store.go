@@ -11,6 +11,7 @@ import (
 	"github.com/b-open-io/1sat-stack/pkg/pubsub"
 	"github.com/b-open-io/1sat-stack/pkg/spends"
 	"github.com/b-open-io/1sat-stack/pkg/store"
+	"github.com/b-open-io/1sat-stack/pkg/types"
 	"github.com/bsv-blockchain/go-sdk/chainhash"
 	"github.com/bsv-blockchain/go-sdk/transaction"
 )
@@ -51,6 +52,9 @@ type OutputStore struct {
 	// outputs are inserted via overlay flow. Set after initialization
 	// to wire up the indexer (avoids circular imports).
 	IngestTx IngestTxFunc
+
+	// Network selects the address prefix for own: tags. Zero value is mainnet.
+	Network types.Network
 }
 
 // NewOutputStore creates a new global OutputStore
@@ -76,7 +80,7 @@ func (s *OutputStore) SaveOutput(ctx context.Context, output *IndexedOutput, sat
 	events = append(events, output.Events...)
 	for _, owner := range output.Owners {
 		if !owner.IsZero() {
-			events = append(events, "own:"+owner.Address())
+			events = append(events, "own:"+owner.Address(s.Network))
 		}
 	}
 
@@ -240,7 +244,7 @@ func (s *OutputStore) SaveTransaction(ctx context.Context, tx *transaction.Trans
 			Txid:  *input.SourceTXID,
 			Index: input.SourceTxOutIndex,
 		}
-		events := buildSpendEvents(spend)
+		events := buildSpendEvents(spend, s.Network)
 		if err := s.SaveSpend(ctx, outpoint, txid, events, score); err != nil {
 			return err
 		}
@@ -284,13 +288,13 @@ func (s *OutputStore) SaveTransaction(ctx context.Context, tx *transaction.Trans
 }
 
 // buildSpendEvents constructs the events list for a spent output.
-func buildSpendEvents(output *IndexedOutput) []string {
+func buildSpendEvents(output *IndexedOutput, network types.Network) []string {
 	events := make([]string, 0, len(output.Events)+len(output.Owners)+1)
 	events = append(events, "txid:"+output.Outpoint.Txid.String())
 	events = append(events, output.Events...)
 	for _, owner := range output.Owners {
 		if !owner.IsZero() {
-			events = append(events, "own:"+owner.Address())
+			events = append(events, "own:"+owner.Address(network))
 		}
 	}
 	return events

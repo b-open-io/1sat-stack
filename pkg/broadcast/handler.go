@@ -19,8 +19,7 @@ import (
 // resulting status events feed our always-on SSE stream).
 //
 // All callers that broadcast on behalf of a 1sat-stack tenant — the /1sat/tx
-// HTTP handler, paymail's receive endpoints, and any future internal
-// broadcasters — go through Handler.Submit.
+// HTTP handler and any future internal broadcasters — go through Handler.Submit.
 type Handler struct {
 	broker      *arcadeclient.EventBroker
 	beefStorage *beef.Storage

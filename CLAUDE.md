@@ -34,6 +34,7 @@ golangci-lint run                        # Lint (if configured)
 | `pkg/bap/` | BAP identity attestation overlay |
 | `pkg/bsocial/` | BSocial social data overlay |
 | `pkg/opns/` | OPNS domain name overlay |
+| `pkg/gib/` | gib on-chain git overlay (commit heads / branch pointers) |
 | `pkg/overlay/` | Overlay engine coordination, topic/lookup management, generic sync worker |
 | `pkg/parse/` | Output-level script parsers (P2PKH, inscription, BSV21, etc.) |
 | `pkg/topic/` | Topic managers (admission logic for overlay engine) |

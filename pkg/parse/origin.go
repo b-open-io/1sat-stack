@@ -31,7 +31,7 @@ func ParseOrigin(ctx *ParseContext) (*ParseResult, error) {
 	// Pure P2PKH (exactly 25 bytes) is already handled by ParseP2PKH.
 	if len(ctx.LockingScript) > 25 {
 		prefix := script.Script(ctx.LockingScript[:25])
-		if addr := p2pkh.Decode(&prefix, true); addr != nil {
+		if addr := p2pkh.Decode(&prefix, ctx.Mainnet()); addr != nil {
 			if owner := types.PKHashFromBytes(addr.PublicKeyHash); owner != nil {
 				owners = append(owners, owner)
 			}

@@ -1,34 +1,43 @@
 package bsv21
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"log/slog"
 	"strconv"
+	"unicode/utf8"
 
+	"github.com/b-open-io/1sat-stack/pkg/arcadeclient"
+	"github.com/b-open-io/1sat-stack/pkg/broadcast"
 	lookuppkg "github.com/b-open-io/1sat-stack/pkg/lookup"
 	"github.com/b-open-io/1sat-stack/pkg/parse"
 	"github.com/b-open-io/1sat-stack/pkg/store"
 	"github.com/b-open-io/1sat-stack/pkg/txo"
+	"github.com/b-open-io/1sat-stack/pkg/types"
 	"github.com/bsv-blockchain/go-sdk/chainhash"
+	"github.com/bsv-blockchain/go-sdk/script"
 	"github.com/bsv-blockchain/go-sdk/transaction"
+	"github.com/bsv-blockchain/go-sdk/transaction/template/p2pkh"
 	"github.com/gofiber/fiber/v2"
 )
 
 // Routes provides HTTP handlers for BSV21 API
 type Routes struct {
-	storage *txo.OutputStore
-	lookup  *lookuppkg.BSV21Lookup
-	manager *TokenManager
-	logger  *slog.Logger
+	storage     *txo.OutputStore
+	lookup      *lookuppkg.BSV21Lookup
+	manager     *TokenManager
+	broadcaster *broadcast.Handler
+	logger      *slog.Logger
 }
 
 // RoutesDeps holds dependencies for BSV21 routes
 type RoutesDeps struct {
-	Storage *txo.OutputStore
-	Lookup  *lookuppkg.BSV21Lookup
-	Manager *TokenManager
-	Logger  *slog.Logger
+	Storage     *txo.OutputStore
+	Lookup      *lookuppkg.BSV21Lookup
+	Manager     *TokenManager
+	Broadcaster *broadcast.Handler
+	Logger      *slog.Logger
 }
 
 // NewRoutes creates a new Routes instance
@@ -38,10 +47,11 @@ func NewRoutes(cfg *RoutesDeps) *Routes {
 		logger = slog.Default()
 	}
 	return &Routes{
-		storage: cfg.Storage,
-		lookup:  cfg.Lookup,
-		manager: cfg.Manager,
-		logger:  logger,
+		storage:     cfg.Storage,
+		lookup:      cfg.Lookup,
+		manager:     cfg.Manager,
+		broadcaster: cfg.Broadcaster,
+		logger:      logger,
 	}
 }
 
@@ -51,18 +61,46 @@ func (r *Routes) Register(router fiber.Router) {
 	router.Get("/tokens", r.ListTokens)
 	router.Post("/tokens", r.LookupTokens)
 
-	// Output validation routes
-	router.Post("/:tokenId/outputs", r.ValidateOutputs)
-	router.Get("/:tokenId/outputs/:outpoint", r.GetTokenOutput)
-
+	// Token details and funding answer for any token.
 	router.Get("/:tokenId", r.GetToken)
-	router.Get("/:tokenId/tx/:txid", r.GetTransaction)
-	router.Get("/:tokenId/:lockType/:address/balance", r.GetAddressBalance)
-	router.Get("/:tokenId/:lockType/:address/history", r.GetAddressHistory)
-	router.Get("/:tokenId/:lockType/:address/unspent", r.GetAddressUnspent)
-	router.Post("/:tokenId/:lockType/balance", r.GetMultiAddressBalance)
-	router.Post("/:tokenId/:lockType/history", r.GetMultiAddressHistory)
-	router.Post("/:tokenId/:lockType/unspent", r.GetMultiAddressUnspent)
+	router.Get("/:tokenId/fund", r.GetFunding)
+	router.Post("/:tokenId/fund", r.PostFunding)
+
+	// Indexed data is served only for active (funded or whitelisted) tokens.
+	router.Post("/:tokenId/outputs", r.requireActive, r.ValidateOutputs)
+	router.Post("/:tokenId/outputs/status", r.requireActive, r.OutputStatus)
+	router.Get("/:tokenId/outputs/:outpoint", r.requireActive, r.GetTokenOutput)
+	router.Get("/:tokenId/tx/:txid", r.requireActive, r.GetTransaction)
+	router.Get("/:tokenId/:lockType/:address/balance", r.requireActive, r.GetAddressBalance)
+	router.Get("/:tokenId/:lockType/:address/history", r.requireActive, r.GetAddressHistory)
+	router.Get("/:tokenId/:lockType/:address/unspent", r.requireActive, r.GetAddressUnspent)
+	router.Post("/:tokenId/:lockType/balance", r.requireActive, r.GetMultiAddressBalance)
+	router.Post("/:tokenId/:lockType/history", r.requireActive, r.GetMultiAddressHistory)
+	router.Post("/:tokenId/:lockType/unspent", r.requireActive, r.GetMultiAddressUnspent)
+}
+
+var errTokenNotActive = fmt.Errorf("token is not active on this overlay")
+
+// requireActive refuses a token's indexed data unless the token is funded or
+// whitelisted. Data indexed while an unfunded token was active is not served.
+func (r *Routes) requireActive(c *fiber.Ctx) error {
+	tokenId := c.Params("tokenId")
+	if _, err := transaction.OutpointFromString(tokenId); err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(ErrorResponse{Message: errInvalidTokenID.Error()})
+	}
+	if r.manager == nil {
+		return c.Status(fiber.StatusServiceUnavailable).JSON(ErrorResponse{Message: "token manager not available"})
+	}
+	active, err := r.manager.IsTokenActive(c.Context(), tokenId)
+	if err != nil {
+		r.logger.Error("requireActive status error", "tokenId", tokenId, "error", err)
+		return c.Status(fiber.StatusInternalServerError).JSON(ErrorResponse{Message: err.Error()})
+	}
+	// 404, not 403: clients treat 404 as "the overlay does not have this yet".
+	if !active {
+		return c.Status(fiber.StatusNotFound).JSON(ErrorResponse{Message: errTokenNotActive.Error()})
+	}
+	return c.Next()
 }
 
 // TokenDetailResponse represents combined BSV21 token details and funding status
@@ -96,6 +134,36 @@ type BalanceResponse struct {
 	Balance   uint64 `json:"balance"`
 	UtxoCount int    `json:"utxoCount"`
 }
+
+// Output states reported by OutputStatus
+const (
+	OutputValid   = "valid"   // in the topic, unspent
+	OutputSpent   = "spent"   // in the topic, spent
+	OutputQueued  = "queued"  // waiting in the token's queue
+	OutputUnknown = "unknown" // neither indexed nor queued
+)
+
+// OutputStatusResponse reports the overlay state of one outpoint
+type OutputStatusResponse struct {
+	Outpoint string `json:"outpoint"`
+	State    string `json:"state" enums:"valid,spent,queued,unknown"`
+}
+
+// FundingOutput is a payment output in createAction form
+type FundingOutput struct {
+	LockingScript     string `json:"lockingScript"` // hex
+	Satoshis          uint64 `json:"satoshis"`
+	OutputDescription string `json:"outputDescription"`
+}
+
+// FundingTemplate lists the outputs that fund a token's overlay. Empty when the
+// token is active and funded past its backlog.
+type FundingTemplate struct {
+	Outputs []FundingOutput `json:"outputs"`
+}
+
+// fundingHeadroomOutputs is how many outputs past the backlog a funding payment covers.
+const fundingHeadroomOutputs = 10
 
 // ErrorResponse represents an error response
 type ErrorResponse struct {
@@ -217,6 +285,7 @@ func (r *Routes) getTokenDetail(c *fiber.Ctx, tokenIdStr string) (*TokenDetailRe
 // @Param txid path string true "Transaction ID"
 // @Param beef query bool false "Include BEEF data"
 // @Success 200 {object} TransactionData
+// @Failure 404 {object} ErrorResponse "Token is not active (not funded or whitelisted)"
 // @Router /{tokenId}/tx/{txid} [get]
 func (r *Routes) GetTransaction(c *fiber.Ctx) error {
 	tokenId := c.Params("tokenId")
@@ -300,6 +369,7 @@ func (r *Routes) GetTransaction(c *fiber.Ctx) error {
 // @Param lockType path string true "Lock type (p2pkh, cos, list, etc.)"
 // @Param address path string true "Address"
 // @Success 200 {object} BalanceResponse
+// @Failure 404 {object} ErrorResponse "Token is not active (not funded or whitelisted)"
 // @Router /{tokenId}/{lockType}/{address}/balance [get]
 func (r *Routes) GetAddressBalance(c *fiber.Ctx) error {
 	tokenId := c.Params("tokenId")
@@ -328,6 +398,7 @@ func (r *Routes) GetAddressBalance(c *fiber.Ctx) error {
 // @Param lockType path string true "Lock type"
 // @Param address path string true "Address"
 // @Success 200 {array} txo.IndexedOutput
+// @Failure 404 {object} ErrorResponse "Token is not active (not funded or whitelisted)"
 // @Router /{tokenId}/{lockType}/{address}/history [get]
 func (r *Routes) GetAddressHistory(c *fiber.Ctx) error {
 	tokenId := c.Params("tokenId")
@@ -362,6 +433,7 @@ func (r *Routes) GetAddressHistory(c *fiber.Ctx) error {
 // @Param lockType path string true "Lock type"
 // @Param address path string true "Address"
 // @Success 200 {array} txo.IndexedOutput
+// @Failure 404 {object} ErrorResponse "Token is not active (not funded or whitelisted)"
 // @Router /{tokenId}/{lockType}/{address}/unspent [get]
 func (r *Routes) GetAddressUnspent(c *fiber.Ctx) error {
 	tokenId := c.Params("tokenId")
@@ -397,6 +469,7 @@ func (r *Routes) GetAddressUnspent(c *fiber.Ctx) error {
 // @Param lockType path string true "Lock type"
 // @Param addresses body []string true "Array of addresses (max 100)"
 // @Success 200 {object} BalanceResponse
+// @Failure 404 {object} ErrorResponse "Token is not active (not funded or whitelisted)"
 // @Router /{tokenId}/{lockType}/balance [post]
 func (r *Routes) GetMultiAddressBalance(c *fiber.Ctx) error {
 	tokenId := c.Params("tokenId")
@@ -444,6 +517,7 @@ func (r *Routes) GetMultiAddressBalance(c *fiber.Ctx) error {
 // @Param lockType path string true "Lock type"
 // @Param addresses body []string true "Array of addresses (max 100)"
 // @Success 200 {array} txo.IndexedOutput
+// @Failure 404 {object} ErrorResponse "Token is not active (not funded or whitelisted)"
 // @Router /{tokenId}/{lockType}/history [post]
 func (r *Routes) GetMultiAddressHistory(c *fiber.Ctx) error {
 	tokenId := c.Params("tokenId")
@@ -497,6 +571,7 @@ func (r *Routes) GetMultiAddressHistory(c *fiber.Ctx) error {
 // @Param lockType path string true "Lock type"
 // @Param addresses body []string true "Array of addresses (max 100)"
 // @Success 200 {array} txo.IndexedOutput
+// @Failure 404 {object} ErrorResponse "Token is not active (not funded or whitelisted)"
 // @Router /{tokenId}/{lockType}/unspent [post]
 func (r *Routes) GetMultiAddressUnspent(c *fiber.Ctx) error {
 	tokenId := c.Params("tokenId")
@@ -551,6 +626,7 @@ func (r *Routes) GetMultiAddressUnspent(c *fiber.Ctx) error {
 // @Success 200 {array} txo.IndexedOutputResponse
 // @Failure 400 {object} ErrorResponse
 // @Failure 500 {object} ErrorResponse
+// @Failure 404 {object} ErrorResponse "Token is not active (not funded or whitelisted)"
 // @Router /{tokenId}/outputs [post]
 func (r *Routes) ValidateOutputs(c *fiber.Ctx) error {
 	tokenId := c.Params("tokenId")
@@ -598,6 +674,259 @@ func (r *Routes) ValidateOutputs(c *fiber.Ctx) error {
 	return c.JSON(outputs)
 }
 
+// OutputStatus reports whether each outpoint is valid, spent, queued, or unknown
+// to the token's overlay. Outpoints come back in request order, as sent.
+// @Summary Outpoint states
+// @Tags bsv21
+// @Accept json
+// @Produce json
+// @Param tokenId path string true "Token ID"
+// @Param outpoints body []string true "Outpoints (txid_vout or txid.vout, max 1000)"
+// @Success 200 {array} OutputStatusResponse
+// @Failure 400 {object} ErrorResponse
+// @Failure 500 {object} ErrorResponse
+// @Failure 503 {object} ErrorResponse
+// @Failure 404 {object} ErrorResponse "Token is not active (not funded or whitelisted)"
+// @Router /{tokenId}/outputs/status [post]
+func (r *Routes) OutputStatus(c *fiber.Ctx) error {
+	tokenId := c.Params("tokenId")
+	var outpointStrs []string
+	if err := c.BodyParser(&outpointStrs); err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(ErrorResponse{Message: "Invalid request body"})
+	}
+	if len(outpointStrs) == 0 {
+		return c.Status(fiber.StatusBadRequest).JSON(ErrorResponse{Message: "No outpoints provided"})
+	}
+	if len(outpointStrs) > 1000 {
+		return c.Status(fiber.StatusBadRequest).JSON(ErrorResponse{Message: "Too many outpoints (max 1000)"})
+	}
+	if r.manager == nil {
+		return c.Status(fiber.StatusServiceUnavailable).JSON(ErrorResponse{Message: "token manager not available"})
+	}
+
+	outpoints := make([]*transaction.Outpoint, len(outpointStrs))
+	for i, opStr := range outpointStrs {
+		op, err := transaction.OutpointFromString(opStr)
+		if err != nil {
+			return c.Status(fiber.StatusBadRequest).JSON(ErrorResponse{Message: fmt.Sprintf("invalid outpoint %q: %v", opStr, err)})
+		}
+		outpoints[i] = op
+	}
+
+	outputs, err := r.lookup.LoadOutputs(c.Context(), tokenId, outpoints)
+	if err != nil {
+		r.logger.Error("OutputStatus load error", "tokenId", tokenId, "error", err)
+		return c.Status(fiber.StatusInternalServerError).JSON(ErrorResponse{Message: err.Error()})
+	}
+	indexed := make(map[transaction.Outpoint]*txo.IndexedOutput, len(outputs))
+	for _, out := range outputs {
+		indexed[out.Outpoint] = out
+	}
+
+	resp := make([]OutputStatusResponse, len(outpoints))
+	for i, op := range outpoints {
+		state := OutputUnknown
+		if out, ok := indexed[*op]; ok {
+			state = OutputValid
+			if out.SpendTxid != nil {
+				state = OutputSpent
+			}
+		} else {
+			queued, err := r.manager.IsQueued(c.Context(), tokenId, op)
+			if err != nil {
+				r.logger.Error("OutputStatus queue lookup error", "tokenId", tokenId, "outpoint", outpointStrs[i], "error", err)
+				return c.Status(fiber.StatusInternalServerError).JSON(ErrorResponse{Message: err.Error()})
+			}
+			if queued {
+				state = OutputQueued
+			}
+		}
+		resp[i] = OutputStatusResponse{Outpoint: outpointStrs[i], State: state}
+	}
+	return c.JSON(resp)
+}
+
+// GetFunding returns the payment that activates the token's overlay: enough to
+// meet the minimum funding and to index the queued backlog, plus headroom.
+// Counting the backlog scans the token's queue.
+// @Summary Get funding template
+// @Tags bsv21
+// @Produce json
+// @Param tokenId path string true "Token ID (outpoint format: txid_vout)"
+// @Success 200 {object} FundingTemplate
+// @Failure 400 {object} ErrorResponse
+// @Failure 409 {object} ErrorResponse
+// @Failure 500 {object} ErrorResponse
+// @Failure 503 {object} ErrorResponse
+// @Router /{tokenId}/fund [get]
+func (r *Routes) GetFunding(c *fiber.Ctx) error {
+	tokenId := c.Params("tokenId")
+	tokenOutpoint, err := transaction.OutpointFromString(tokenId)
+	if err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(ErrorResponse{Message: errInvalidTokenID.Error()})
+	}
+	if r.manager == nil {
+		return c.Status(fiber.StatusServiceUnavailable).JSON(ErrorResponse{Message: "token manager not available"})
+	}
+
+	status, err := r.manager.GetTokenStatus(c.Context(), tokenId)
+	if err != nil {
+		r.logger.Error("GetFunding status error", "tokenId", tokenId, "error", err)
+		return c.Status(fiber.StatusInternalServerError).JSON(ErrorResponse{Message: err.Error()})
+	}
+	if status.IsBlacklisted {
+		return c.Status(fiber.StatusConflict).JSON(ErrorResponse{Message: "token is blacklisted"})
+	}
+	if status.IsWhitelisted {
+		return c.JSON(FundingTemplate{Outputs: []FundingOutput{}})
+	}
+
+	queueDepth, err := r.manager.queueDepth(c.Context(), tokenId)
+	if err != nil {
+		r.logger.Error("GetFunding queue error", "tokenId", tokenId, "error", err)
+		return c.Status(fiber.StatusInternalServerError).JSON(ErrorResponse{Message: err.Error()})
+	}
+	need := fundingNeeded(status, queueDepth)
+	if need == 0 {
+		return c.JSON(FundingTemplate{Outputs: []FundingOutput{}})
+	}
+
+	lockingScript, err := feeLockingScript(status.FeeAddress)
+	if err != nil {
+		r.logger.Error("GetFunding script error", "tokenId", tokenId, "error", err)
+		return c.Status(fiber.StatusInternalServerError).JSON(ErrorResponse{Message: err.Error()})
+	}
+	return c.JSON(FundingTemplate{Outputs: []FundingOutput{{
+		LockingScript:     lockingScript.String(),
+		Satoshis:          uint64(need),
+		OutputDescription: fmt.Sprintf("Fund %s overlay", r.tokenLabel(c.Context(), tokenOutpoint)),
+	}}})
+}
+
+// tokenLabel names a token for descriptions: its symbol, or a short token ID
+// when it has none. Capped so "Fund <label> overlay" stays within BRC-100's
+// 50-byte outputDescription limit.
+func (r *Routes) tokenLabel(ctx context.Context, tokenOutpoint *transaction.Outpoint) string {
+	label := tokenOutpoint.OrdinalString()[:8]
+	if token, err := r.lookup.GetToken(ctx, tokenOutpoint); err == nil && token.Symbol != nil && *token.Symbol != "" {
+		label = *token.Symbol
+	}
+	return truncateUTF8(label, 32)
+}
+
+// truncateUTF8 shortens s to at most n bytes without splitting a character.
+func truncateUTF8(s string, n int) string {
+	for len(s) > n {
+		_, size := utf8.DecodeLastRuneInString(s)
+		s = s[:len(s)-size]
+	}
+	return s
+}
+
+// PostFunding takes a BEEF transaction that pays the token's fee address,
+// broadcasts it, indexes it, and starts the token's worker if the funding now
+// qualifies. Returns the token's status after the payment.
+// @Summary Submit funding transaction
+// @Tags bsv21
+// @Accept octet-stream
+// @Produce json
+// @Param tokenId path string true "Token ID (outpoint format: txid_vout)"
+// @Param beef body string true "BEEF bytes of a transaction paying the token's fee address" format(binary)
+// @Success 200 {object} TokenStatus
+// @Failure 400 {object} ErrorResponse
+// @Failure 500 {object} ErrorResponse
+// @Failure 502 {object} ErrorResponse
+// @Failure 503 {object} ErrorResponse
+// @Router /{tokenId}/fund [post]
+func (r *Routes) PostFunding(c *fiber.Ctx) error {
+	tokenId := c.Params("tokenId")
+	tokenOutpoint, err := transaction.OutpointFromString(tokenId)
+	if err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(ErrorResponse{Message: errInvalidTokenID.Error()})
+	}
+	beefBytes := c.Body()
+	_, tx, _, err := transaction.ParseBeef(beefBytes)
+	if err != nil || tx == nil {
+		return c.Status(fiber.StatusBadRequest).JSON(ErrorResponse{Message: fmt.Sprintf("invalid BEEF: %v", err)})
+	}
+
+	var network types.Network
+	if r.storage != nil {
+		network = r.storage.Network
+	}
+	feeAddress, err := GenerateFeeAddress(tokenOutpoint, network)
+	if err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(ErrorResponse{Message: err.Error()})
+	}
+	feeScript, err := feeLockingScript(feeAddress)
+	if err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(ErrorResponse{Message: err.Error()})
+	}
+	pays := false
+	for _, out := range tx.Outputs {
+		if out.LockingScript.Equals(feeScript) && out.Satoshis > 0 {
+			pays = true
+			break
+		}
+	}
+	if !pays {
+		return c.Status(fiber.StatusBadRequest).JSON(ErrorResponse{Message: "transaction does not pay the token's fee address"})
+	}
+	if r.manager == nil || r.broadcaster == nil {
+		return c.Status(fiber.StatusServiceUnavailable).JSON(ErrorResponse{Message: "token funding not available"})
+	}
+
+	txStatus, err := r.broadcaster.Submit(c.Context(), beefBytes)
+	if txStatus == nil || !arcadeclient.IsAccepted(txStatus.TxStatus) {
+		msg := fmt.Sprintf("funding transaction %s was not accepted by the network", tx.TxID().String())
+		if txStatus != nil {
+			msg += ": " + txStatus.TxStatus
+		}
+		if err != nil {
+			msg += ": " + err.Error()
+		}
+		r.logger.Warn("PostFunding broadcast failed", "tokenId", tokenId, "txid", tx.TxID().String(), "error", err)
+		return c.Status(fiber.StatusBadGateway).JSON(ErrorResponse{Message: msg})
+	}
+
+	if err := r.manager.IngestFunding(c.Context(), tx); err != nil {
+		r.logger.Error("PostFunding ingest error", "tokenId", tokenId, "error", err)
+		return c.Status(fiber.StatusInternalServerError).JSON(ErrorResponse{Message: err.Error()})
+	}
+
+	status, err := r.manager.ActivateToken(c.Context(), tokenId)
+	if err != nil {
+		r.logger.Error("PostFunding activate error", "tokenId", tokenId, "error", err)
+		return c.Status(fiber.StatusInternalServerError).JSON(ErrorResponse{Message: err.Error()})
+	}
+	return c.JSON(status)
+}
+
+// fundingNeeded is the payment that meets the token's minimum funding and
+// indexes its queued backlog, plus headroom. Zero when the token is active and
+// its balance already covers the backlog.
+func fundingNeeded(status *TokenStatus, queueDepth int64) int64 {
+	backlog := queueDepth * status.FeePerOutput
+	if status.IsActive() && status.Balance() > backlog {
+		return 0
+	}
+	need := max(int64(status.MinFunding)-int64(status.Credits), backlog-status.Balance(), 0)
+	return need + fundingHeadroomOutputs*status.FeePerOutput
+}
+
+// feeLockingScript is the P2PKH script paying a token's fee address.
+func feeLockingScript(feeAddress string) (*script.Script, error) {
+	addr, err := script.NewAddressFromString(feeAddress)
+	if err != nil {
+		return nil, fmt.Errorf("invalid fee address %s: %w", feeAddress, err)
+	}
+	s, err := p2pkh.Lock(addr)
+	if err != nil {
+		return nil, fmt.Errorf("failed to build fee script for %s: %w", feeAddress, err)
+	}
+	return s, nil
+}
+
 // GetTokenOutput checks if a single outpoint exists in the token's overlay
 // @Summary Validate outpoint
 // @Tags bsv21
@@ -606,7 +935,7 @@ func (r *Routes) ValidateOutputs(c *fiber.Ctx) error {
 // @Param outpoint path string true "Outpoint (format: txid_vout or txid.vout)"
 // @Success 200 {object} txo.IndexedOutputResponse
 // @Failure 400 {object} ErrorResponse
-// @Failure 404 {object} ErrorResponse
+// @Failure 404 {object} ErrorResponse "Outpoint not in the topic, or token not active (not funded or whitelisted)"
 // @Failure 500 {object} ErrorResponse
 // @Router /{tokenId}/outputs/{outpoint} [get]
 func (r *Routes) GetTokenOutput(c *fiber.Ctx) error {

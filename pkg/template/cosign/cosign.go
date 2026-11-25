@@ -20,7 +20,11 @@ type Cosign struct {
 	Cosigner string `json:"cosigner"`
 }
 
-func Decode(s *script.Script) *Cosign {
+func Decode(s *script.Script, mainnet ...bool) *Cosign {
+	isMain := true
+	if len(mainnet) > 0 {
+		isMain = mainnet[0]
+	}
 	chunks, _ := s.Chunks()
 	for i := range len(chunks) - 6 {
 		if chunks[0+i].Op == script.OpDUP &&
@@ -34,7 +38,7 @@ func Decode(s *script.Script) *Cosign {
 			cosign := &Cosign{
 				Cosigner: hex.EncodeToString(chunks[5+i].Data),
 			}
-			if add, err := script.NewAddressFromPublicKeyHash(chunks[2+i].Data, true); err == nil {
+			if add, err := script.NewAddressFromPublicKeyHash(chunks[2+i].Data, isMain); err == nil {
 				cosign.Address = add.AddressString
 			}
 			return cosign
