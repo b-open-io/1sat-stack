@@ -21,6 +21,8 @@ type IngestTxFunc func(ctx context.Context, tx *transaction.Transaction) error
 // EngineAdapter implements engine.Storage by routing topic-specific operations
 // to per-topic TopicStorage instances and BEEF operations to the shared BeefStore.
 type EngineAdapter struct {
+	// LookupTopic scopes topic-less formula hydration for a single-topic engine.
+	LookupTopic  *string
 	factory      Factory
 	beefStore    *beef.Storage
 	txTopicIndex TxTopicIndexer
@@ -120,6 +122,9 @@ func (a *EngineAdapter) InsertOutputs(ctx context.Context, topic string, txid *c
 
 // FindOutput finds a single output by outpoint.
 func (a *EngineAdapter) FindOutput(ctx context.Context, outpoint *transaction.Outpoint, topic *string, spent *bool, includeBEEF bool) (*engine.Output, error) {
+	if topic == nil {
+		topic = a.LookupTopic
+	}
 	if topic == nil {
 		return nil, fmt.Errorf("FindOutput: topic is required")
 	}
