@@ -6,7 +6,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/b-open-io/1sat-stack/pkg/types"
 	"github.com/bsv-blockchain/go-sdk/transaction"
 )
 
@@ -43,11 +42,13 @@ func TestParseTwetchMuties(t *testing.T) {
 	if res == nil || res.Tag != TagTwetch {
 		t.Fatalf("Muties output must parse as %s, got %+v", TagTwetch, res)
 	}
-	if len(res.Events) != 1 || res.Events[0] != TagTwetch {
-		t.Fatalf("events = %v", res.Events)
+	wantEvents := []string{TagTwetch, "twetch:1J82Vbt4Uz8kKr2Xb3Kro9WtCh6udoctCJ"}
+	if len(res.Events) != 2 || res.Events[0] != wantEvents[0] || res.Events[1] != wantEvents[1] {
+		t.Fatalf("events = %v, want %v", res.Events, wantEvents)
 	}
-	if len(res.Owners) != 1 || res.Owners[0].Address(types.Mainnet) != "1J82Vbt4Uz8kKr2Xb3Kro9WtCh6udoctCJ" {
-		t.Fatalf("owner = %v", res.Owners)
+	// No "own:" owner: older wallets would count the NFT as spendable funds.
+	if len(res.Owners) != 0 {
+		t.Fatalf("owners = %v, want none", res.Owners)
 	}
 	meta, ok := res.Data.(*Twetch)
 	if !ok {

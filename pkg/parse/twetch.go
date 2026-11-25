@@ -20,7 +20,7 @@ const TagTwetch = "twetch"
 //	OP_RETURN <JSON metadata>
 //
 // Spending one takes the owner's signature and public key plus the preimage of the
-// hash. A transfer re-creates the same script with the new owner's pkh and the same
+// hash. Wallets find an address's Twetch NFTs under the "twetch:<address>" key. A transfer re-creates the same script with the new owner's pkh and the same
 // metadata. Example: the 456 Muties in tx
 // a7595e9f7400390d34f193a4011212ddebc7c2065716db525c399bb91856665b.
 const (
@@ -82,11 +82,14 @@ func ParseTwetch(ctx *ParseContext) (*ParseResult, error) {
 	if owner == nil {
 		return nil, nil
 	}
+	// The owner goes in its own "twetch:<address>" event, not in Owners. Owners
+	// would add an "own:" event, and wallets released before Twetch support count
+	// any owned output above 1 sat with no known event as spendable funds, which
+	// a Twetch NFT is not.
 	return &ParseResult{
 		Tag:    TagTwetch,
 		Data:   meta,
-		Events: []string{TagTwetch},
-		Owners: []*types.PKHash{owner},
+		Events: []string{TagTwetch, TagTwetch + ":" + owner.Address(ctx.Network)},
 	}, nil
 }
 
