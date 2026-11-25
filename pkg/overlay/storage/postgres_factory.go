@@ -31,6 +31,59 @@ CREATE TABLE IF NOT EXISTS outputs (
 );
 CREATE INDEX IF NOT EXISTS idx_pg_outputs_txid ON outputs(topic_id, txid);
 CREATE INDEX IF NOT EXISTS idx_pg_outputs_unspent ON outputs(topic_id, score) WHERE spend_txid IS NULL;
+CREATE TABLE IF NOT EXISTS overlay_mutations (
+    topic_id  INTEGER NOT NULL REFERENCES topics(id),
+    txid      BYTEA NOT NULL,
+    phase     TEXT NOT NULL CHECK (phase IN ('active', 'applied', 'rollback_pending')),
+    created_at BIGINT NOT NULL,
+    PRIMARY KEY (topic_id, txid)
+);
+CREATE INDEX IF NOT EXISTS idx_pg_overlay_mutations_phase ON overlay_mutations(topic_id, phase, created_at);
+
+CREATE TABLE IF NOT EXISTS mutation_outputs (
+    topic_id        INTEGER NOT NULL REFERENCES topics(id),
+    mutation_txid   BYTEA NOT NULL,
+    outpoint        BYTEA NOT NULL,
+    txid            BYTEA NOT NULL,
+    satoshis        BIGINT,
+    spend_txid      BYTEA,
+    score           DOUBLE PRECISION NOT NULL,
+    deps             BYTEA,
+    inputs_consumed BYTEA,
+    consumed_by     BYTEA,
+    created_at      BIGINT NOT NULL,
+    PRIMARY KEY (topic_id, mutation_txid, outpoint)
+);
+CREATE INDEX IF NOT EXISTS idx_pg_mutation_outputs_txid ON mutation_outputs(topic_id, txid, mutation_txid);
+
+CREATE TABLE IF NOT EXISTS mutation_events (
+    topic_id      INTEGER NOT NULL REFERENCES topics(id),
+    mutation_txid BYTEA NOT NULL,
+    event         TEXT NOT NULL,
+    outpoint      BYTEA NOT NULL,
+    score         DOUBLE PRECISION NOT NULL,
+    PRIMARY KEY (topic_id, mutation_txid, event, outpoint)
+);
+
+CREATE TABLE IF NOT EXISTS mutation_evictions (
+    topic_id      INTEGER NOT NULL REFERENCES topics(id),
+    mutation_txid BYTEA NOT NULL,
+    outpoint      BYTEA NOT NULL,
+    PRIMARY KEY (topic_id, mutation_txid, outpoint)
+);
+
+CREATE TABLE IF NOT EXISTS mutation_dependencies (
+    topic_id INTEGER NOT NULL REFERENCES topics(id),
+    earlier BYTEA NOT NULL,
+    later BYTEA NOT NULL,
+    PRIMARY KEY (topic_id, earlier, later)
+);
+CREATE TABLE IF NOT EXISTS mutation_reservations (
+    topic_id      INTEGER NOT NULL REFERENCES topics(id),
+    outpoint      BYTEA NOT NULL,
+    mutation_txid BYTEA NOT NULL,
+    PRIMARY KEY (topic_id, outpoint)
+);
 
 CREATE TABLE IF NOT EXISTS applied_txs (
     topic_id INTEGER NOT NULL REFERENCES topics(id),
